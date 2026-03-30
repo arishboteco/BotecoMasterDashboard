@@ -2,8 +2,18 @@
 
 import base64
 import hashlib
+import inspect
 
 import streamlit.components.v1 as components
+
+
+def _html(html: str, height: int, component_key: str) -> None:
+    """Call components.html with key only if this Streamlit build supports it."""
+    params = inspect.signature(components.html).parameters
+    if "key" in params:
+        components.html(html, height=height, key=component_key)
+    else:
+        components.html(html, height=height)
 
 
 def _safe_id(key: str) -> str:
@@ -36,7 +46,7 @@ def render_copy_text_button(text: str, label: str, component_key: str, height: i
 }})();
 </script>
 """
-    components.html(html, height=height, key=component_key)
+    _html(html, height, component_key)
 
 
 def render_copy_image_button(png_bytes: bytes, label: str, component_key: str, height: int = 52) -> None:
@@ -62,4 +72,4 @@ def render_copy_image_button(png_bytes: bytes, label: str, component_key: str, h
 }})();
 </script>
 """
-    components.html(html, height=height, key=component_key)
+    _html(html, height, component_key)
