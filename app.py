@@ -11,7 +11,7 @@ import zipfile
 import config
 import database
 import parser
-import reports
+import sheet_reports as reports
 import utils
 import auth
 import clipboard_ui
