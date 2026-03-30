@@ -1,10 +1,16 @@
 import sqlite3
 import hashlib
+import os
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 import config
 
-DATABASE_PATH = config.DATABASE_PATH
+# Handle both local and cloud deployment
+DB_DIR = os.path.dirname(os.path.abspath(__file__))
+DATABASE_PATH = os.path.join(DB_DIR, "data", "boteco.db")
+
+# Ensure data directory exists
+os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
 
 
 def get_connection():
