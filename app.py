@@ -6,6 +6,7 @@ from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 from io import BytesIO
 import base64
+import zipfile
 
 import config
 import database
@@ -106,6 +107,14 @@ else:
         with tab1:
             st.header("Upload POS Data")
 
+            flash = st.session_state.pop("_import_summary_flash", None)
+            if flash is not None:
+                sd, sk, nc = flash
+                st.success(
+                    f"Last import: **{sd}** day(s) saved, **{sk}** day(s) skipped "
+                    f"(validation), **{nc}** parser note(s)."
+                )
+
             st.markdown("### Upload Files")
             uploaded_files = st.file_uploader(
                 "Upload XLSX files from POS system",
@@ -144,9 +153,12 @@ else:
                     )
                     uploaded_by = st.session_state.get("username") or "user"
                     saved_any = False
+                    saved_days = 0
+                    skipped_validation = 0
 
                     for date_str, merged, day_errs in results:
                         if day_errs:
+                            skipped_validation += 1
                             st.error(
                                 f"{date_str}: " + " ".join(day_errs)
                                 + " (add All Restaurant Sales or Sales Summary for this date)"
@@ -171,8 +183,21 @@ else:
                         )
                         st.success(f"Saved data for {date_str}")
                         saved_any = True
+                        saved_days += 1
+
+                    note_count = len(batch_notes)
+                    st.info(
+                        f"**Import summary:** {saved_days} day(s) saved, "
+                        f"{skipped_validation} day(s) skipped (validation), "
+                        f"{note_count} parser note(s)."
+                    )
 
                     if saved_any:
+                        st.session_state["_import_summary_flash"] = (
+                            saved_days,
+                            skipped_validation,
+                            note_count,
+                        )
                         st.rerun()
 
             st.markdown("---")
@@ -188,7 +213,7 @@ else:
                 - `customer_report` — lunch/dinner **PAX** (served & walk-in) for footfall; fills `covers` if sales file has no Pax.
                 - `sales_summary` — XLS/XLSX or HTML-as-.xls; keyword parsing for legacy layouts.
 
-                Files for the **same calendar date** in one batch are merged before save. Days without net/gross sales are skipped with an error (footfall-only rows need a sales export for that date).
+                Files for the **same calendar date** in one batch are merged before save. **Multiple dates** in one upload are split and saved per day. Undated files are only auto-assigned when the whole batch is a single day; in a multi-day batch they are skipped with a warning. Each calendar day still needs at least one sales export (net/gross); footfall-only files alone cannot create a row.
                 """
                 )
 
@@ -333,6 +358,13 @@ else:
                     month_footfall_rows=foot_rows,
                 )
                 png_bytes = img_buffer.getvalue()
+                section_bufs = reports.generate_sheet_style_report_sections(
+                    summary,
+                    st.session_state.location_name or "Boteco",
+                    mtd_category=mtd_cat,
+                    mtd_service=mtd_svc,
+                    month_footfall_rows=foot_rows,
+                )
                 whatsapp_text = reports.generate_whatsapp_text(
                     summary, st.session_state.location_name
                 )
@@ -368,6 +400,55 @@ else:
                         mime="text/plain",
                         key=f"dl_txt_{date_str}",
                     )
+
+                st.markdown("#### Individual sections")
+                _sec_meta = [
+                    ("sales_summary", "Sales summary"),
+                    ("category", "Category sales"),
+                    ("service", "Service sales"),
+                    ("footfall", "Footfall (month)"),
+                ]
+                zip_buf = BytesIO()
+                with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                    for key, title in _sec_meta:
+                        b = section_bufs[key].getvalue()
+                        zf.writestr(
+                            f"boteco_{key}_{date_str}.png",
+                            b,
+                        )
+                zip_buf.seek(0)
+                st.download_button(
+                    "Download all sections (ZIP)",
+                    zip_buf.getvalue(),
+                    file_name=f"boteco_sections_{date_str}.zip",
+                    mime="application/zip",
+                    key=f"dl_zip_sections_{date_str}",
+                )
+
+                r1c1, r1c2 = st.columns(2)
+                r2c1, r2c2 = st.columns(2)
+                _cells = [r1c1, r1c2, r2c1, r2c2]
+                for idx, (key, title) in enumerate(_sec_meta):
+                    sec_bytes = section_bufs[key].getvalue()
+                    with _cells[idx]:
+                        st.caption(title)
+                        st.image(BytesIO(sec_bytes), use_container_width=True)
+                        cb1, cb2 = st.columns(2)
+                        with cb1:
+                            clipboard_ui.render_copy_image_button(
+                                sec_bytes,
+                                "Copy",
+                                f"clip_sec_{key}_{date_str}",
+                                height=44,
+                            )
+                        with cb2:
+                            st.download_button(
+                                "PNG",
+                                sec_bytes,
+                                file_name=f"boteco_{key}_{date_str}.png",
+                                mime="image/png",
+                                key=f"dl_sec_{key}_{date_str}",
+                            )
 
                 with st.expander("Plain text preview"):
                     st.text_area(

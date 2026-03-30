@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 from io import BytesIO
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, NamedTuple
 import config
 
 # Google-Sheet-inspired EOD palette (approximate)
@@ -15,6 +15,10 @@ CLR_TEXT = "#1a1a1a"
 CLR_RED_HI = "#e74c3c"
 
 MONO = "DejaVu Sans Mono"
+
+# Composite layout: clearer gaps between the four blocks
+_COMPOSITE_HSPACE = 0.58
+_COMPOSITE_PAD_INCHES = 0.28
 
 
 def _rupee(n: float) -> str:
@@ -152,17 +156,24 @@ def _fg_for_bg(bg: str) -> str:
     return CLR_TEXT
 
 
-def generate_sheet_style_report_image(
+class SheetStyleTables(NamedTuple):
+    sales_text: List[List[str]]
+    sales_kinds: List[Tuple[str, str]]
+    cat_text: List[List[str]]
+    cat_rows_kinds: List[Tuple[str, str, str]]
+    svc_text: List[List[str]]
+    svc_rows_kinds: List[Tuple[str, str, str]]
+    ft_text: List[List[str]]
+    ft_kinds: List[Tuple[str, str, str, str]]
+
+
+def _build_sheet_style_tables(
     report_data: Dict,
-    location_name: str = "Boteco Bangalore",
-    mtd_category: Optional[Dict[str, float]] = None,
-    mtd_service: Optional[Dict[str, float]] = None,
-    month_footfall_rows: Optional[List[Dict]] = None,
-) -> BytesIO:
-    """
-    Composite PNG styled like the Google Sheet EOD dashboard: Sales Summary,
-    Category Sales, Service Sales, and optional footfall grid for the month.
-    """
+    location_name: str,
+    mtd_category: Dict[str, float],
+    mtd_service: Dict[str, float],
+    month_footfall_rows: List[Dict],
+) -> SheetStyleTables:
     mtd_category = dict(mtd_category or {})
     mtd_service = dict(mtd_service or {})
     month_footfall_rows = list(month_footfall_rows or [])
@@ -171,7 +182,7 @@ def generate_sheet_style_report_image(
     day_lbl = _sheet_date_label(iso)
     r = report_data
 
-    def zpay(label: str, val: float, red_lbl: bool = False) -> Tuple[str, str, str, str]:
+    def zpay(label: str, val: float) -> Tuple[str, str, str, str]:
         v = float(val or 0)
         kind_r = "pink" if v == 0 else "white"
         kind_l = "pink" if v == 0 else "white"
@@ -241,7 +252,9 @@ def generate_sheet_style_report_image(
     mtd_tgt = float(r.get("mtd_target") or config.MONTHLY_TARGET)
     sales_text.append(["Sales Target (month)", _rupee(mtd_tgt)])
     sales_kinds.append(("teal", "teal"))
-    sales_text.append(["Percentage of Target (MTD)", _pct(float(r.get("mtd_pct_target") or 0))])
+    sales_text.append(
+        ["Percentage of Target (MTD)", _pct(float(r.get("mtd_pct_target") or 0))]
+    )
     sales_kinds.append(("dk", "dk"))
 
     total_cat_mtd = sum(mtd_category.values()) or 1.0
@@ -253,7 +266,9 @@ def generate_sheet_style_report_image(
         "Coffee",
         "Tobacco",
     ]
-    daily_cat = {c.get("category"): float(c.get("amount") or 0) for c in r.get("categories") or []}
+    daily_cat = {
+        c.get("category"): float(c.get("amount") or 0) for c in r.get("categories") or []
+    }
     cat_order = [x for x in std_cats if x in daily_cat or mtd_category.get(x)]
     for k in sorted(mtd_category.keys()):
         if k not in cat_order:
@@ -275,14 +290,21 @@ def generate_sheet_style_report_image(
         mtd_cat_total += m_amt
         pct_lbl = int(round(100 * m_amt / total_cat_mtd)) if total_cat_mtd > 0 else 0
         label = f"{name} ({pct_lbl:02d}%)" if name != "—" else "No category data"
-        row_kind = ("pink", "pink", "pink") if d_amt == 0 and m_amt == 0 else ("white", "white", "white")
+        row_kind = (
+            ("pink", "pink", "pink")
+            if d_amt == 0 and m_amt == 0
+            else ("white", "white", "white")
+        )
         cat_text.append([label, _rupee(d_amt), _rupee(m_amt)])
         cat_rows_kinds.append(row_kind)
     cat_text.append(["Total", _rupee(daily_cat_total), _rupee(mtd_cat_total)])
     cat_rows_kinds.append(("hdr", "hdr", "hdr"))
 
     std_svc = ["Breakfast", "Lunch", "Dinner", "Delivery", "Events", "Party"]
-    daily_svc = {s.get("service_type") or s.get("type"): float(s.get("amount") or 0) for s in r.get("services") or []}
+    daily_svc = {
+        s.get("service_type") or s.get("type"): float(s.get("amount") or 0)
+        for s in r.get("services") or []
+    }
     svc_order = [x for x in std_svc if x in daily_svc or mtd_service.get(x)]
     for k in sorted(mtd_service.keys()):
         if k not in svc_order:
@@ -305,7 +327,11 @@ def generate_sheet_style_report_image(
         mtd_svc_total += m_amt
         pct_lbl = int(round(100 * m_amt / total_svc_mtd)) if total_svc_mtd > 0 else 0
         label = f"{name} ({pct_lbl:02d}%)" if name != "—" else "No service data"
-        row_kind = ("pink", "pink", "pink") if d_amt == 0 and m_amt == 0 else ("white", "white", "white")
+        row_kind = (
+            ("pink", "pink", "pink")
+            if d_amt == 0 and m_amt == 0
+            else ("white", "white", "white")
+        )
         svc_text.append([label, _rupee(d_amt), _rupee(m_amt)])
         svc_rows_kinds.append(row_kind)
     svc_text.append(["Total", _rupee(daily_svc_total), _rupee(mtd_svc_total)])
@@ -330,7 +356,208 @@ def generate_sheet_style_report_image(
         ft_text.append([_sheet_date_label(ds), str(di), str(lu), str(tot)])
         ft_kinds.append(("white", "white", "white", "white"))
 
-    n1, n2, n3, n4 = len(sales_text), len(cat_text), len(svc_text), max(len(ft_text), 2)
+    return SheetStyleTables(
+        sales_text=sales_text,
+        sales_kinds=sales_kinds,
+        cat_text=cat_text,
+        cat_rows_kinds=cat_rows_kinds,
+        svc_text=svc_text,
+        svc_rows_kinds=svc_rows_kinds,
+        ft_text=ft_text,
+        ft_kinds=ft_kinds,
+    )
+
+
+def _paint_sales_table(ax, tables: SheetStyleTables) -> None:
+    ax.axis("off")
+    t1 = ax.table(
+        cellText=tables.sales_text,
+        loc="upper center",
+        cellLoc="right",
+        colWidths=[0.52, 0.38],
+    )
+    _style_table(t1, 7)
+    st = tables.sales_text
+    sk = tables.sales_kinds
+    for i in range(len(st)):
+        for j in range(2):
+            c = t1[(i, j)]
+            kk = sk[i] if i < len(sk) else ("white", "white")
+            bg = _cell_kind_bg(kk[j])
+            c.set_facecolor(bg)
+            fg = _fg_for_bg(bg)
+            c.set_text_props(color=fg, fontfamily=MONO)
+            c.get_text().set_ha("right" if j == 1 else "left")
+            c.set_edgecolor("#333333")
+    t1[(0, 0)].get_text().set_ha("left")
+    t1[(0, 1)].get_text().set_ha("right")
+
+
+def _paint_category_table(ax, tables: SheetStyleTables) -> None:
+    ax.axis("off")
+    t2 = ax.table(
+        cellText=tables.cat_text,
+        loc="upper center",
+        cellLoc="right",
+        colWidths=[0.5, 0.22, 0.22],
+    )
+    _style_table(t2, 7)
+    for i in range(len(tables.cat_text)):
+        for j in range(3):
+            c = t2[(i, j)]
+            kk = tables.cat_rows_kinds[i][j]
+            bg = _cell_kind_bg(kk)
+            c.set_facecolor(bg)
+            fg = _fg_for_bg(bg)
+            c.set_text_props(color=fg, fontfamily=MONO)
+            c.get_text().set_ha("right" if j else "left")
+            c.set_edgecolor("#333333")
+
+
+def _paint_service_table(ax, tables: SheetStyleTables) -> None:
+    ax.axis("off")
+    t3 = ax.table(
+        cellText=tables.svc_text,
+        loc="upper center",
+        cellLoc="right",
+        colWidths=[0.5, 0.22, 0.22],
+    )
+    _style_table(t3, 7)
+    for i in range(len(tables.svc_text)):
+        for j in range(3):
+            c = t3[(i, j)]
+            kk = tables.svc_rows_kinds[i][j]
+            bg = _cell_kind_bg(kk)
+            c.set_facecolor(bg)
+            fg = _fg_for_bg(bg)
+            c.set_text_props(color=fg, fontfamily=MONO)
+            c.get_text().set_ha("right" if j else "left")
+            c.set_edgecolor("#333333")
+
+
+def _paint_footfall_table(ax, tables: SheetStyleTables) -> None:
+    ax.axis("off")
+    if len(tables.ft_text) <= 1:
+        ax.text(
+            0.5,
+            0.5,
+            "No footfall rows for month",
+            ha="center",
+            va="center",
+            fontsize=9,
+        )
+        return
+    t4 = ax.table(
+        cellText=tables.ft_text,
+        loc="upper center",
+        cellLoc="right",
+        colWidths=[0.42, 0.18, 0.18, 0.18],
+    )
+    _style_table(t4, 7)
+    for i in range(len(tables.ft_text)):
+        for j in range(4):
+            c = t4[(i, j)]
+            kk = tables.ft_kinds[i][j] if i < len(tables.ft_kinds) else "white"
+            bg = _cell_kind_bg(kk)
+            c.set_facecolor(bg)
+            fg = _fg_for_bg(bg)
+            c.set_text_props(color=fg, fontfamily=MONO)
+            c.get_text().set_ha("right" if j else "left")
+            c.set_edgecolor("#333333")
+
+
+def _fig_height_for_rows(n_rows: int, min_rows: int = 4, cap: float = 24.0) -> float:
+    n = max(n_rows, min_rows)
+    return min(cap, 1.2 + 0.22 * n)
+
+
+def _save_figure_png(fig) -> BytesIO:
+    buf = BytesIO()
+    fig.savefig(
+        buf,
+        format="png",
+        facecolor=fig.get_facecolor(),
+        bbox_inches="tight",
+        pad_inches=_COMPOSITE_PAD_INCHES,
+    )
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def generate_sheet_style_report_sections(
+    report_data: Dict,
+    location_name: str = "Boteco Bangalore",
+    mtd_category: Optional[Dict[str, float]] = None,
+    mtd_service: Optional[Dict[str, float]] = None,
+    month_footfall_rows: Optional[List[Dict]] = None,
+) -> Dict[str, BytesIO]:
+    """
+    Four separate PNGs: sales_summary, category, service, footfall.
+    Same styling as the composite sheet report.
+    """
+    tables = _build_sheet_style_tables(
+        report_data,
+        location_name,
+        dict(mtd_category or {}),
+        dict(mtd_service or {}),
+        list(month_footfall_rows or []),
+    )
+    out: Dict[str, BytesIO] = {}
+
+    fig_h = _fig_height_for_rows(len(tables.sales_text), 6)
+    fig, ax = plt.subplots(1, 1, figsize=(10, fig_h), dpi=120)
+    fig.patch.set_facecolor("#ececec")
+    _paint_sales_table(ax, tables)
+    out["sales_summary"] = _save_figure_png(fig)
+
+    fig_h = _fig_height_for_rows(len(tables.cat_text), 4)
+    fig, ax = plt.subplots(1, 1, figsize=(10, fig_h), dpi=120)
+    fig.patch.set_facecolor("#ececec")
+    _paint_category_table(ax, tables)
+    out["category"] = _save_figure_png(fig)
+
+    fig_h = _fig_height_for_rows(len(tables.svc_text), 4)
+    fig, ax = plt.subplots(1, 1, figsize=(10, fig_h), dpi=120)
+    fig.patch.set_facecolor("#ececec")
+    _paint_service_table(ax, tables)
+    out["service"] = _save_figure_png(fig)
+
+    ft_n = max(len(tables.ft_text), 3)
+    fig_h = _fig_height_for_rows(ft_n, 3)
+    fig, ax = plt.subplots(1, 1, figsize=(10, fig_h), dpi=120)
+    fig.patch.set_facecolor("#ececec")
+    _paint_footfall_table(ax, tables)
+    out["footfall"] = _save_figure_png(fig)
+
+    return out
+
+
+def generate_sheet_style_report_image(
+    report_data: Dict,
+    location_name: str = "Boteco Bangalore",
+    mtd_category: Optional[Dict[str, float]] = None,
+    mtd_service: Optional[Dict[str, float]] = None,
+    month_footfall_rows: Optional[List[Dict]] = None,
+) -> BytesIO:
+    """
+    Composite PNG styled like the Google Sheet EOD dashboard: Sales Summary,
+    Category Sales, Service Sales, and optional footfall grid for the month.
+    """
+    tables = _build_sheet_style_tables(
+        report_data,
+        location_name,
+        dict(mtd_category or {}),
+        dict(mtd_service or {}),
+        list(month_footfall_rows or []),
+    )
+
+    n1, n2, n3, n4 = (
+        len(tables.sales_text),
+        len(tables.cat_text),
+        len(tables.svc_text),
+        max(len(tables.ft_text), 2),
+    )
     h_ratios = [max(n1, 6), max(n2, 4), max(n3, 4), max(n4, 3)]
     fig_h = min(36, 2.0 + 0.22 * sum(h_ratios))
     fig, axes = plt.subplots(
@@ -342,96 +569,19 @@ def generate_sheet_style_report_image(
     )
     fig.patch.set_facecolor("#ececec")
 
-    for ax in axes:
-        ax.axis("off")
+    _paint_sales_table(axes[0], tables)
+    _paint_category_table(axes[1], tables)
+    _paint_service_table(axes[2], tables)
+    _paint_footfall_table(axes[3], tables)
 
-    # Sales table
-    t1 = axes[0].table(
-        cellText=sales_text,
-        loc="upper center",
-        cellLoc="right",
-        colWidths=[0.52, 0.38],
+    plt.subplots_adjust(
+        hspace=_COMPOSITE_HSPACE,
+        left=0.04,
+        right=0.96,
+        top=0.98,
+        bottom=0.02,
     )
-    _style_table(t1, 7)
-    for i in range(len(sales_text)):
-        for j in range(2):
-            c = t1[(i, j)]
-            kk = sales_kinds[i] if i < len(sales_kinds) else ("white", "white")
-            bg = _cell_kind_bg(kk[j])
-            c.set_facecolor(bg)
-            fg = _fg_for_bg(bg)
-            c.set_text_props(color=fg, fontfamily=MONO)
-            c.get_text().set_ha("right" if j == 1 else "left")
-            c.set_edgecolor("#333333")
-    t1[(0, 0)].get_text().set_ha("left")
-    t1[(0, 1)].get_text().set_ha("right")
-
-    # Category table
-    t2 = axes[1].table(
-        cellText=cat_text,
-        loc="upper center",
-        cellLoc="right",
-        colWidths=[0.5, 0.22, 0.22],
-    )
-    _style_table(t2, 7)
-    for i in range(len(cat_text)):
-        for j in range(3):
-            c = t2[(i, j)]
-            kk = cat_rows_kinds[i][j]
-            bg = _cell_kind_bg(kk)
-            c.set_facecolor(bg)
-            fg = _fg_for_bg(bg)
-            c.set_text_props(color=fg, fontfamily=MONO)
-            c.get_text().set_ha("right" if j else "left")
-            c.set_edgecolor("#333333")
-
-    # Service table
-    t3 = axes[2].table(
-        cellText=svc_text,
-        loc="upper center",
-        cellLoc="right",
-        colWidths=[0.5, 0.22, 0.22],
-    )
-    _style_table(t3, 7)
-    for i in range(len(svc_text)):
-        for j in range(3):
-            c = t3[(i, j)]
-            kk = svc_rows_kinds[i][j]
-            bg = _cell_kind_bg(kk)
-            c.set_facecolor(bg)
-            fg = _fg_for_bg(bg)
-            c.set_text_props(color=fg, fontfamily=MONO)
-            c.get_text().set_ha("right" if j else "left")
-            c.set_edgecolor("#333333")
-
-    # Footfall
-    if len(ft_text) <= 1:
-        axes[3].text(0.5, 0.5, "No footfall rows for month", ha="center", va="center", fontsize=9)
-    else:
-        t4 = axes[3].table(
-            cellText=ft_text,
-            loc="upper center",
-            cellLoc="right",
-            colWidths=[0.42, 0.18, 0.18, 0.18],
-        )
-        _style_table(t4, 7)
-        for i in range(len(ft_text)):
-            for j in range(4):
-                c = t4[(i, j)]
-                kk = ft_kinds[i][j] if i < len(ft_kinds) else "white"
-                bg = _cell_kind_bg(kk)
-                c.set_facecolor(bg)
-                fg = _fg_for_bg(bg)
-                c.set_text_props(color=fg, fontfamily=MONO)
-                c.get_text().set_ha("right" if j else "left")
-                c.set_edgecolor("#333333")
-
-    plt.subplots_adjust(hspace=0.25, left=0.04, right=0.96, top=0.98, bottom=0.02)
-    buf = BytesIO()
-    plt.savefig(buf, format="png", facecolor=fig.get_facecolor(), bbox_inches="tight", pad_inches=0.2)
-    plt.close(fig)
-    buf.seek(0)
-    return buf
+    return _save_figure_png(fig)
 
 
 def generate_report_image(

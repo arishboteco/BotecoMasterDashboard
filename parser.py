@@ -793,13 +793,26 @@ def process_upload_batch(
             notes.append(f"Error parsing {name}: {ex}")
 
     dated = [f for f in fragments if f.get("date")]
+    unique_dates = {f["date"] for f in dated}
+    majority = None
     if dated:
         majority = Counter(f["date"] for f in dated).most_common(1)[0][0]
-        for f in fragments:
-            if not f.get("date"):
-                f["date"] = majority
 
-    by_date = group_fragments_by_date(fragments)
+    kept: List[Dict] = []
+    for f in fragments:
+        if f.get("date"):
+            kept.append(f)
+            continue
+        fn = f.get("filename", "unknown")
+        if len(unique_dates) <= 1 and majority is not None:
+            f["date"] = majority
+            kept.append(f)
+        elif not dated:
+            notes.append(f"Skipped (no date found): {fn}")
+        else:
+            notes.append(f"Skipped (no date in multi-day batch): {fn}")
+
+    by_date = group_fragments_by_date(kept)
     results: List[Tuple[str, Dict, List[str]]] = []
     for d, frags in sorted(by_date.items()):
         merged = merge_upload_fragments(frags)
