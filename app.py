@@ -10,7 +10,7 @@ import zipfile
 
 import config
 import database
-import parser
+import pos_parser as parser
 import sheet_reports as reports
 import utils
 import auth
