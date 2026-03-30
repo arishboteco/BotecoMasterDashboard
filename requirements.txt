@@ -12,6 +12,7 @@ xlrd>=2.0.1
 
 # Visualization
 plotly>=5.18.0
+matplotlib>=3.7.0
 
 # Image generation
 Pillow>=10.0.0
