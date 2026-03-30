@@ -166,8 +166,13 @@ else:
                             continue
                         merged["target"] = daily_tgt
                         merged = parser.calculate_derived_metrics(merged)
+                        y_m = [int(x) for x in date_str.split("-")[:2]]
                         mtd = parser.calculate_mtd_metrics(
-                            location_id, monthly_tgt
+                            location_id,
+                            monthly_tgt,
+                            year=y_m[0],
+                            month=y_m[1],
+                            as_of_date=date_str,
                         )
                         merged.update(mtd)
                         database.save_daily_summary(location_id, merged)
@@ -208,7 +213,7 @@ else:
                 **Daily bundle (auto-detected by filename):**
                 - `All_Restaurant_Sales_Report` — payments, net/gross, Pax (covers); rows filtered to **Boteco** (`DEFAULT_RESTAURANT_FILTER` in `config.py`).
                 - `Restaurant_item_tax_report` — CGST, SGST, service charge (summed).
-                - `Flash_Report_*.xlsx` — POS Collection summary row; same tax/charge fields as item tax (optional substitute).
+                - `Flash_Report_*.xlsx` — POS Collection summary (tax/charge). **Item tax export overrides** Flash for CGST/SGST/service charge when both are uploaded. Flash can **fill** GPay/Zomato/cash splits only where All Restaurant Sales left those at 0.
                 - `Restaurant_timing_report` — Breakfast / Lunch / Dinner sales amounts.
                 - `Item_Report_Group_Wise` — category mix (Food, Coffee, etc.).
                 - `customer_report` — lunch/dinner **PAX** (served & walk-in) for footfall; fills `covers` if sales file has no Pax.
@@ -244,12 +249,16 @@ else:
             summary = database.get_daily_summary(location_id, date_str)
 
             if summary:
-                # Calculate MTD for display
+                # Calculate MTD for display (report month, through selected date)
+                y_m = [int(x) for x in date_str.split("-")[:2]]
                 mtd = parser.calculate_mtd_metrics(
                     location_id,
                     location_settings.get("target_monthly_sales", config.MONTHLY_TARGET)
                     if location_settings
                     else config.MONTHLY_TARGET,
+                    year=y_m[0],
+                    month=y_m[1],
+                    as_of_date=date_str,
                 )
                 summary.update(mtd)
 

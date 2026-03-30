@@ -212,12 +212,46 @@ def parse_all_restaurant_sales(
     if gross_total <= 0 and idx_my is not None:
         gross_total = _f(picked.iloc[idx_my])
 
+    structural: set = {idx_rest}
+    for ix in (idx_net, idx_gross, idx_my, idx_disc, idx_sc, idx_pax, idx_bills):
+        if ix is not None:
+            structural.add(ix)
+
     cash = _f(picked.iloc[idx_cash]) if idx_cash is not None else 0.0
     card = _f(picked.iloc[idx_card]) if idx_card is not None else 0.0
-    other = _f(picked.iloc[idx_other]) if idx_other is not None else 0.0
     wallet = _f(picked.iloc[idx_wallet]) if idx_wallet is not None else 0.0
     upi = _f(picked.iloc[idx_upi]) if idx_upi is not None else 0.0
     online = _f(picked.iloc[idx_online]) if idx_online is not None else 0.0
+
+    pay_done = {
+        x for x in (idx_cash, idx_card, idx_upi, idx_wallet, idx_online) if x is not None
+    }
+    extra_gpay = 0.0
+    extra_zomato = 0.0
+    extra_other = 0.0
+    for key, j in colmap.items():
+        if j in structural or j in pay_done:
+            continue
+        kk = key
+        v = _f(picked.iloc[j])
+        if abs(v) < 1e-9:
+            continue
+        if "zomato" in kk or "swiggy" in kk:
+            extra_zomato += v
+        elif (
+            "g pay" in kk
+            or "gpay" in kk
+            or ("google" in kk and "pay" in kk)
+            or ("other" in kk and ("g pay" in kk or "gpay" in kk))
+        ):
+            extra_gpay += v
+        elif "upi" in kk or ("wallet" in kk and "other" not in kk):
+            extra_gpay += v
+        elif "online" in kk and "bank" not in kk:
+            extra_zomato += v
+        elif "other" in kk:
+            extra_other += v
+
     discount = _f(picked.iloc[idx_disc]) if idx_disc is not None else 0.0
     service_charge = _f(picked.iloc[idx_sc]) if idx_sc is not None else 0.0
 
@@ -233,9 +267,9 @@ def parse_all_restaurant_sales(
         "net_total": net_total,
         "cash_sales": cash,
         "card_sales": card,
-        "gpay_sales": upi + wallet,
-        "zomato_sales": online,
-        "other_sales": other,
+        "gpay_sales": upi + wallet + extra_gpay,
+        "zomato_sales": online + extra_zomato,
+        "other_sales": extra_other,
         "discount": discount,
         "service_charge": service_charge,
         "covers": covers,
@@ -360,13 +394,59 @@ def parse_flash_report(file_content: bytes, filename: str) -> Optional[Dict]:
     if not date_str:
         return None
 
-    return {
+    pay = _parse_flash_payment_summary(df)
+    out: Dict[str, Any] = {
         "date": date_str,
         "filename": filename,
         "file_type": "flash_report",
         "cgst": cgst,
         "sgst": sgst,
         "service_charge": sc,
+    }
+    for pk, pv in pay.items():
+        if float(pv or 0) != 0:
+            out[pk] = pv
+    return out
+
+
+def _parse_flash_payment_summary(df: pd.DataFrame) -> Dict[str, float]:
+    """Payment Wise Summary block: label col 0, amount col 1."""
+    cash = gpay = zomato = other = 0.0
+    header_i = None
+    for i in range(min(40, len(df))):
+        c0 = _norm_header(df.iat[i, 0]) if df.shape[1] else ""
+        if c0 == "payment type":
+            header_i = i
+            break
+    if header_i is None or df.shape[1] < 2:
+        return {
+            "cash_sales": cash,
+            "gpay_sales": gpay,
+            "zomato_sales": zomato,
+            "other_sales": other,
+        }
+    for i in range(header_i + 1, len(df)):
+        c0 = _norm_header(df.iat[i, 0]) if df.shape[1] else ""
+        if not c0:
+            break
+        if "category" in c0 and "summary" in c0:
+            break
+        v = _f(df.iat[i, 1])
+        if c0 == "cash":
+            cash += v
+        elif "zomato" in c0:
+            zomato += v
+        elif "g pay" in c0 or "gpay" in c0 or ("google" in c0 and "pay" in c0):
+            gpay += v
+        elif "card" in c0 or "credit" in c0 or "amex" in c0:
+            other += v
+        elif "other" in c0:
+            other += v
+    return {
+        "cash_sales": cash,
+        "gpay_sales": gpay,
+        "zomato_sales": zomato,
+        "other_sales": other,
     }
 
 
@@ -760,8 +840,8 @@ def parse_category_sales(file_content: bytes, filename: str) -> Optional[List[Di
 _MERGE_PRIORITY = {
     "sales_summary": 10,
     "all_restaurant_sales": 20,
-    "item_tax_report": 30,
-    "flash_report": 30,
+    "flash_report": 25,
+    "item_tax_report": 35,
     "timing_report": 40,
     "group_wise": 50,
     "customer_report": 60,
@@ -786,12 +866,23 @@ def merge_upload_fragments(fragments: List[Dict]) -> Dict[str, Any]:
             if k == "date":
                 merged["date"] = v
                 continue
-            if ft in ("item_tax_report", "flash_report") and k in (
+            if ft == "item_tax_report" and k in (
                 "cgst",
                 "sgst",
                 "service_charge",
             ):
                 merged[k] = v
+            elif ft == "flash_report" and k in ("cgst", "sgst", "service_charge"):
+                merged[k] = v
+            elif ft == "flash_report" and k in (
+                "cash_sales",
+                "gpay_sales",
+                "zomato_sales",
+                "other_sales",
+            ):
+                prev = float(merged.get(k) or 0)
+                if abs(prev) < 1e-9 and float(v or 0) != 0:
+                    merged[k] = v
             elif ft == "timing_report" and k == "services":
                 merged["services"] = v
             elif ft == "group_wise" and k == "categories":
@@ -800,8 +891,9 @@ def merge_upload_fragments(fragments: List[Dict]) -> Dict[str, Any]:
                 if k in ("lunch_covers", "dinner_covers"):
                     merged[k] = v
                 elif k == "covers":
-                    if merged.get("covers", 0) <= 0:
-                        merged["covers"] = int(v)
+                    merged["covers"] = max(
+                        int(merged.get("covers") or 0), int(v or 0)
+                    )
             elif ft in ("all_restaurant_sales", "sales_summary"):
                 merged[k] = v
             elif ft not in _MERGE_PRIORITY:
@@ -910,11 +1002,24 @@ def process_upload_batch(
     return results, notes
 
 
-def calculate_mtd_metrics(location_id: int, target_monthly: float) -> Dict:
+def calculate_mtd_metrics(
+    location_id: int,
+    target_monthly: float,
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    as_of_date: Optional[str] = None,
+) -> Dict:
+    """MTD for calendar month of the report; optional as_of_date caps at that day (inclusive)."""
     from database import get_summaries_for_month
 
-    today = datetime.now()
-    summaries = get_summaries_for_month(location_id, today.year, today.month)
+    if year is None or month is None:
+        t = datetime.now()
+        year, month = t.year, t.month
+
+    summaries = get_summaries_for_month(location_id, year, month)
+    if as_of_date:
+        cap = str(as_of_date)[:10]
+        summaries = [s for s in summaries if str(s.get("date", ""))[:10] <= cap]
 
     total_covers = sum(s.get("covers", 0) or 0 for s in summaries)
     total_sales = sum(s.get("net_total", 0) or 0 for s in summaries)
