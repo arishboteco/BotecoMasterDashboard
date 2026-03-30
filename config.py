@@ -53,3 +53,6 @@ WHATSAPP_TEMPLATE = """
 # File Upload Settings
 ALLOWED_EXTENSIONS = ["xlsx", "xls"]
 MAX_FILE_SIZE_MB = 10
+
+# POS exports: filter All Restaurant Sales to this outlet (case-insensitive substring)
+DEFAULT_RESTAURANT_FILTER = "Boteco"

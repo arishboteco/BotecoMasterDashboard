@@ -118,20 +118,81 @@ else:
 
                 if uploaded_files:
                     for file in uploaded_files:
-                        st.success(f"✅ {file.name} uploaded")
+                        st.success(f"✅ {file.name} ready")
+
+                    if st.button(
+                        "Import & save to database",
+                        type="primary",
+                        key="import_pos_batch",
+                    ):
+                        files_payload = [(f.name, f.getvalue()) for f in uploaded_files]
+                        results, batch_notes = parser.process_upload_batch(files_payload)
+                        for note in batch_notes:
+                            st.warning(note)
+
+                        monthly_tgt = (
+                            location_settings.get(
+                                "target_monthly_sales", config.MONTHLY_TARGET
+                            )
+                            if location_settings
+                            else config.MONTHLY_TARGET
+                        )
+                        daily_tgt = (
+                            location_settings.get(
+                                "target_daily_sales", config.DAILY_TARGET
+                            )
+                            if location_settings
+                            else config.DAILY_TARGET
+                        )
+                        uploaded_by = st.session_state.get("username") or "user"
+                        saved_any = False
+
+                        for date_str, merged, day_errs in results:
+                            if day_errs:
+                                st.error(
+                                    f"{date_str}: " + " ".join(day_errs)
+                                    + " (add All Restaurant Sales or Sales Summary for this date)"
+                                )
+                                continue
+                            merged["target"] = daily_tgt
+                            merged = parser.calculate_derived_metrics(merged)
+                            mtd = parser.calculate_mtd_metrics(
+                                location_id, monthly_tgt
+                            )
+                            merged.update(mtd)
+                            database.save_daily_summary(location_id, merged)
+                            fnames = ", ".join(f.name for f in uploaded_files)
+                            if len(fnames) > 180:
+                                fnames = fnames[:177] + "..."
+                            database.save_upload_record(
+                                location_id,
+                                date_str,
+                                fnames,
+                                "pos_batch",
+                                uploaded_by,
+                            )
+                            st.success(f"Saved data for {date_str}")
+                            saved_any = True
+
+                        if saved_any:
+                            st.rerun()
 
                 st.markdown("---")
 
                 with st.expander("ℹ️ Supported File Formats"):
-                    st.info("""
-                    **Supported formats:**
-                    - Sales Summary XLSX
-                    - Category Sales XLSX
-                    - Payment Report XLSX
-                    
-                    **Note:** The system will attempt to automatically detect 
-                    data fields from column headers and keywords.
-                    """)
+                    st.info(
+                        """
+                    **Daily bundle (auto-detected by filename):**
+                    - `All_Restaurant_Sales_Report` — payments, net/gross, Pax (covers); rows filtered to **Boteco** (`DEFAULT_RESTAURANT_FILTER` in `config.py`).
+                    - `Restaurant_item_tax_report` — CGST, SGST, service charge (summed).
+                    - `Restaurant_timing_report` — Breakfast / Lunch / Dinner sales amounts.
+                    - `Item_Report_Group_Wise` — category mix (Food, Coffee, etc.).
+                    - `customer_report` — lunch/dinner **PAX** (served & walk-in) for footfall; fills `covers` if sales file has no Pax.
+                    - `sales_summary` — XLS/XLSX or HTML-as-.xls; keyword parsing for legacy layouts.
+
+                    Files for the **same calendar date** in one batch are merged before save. Days without net/gross sales are skipped with an error (footfall-only rows need a sales export for that date).
+                    """
+                    )
 
             with col2:
                 st.markdown("### Manual Entry")
@@ -293,10 +354,17 @@ else:
                     )
 
                 with col_kpi2:
+                    lc = summary.get("lunch_covers")
+                    dc = summary.get("dinner_covers")
+                    foot = (
+                        f"Lunch {lc:,} · Dinner {dc:,}"
+                        if lc is not None and dc is not None
+                        else None
+                    )
                     st.metric(
                         "Covers",
                         f"{summary.get('covers', 0):,}",
-                        delta=f"Turns: {summary.get('turns', 0):.1f}",
+                        delta=foot or f"Turns: {summary.get('turns', 0):.1f}",
                     )
 
                 with col_kpi3:

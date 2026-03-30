@@ -121,6 +121,14 @@ def init_database():
         )
     """)
 
+    cursor.execute("PRAGMA table_info(daily_summaries)")
+    _ds_cols = {row[1] for row in cursor.fetchall()}
+    for _col, _typ in (("lunch_covers", "INTEGER"), ("dinner_covers", "INTEGER")):
+        if _col not in _ds_cols:
+            cursor.execute(
+                f"ALTER TABLE daily_summaries ADD COLUMN {_col} {_typ} DEFAULT NULL"
+            )
+
     conn.commit()
     conn.close()
 
@@ -220,7 +228,8 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
                 other_sales = ?, service_charge = ?, cgst = ?, sgst = ?,
                 discount = ?, complimentary = ?, apc = ?, target = ?,
                 pct_target = ?, mtd_total_covers = ?, mtd_net_sales = ?,
-                mtd_discount = ?, mtd_avg_daily = ?, mtd_target = ?, mtd_pct_target = ?
+                mtd_discount = ?, mtd_avg_daily = ?, mtd_target = ?, mtd_pct_target = ?,
+                lunch_covers = ?, dinner_covers = ?
             WHERE id = ?
         """,
             (
@@ -247,6 +256,8 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
                 data.get("mtd_avg_daily", 0),
                 data.get("mtd_target", 0),
                 data.get("mtd_pct_target", 0),
+                data.get("lunch_covers"),
+                data.get("dinner_covers"),
                 summary_id,
             ),
         )
@@ -259,8 +270,9 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
                 cash_sales, card_sales, gpay_sales, zomato_sales, other_sales,
                 service_charge, cgst, sgst, discount, complimentary, apc,
                 target, pct_target, mtd_total_covers, mtd_net_sales,
-                mtd_discount, mtd_avg_daily, mtd_target, mtd_pct_target
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                mtd_discount, mtd_avg_daily, mtd_target, mtd_pct_target,
+                lunch_covers, dinner_covers
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 location_id,
@@ -288,6 +300,8 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
                 data.get("mtd_avg_daily", 0),
                 data.get("mtd_target", 0),
                 data.get("mtd_pct_target", 0),
+                data.get("lunch_covers"),
+                data.get("dinner_covers"),
             ),
         )
         cursor.execute("SELECT last_insert_rowid()")
