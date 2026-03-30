@@ -208,6 +208,7 @@ else:
                 **Daily bundle (auto-detected by filename):**
                 - `All_Restaurant_Sales_Report` — payments, net/gross, Pax (covers); rows filtered to **Boteco** (`DEFAULT_RESTAURANT_FILTER` in `config.py`).
                 - `Restaurant_item_tax_report` — CGST, SGST, service charge (summed).
+                - `Flash_Report_*.xlsx` — POS Collection summary row; same tax/charge fields as item tax (optional substitute).
                 - `Restaurant_timing_report` — Breakfast / Lunch / Dinner sales amounts.
                 - `Item_Report_Group_Wise` — category mix (Food, Coffee, etc.).
                 - `customer_report` — lunch/dinner **PAX** (served & walk-in) for footfall; fills `covers` if sales file has no Pax.

@@ -133,6 +133,8 @@ def detect_file_kind(filename: str) -> str:
     n = filename.lower()
     if "all_restaurant_sales" in n:
         return "all_restaurant_sales"
+    if "flash_report" in n:
+        return "flash_report"
     if "restaurant_item_tax" in n or "item_tax_report" in n:
         return "item_tax_report"
     if "restaurant_timing" in n or "timing_report" in n:
@@ -290,6 +292,78 @@ def parse_item_tax_report(file_content: bytes, filename: str) -> Optional[Dict]:
         "date": date_str,
         "filename": filename,
         "file_type": "item_tax_report",
+        "cgst": cgst,
+        "sgst": sgst,
+        "service_charge": sc,
+    }
+
+
+def parse_flash_report(file_content: bytes, filename: str) -> Optional[Dict]:
+    """
+    POS "Flash Report" / Collection Report: one summary row with CGST, SGST,
+    Service Charge (same merge role as Restaurant_item_tax_report).
+    """
+    df = _load_tabular(file_content, filename)
+    if df is None or df.empty:
+        return None
+
+    top_bits = []
+    for ri in range(min(8, len(df))):
+        for x in df.iloc[ri].values:
+            if pd.notna(x):
+                top_bits.append(_norm_header(x))
+    top = " ".join(top_bits)
+    if "pos collection" not in top and "collection report" not in top:
+        return None
+
+    header_idx = None
+    for i in range(min(30, len(df))):
+        c0 = _norm_header(df.iat[i, 0]) if df.shape[1] > 0 else ""
+        if c0 != "orders":
+            continue
+        row_txt = " ".join(_norm_header(x) for x in df.iloc[i].values)
+        if "cgst" not in row_txt or "sgst" not in row_txt:
+            continue
+        colmap = _header_map_row(df, i)
+        if "cgst" in colmap and "sgst" in colmap and "service charge" in colmap:
+            header_idx = i
+            break
+    if header_idx is None:
+        return None
+
+    if header_idx + 1 >= len(df):
+        return None
+
+    colmap = _header_map_row(df, header_idx)
+    row = df.iloc[header_idx + 1]
+    cgst = _f(row.iloc[colmap["cgst"]])
+    sgst = _f(row.iloc[colmap["sgst"]])
+    sc = _f(row.iloc[colmap["service charge"]])
+
+    date_str = None
+    for i in range(header_idx):
+        c0 = _norm_header(df.iat[i, 0]) if df.shape[1] > 0 else ""
+        if not c0.startswith("date"):
+            continue
+        v = df.iat[i, 1] if df.shape[1] > 1 else None
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            continue
+        try:
+            date_str = pd.Timestamp(v).strftime("%Y-%m-%d")
+        except Exception:
+            date_str = _parse_date_range_cell(v) or _parse_date(str(v).strip())
+        if date_str:
+            break
+    if not date_str:
+        date_str = _date_from_filename(filename)
+
+    if not date_str:
+        return None
+
+    return {
+        "date": date_str,
+        "filename": filename,
+        "file_type": "flash_report",
         "cgst": cgst,
         "sgst": sgst,
         "service_charge": sc,
@@ -687,6 +761,7 @@ _MERGE_PRIORITY = {
     "sales_summary": 10,
     "all_restaurant_sales": 20,
     "item_tax_report": 30,
+    "flash_report": 30,
     "timing_report": 40,
     "group_wise": 50,
     "customer_report": 60,
@@ -711,7 +786,11 @@ def merge_upload_fragments(fragments: List[Dict]) -> Dict[str, Any]:
             if k == "date":
                 merged["date"] = v
                 continue
-            if ft == "item_tax_report" and k in ("cgst", "sgst", "service_charge"):
+            if ft in ("item_tax_report", "flash_report") and k in (
+                "cgst",
+                "sgst",
+                "service_charge",
+            ):
                 merged[k] = v
             elif ft == "timing_report" and k == "services":
                 merged["services"] = v
@@ -743,6 +822,8 @@ def parse_upload_file(file_content: bytes, filename: str) -> Optional[Dict]:
         return parse_all_restaurant_sales(file_content, filename)
     if kind == "item_tax_report":
         return parse_item_tax_report(file_content, filename)
+    if kind == "flash_report":
+        return parse_flash_report(file_content, filename)
     if kind == "timing_report":
         return parse_timing_report(file_content, filename)
     if kind == "group_wise":
