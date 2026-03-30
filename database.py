@@ -393,6 +393,54 @@ def get_summaries_for_month(location_id: int, year: int, month: int) -> List[Dic
     return [dict(row) for row in rows]
 
 
+def get_category_mtd_totals(location_id: int, year: int, month: int) -> Dict[str, float]:
+    """Sum category sales amounts for calendar month (all days in month)."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    start_date = f"{year}-{month:02d}-01"
+    if month == 12:
+        end_date = f"{year + 1}-01-01"
+    else:
+        end_date = f"{year}-{month + 1:02d}-01"
+    cursor.execute(
+        """
+        SELECT cs.category, SUM(cs.amount) AS total
+        FROM category_sales cs
+        INNER JOIN daily_summaries ds ON cs.summary_id = ds.id
+        WHERE ds.location_id = ? AND ds.date >= ? AND ds.date < ?
+        GROUP BY cs.category
+        """,
+        (location_id, start_date, end_date),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return {row["category"]: float(row["total"] or 0) for row in rows}
+
+
+def get_service_mtd_totals(location_id: int, year: int, month: int) -> Dict[str, float]:
+    """Sum service_sales amounts for calendar month."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    start_date = f"{year}-{month:02d}-01"
+    if month == 12:
+        end_date = f"{year + 1}-01-01"
+    else:
+        end_date = f"{year}-{month + 1:02d}-01"
+    cursor.execute(
+        """
+        SELECT sv.service_type, SUM(sv.amount) AS total
+        FROM service_sales sv
+        INNER JOIN daily_summaries ds ON sv.summary_id = ds.id
+        WHERE ds.location_id = ? AND ds.date >= ? AND ds.date < ?
+        GROUP BY sv.service_type
+        """,
+        (location_id, start_date, end_date),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return {row["service_type"]: float(row["total"] or 0) for row in rows}
+
+
 def get_summaries_for_date_range(
     location_id: int, start_date: str, end_date: str
 ) -> List[Dict]:

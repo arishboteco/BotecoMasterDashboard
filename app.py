@@ -13,6 +13,7 @@ import parser
 import reports
 import utils
 import auth
+import clipboard_ui
 
 # Page configuration
 st.set_page_config(
@@ -105,206 +106,91 @@ else:
         with tab1:
             st.header("Upload POS Data")
 
-            col1, col2 = st.columns([1, 1])
+            st.markdown("### Upload Files")
+            uploaded_files = st.file_uploader(
+                "Upload XLSX files from POS system",
+                type=["xlsx", "xls"],
+                accept_multiple_files=True,
+                help="Upload one or more XLSX files from your POS system",
+            )
 
-            with col1:
-                st.markdown("### Upload Files")
-                uploaded_files = st.file_uploader(
-                    "Upload XLSX files from POS system",
-                    type=["xlsx", "xls"],
-                    accept_multiple_files=True,
-                    help="Upload one or more XLSX files from your POS system",
-                )
+            if uploaded_files:
+                for file in uploaded_files:
+                    st.success(f"✅ {file.name} ready")
 
-                if uploaded_files:
-                    for file in uploaded_files:
-                        st.success(f"✅ {file.name} ready")
+                if st.button(
+                    "Import & save to database",
+                    type="primary",
+                    key="import_pos_batch",
+                ):
+                    files_payload = [(f.name, f.getvalue()) for f in uploaded_files]
+                    results, batch_notes = parser.process_upload_batch(files_payload)
+                    for note in batch_notes:
+                        st.warning(note)
 
-                    if st.button(
-                        "Import & save to database",
-                        type="primary",
-                        key="import_pos_batch",
-                    ):
-                        files_payload = [(f.name, f.getvalue()) for f in uploaded_files]
-                        results, batch_notes = parser.process_upload_batch(files_payload)
-                        for note in batch_notes:
-                            st.warning(note)
-
-                        monthly_tgt = (
-                            location_settings.get(
-                                "target_monthly_sales", config.MONTHLY_TARGET
-                            )
-                            if location_settings
-                            else config.MONTHLY_TARGET
+                    monthly_tgt = (
+                        location_settings.get(
+                            "target_monthly_sales", config.MONTHLY_TARGET
                         )
-                        daily_tgt = (
-                            location_settings.get(
-                                "target_daily_sales", config.DAILY_TARGET
-                            )
-                            if location_settings
-                            else config.DAILY_TARGET
+                        if location_settings
+                        else config.MONTHLY_TARGET
+                    )
+                    daily_tgt = (
+                        location_settings.get(
+                            "target_daily_sales", config.DAILY_TARGET
                         )
-                        uploaded_by = st.session_state.get("username") or "user"
-                        saved_any = False
+                        if location_settings
+                        else config.DAILY_TARGET
+                    )
+                    uploaded_by = st.session_state.get("username") or "user"
+                    saved_any = False
 
-                        for date_str, merged, day_errs in results:
-                            if day_errs:
-                                st.error(
-                                    f"{date_str}: " + " ".join(day_errs)
-                                    + " (add All Restaurant Sales or Sales Summary for this date)"
-                                )
-                                continue
-                            merged["target"] = daily_tgt
-                            merged = parser.calculate_derived_metrics(merged)
-                            mtd = parser.calculate_mtd_metrics(
-                                location_id, monthly_tgt
+                    for date_str, merged, day_errs in results:
+                        if day_errs:
+                            st.error(
+                                f"{date_str}: " + " ".join(day_errs)
+                                + " (add All Restaurant Sales or Sales Summary for this date)"
                             )
-                            merged.update(mtd)
-                            database.save_daily_summary(location_id, merged)
-                            fnames = ", ".join(f.name for f in uploaded_files)
-                            if len(fnames) > 180:
-                                fnames = fnames[:177] + "..."
-                            database.save_upload_record(
-                                location_id,
-                                date_str,
-                                fnames,
-                                "pos_batch",
-                                uploaded_by,
-                            )
-                            st.success(f"Saved data for {date_str}")
-                            saved_any = True
+                            continue
+                        merged["target"] = daily_tgt
+                        merged = parser.calculate_derived_metrics(merged)
+                        mtd = parser.calculate_mtd_metrics(
+                            location_id, monthly_tgt
+                        )
+                        merged.update(mtd)
+                        database.save_daily_summary(location_id, merged)
+                        fnames = ", ".join(f.name for f in uploaded_files)
+                        if len(fnames) > 180:
+                            fnames = fnames[:177] + "..."
+                        database.save_upload_record(
+                            location_id,
+                            date_str,
+                            fnames,
+                            "pos_batch",
+                            uploaded_by,
+                        )
+                        st.success(f"Saved data for {date_str}")
+                        saved_any = True
 
-                        if saved_any:
-                            st.rerun()
+                    if saved_any:
+                        st.rerun()
 
-                st.markdown("---")
+            st.markdown("---")
 
-                with st.expander("ℹ️ Supported File Formats"):
-                    st.info(
-                        """
-                    **Daily bundle (auto-detected by filename):**
-                    - `All_Restaurant_Sales_Report` — payments, net/gross, Pax (covers); rows filtered to **Boteco** (`DEFAULT_RESTAURANT_FILTER` in `config.py`).
-                    - `Restaurant_item_tax_report` — CGST, SGST, service charge (summed).
-                    - `Restaurant_timing_report` — Breakfast / Lunch / Dinner sales amounts.
-                    - `Item_Report_Group_Wise` — category mix (Food, Coffee, etc.).
-                    - `customer_report` — lunch/dinner **PAX** (served & walk-in) for footfall; fills `covers` if sales file has no Pax.
-                    - `sales_summary` — XLS/XLSX or HTML-as-.xls; keyword parsing for legacy layouts.
-
-                    Files for the **same calendar date** in one batch are merged before save. Days without net/gross sales are skipped with an error (footfall-only rows need a sales export for that date).
+            with st.expander("ℹ️ Supported File Formats"):
+                st.info(
                     """
-                    )
+                **Daily bundle (auto-detected by filename):**
+                - `All_Restaurant_Sales_Report` — payments, net/gross, Pax (covers); rows filtered to **Boteco** (`DEFAULT_RESTAURANT_FILTER` in `config.py`).
+                - `Restaurant_item_tax_report` — CGST, SGST, service charge (summed).
+                - `Restaurant_timing_report` — Breakfast / Lunch / Dinner sales amounts.
+                - `Item_Report_Group_Wise` — category mix (Food, Coffee, etc.).
+                - `customer_report` — lunch/dinner **PAX** (served & walk-in) for footfall; fills `covers` if sales file has no Pax.
+                - `sales_summary` — XLS/XLSX or HTML-as-.xls; keyword parsing for legacy layouts.
 
-            with col2:
-                st.markdown("### Manual Entry")
-                with st.form("manual_entry_form"):
-                    col_date, col_covers = st.columns(2)
-                    with col_date:
-                        entry_date = st.date_input("Date", datetime.now())
-                    with col_covers:
-                        entry_covers = st.number_input("Covers", min_value=0, value=0)
-
-                    st.markdown("#### Sales Figures")
-                    col_sales1, col_sales2 = st.columns(2)
-                    with col_sales1:
-                        entry_gross = st.number_input(
-                            "Gross Total (₹)", min_value=0.0, value=0.0, format="%.2f"
-                        )
-                        entry_cash = st.number_input(
-                            "Cash Sales (₹)", min_value=0.0, value=0.0, format="%.2f"
-                        )
-                        entry_card = st.number_input(
-                            "Card Sales (₹)", min_value=0.0, value=0.0, format="%.2f"
-                        )
-                    with col_sales2:
-                        entry_gpay = st.number_input(
-                            "GPay Sales (₹)", min_value=0.0, value=0.0, format="%.2f"
-                        )
-                        entry_zomato = st.number_input(
-                            "Zomato Sales (₹)", min_value=0.0, value=0.0, format="%.2f"
-                        )
-                        entry_other = st.number_input(
-                            "Other Sales (₹)", min_value=0.0, value=0.0, format="%.2f"
-                        )
-
-                    st.markdown("#### Taxes & Charges")
-                    col_tax1, col_tax2, col_tax3 = st.columns(3)
-                    with col_tax1:
-                        entry_service = st.number_input(
-                            "Service Charge (₹)",
-                            min_value=0.0,
-                            value=0.0,
-                            format="%.2f",
-                        )
-                    with col_tax2:
-                        entry_cgst = st.number_input(
-                            "CGST (₹)", min_value=0.0, value=0.0, format="%.2f"
-                        )
-                    with col_tax3:
-                        entry_sgst = st.number_input(
-                            "SGST (₹)", min_value=0.0, value=0.0, format="%.2f"
-                        )
-
-                    st.markdown("#### Adjustments")
-                    col_adj1, col_adj2 = st.columns(2)
-                    with col_adj1:
-                        entry_discount = st.number_input(
-                            "Discount (₹)", min_value=0.0, value=0.0, format="%.2f"
-                        )
-                    with col_adj2:
-                        entry_complimentary = st.number_input(
-                            "Complimentary (₹)", min_value=0.0, value=0.0, format="%.2f"
-                        )
-
-                    submitted = st.form_submit_button(
-                        "💾 Save Data", use_container_width=True
-                    )
-
-                    if submitted:
-                        # Calculate net total
-                        net_total = entry_gross + entry_service - entry_discount
-
-                        # Calculate derived metrics
-                        apc = net_total / entry_covers if entry_covers > 0 else 0
-                        target = (
-                            location_settings.get(
-                                "target_daily_sales", config.DAILY_TARGET
-                            )
-                            if location_settings
-                            else config.DAILY_TARGET
-                        )
-                        pct_target = (net_total / target * 100) if target > 0 else 0
-
-                        data = {
-                            "date": entry_date.strftime("%Y-%m-%d"),
-                            "covers": entry_covers,
-                            "gross_total": entry_gross,
-                            "net_total": net_total,
-                            "cash_sales": entry_cash,
-                            "card_sales": entry_card,
-                            "gpay_sales": entry_gpay,
-                            "zomato_sales": entry_zomato,
-                            "other_sales": entry_other,
-                            "service_charge": entry_service,
-                            "cgst": entry_cgst,
-                            "sgst": entry_sgst,
-                            "discount": entry_discount,
-                            "complimentary": entry_complimentary,
-                            "apc": apc,
-                            "turns": round(entry_covers / 100, 1),
-                            "target": target,
-                            "pct_target": pct_target,
-                        }
-
-                        # Calculate MTD
-                        mtd = parser.calculate_mtd_metrics(location_id, target * 30)
-                        data.update(mtd)
-
-                        # Save to database
-                        summary_id = database.save_daily_summary(location_id, data)
-
-                        st.success(
-                            f"✅ Data saved for {entry_date.strftime('%d %b %Y')}"
-                        )
+                Files for the **same calendar date** in one batch are merged before save. Days without net/gross sales are skipped with an error (footfall-only rows need a sales export for that date).
+                """
+                )
 
             # Show recent uploads
             st.markdown("---")
@@ -317,9 +203,7 @@ else:
                     st.dataframe(pd.DataFrame(history), use_container_width=True)
 
             with col_hist2:
-                st.info(
-                    "📋 Entry history shows previously uploaded files and manual entries."
-                )
+                st.info("📋 Entry history shows recent POS imports.")
 
         # ============ TAB 2: Daily Report ============
         with tab2:
@@ -431,51 +315,71 @@ else:
 
                 st.markdown("---")
 
-                # WhatsApp Report Section
-                st.markdown("### 📱 WhatsApp Report")
+                # Sheet-style report + clipboard (matches Google Sheet EOD layout)
+                st.markdown("### 📱 WhatsApp / sheet-style report")
 
-                col_wh1, col_wh2 = st.columns([1, 1])
+                y_m = [int(x) for x in date_str.split("-")[:2]]
+                mtd_cat = database.get_category_mtd_totals(location_id, y_m[0], y_m[1])
+                mtd_svc = database.get_service_mtd_totals(location_id, y_m[0], y_m[1])
+                foot_rows = database.get_summaries_for_month(
+                    location_id, y_m[0], y_m[1]
+                )
 
-                with col_wh1:
-                    whatsapp_text = reports.generate_whatsapp_text(
-                        summary, st.session_state.location_name
+                img_buffer = reports.generate_sheet_style_report_image(
+                    summary,
+                    st.session_state.location_name or "Boteco",
+                    mtd_category=mtd_cat,
+                    mtd_service=mtd_svc,
+                    month_footfall_rows=foot_rows,
+                )
+                png_bytes = img_buffer.getvalue()
+                whatsapp_text = reports.generate_whatsapp_text(
+                    summary, st.session_state.location_name
+                )
+
+                st.image(BytesIO(png_bytes), use_container_width=True)
+
+                b1, b2, b3, b4 = st.columns(4)
+                with b1:
+                    clipboard_ui.render_copy_image_button(
+                        png_bytes,
+                        "Copy report image",
+                        f"clip_img_{date_str}",
                     )
-
-                    st.text_area(
-                        "Report Text", whatsapp_text, height=400, key="whatsapp_text"
+                with b2:
+                    clipboard_ui.render_copy_text_button(
+                        whatsapp_text,
+                        "Copy report text",
+                        f"clip_txt_{date_str}",
                     )
-
-                    col_copy1, col_copy2 = st.columns(2)
-                    with col_copy1:
-                        st.button("📋 Copy to Clipboard", key="copy_text")
-                    with col_copy2:
-                        st.download_button(
-                            "💾 Download Text",
-                            whatsapp_text,
-                            file_name=f"boteco_report_{date_str}.txt",
-                            mime="text/plain",
-                            key="download_text",
-                        )
-
-                with col_wh2:
-                    # Generate and display image
-                    img_buffer = reports.generate_report_image(
-                        summary, st.session_state.location_name
-                    )
-
-                    st.image(img_buffer, use_container_width=True)
-
+                with b3:
                     st.download_button(
-                        "📥 Download Report Image",
-                        img_buffer.getvalue(),
-                        file_name=f"boteco_report_{date_str}.png",
+                        "Download PNG",
+                        png_bytes,
+                        file_name=f"boteco_sheet_{date_str}.png",
                         mime="image/png",
-                        key="download_image",
+                        key=f"dl_png_{date_str}",
+                    )
+                with b4:
+                    st.download_button(
+                        "Download text",
+                        whatsapp_text,
+                        file_name=f"boteco_report_{date_str}.txt",
+                        mime="text/plain",
+                        key=f"dl_txt_{date_str}",
+                    )
+
+                with st.expander("Plain text preview"):
+                    st.text_area(
+                        "Report text",
+                        whatsapp_text,
+                        height=280,
+                        key=f"whatsapp_text_{date_str}",
                     )
             else:
                 st.warning(f"No data found for {selected_date.strftime('%d %b %Y')}")
                 st.info(
-                    "Please upload data for this date or enter manually in the Upload tab."
+                    "Import POS files for this date from the **Upload Data** tab."
                 )
 
         # ============ TAB 3: Analytics ============

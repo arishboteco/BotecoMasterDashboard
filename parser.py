@@ -862,59 +862,6 @@ def calculate_derived_metrics(data: Dict) -> Dict:
     return out
 
 
-def parse_manual_entry(form_data: Dict) -> Dict:
-    result = {
-        "date": form_data.get("date"),
-        "filename": "manual_entry",
-        "file_type": "manual",
-        "covers": int(form_data.get("covers", 0) or 0),
-        "gross_total": float(form_data.get("gross_total", 0) or 0),
-        "net_total": float(form_data.get("net_total", 0) or 0),
-        "cash_sales": float(form_data.get("cash_sales", 0) or 0),
-        "card_sales": float(form_data.get("card_sales", 0) or 0),
-        "gpay_sales": float(form_data.get("gpay_sales", 0) or 0),
-        "zomato_sales": float(form_data.get("zomato_sales", 0) or 0),
-        "other_sales": float(form_data.get("other_sales", 0) or 0),
-        "service_charge": float(form_data.get("service_charge", 0) or 0),
-        "cgst": float(form_data.get("cgst", 0) or 0),
-        "sgst": float(form_data.get("sgst", 0) or 0),
-        "discount": float(form_data.get("discount", 0) or 0),
-        "complimentary": float(form_data.get("complimentary", 0) or 0),
-        "target": float(form_data.get("target", 0) or 0),
-    }
-
-    result = calculate_derived_metrics(result)
-
-    categories = []
-    for i in range(1, 7):
-        cat_name = form_data.get(f"cat_{i}_name")
-        cat_qty = form_data.get(f"cat_{i}_qty")
-        cat_amount = form_data.get(f"cat_{i}_amount")
-
-        if cat_name and cat_amount:
-            categories.append(
-                {
-                    "category": cat_name,
-                    "qty": int(cat_qty or 0),
-                    "amount": float(cat_amount or 0),
-                }
-            )
-
-    if categories:
-        result["categories"] = categories
-
-    services = []
-    for svc_type in ["Breakfast", "Lunch", "Dinner", "Delivery", "Events", "Party"]:
-        svc_amount = form_data.get(f"svc_{svc_type.lower()}_amount")
-        if svc_amount:
-            services.append({"type": svc_type, "amount": float(svc_amount or 0)})
-
-    if services:
-        result["services"] = services
-
-    return result
-
-
 def validate_data(data: Dict) -> Tuple[bool, List[str]]:
     errors = []
     if not data.get("date"):
