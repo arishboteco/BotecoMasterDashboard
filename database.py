@@ -2,7 +2,7 @@ import sqlite3
 import hashlib
 import os
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 import config
 
 # Handle both local and cloud deployment
@@ -230,6 +230,7 @@ def _migrate_daily_summaries_composite_unique(cursor) -> None:
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             lunch_covers INTEGER DEFAULT NULL,
             dinner_covers INTEGER DEFAULT NULL,
+            order_count INTEGER DEFAULT 0,
             FOREIGN KEY (location_id) REFERENCES locations(id),
             UNIQUE(location_id, date)
         )

@@ -29,7 +29,7 @@ def format_date(date_str: Optional[str], output_format: Optional[str] = None) ->
         if output_format:
             return dt.strftime(output_format)
         return dt.strftime(config.DATE_FORMAT)
-    except:
+    except Exception:
         return str(date_str)
 
 
@@ -98,7 +98,7 @@ def get_weekday_name(date_str: str) -> str:
     try:
         dt = datetime.strptime(date_str, "%Y-%m-%d")
         return dt.strftime("%A")
-    except:
+    except Exception:
         return ""
 
 
