@@ -3,6 +3,11 @@ import hashlib
 import os
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple
+
+try:
+    import bcrypt
+except ImportError:
+    bcrypt = None
 import config
 
 # Handle both local and cloud deployment
@@ -11,6 +16,42 @@ DATABASE_PATH = os.path.join(DB_DIR, "data", "boteco.db")
 
 # Ensure data directory exists
 os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
+
+
+# Secure password hashing using bcrypt (fallback to salted SHA-256 if bcrypt unavailable)
+def _hash_password(password: str) -> str:
+    """Hash password using bcrypt with fallback to salted SHA-256."""
+    if bcrypt:
+        # bcrypt automatically handles salting
+        return bcrypt.hashpw(
+            password.encode("utf-8"), bcrypt.gensalt(rounds=12)
+        ).decode("utf-8")
+    else:
+        # Fallback: use SHA-256 with random salt (less secure but better than unsalted)
+        salt = os.urandom(32).hex()
+        salted = (salt + password).encode("utf-8")
+        return f"salt:{salt}:{hashlib.sha256(salted).hexdigest()}"
+
+
+def _verify_password(password: str, password_hash: str) -> bool:
+    """Verify password against hash (supports both bcrypt and legacy SHA-256)."""
+    if not password_hash:
+        return False
+
+    if bcrypt and password_hash.startswith("$2"):
+        # bcrypt hash
+        return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+    elif password_hash.startswith("salt:"):
+        # New salted SHA-256 format
+        parts = password_hash.split(":")
+        if len(parts) == 3:
+            salt = parts[1]
+            salted = (salt + password).encode("utf-8")
+            return hashlib.sha256(salted).hexdigest() == parts[2]
+        return False
+    else:
+        # Legacy unsalted SHA-256 (for backward compatibility during migration)
+        return hashlib.sha256(password.encode()).hexdigest() == password_hash
 
 
 def get_connection():
@@ -273,7 +314,7 @@ def create_admin_user(username: str, password: str):
 
     cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
     if cursor.fetchone() is None:
-        password_hash = hashlib.sha256(password.encode()).hexdigest()
+        password_hash = _hash_password(password)
         cursor.execute(
             """
             INSERT INTO users (username, password_hash, role)
@@ -287,25 +328,27 @@ def create_admin_user(username: str, password: str):
 
 
 def verify_user(username: str, password: str) -> Optional[Dict]:
-    """Verify user credentials."""
+    """Verify user credentials using secure password verification."""
     conn = get_connection()
     cursor = conn.cursor()
 
-    password_hash = hashlib.sha256(password.encode()).hexdigest()
     cursor.execute(
         """
         SELECT u.*, l.name as location_name
         FROM users u
         LEFT JOIN locations l ON u.location_id = l.id
-        WHERE u.username = ? AND u.password_hash = ?
+        WHERE u.username = ?
     """,
-        (username, password_hash),
+        (username,),
     )
-
     row = cursor.fetchone()
     conn.close()
 
-    if row:
+    if not row:
+        return None
+
+    # Verify password against stored hash
+    if _verify_password(password, row["password_hash"]):
         return dict(row)
     return None
 
@@ -551,7 +594,7 @@ def create_user(
     if cursor.fetchone():
         conn.close()
         return False, f"Username '{username}' already exists."
-    pw_hash = hashlib.sha256(password.encode()).hexdigest()
+    pw_hash = _hash_password(password)
     cursor.execute(
         """
         INSERT INTO users (username, password_hash, email, role, location_id)
@@ -592,7 +635,7 @@ def update_user(
         if len(new_password) < 6:
             conn.close()
             return False, "Password must be at least 6 characters."
-        pw_hash = hashlib.sha256(new_password.encode()).hexdigest()
+        pw_hash = _hash_password(new_password)
         cursor.execute(
             "UPDATE users SET password_hash = ? WHERE id = ?", (pw_hash, user_id)
         )
