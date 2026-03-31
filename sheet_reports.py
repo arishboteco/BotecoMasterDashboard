@@ -1,24 +1,30 @@
 import matplotlib.pyplot as plt
 from io import BytesIO
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple, NamedTuple
+from typing import Dict, List, Optional, Tuple, NamedTuple, Any
 import config
 
-# Google-Sheet-inspired EOD palette (approximate)
-CLR_HEADER = "#001f3f"
-CLR_TEAL = "#004d4d"
-CLR_TEAL_LT = "#5f9ea0"
-CLR_TAN = "#c5a059"
-CLR_PINK = "#f4cccc"
-CLR_WHITE = "#ffffff"
-CLR_TEXT = "#1a1a1a"
-CLR_RED_HI = "#e74c3c"
+# Modern report palette (aligned with dashboard coral; calm neutrals)
+CLR_BG_PAGE = "#f1f5f9"
+CLR_HEADER = "#0f172a"
+CLR_HEADER_TEXT = "#ffffff"
+CLR_BAND = "#e2e8f0"
+CLR_ROW = "#ffffff"
+CLR_ZERO = "#f8fafc"
+CLR_ZERO_TEXT = "#64748b"
+CLR_ACCENT_SOFT = "#fff1f2"
+CLR_FOOTER_DARK = "#1e293b"
+CLR_FOOTER_TEXT = "#f8fafc"
+CLR_BORDER = "#e2e8f0"
+CLR_TEXT = "#0f172a"
+CLR_TEXT_MUTED = "#475569"
 
-MONO = "DejaVu Sans Mono"
+FONT_SANS = "DejaVu Sans"
 
 # Composite layout: clearer gaps between the four blocks
-_COMPOSITE_HSPACE = 0.58
-_COMPOSITE_PAD_INCHES = 0.28
+_COMPOSITE_HSPACE = 0.52
+_COMPOSITE_PAD_INCHES = 0.32
+CELL_LW = 0.35
 
 
 def _rupee(n: float) -> str:
@@ -42,16 +48,18 @@ def _sheet_date_label(iso_date: str) -> str:
     return f"{dt.strftime('%a')}, {dt.day} {dt.strftime('%b %Y')}"
 
 
-def _style_table(tbl, fontsize: float = 7.5) -> None:
+def _style_table(tbl, fontsize: float = 8.25) -> None:
     tbl.auto_set_font_size(False)
     tbl.set_fontsize(fontsize)
     for cell in tbl.get_celld().values():
-        cell.set_text_props(fontfamily=MONO)
-    tbl.scale(1, 1.65)
+        cell.set_text_props(fontfamily=FONT_SANS)
+    tbl.scale(1, 1.88)
 
 
 def generate_whatsapp_text(
-    report_data: Dict, location_name: str = "Boteco Bangalore"
+    report_data: Dict,
+    location_name: str = "Boteco Bangalore",
+    per_outlet: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
 ) -> str:
     """Generate WhatsApp formatted text report."""
 
@@ -129,7 +137,20 @@ def generate_whatsapp_text(
 • Net Sales: {config.CURRENCY_FORMAT.format(report_data.get("mtd_net_sales", 0))}
 • Avg Daily: {config.CURRENCY_FORMAT.format(report_data.get("mtd_avg_daily", 0))}
 • % of Target: {report_data.get("mtd_pct_target", 0):.1f}%
-━━━━━━━━━━━━━━━━━━━━━━"""
+"""
+
+    if per_outlet and len(per_outlet) >= 2:
+        po_lines = "\n".join(
+            f"• {nm}: Net {config.CURRENCY_FORMAT.format(d.get('net_total', 0))} | "
+            f"Covers {int(d.get('covers') or 0):,}"
+            for nm, d in per_outlet
+        )
+        report += f"""
+🏪 PER OUTLET
+{po_lines}
+"""
+
+    report += "━━━━━━━━━━━━━━━━━━━━━━"
 
     return report.strip()
 
@@ -138,27 +159,34 @@ def _cell_kind_bg(kind: str) -> str:
     if kind == "hdr":
         return CLR_HEADER
     if kind == "teal":
-        return CLR_TEAL_LT
+        return CLR_BAND
     if kind == "tan":
-        return CLR_TAN
+        return CLR_ACCENT_SOFT
     if kind == "pink":
-        return CLR_PINK
+        return CLR_ZERO
     if kind == "dk":
-        return CLR_HEADER
-    return CLR_WHITE
+        return CLR_FOOTER_DARK
+    return CLR_ROW
 
 
 def _fg_for_bg(bg: str) -> str:
     if bg == CLR_HEADER:
-        return CLR_WHITE
-    if bg in (CLR_TAN, CLR_PINK, CLR_WHITE, CLR_TEAL_LT):
-        return CLR_TEXT
+        return CLR_HEADER_TEXT
+    if bg == CLR_FOOTER_DARK:
+        return CLR_FOOTER_TEXT
+    if bg == CLR_ZERO:
+        return CLR_ZERO_TEXT
     return CLR_TEXT
+
+
+def _apply_cell_frame(cell) -> None:
+    cell.set_edgecolor(CLR_BORDER)
+    cell.set_linewidth(CELL_LW)
 
 
 class SheetStyleTables(NamedTuple):
     sales_text: List[List[str]]
-    sales_kinds: List[Tuple[str, str]]
+    sales_kinds: List[Tuple[str, ...]]
     cat_text: List[List[str]]
     cat_rows_kinds: List[Tuple[str, str, str]]
     svc_text: List[List[str]]
@@ -368,29 +396,234 @@ def _build_sheet_style_tables(
     )
 
 
+def _short_outlet_name(name: str, max_len: int = 11) -> str:
+    name = (name or "").strip()
+    if len(name) <= max_len:
+        return name
+    return name[: max_len - 1] + "…"
+
+
+def _pay_kinds(amounts: List[float]) -> Tuple[str, ...]:
+    return tuple("pink" if float(a or 0) == 0 else "white" for a in amounts)
+
+
+def _build_sheet_style_tables_multi(
+    outlets: List[Tuple[str, Dict[str, Any]]],
+    combined: Dict[str, Any],
+    mtd_category: Dict[str, float],
+    mtd_service: Dict[str, float],
+    month_footfall_rows: List[Dict],
+    location_title: str,
+) -> SheetStyleTables:
+    """Sales grid: Label | Outlet1 | … | Combined. Category/service/footfall stay combined-only."""
+    base = _build_sheet_style_tables(
+        combined,
+        location_title,
+        mtd_category,
+        mtd_service,
+        month_footfall_rows,
+    )
+    if len(outlets) < 2:
+        return base
+
+    n = len(outlets)
+    ncols = n + 2
+    rs: List[List[str]] = []
+    rk: List[Tuple[str, ...]] = []
+    iso = str(combined.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]
+    day_lbl = _sheet_date_label(iso)
+    names = [_short_outlet_name(nm) for nm, _ in outlets]
+    c = combined
+    ovs = [d for _, d in outlets]
+
+    def row_hdr_teal(cells: List[str]) -> None:
+        rs.append(cells)
+        rk.append(tuple(["teal"] * ncols))
+
+    rs.append([day_lbl, "Sales summary"] + [""] * n)
+    rk.append(tuple(["hdr"] * ncols))
+    rs.append(["Payment mode"] + names + ["Combined"])
+    rk.append(tuple(["hdr"] * ncols))
+
+    row_hdr_teal(["Food vs Bar"] + ["—"] * (n + 1))
+    covs = [int(o.get("covers") or 0) for o in ovs]
+    row_hdr_teal(
+        ["Covers"]
+        + [f"{x:,}" for x in covs]
+        + [f"{int(c.get('covers') or 0):,}"]
+    )
+    turns = [float(o.get("turns") or 0) for o in ovs]
+    row_hdr_teal(
+        ["Turns"]
+        + [f"{t:.1f}" for t in turns]
+        + [f"{float(c.get('turns') or 0):.1f}"]
+    )
+
+    pay_keys = [
+        ("Cash Sales", "cash_sales"),
+        ("Gpay", "gpay_sales"),
+        ("Zomato Gold", "zomato_sales"),
+        ("Bill On Hold", None),
+        ("Credit Card Sales", "card_sales"),
+        ("AMEX Sales", None),
+        ("Coupon Sale", None),
+        ("Online Bank Transfer", None),
+        ("Other / Wallet", "other_sales"),
+    ]
+    for label, key in pay_keys:
+        if key is None:
+            vals = [0.0] * n + [0.0]
+        else:
+            vals = [float(o.get(key) or 0) for o in ovs] + [float(c.get(key) or 0)]
+        cells = [label] + [_rupee(v) for v in vals]
+        rs.append(cells)
+        rk.append(("white",) + _pay_kinds(vals))
+
+    gross_vals = [float(o.get("gross_total") or 0) for o in ovs] + [
+        float(c.get("gross_total") or 0)
+    ]
+    rs.append(["EOD Gross Total"] + [_rupee(v) for v in gross_vals])
+    rk.append(("tan",) + tuple(["tan"] * (n + 1)))
+
+    for lbl, key in [
+        ("CGST@2.5%", "cgst"),
+        ("SGST@2.5%", "sgst"),
+        ("Service Charge@10%", "service_charge"),
+    ]:
+        vals = [float(o.get(key) or 0) for o in ovs] + [float(c.get(key) or 0)]
+        row_hdr_teal([lbl] + [_rupee(v) for v in vals])
+
+    disc = [float(o.get("discount") or 0) for o in ovs] + [float(c.get("discount") or 0)]
+    rs.append(["Discount"] + [_rupee(v) for v in disc])
+    rk.append(("white",) + _pay_kinds(disc))
+
+    net_vals = [float(o.get("net_total") or 0) for o in ovs] + [
+        float(c.get("net_total") or 0)
+    ]
+    rs.append(["EOD Net Total"] + [_rupee(v) for v in net_vals])
+    rk.append(("tan",) + tuple(["tan"] * (n + 1)))
+
+    mtd_cov = [int(o.get("mtd_total_covers") or 0) for o in ovs]
+    mtd_cov_c = int(c.get("mtd_total_covers") or 0)
+    row_hdr_teal(
+        ["MTD Total Covers"]
+        + [f"{x:,}" for x in mtd_cov]
+        + [f"{mtd_cov_c:,}"]
+    )
+
+    apc_d = [float(o.get("apc") or 0) for o in ovs]
+    row_hdr_teal(["APC For The Day"] + [_rupee(x) for x in apc_d] + [_rupee(c.get("apc", 0))])
+
+    apc_m_list = []
+    for o in ovs:
+        mc = int(o.get("mtd_total_covers") or 0)
+        mn = float(o.get("mtd_net_sales") or 0)
+        apc_m_list.append((mn / mc) if mc > 0 else 0.0)
+    mc_c = int(c.get("mtd_total_covers") or 0)
+    mn_c = float(c.get("mtd_net_sales") or 0)
+    apc_m_c = (mn_c / mc_c) if mc_c > 0 else 0.0
+    row_hdr_teal(
+        ["APC For The Month"]
+        + [_rupee(x) for x in apc_m_list]
+        + [_rupee(apc_m_c)]
+    )
+
+    comp = [float(o.get("complimentary") or 0) for o in ovs] + [
+        float(c.get("complimentary") or 0)
+    ]
+    comp_kinds = tuple("pink" if float(v or 0) == 0 else "tan" for v in comp)
+    rs.append(["Complimentary"] + [_rupee(v) for v in comp])
+    rk.append(("white",) + comp_kinds)
+
+    mtd_avg = [float(o.get("mtd_avg_daily") or 0) for o in ovs] + [
+        float(c.get("mtd_avg_daily") or 0)
+    ]
+    rs.append(["Daily Avg. Net Sales"] + [_rupee(v) for v in mtd_avg])
+    rk.append(("tan",) + tuple(["tan"] * (n + 1)))
+
+    mtd_net = [float(o.get("mtd_net_sales") or 0) for o in ovs] + [
+        float(c.get("mtd_net_sales") or 0)
+    ]
+    rs.append(["MTD Net Sales"] + [_rupee(v) for v in mtd_net])
+    rk.append(("dk",) + tuple(["dk"] * (n + 1)))
+
+    mtd_disc = [float(o.get("mtd_discount") or 0) for o in ovs] + [
+        float(c.get("mtd_discount") or 0)
+    ]
+    rs.append(["MTD Discount"] + [_rupee(v) for v in mtd_disc])
+    rk.append(("dk",) + tuple(["dk"] * (n + 1)))
+
+    mtd_tgt = float(c.get("mtd_target") or config.MONTHLY_TARGET)
+    row_hdr_teal(
+        ["Sales Target (month)"] + [_rupee(mtd_tgt)] * (n + 1)
+    )
+
+    pct_row = ["Percentage of Target (MTD)"] + [
+        _pct(float(o.get("mtd_pct_target") or 0)) for o in ovs
+    ] + [_pct(float(c.get("mtd_pct_target") or 0))]
+    rs.append(pct_row)
+    rk.append(("dk",) + tuple(["dk"] * (n + 1)))
+
+    return SheetStyleTables(
+        sales_text=rs,
+        sales_kinds=rk,
+        cat_text=base.cat_text,
+        cat_rows_kinds=base.cat_rows_kinds,
+        svc_text=base.svc_text,
+        svc_rows_kinds=base.svc_rows_kinds,
+        ft_text=base.ft_text,
+        ft_kinds=base.ft_kinds,
+    )
+
+
+def _emphasize_row_text(cell, kind_key: str) -> None:
+    if kind_key in ("hdr", "dk", "tan"):
+        cell.get_text().set_weight("bold")
+
+
 def _paint_sales_table(ax, tables: SheetStyleTables) -> None:
     ax.axis("off")
+    st = tables.sales_text
+    if not st:
+        return
+    ncols = len(st[0])
+    w0 = min(0.44, 0.26 + 0.06 * max(0, 4 - ncols))
+    rest = max(0.08, (1.0 - w0) / max(1, ncols - 1))
+    col_widths = [w0] + [rest] * (ncols - 1)
+    if abs(sum(col_widths) - 1.0) > 0.02:
+        scale = 1.0 / sum(col_widths)
+        col_widths = [w * scale for w in col_widths]
+
+    fs = 7.35 if ncols > 4 else 8.25
     t1 = ax.table(
-        cellText=tables.sales_text,
+        cellText=st,
         loc="upper center",
         cellLoc="right",
-        colWidths=[0.52, 0.38],
+        colWidths=col_widths,
     )
-    _style_table(t1, 7)
-    st = tables.sales_text
+    _style_table(t1, fs)
     sk = tables.sales_kinds
     for i in range(len(st)):
-        for j in range(2):
+        row = st[i]
+        n_j = len(row)
+        for j in range(ncols):
             c = t1[(i, j)]
-            kk = sk[i] if i < len(sk) else ("white", "white")
-            bg = _cell_kind_bg(kk[j])
+            kk = sk[i] if i < len(sk) else tuple(["white"] * ncols)
+            kind_key = kk[j] if j < len(kk) else "white"
+            bg = _cell_kind_bg(kind_key)
             c.set_facecolor(bg)
             fg = _fg_for_bg(bg)
-            c.set_text_props(color=fg, fontfamily=MONO)
-            c.get_text().set_ha("right" if j == 1 else "left")
-            c.set_edgecolor("#333333")
+            c.set_text_props(color=fg, fontfamily=FONT_SANS)
+            c.get_text().set_ha("left" if j == 0 else "right")
+            _apply_cell_frame(c)
+            if i < 2:
+                c.get_text().set_weight("bold")
+                c.get_text().set_fontsize(fs + 0.85)
+            else:
+                _emphasize_row_text(c, kind_key)
     t1[(0, 0)].get_text().set_ha("left")
-    t1[(0, 1)].get_text().set_ha("right")
+    if ncols > 1:
+        t1[(0, 1)].get_text().set_ha("right")
 
 
 def _paint_category_table(ax, tables: SheetStyleTables) -> None:
@@ -401,7 +634,7 @@ def _paint_category_table(ax, tables: SheetStyleTables) -> None:
         cellLoc="right",
         colWidths=[0.5, 0.22, 0.22],
     )
-    _style_table(t2, 7)
+    _style_table(t2, 8.0)
     for i in range(len(tables.cat_text)):
         for j in range(3):
             c = t2[(i, j)]
@@ -409,9 +642,14 @@ def _paint_category_table(ax, tables: SheetStyleTables) -> None:
             bg = _cell_kind_bg(kk)
             c.set_facecolor(bg)
             fg = _fg_for_bg(bg)
-            c.set_text_props(color=fg, fontfamily=MONO)
+            c.set_text_props(color=fg, fontfamily=FONT_SANS)
             c.get_text().set_ha("right" if j else "left")
-            c.set_edgecolor("#333333")
+            _apply_cell_frame(c)
+            if i < 2:
+                c.get_text().set_weight("bold")
+                c.get_text().set_fontsize(9.0)
+            else:
+                _emphasize_row_text(c, kk)
 
 
 def _paint_service_table(ax, tables: SheetStyleTables) -> None:
@@ -422,7 +660,7 @@ def _paint_service_table(ax, tables: SheetStyleTables) -> None:
         cellLoc="right",
         colWidths=[0.5, 0.22, 0.22],
     )
-    _style_table(t3, 7)
+    _style_table(t3, 8.0)
     for i in range(len(tables.svc_text)):
         for j in range(3):
             c = t3[(i, j)]
@@ -430,9 +668,14 @@ def _paint_service_table(ax, tables: SheetStyleTables) -> None:
             bg = _cell_kind_bg(kk)
             c.set_facecolor(bg)
             fg = _fg_for_bg(bg)
-            c.set_text_props(color=fg, fontfamily=MONO)
+            c.set_text_props(color=fg, fontfamily=FONT_SANS)
             c.get_text().set_ha("right" if j else "left")
-            c.set_edgecolor("#333333")
+            _apply_cell_frame(c)
+            if i < 2:
+                c.get_text().set_weight("bold")
+                c.get_text().set_fontsize(9.0)
+            else:
+                _emphasize_row_text(c, kk)
 
 
 def _paint_footfall_table(ax, tables: SheetStyleTables) -> None:
@@ -444,7 +687,9 @@ def _paint_footfall_table(ax, tables: SheetStyleTables) -> None:
             "No footfall rows for month",
             ha="center",
             va="center",
-            fontsize=9,
+            fontsize=9.5,
+            color=CLR_TEXT_MUTED,
+            fontfamily=FONT_SANS,
         )
         return
     t4 = ax.table(
@@ -453,7 +698,7 @@ def _paint_footfall_table(ax, tables: SheetStyleTables) -> None:
         cellLoc="right",
         colWidths=[0.42, 0.18, 0.18, 0.18],
     )
-    _style_table(t4, 7)
+    _style_table(t4, 8.0)
     for i in range(len(tables.ft_text)):
         for j in range(4):
             c = t4[(i, j)]
@@ -461,9 +706,14 @@ def _paint_footfall_table(ax, tables: SheetStyleTables) -> None:
             bg = _cell_kind_bg(kk)
             c.set_facecolor(bg)
             fg = _fg_for_bg(bg)
-            c.set_text_props(color=fg, fontfamily=MONO)
+            c.set_text_props(color=fg, fontfamily=FONT_SANS)
             c.get_text().set_ha("right" if j else "left")
-            c.set_edgecolor("#333333")
+            _apply_cell_frame(c)
+            if i < 1:
+                c.get_text().set_weight("bold")
+                c.get_text().set_fontsize(9.0)
+            else:
+                _emphasize_row_text(c, kk)
 
 
 def _fig_height_for_rows(n_rows: int, min_rows: int = 4, cap: float = 24.0) -> float:
@@ -485,48 +735,85 @@ def _save_figure_png(fig) -> BytesIO:
     return buf
 
 
+def _sheet_tables(
+    report_data: Dict,
+    location_name: str,
+    mtd_category: Optional[Dict[str, float]],
+    mtd_service: Optional[Dict[str, float]],
+    month_footfall_rows: Optional[List[Dict]],
+    per_outlet_summaries: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
+) -> SheetStyleTables:
+    mc = dict(mtd_category or {})
+    ms = dict(mtd_service or {})
+    mf = list(month_footfall_rows or [])
+    if per_outlet_summaries and len(per_outlet_summaries) >= 2:
+        return _build_sheet_style_tables_multi(
+            list(per_outlet_summaries),
+            report_data,
+            mc,
+            ms,
+            mf,
+            location_name,
+        )
+    return _build_sheet_style_tables(
+        report_data, location_name, mc, ms, mf
+    )
+
+
+def _sales_fig_width(tables: SheetStyleTables) -> float:
+    nc = len(tables.sales_text[0]) if tables.sales_text else 2
+    if nc > 4:
+        return 12.0
+    if nc > 2:
+        return 11.0
+    return 10.0
+
+
 def generate_sheet_style_report_sections(
     report_data: Dict,
     location_name: str = "Boteco Bangalore",
     mtd_category: Optional[Dict[str, float]] = None,
     mtd_service: Optional[Dict[str, float]] = None,
     month_footfall_rows: Optional[List[Dict]] = None,
+    per_outlet_summaries: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
 ) -> Dict[str, BytesIO]:
     """
     Four separate PNGs: sales_summary, category, service, footfall.
     Same styling as the composite sheet report.
     """
-    tables = _build_sheet_style_tables(
+    tables = _sheet_tables(
         report_data,
         location_name,
-        dict(mtd_category or {}),
-        dict(mtd_service or {}),
-        list(month_footfall_rows or []),
+        mtd_category,
+        mtd_service,
+        month_footfall_rows,
+        per_outlet_summaries,
     )
     out: Dict[str, BytesIO] = {}
 
     fig_h = _fig_height_for_rows(len(tables.sales_text), 6)
-    fig, ax = plt.subplots(1, 1, figsize=(10, fig_h), dpi=120)
-    fig.patch.set_facecolor("#ececec")
+    fig_w = _sales_fig_width(tables)
+    fig, ax = plt.subplots(1, 1, figsize=(fig_w, fig_h), dpi=120)
+    fig.patch.set_facecolor(CLR_BG_PAGE)
     _paint_sales_table(ax, tables)
     out["sales_summary"] = _save_figure_png(fig)
 
     fig_h = _fig_height_for_rows(len(tables.cat_text), 4)
     fig, ax = plt.subplots(1, 1, figsize=(10, fig_h), dpi=120)
-    fig.patch.set_facecolor("#ececec")
+    fig.patch.set_facecolor(CLR_BG_PAGE)
     _paint_category_table(ax, tables)
     out["category"] = _save_figure_png(fig)
 
     fig_h = _fig_height_for_rows(len(tables.svc_text), 4)
     fig, ax = plt.subplots(1, 1, figsize=(10, fig_h), dpi=120)
-    fig.patch.set_facecolor("#ececec")
+    fig.patch.set_facecolor(CLR_BG_PAGE)
     _paint_service_table(ax, tables)
     out["service"] = _save_figure_png(fig)
 
     ft_n = max(len(tables.ft_text), 3)
     fig_h = _fig_height_for_rows(ft_n, 3)
     fig, ax = plt.subplots(1, 1, figsize=(10, fig_h), dpi=120)
-    fig.patch.set_facecolor("#ececec")
+    fig.patch.set_facecolor(CLR_BG_PAGE)
     _paint_footfall_table(ax, tables)
     out["footfall"] = _save_figure_png(fig)
 
@@ -539,17 +826,19 @@ def generate_sheet_style_report_image(
     mtd_category: Optional[Dict[str, float]] = None,
     mtd_service: Optional[Dict[str, float]] = None,
     month_footfall_rows: Optional[List[Dict]] = None,
+    per_outlet_summaries: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
 ) -> BytesIO:
     """
     Composite PNG styled like the Google Sheet EOD dashboard: Sales Summary,
     Category Sales, Service Sales, and optional footfall grid for the month.
     """
-    tables = _build_sheet_style_tables(
+    tables = _sheet_tables(
         report_data,
         location_name,
-        dict(mtd_category or {}),
-        dict(mtd_service or {}),
-        list(month_footfall_rows or []),
+        mtd_category,
+        mtd_service,
+        month_footfall_rows,
+        per_outlet_summaries,
     )
 
     n1, n2, n3, n4 = (
@@ -560,14 +849,15 @@ def generate_sheet_style_report_image(
     )
     h_ratios = [max(n1, 6), max(n2, 4), max(n3, 4), max(n4, 3)]
     fig_h = min(36, 2.0 + 0.22 * sum(h_ratios))
+    fig_w = _sales_fig_width(tables)
     fig, axes = plt.subplots(
         4,
         1,
-        figsize=(10, fig_h),
+        figsize=(fig_w, fig_h),
         dpi=120,
         height_ratios=h_ratios,
     )
-    fig.patch.set_facecolor("#ececec")
+    fig.patch.set_facecolor(CLR_BG_PAGE)
 
     _paint_sales_table(axes[0], tables)
     _paint_category_table(axes[1], tables)

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import config
 import database
@@ -112,6 +112,88 @@ def get_daily_summary_for_scope(
         if s:
             parts.append(s)
     return aggregate_daily_summaries(parts)
+
+
+def _synthetic_daily_summary(location_id: int, date_str: str) -> Dict[str, Any]:
+    """Zero-filled day row plus location targets when no DB row exists for that date."""
+    st = database.get_location_settings(location_id)
+    monthly = (
+        float(st["target_monthly_sales"])
+        if st and st.get("target_monthly_sales")
+        else float(config.MONTHLY_TARGET)
+    )
+    daily_tgt = (
+        float(st["target_daily_sales"])
+        if st and st.get("target_daily_sales")
+        else monthly / 30.0
+    )
+    return {
+        "date": date_str,
+        "location_id": location_id,
+        "covers": 0,
+        "gross_total": 0.0,
+        "net_total": 0.0,
+        "cash_sales": 0.0,
+        "gpay_sales": 0.0,
+        "zomato_sales": 0.0,
+        "card_sales": 0.0,
+        "other_sales": 0.0,
+        "service_charge": 0.0,
+        "cgst": 0.0,
+        "sgst": 0.0,
+        "discount": 0.0,
+        "complimentary": 0.0,
+        "target": daily_tgt,
+        "categories": [],
+        "services": [],
+        "lunch_covers": None,
+        "dinner_covers": None,
+    }
+
+
+def get_daily_report_bundle(
+    location_ids: List[int], date_str: str
+) -> Tuple[List[Tuple[int, str, Dict[str, Any]]], Optional[Dict[str, Any]]]:
+    """
+    Per-outlet enriched summaries (including zero-filled days) and optional combined.
+
+    Returns ([(id, name, enriched), ...], combined_enriched_or_None).
+    If no location has data for the date, combined is None and the first list is empty.
+    """
+    if not location_ids:
+        return [], None
+
+    parts_raw: List[Dict[str, Any]] = []
+    outlets: List[Tuple[int, str, Dict[str, Any]]] = []
+
+    for lid in location_ids:
+        st = database.get_location_settings(lid)
+        name = str(st["name"]) if st and st.get("name") else str(lid)
+        monthly_tgt = (
+            float(st["target_monthly_sales"])
+            if st and st.get("target_monthly_sales")
+            else float(config.MONTHLY_TARGET)
+        )
+        raw = database.get_daily_summary(lid, date_str)
+        if raw is not None:
+            parts_raw.append(raw)
+            base = dict(raw)
+        else:
+            base = _synthetic_daily_summary(lid, date_str)
+        enriched = enrich_summary_for_display(base, [lid], monthly_tgt, date_str)
+        outlets.append((lid, name, enriched))
+
+    if not parts_raw:
+        return [], None
+
+    combined = aggregate_daily_summaries(parts_raw)
+    if combined is None:
+        return [], None
+    monthly_all = sum_location_monthly_targets(location_ids)
+    combined_e = enrich_summary_for_display(
+        combined, location_ids, monthly_all, date_str
+    )
+    return outlets, combined_e
 
 
 def merge_month_footfall_rows(location_ids: List[int], year: int, month: int) -> List[Dict[str, Any]]:
