@@ -529,7 +529,9 @@ def get_summaries_for_month(location_id: int, year: int, month: int) -> List[Dic
     return [dict(row) for row in rows]
 
 
-def get_category_mtd_totals(location_id: int, year: int, month: int) -> Dict[str, float]:
+def get_category_mtd_totals(
+    location_id: int, year: int, month: int
+) -> Dict[str, float]:
     """Sum category sales amounts for calendar month (all days in month)."""
     conn = get_connection()
     cursor = conn.cursor()
@@ -740,7 +742,10 @@ def update_location_settings(location_id: int, settings: Dict):
     if "name" in settings and settings["name"] is not None:
         updates.append("name = ?")
         vals.append(settings["name"])
-    if "target_monthly_sales" in settings and settings["target_monthly_sales"] is not None:
+    if (
+        "target_monthly_sales" in settings
+        and settings["target_monthly_sales"] is not None
+    ):
         updates.append("target_monthly_sales = ?")
         vals.append(settings["target_monthly_sales"])
         updates.append("target_daily_sales = ?")
@@ -791,6 +796,98 @@ def save_upload_record(
     )
     conn.commit()
     conn.close()
+
+
+def get_category_sales_for_date_range(
+    location_ids: List[int], start_date: str, end_date: str
+) -> List[Dict]:
+    """
+    Aggregate category sales across a date range for one or more locations.
+    Returns list of {category, amount, qty} sorted by amount descending.
+    """
+    if not location_ids:
+        return []
+    placeholders = ",".join("?" * len(location_ids))
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        f"""
+        SELECT cs.category,
+               SUM(cs.amount) AS amount,
+               SUM(cs.qty)    AS qty
+        FROM category_sales cs
+        JOIN daily_summaries ds ON cs.summary_id = ds.id
+        WHERE ds.location_id IN ({placeholders})
+          AND ds.date BETWEEN ? AND ?
+        GROUP BY cs.category
+        ORDER BY amount DESC
+        """,
+        (*location_ids, start_date, end_date),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_service_sales_for_date_range(
+    location_ids: List[int], start_date: str, end_date: str
+) -> List[Dict]:
+    """
+    Aggregate service/meal-period sales across a date range.
+    Returns list of {service_type, amount} (e.g. Breakfast, Lunch, Dinner).
+    """
+    if not location_ids:
+        return []
+    placeholders = ",".join("?" * len(location_ids))
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        f"""
+        SELECT ss.service_type,
+               SUM(ss.amount) AS amount
+        FROM service_sales ss
+        JOIN daily_summaries ds ON ss.summary_id = ds.id
+        WHERE ds.location_id IN ({placeholders})
+          AND ds.date BETWEEN ? AND ?
+        GROUP BY ss.service_type
+        ORDER BY amount DESC
+        """,
+        (*location_ids, start_date, end_date),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_daily_service_sales_for_date_range(
+    location_ids: List[int], start_date: str, end_date: str
+) -> List[Dict]:
+    """
+    Per-day service/meal-period sales for stacked bar charts.
+    Returns list of {date, service_type, amount} ordered by date then service_type.
+    """
+    if not location_ids:
+        return []
+    placeholders = ",".join("?" * len(location_ids))
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        f"""
+        SELECT ds.date,
+               ss.service_type,
+               SUM(ss.amount) AS amount
+        FROM service_sales ss
+        JOIN daily_summaries ds ON ss.summary_id = ds.id
+        WHERE ds.location_id IN ({placeholders})
+          AND ds.date BETWEEN ? AND ?
+        GROUP BY ds.date, ss.service_type
+        ORDER BY ds.date, ss.service_type
+        """,
+        (*location_ids, start_date, end_date),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
 
 
 # Initialize database on module import

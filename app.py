@@ -574,11 +574,32 @@ else:
             st.caption(f"Viewing: **{report_display_name}** — pick a date below.")
             st.divider()
 
-            # Date selector
-            col_date_sel1, col_date_sel2 = st.columns([1, 2])
-            with col_date_sel1:
-                selected_date = st.date_input("Select Date", datetime.now())
+            # Date selector with Prev/Next navigation
+            if "report_date" not in st.session_state:
+                st.session_state["report_date"] = datetime.now().date()
 
+            nav_col1, nav_col2, nav_col3 = st.columns([1, 3, 1])
+            with nav_col1:
+                st.write("")
+                if st.button("← Prev", key="report_prev_day", use_container_width=True):
+                    st.session_state["report_date"] -= timedelta(days=1)
+                    st.rerun()
+            with nav_col2:
+                picked = st.date_input(
+                    "Select Date",
+                    value=st.session_state["report_date"],
+                    key="report_date_picker",
+                )
+                if picked != st.session_state["report_date"]:
+                    st.session_state["report_date"] = picked
+                    st.rerun()
+            with nav_col3:
+                st.write("")
+                if st.button("Next →", key="report_next_day", use_container_width=True):
+                    st.session_state["report_date"] += timedelta(days=1)
+                    st.rerun()
+
+            selected_date = st.session_state["report_date"]
             date_str = selected_date.strftime("%Y-%m-%d")
             outlets_bundle, summary = scope.get_daily_report_bundle(
                 report_loc_ids, date_str
@@ -592,245 +613,246 @@ else:
                     nm = str(nm).strip()
                     return nm if len(nm) <= max_len else nm[: max_len - 1] + "…"
 
-                with st.expander("KPIs & tables", expanded=False):
-                    with st.container(border=True):
-                        if multi_outlet:
-                            ncols = len(outlets_bundle) + 1
-                            st.caption("Each outlet vs **Combined** (same date).")
-                            st.markdown("##### Net sales")
-                            cr = st.columns(ncols)
-                            for i, (_, oname, s) in enumerate(outlets_bundle):
-                                with cr[i]:
-                                    st.metric(
-                                        _col_head(oname),
-                                        utils.format_currency(s.get("net_total", 0)),
-                                    )
-                            with cr[-1]:
+                with st.container(border=True):
+                    if multi_outlet:
+                        ncols = len(outlets_bundle) + 1
+                        st.caption("Each outlet vs **Combined** (same date).")
+                        st.markdown("##### Net sales")
+                        cr = st.columns(ncols)
+                        for i, (_, oname, s) in enumerate(outlets_bundle):
+                            with cr[i]:
                                 st.metric(
-                                    "Combined",
-                                    utils.format_currency(summary.get("net_total", 0)),
-                                    delta=f"vs {utils.format_currency(summary.get('target', 0))} target",
+                                    _col_head(oname),
+                                    utils.format_currency(s.get("net_total", 0)),
                                 )
-                            st.markdown("##### Covers")
-                            cr = st.columns(ncols)
-                            for i, (_, _on, s) in enumerate(outlets_bundle):
-                                with cr[i]:
-                                    st.metric(
-                                        _col_head(_on),
-                                        f"{int(s.get('covers') or 0):,}",
-                                        delta=f"Turns {float(s.get('turns') or 0):.1f}",
-                                    )
-                            with cr[-1]:
-                                lc, dc = (
-                                    summary.get("lunch_covers"),
-                                    summary.get("dinner_covers"),
-                                )
-                                foot = (
-                                    f"Lunch {lc:,} · Dinner {dc:,}"
-                                    if lc is not None and dc is not None
-                                    else None
-                                )
+                        with cr[-1]:
+                            st.metric(
+                                "Combined",
+                                utils.format_currency(summary.get("net_total", 0)),
+                                delta=f"vs {utils.format_currency(summary.get('target', 0))} target",
+                            )
+                        st.markdown("##### Covers")
+                        cr = st.columns(ncols)
+                        for i, (_, _on, s) in enumerate(outlets_bundle):
+                            with cr[i]:
                                 st.metric(
-                                    "Combined",
-                                    f"{int(summary.get('covers') or 0):,}",
-                                    delta=foot
-                                    or f"Turns: {float(summary.get('turns') or 0):.1f}",
+                                    _col_head(_on),
+                                    f"{int(s.get('covers') or 0):,}",
+                                    delta=f"Turns {float(s.get('turns') or 0):.1f}",
                                 )
-                            st.markdown("##### APC")
-                            cr = st.columns(ncols)
-                            for i, (_, _on, s) in enumerate(outlets_bundle):
-                                with cr[i]:
-                                    st.metric(
-                                        _col_head(_on),
-                                        utils.format_currency(s.get("apc", 0)),
-                                    )
-                            with cr[-1]:
+                        with cr[-1]:
+                            lc, dc = (
+                                summary.get("lunch_covers"),
+                                summary.get("dinner_covers"),
+                            )
+                            foot = (
+                                f"Lunch {lc:,} · Dinner {dc:,}"
+                                if lc is not None and dc is not None
+                                else None
+                            )
+                            st.metric(
+                                "Combined",
+                                f"{int(summary.get('covers') or 0):,}",
+                                delta=foot
+                                or f"Turns: {float(summary.get('turns') or 0):.1f}",
+                            )
+                        st.markdown("##### APC")
+                        cr = st.columns(ncols)
+                        for i, (_, _on, s) in enumerate(outlets_bundle):
+                            with cr[i]:
                                 st.metric(
-                                    "Combined",
-                                    utils.format_currency(summary.get("apc", 0)),
-                                    help="Average per cover: net sales ÷ covers.",
+                                    _col_head(_on),
+                                    utils.format_currency(s.get("apc", 0)),
                                 )
-                            st.markdown("##### Target achievement (day)")
-                            cr = st.columns(ncols)
-                            for i, (_, _on, s) in enumerate(outlets_bundle):
-                                p = float(s.get("pct_target") or 0)
-                                with cr[i]:
-                                    st.metric(
-                                        _col_head(_on),
-                                        f"{p:.1f}%",
-                                        delta_color="normal" if p >= 100 else "inverse",
-                                    )
-                            with cr[-1]:
-                                pct = float(summary.get("pct_target") or 0)
+                        with cr[-1]:
+                            st.metric(
+                                "Combined",
+                                utils.format_currency(summary.get("apc", 0)),
+                                help="Average per cover: net sales ÷ covers.",
+                            )
+                        st.markdown("##### Target achievement (day)")
+                        cr = st.columns(ncols)
+                        for i, (_, _on, s) in enumerate(outlets_bundle):
+                            p = float(s.get("pct_target") or 0)
+                            with cr[i]:
                                 st.metric(
-                                    "Combined",
-                                    f"{pct:.1f}%",
-                                    delta=f"vs {pct:.0f}%",
-                                    delta_color="normal" if pct >= 100 else "inverse",
-                                    help="Net sales for the day vs daily sales target.",
+                                    _col_head(_on),
+                                    f"{p:.1f}%",
+                                    delta_color="normal" if p >= 100 else "inverse",
                                 )
-                        else:
-                            _, _single_name, s_one = outlets_bundle[0]
-                            col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
-                            with col_kpi1:
-                                st.metric(
-                                    "Net Sales",
-                                    utils.format_currency(s_one.get("net_total", 0)),
-                                    delta=f"vs {utils.format_currency(s_one.get('target', 0))} target",
-                                )
-                            with col_kpi2:
-                                lc = s_one.get("lunch_covers")
-                                dc = s_one.get("dinner_covers")
-                                foot = (
-                                    f"Lunch {lc:,} · Dinner {dc:,}"
-                                    if lc is not None and dc is not None
-                                    else None
-                                )
-                                st.metric(
-                                    "Covers",
-                                    f"{int(s_one.get('covers') or 0):,}",
-                                    delta=foot
-                                    or f"Turns: {float(s_one.get('turns') or 0):.1f}",
-                                )
-                            with col_kpi3:
-                                st.metric(
-                                    "APC",
-                                    utils.format_currency(s_one.get("apc", 0)),
-                                    help="Average per cover: net sales ÷ covers.",
-                                )
-                            with col_kpi4:
-                                pct = float(s_one.get("pct_target") or 0)
-                                st.metric(
-                                    "Target Achievement",
-                                    f"{pct:.1f}%",
-                                    delta=f"vs {pct:.0f}%",
-                                    delta_color="normal" if pct >= 100 else "inverse",
-                                    help="Net sales for the day vs daily sales target.",
-                                )
+                        with cr[-1]:
+                            pct = float(summary.get("pct_target") or 0)
+                            st.metric(
+                                "Combined",
+                                f"{pct:.1f}%",
+                                delta=f"vs {pct:.0f}%",
+                                delta_color="normal" if pct >= 100 else "inverse",
+                                help="Net sales for the day vs daily sales target.",
+                            )
+                    else:
+                        _, _single_name, s_one = outlets_bundle[0]
+                        col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
+                        with col_kpi1:
+                            st.metric(
+                                "Net Sales",
+                                utils.format_currency(s_one.get("net_total", 0)),
+                                delta=f"vs {utils.format_currency(s_one.get('target', 0))} target",
+                            )
+                        with col_kpi2:
+                            lc = s_one.get("lunch_covers")
+                            dc = s_one.get("dinner_covers")
+                            foot = (
+                                f"Lunch {lc:,} · Dinner {dc:,}"
+                                if lc is not None and dc is not None
+                                else None
+                            )
+                            st.metric(
+                                "Covers",
+                                f"{int(s_one.get('covers') or 0):,}",
+                                delta=foot
+                                or f"Turns: {float(s_one.get('turns') or 0):.1f}",
+                            )
+                        with col_kpi3:
+                            st.metric(
+                                "APC",
+                                utils.format_currency(s_one.get("apc", 0)),
+                                help="Average per cover: net sales ÷ covers.",
+                            )
+                        with col_kpi4:
+                            pct = float(s_one.get("pct_target") or 0)
+                            st.metric(
+                                "Target Achievement",
+                                f"{pct:.1f}%",
+                                delta=f"vs {pct:.0f}%",
+                                delta_color="normal" if pct >= 100 else "inverse",
+                                help="Net sales for the day vs daily sales target.",
+                            )
 
-                    st.markdown("---")
+                st.markdown("---")
 
-                    col_det1, col_det2 = st.columns(2)
+                col_det1, col_det2 = st.columns(2)
 
-                    _pay_fields = [
-                        ("Gross Total", "gross_total"),
-                        ("Cash", "cash_sales"),
-                        ("GPay", "gpay_sales"),
-                        ("Zomato", "zomato_sales"),
-                        ("Card", "card_sales"),
-                        ("Other", "other_sales"),
-                    ]
+                _pay_fields = [
+                    ("Gross Total", "gross_total"),
+                    ("Net Total", "net_total"),
+                    ("Cash", "cash_sales"),
+                    ("GPay", "gpay_sales"),
+                    ("Zomato", "zomato_sales"),
+                    ("Card", "card_sales"),
+                    ("Other", "other_sales"),
+                    ("Discount", "discount"),
+                    ("Complimentary", "complimentary"),
+                    ("Service Charge", "service_charge"),
+                    ("CGST", "cgst"),
+                    ("SGST", "sgst"),
+                ]
 
-                    with col_det1:
-                        st.markdown("### 💰 Sales Breakdown")
-                        if multi_outlet:
-                            sd = {
-                                "Payment mode": [x[0] for x in _pay_fields],
-                            }
-                            for _, oname, s in outlets_bundle:
-                                sd[_col_head(oname, 12)] = [
-                                    utils.format_currency(float(s.get(f) or 0))
-                                    for _l, f in _pay_fields
-                                ]
-                            sd["Combined"] = [
-                                utils.format_currency(float(summary.get(f) or 0))
+                with col_det1:
+                    st.markdown("### 💰 Sales & Tax Breakdown")
+                    if multi_outlet:
+                        sd = {
+                            "Line item": [x[0] for x in _pay_fields],
+                        }
+                        for _, oname, s in outlets_bundle:
+                            sd[_col_head(oname, 12)] = [
+                                utils.format_currency(float(s.get(f) or 0))
                                 for _l, f in _pay_fields
                             ]
-                            sales_df = pd.DataFrame(sd)
-                            st.dataframe(
-                                sales_df,
-                                use_container_width=True,
-                                hide_index=True,
-                            )
-                        else:
-                            _, _sn, s_one = outlets_bundle[0]
-                            sales_data = {
-                                "Payment mode": [x[0] for x in _pay_fields],
-                                "Amount (₹)": [
-                                    utils.format_currency(float(s_one.get(f) or 0))
-                                    for _l, f in _pay_fields
-                                ],
-                            }
-                            sales_df = pd.DataFrame(sales_data)
-                            st.dataframe(
-                                sales_df,
-                                use_container_width=True,
-                                hide_index=True,
-                                column_config={
-                                    "Payment mode": st.column_config.TextColumn(
-                                        "Payment mode"
-                                    ),
-                                    "Amount (₹)": st.column_config.TextColumn(
-                                        "Amount (₹)"
-                                    ),
-                                },
-                            )
-
-                    with col_det2:
-                        st.markdown("### 📊 MTD Summary")
-                        _mtd_rows = [
-                            ("Net Sales", "mtd_net_sales", "cur"),
-                            ("Total Covers", "mtd_total_covers", "int"),
-                            ("Avg Daily", "mtd_avg_daily", "cur"),
-                            ("Target", "mtd_target", "cur"),
-                            ("Achievement", "mtd_pct_target", "pct"),
+                        sd["Combined"] = [
+                            utils.format_currency(float(summary.get(f) or 0))
+                            for _l, f in _pay_fields
                         ]
-                        if multi_outlet:
-                            md = {"Metric": [x[0] for x in _mtd_rows]}
-                            for _, oname, s in outlets_bundle:
-                                col_vals = []
-                                for _lab, key, kind in _mtd_rows:
-                                    v = s.get(key, 0)
-                                    if kind == "int":
-                                        col_vals.append(f"{int(v or 0):,}")
-                                    elif kind == "pct":
-                                        col_vals.append(f"{float(v or 0):.1f}%")
-                                    else:
-                                        col_vals.append(
-                                            utils.format_currency(float(v or 0))
-                                        )
-                                md[_col_head(oname, 12)] = col_vals
-                            md["Combined"] = []
+                        sales_df = pd.DataFrame(sd)
+                        st.dataframe(
+                            sales_df,
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+                    else:
+                        _, _sn, s_one = outlets_bundle[0]
+                        sales_data = {
+                            "Line item": [x[0] for x in _pay_fields],
+                            "Amount (₹)": [
+                                utils.format_currency(float(s_one.get(f) or 0))
+                                for _l, f in _pay_fields
+                            ],
+                        }
+                        sales_df = pd.DataFrame(sales_data)
+                        st.dataframe(
+                            sales_df,
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={
+                                "Line item": st.column_config.TextColumn("Line item"),
+                                "Amount (₹)": st.column_config.TextColumn("Amount (₹)"),
+                            },
+                        )
+
+                with col_det2:
+                    st.markdown("### 📊 MTD Summary")
+                    _mtd_rows = [
+                        ("Net Sales", "mtd_net_sales", "cur"),
+                        ("Total Covers", "mtd_total_covers", "int"),
+                        ("Avg Daily", "mtd_avg_daily", "cur"),
+                        ("Target", "mtd_target", "cur"),
+                        ("Achievement", "mtd_pct_target", "pct"),
+                    ]
+                    if multi_outlet:
+                        md = {"Metric": [x[0] for x in _mtd_rows]}
+                        for _, oname, s in outlets_bundle:
+                            col_vals = []
                             for _lab, key, kind in _mtd_rows:
-                                v = summary.get(key, 0)
+                                v = s.get(key, 0)
                                 if kind == "int":
-                                    md["Combined"].append(f"{int(v or 0):,}")
+                                    col_vals.append(f"{int(v or 0):,}")
                                 elif kind == "pct":
-                                    md["Combined"].append(f"{float(v or 0):.1f}%")
+                                    col_vals.append(f"{float(v or 0):.1f}%")
                                 else:
-                                    md["Combined"].append(
+                                    col_vals.append(
                                         utils.format_currency(float(v or 0))
                                     )
-                            st.dataframe(
-                                pd.DataFrame(md),
-                                use_container_width=True,
-                                hide_index=True,
-                            )
-                        else:
-                            _, _sn, s_one = outlets_bundle[0]
-                            mtd_data = {
-                                "Metric": [x[0] for x in _mtd_rows],
-                                "Value": [],
-                            }
-                            for _lab, key, kind in _mtd_rows:
-                                v = s_one.get(key, 0)
-                                if kind == "int":
-                                    mtd_data["Value"].append(f"{int(v or 0):,}")
-                                elif kind == "pct":
-                                    mtd_data["Value"].append(f"{float(v or 0):.1f}%")
-                                else:
-                                    mtd_data["Value"].append(
-                                        utils.format_currency(float(v or 0))
-                                    )
-                            st.dataframe(
-                                pd.DataFrame(mtd_data),
-                                use_container_width=True,
-                                hide_index=True,
-                                column_config={
-                                    "Metric": st.column_config.TextColumn("Metric"),
-                                    "Value": st.column_config.TextColumn("Value"),
-                                },
-                            )
+                            md[_col_head(oname, 12)] = col_vals
+                        md["Combined"] = []
+                        for _lab, key, kind in _mtd_rows:
+                            v = summary.get(key, 0)
+                            if kind == "int":
+                                md["Combined"].append(f"{int(v or 0):,}")
+                            elif kind == "pct":
+                                md["Combined"].append(f"{float(v or 0):.1f}%")
+                            else:
+                                md["Combined"].append(
+                                    utils.format_currency(float(v or 0))
+                                )
+                        st.dataframe(
+                            pd.DataFrame(md),
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+                    else:
+                        _, _sn, s_one = outlets_bundle[0]
+                        mtd_data = {
+                            "Metric": [x[0] for x in _mtd_rows],
+                            "Value": [],
+                        }
+                        for _lab, key, kind in _mtd_rows:
+                            v = s_one.get(key, 0)
+                            if kind == "int":
+                                mtd_data["Value"].append(f"{int(v or 0):,}")
+                            elif kind == "pct":
+                                mtd_data["Value"].append(f"{float(v or 0):.1f}%")
+                            else:
+                                mtd_data["Value"].append(
+                                    utils.format_currency(float(v or 0))
+                                )
+                        st.dataframe(
+                            pd.DataFrame(mtd_data),
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={
+                                "Metric": st.column_config.TextColumn("Metric"),
+                                "Value": st.column_config.TextColumn("Value"),
+                            },
+                        )
 
                 st.markdown("---")
 
@@ -1040,28 +1062,73 @@ else:
             )
             st.divider()
 
-            # Period selector
-            col_per1, col_per2, col_per3 = st.columns([1, 1, 2])
-
+            # ── Period selector ──────────────────────────────────────────
+            col_per1, col_per2 = st.columns([2, 3])
             with col_per1:
                 analysis_period = st.selectbox(
                     "Time Period",
-                    ["This Week", "Last 7 Days", "This Month", "Last 30 Days"],
+                    [
+                        "This Week",
+                        "Last Week",
+                        "Last 7 Days",
+                        "This Month",
+                        "Last Month",
+                        "Last 30 Days",
+                        "Custom",
+                    ],
                     key="analysis_period",
                 )
 
-            with col_per2:
-                start_date, end_date = utils.get_date_range(
-                    analysis_period.lower().replace(" ", "_")
-                )
-                st.write(
-                    f"**From:** {start_date.strftime('%d %b')} to {end_date.strftime('%d %b %Y')}"
-                )
+            if analysis_period == "Custom":
+                with col_per2:
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        custom_start = st.date_input(
+                            "From",
+                            datetime.now().date() - timedelta(days=29),
+                            key="analytics_custom_start",
+                        )
+                    with c2:
+                        custom_end = st.date_input(
+                            "To",
+                            datetime.now().date(),
+                            key="analytics_custom_end",
+                        )
+                start_date, end_date = custom_start, custom_end
+                prior_start, prior_end = None, None
+            else:
+                period_key = analysis_period.lower().replace(" ", "_")
+                start_date, end_date = utils.get_date_range(period_key)
+
+                # Determine comparison period for period-over-period deltas
+                _prior_map = {
+                    "this_week": "last_week",
+                    "this_month": "last_month",
+                }
+                _days_span = (end_date - start_date).days + 1
+                if period_key in _prior_map:
+                    prior_start, prior_end = utils.get_date_range(
+                        _prior_map[period_key]
+                    )
+                elif period_key in ("last_7_days", "last_30_days"):
+                    prior_end = start_date - timedelta(days=1)
+                    prior_start = prior_end - timedelta(days=_days_span - 1)
+                else:
+                    prior_start, prior_end = None, None
+
+                with col_per2:
+                    st.write(
+                        f"**From:** {start_date.strftime('%d %b')} "
+                        f"to {end_date.strftime('%d %b %Y')}"
+                    )
+
+            start_str = start_date.strftime("%Y-%m-%d")
+            end_str = end_date.strftime("%Y-%m-%d")
 
             raw_summaries = database.get_summaries_for_date_range_multi(
                 report_loc_ids,
-                start_date.strftime("%Y-%m-%d"),
-                end_date.strftime("%Y-%m-%d"),
+                start_str,
+                end_str,
             )
             summaries = scope.merge_summaries_by_date(raw_summaries)
             multi_analytics = len(report_loc_ids) > 1
@@ -1076,33 +1143,95 @@ else:
             if summaries:
                 df = pd.DataFrame(summaries)
 
-                st.markdown("### 📈 Period Summary")
+                # ── Period-over-period comparison data ───────────────────
+                prior_summaries = []
+                if prior_start and prior_end:
+                    prior_summaries = database.get_summaries_for_date_range_multi(
+                        report_loc_ids,
+                        prior_start.strftime("%Y-%m-%d"),
+                        prior_end.strftime("%Y-%m-%d"),
+                    )
+                prior_df = (
+                    pd.DataFrame(prior_summaries) if prior_summaries else pd.DataFrame()
+                )
 
-                total_sales = df["net_total"].sum()
-                avg_daily = df["net_total"].mean()
-                total_covers = df["covers"].sum()
-                days_with_data = len(df[df["net_total"] > 0])
+                total_sales = float(df["net_total"].sum())
+                avg_daily = float(df["net_total"].mean())
+                total_covers = int(df["covers"].sum())
+                days_with_data = int(len(df[df["net_total"] > 0]))
 
+                prior_total = (
+                    float(prior_df["net_total"].sum()) if not prior_df.empty else None
+                )
+                prior_covers = (
+                    int(prior_df["covers"].sum()) if not prior_df.empty else None
+                )
+                prior_avg = (
+                    float(prior_df["net_total"].mean()) if not prior_df.empty else None
+                )
+
+                # ── Period Summary KPIs ──────────────────────────────────
+                st.markdown("### Period Summary")
                 with st.container(border=True):
-                    col_ana1, col_ana2, col_ana3, col_ana4 = st.columns(4)
+                    # How many columns: 4 base + 1 projection when "This Month"
+                    show_projection = analysis_period == "This Month"
+                    _ncols = 5 if show_projection else 4
+                    kpi_cols = st.columns(_ncols)
 
-                    with col_ana1:
-                        st.metric("Total Sales", utils.format_currency(total_sales))
-                    with col_ana2:
-                        st.metric("Avg Daily", utils.format_currency(avg_daily))
-                    with col_ana3:
-                        st.metric("Total Covers", f"{total_covers:,}")
-                    with col_ana4:
+                    def _delta_str(current, prior):
+                        if prior is None or prior == 0:
+                            return None
+                        g = utils.calculate_growth(current, prior)
+                        sign = "+" if g["change"] >= 0 else ""
+                        return f"{sign}{utils.format_currency(g['change'])} ({sign}{g['percentage']:.1f}%)"
+
+                    with kpi_cols[0]:
+                        st.metric(
+                            "Total Sales",
+                            utils.format_currency(total_sales),
+                            delta=_delta_str(total_sales, prior_total),
+                        )
+                    with kpi_cols[1]:
+                        cov_delta = None
+                        if prior_covers is not None and prior_covers > 0:
+                            g = utils.calculate_growth(total_covers, prior_covers)
+                            sign = "+" if g["change"] >= 0 else ""
+                            cov_delta = f"{sign}{int(g['change']):,} ({sign}{g['percentage']:.1f}%)"
+                        st.metric(
+                            "Total Covers",
+                            f"{total_covers:,}",
+                            delta=cov_delta,
+                        )
+                    with kpi_cols[2]:
+                        st.metric(
+                            "Avg Daily Sales",
+                            utils.format_currency(avg_daily),
+                            delta=_delta_str(avg_daily, prior_avg),
+                        )
+                    with kpi_cols[3]:
                         st.metric("Days with Data", days_with_data)
+
+                    if show_projection:
+                        days_in_mo = utils.get_days_in_month(
+                            start_date.year, start_date.month
+                        )
+                        projected = utils.calculate_projected_sales(
+                            total_sales, days_with_data, days_in_mo
+                        )
+                        with kpi_cols[4]:
+                            st.metric(
+                                "Projected Month-End",
+                                utils.format_currency(projected),
+                                help="Based on current run rate extrapolated to end of month.",
+                            )
 
                 st.markdown("---")
 
-                # Charts
+                # ── Sales & Covers charts ────────────────────────────────
                 col_chart1, col_chart2 = st.columns(2)
 
                 with col_chart1:
-                    st.markdown("### 📊 Daily Sales Trend")
-
+                    st.markdown("### Daily Sales Trend")
                     if multi_analytics and not df_raw.empty:
                         fig_line = px.line(
                             df_raw,
@@ -1130,8 +1259,7 @@ else:
                     st.plotly_chart(fig_line, use_container_width=True)
 
                 with col_chart2:
-                    st.markdown("### 🍽️ Covers Trend")
-
+                    st.markdown("### Covers Trend")
                     if multi_analytics and not df_raw.empty:
                         fig_bar = px.bar(
                             df_raw,
@@ -1151,23 +1279,55 @@ else:
                     )
                     st.plotly_chart(fig_bar, use_container_width=True)
 
-                st.markdown("### 💳 Payment Mode Distribution")
+                # ── APC Trend ────────────────────────────────────────────
+                st.markdown("### Average Per Cover (APC) Trend")
+                apc_df = (
+                    df[df["apc"] > 0].copy() if "apc" in df.columns else pd.DataFrame()
+                )
+                if not apc_df.empty:
+                    fig_apc = px.line(
+                        apc_df,
+                        x="date",
+                        y="apc",
+                        markers=True,
+                        title="APC over time",
+                    )
+                    fig_apc.update_traces(line_color=ui_theme.BRAND_PRIMARY)
+                    avg_apc = float(apc_df["apc"].mean())
+                    fig_apc.add_hline(
+                        y=avg_apc,
+                        line_dash="dash",
+                        line_color="gray",
+                        annotation_text=f"Avg {utils.format_currency(avg_apc)}",
+                        annotation_position="top right",
+                    )
+                    fig_apc.update_layout(
+                        xaxis_title="Date",
+                        yaxis_title="APC (₹)",
+                        hovermode="x unified",
+                        height=ui_theme.CHART_HEIGHT,
+                    )
+                    st.plotly_chart(fig_apc, use_container_width=True)
+                else:
+                    st.caption("No APC data for this period.")
 
+                st.markdown("---")
+
+                # ── Payment Mode Distribution ────────────────────────────
+                st.markdown("### Payment Mode Distribution")
                 payment_totals = {
-                    "Cash": df["cash_sales"].sum(),
-                    "GPay": df["gpay_sales"].sum(),
-                    "Zomato": df["zomato_sales"].sum(),
-                    "Card": df["card_sales"].sum(),
-                    "Other": df["other_sales"].sum(),
+                    "Cash": float(df["cash_sales"].sum()),
+                    "GPay": float(df["gpay_sales"].sum()),
+                    "Zomato": float(df["zomato_sales"].sum()),
+                    "Card": float(df["card_sales"].sum()),
+                    "Other": float(df["other_sales"].sum()),
                 }
                 pay_df = pd.DataFrame(
                     {
                         "Mode": list(payment_totals.keys()),
                         "Amount": list(payment_totals.values()),
                     }
-                )
-                pay_df = pay_df.sort_values("Amount", ascending=True)
-
+                ).sort_values("Amount", ascending=True)
                 fig_pay = px.bar(
                     pay_df,
                     x="Amount",
@@ -1183,34 +1343,197 @@ else:
                 )
                 st.plotly_chart(fig_pay, use_container_width=True)
 
-                # Target achievement
-                st.markdown("### 🎯 Target Achievement")
+                st.markdown("---")
 
+                # ── Category Sales ───────────────────────────────────────
+                st.markdown("### Category Mix")
+                cat_data = database.get_category_sales_for_date_range(
+                    report_loc_ids, start_str, end_str
+                )
+                if cat_data:
+                    cat_df = pd.DataFrame(cat_data)
+                    col_cat1, col_cat2 = st.columns(2)
+                    with col_cat1:
+                        fig_cat_bar = px.bar(
+                            cat_df,
+                            x="amount",
+                            y="category",
+                            orientation="h",
+                            title="Revenue by category (₹)",
+                            color="amount",
+                            color_continuous_scale=[
+                                ui_theme.BRAND_SECONDARY,
+                                ui_theme.BRAND_PRIMARY,
+                            ],
+                        )
+                        fig_cat_bar.update_layout(
+                            xaxis_title="Amount (₹)",
+                            yaxis_title="",
+                            height=ui_theme.CHART_HEIGHT,
+                            coloraxis_showscale=False,
+                        )
+                        st.plotly_chart(fig_cat_bar, use_container_width=True)
+                    with col_cat2:
+                        fig_cat_pie = px.pie(
+                            cat_df,
+                            names="category",
+                            values="amount",
+                            title="Category revenue mix",
+                            hole=0.4,
+                        )
+                        fig_cat_pie.update_layout(height=ui_theme.CHART_HEIGHT)
+                        st.plotly_chart(fig_cat_pie, use_container_width=True)
+                else:
+                    st.caption("No category data for this period.")
+
+                st.markdown("---")
+
+                # ── Meal Period (Service) Charts ─────────────────────────
+                st.markdown("### Meal Period Breakdown")
+                daily_svc = database.get_daily_service_sales_for_date_range(
+                    report_loc_ids, start_str, end_str
+                )
+                period_svc = database.get_service_sales_for_date_range(
+                    report_loc_ids, start_str, end_str
+                )
+                if daily_svc and period_svc:
+                    svc_daily_df = pd.DataFrame(daily_svc)
+                    svc_period_df = pd.DataFrame(period_svc)
+                    col_svc1, col_svc2 = st.columns(2)
+                    with col_svc1:
+                        fig_svc_stack = px.bar(
+                            svc_daily_df,
+                            x="date",
+                            y="amount",
+                            color="service_type",
+                            barmode="stack",
+                            title="Lunch vs Dinner revenue per day",
+                            color_discrete_map={
+                                "Lunch": ui_theme.BRAND_SUCCESS,
+                                "Dinner": ui_theme.BRAND_PRIMARY,
+                                "Breakfast": "#ffd93d",
+                            },
+                        )
+                        fig_svc_stack.update_layout(
+                            xaxis_title="Date",
+                            yaxis_title="Amount (₹)",
+                            height=ui_theme.CHART_HEIGHT,
+                            legend_title="Service",
+                        )
+                        st.plotly_chart(fig_svc_stack, use_container_width=True)
+                    with col_svc2:
+                        fig_svc_tot = px.bar(
+                            svc_period_df,
+                            x="service_type",
+                            y="amount",
+                            title="Total revenue by meal period",
+                            color="service_type",
+                            color_discrete_map={
+                                "Lunch": ui_theme.BRAND_SUCCESS,
+                                "Dinner": ui_theme.BRAND_PRIMARY,
+                                "Breakfast": "#ffd93d",
+                            },
+                        )
+                        fig_svc_tot.update_layout(
+                            xaxis_title="",
+                            yaxis_title="Amount (₹)",
+                            height=ui_theme.CHART_HEIGHT,
+                            showlegend=False,
+                        )
+                        st.plotly_chart(fig_svc_tot, use_container_width=True)
+                else:
+                    st.caption("No meal-period data for this period.")
+
+                st.markdown("---")
+
+                # ── Weekday Analysis ─────────────────────────────────────
+                st.markdown("### Weekday Analysis")
+                if len(df) >= 3:
+                    wd_df = df[df["net_total"] > 0].copy()
+                    wd_df["weekday"] = wd_df["date"].apply(utils.get_weekday_name)
+                    wd_agg = (
+                        wd_df.groupby("weekday")["net_total"]
+                        .mean()
+                        .reset_index()
+                        .rename(columns={"net_total": "avg_sales"})
+                    )
+                    day_order = [
+                        "Monday",
+                        "Tuesday",
+                        "Wednesday",
+                        "Thursday",
+                        "Friday",
+                        "Saturday",
+                        "Sunday",
+                    ]
+                    wd_agg["weekday"] = pd.Categorical(
+                        wd_agg["weekday"], categories=day_order, ordered=True
+                    )
+                    wd_agg = wd_agg.sort_values("weekday")
+                    _monthly_tgt = scope.sum_location_monthly_targets(report_loc_ids)
+                    _daily_tgt = (
+                        _monthly_tgt
+                        / utils.get_days_in_month(start_date.year, start_date.month)
+                        if _monthly_tgt > 0
+                        else 0
+                    )
+                    wd_colors = [
+                        "#4ecca3"
+                        if v >= _daily_tgt
+                        else "#ffd93d"
+                        if v >= _daily_tgt * 0.8
+                        else "#e94560"
+                        for v in wd_agg["avg_sales"]
+                    ]
+                    fig_wd = px.bar(
+                        wd_agg,
+                        x="weekday",
+                        y="avg_sales",
+                        title="Average net sales by day of week",
+                    )
+                    fig_wd.update_traces(marker_color=wd_colors)
+                    if _daily_tgt > 0:
+                        fig_wd.add_hline(
+                            y=_daily_tgt,
+                            line_dash="dash",
+                            line_color="gray",
+                            annotation_text=f"Daily target {utils.format_currency(_daily_tgt)}",
+                            annotation_position="top right",
+                        )
+                    fig_wd.update_layout(
+                        xaxis_title="",
+                        yaxis_title="Avg Net Sales (₹)",
+                        height=ui_theme.CHART_HEIGHT,
+                    )
+                    st.plotly_chart(fig_wd, use_container_width=True)
+                else:
+                    st.caption("Need at least 3 days of data for weekday analysis.")
+
+                st.markdown("---")
+
+                # ── Target Achievement ───────────────────────────────────
+                st.markdown("### Target Achievement")
                 monthly_target = scope.sum_location_monthly_targets(report_loc_ids)
                 if monthly_target > 0:
                     days_in_month = utils.get_days_in_month(
-                        datetime.now().year, datetime.now().month
+                        start_date.year, start_date.month
                     )
                     daily_target = monthly_target / days_in_month
 
                     fig_target = make_subplots(
                         rows=1,
                         cols=2,
-                        subplot_titles=["Daily Achievement", "Cumulative Progress"],
+                        subplot_titles=["Daily Achievement %", "Cumulative vs Target"],
                         specs=[[{"type": "bar"}, {"type": "scatter"}]],
                     )
 
-                    # Daily achievement bar
                     df["achievement"] = (
-                        (df["net_total"] / daily_target * 100)
-                        if daily_target > 0
-                        else 0
+                        df["net_total"] / daily_target * 100 if daily_target > 0 else 0
                     )
                     colors = [
                         "#4ecca3" if x >= 100 else "#ffd93d" if x >= 80 else "#e94560"
                         for x in df["achievement"]
                     ]
-
                     fig_target.add_trace(
                         go.Bar(
                             x=df["date"],
@@ -1222,14 +1545,12 @@ else:
                         col=1,
                     )
 
-                    # Cumulative progress
                     df_sorted = df.sort_values("date")
                     df_sorted["cumulative"] = df_sorted["net_total"].cumsum()
                     target_line = [
                         monthly_target * (i / len(df_sorted))
                         for i in range(1, len(df_sorted) + 1)
                     ]
-
                     fig_target.add_trace(
                         go.Scatter(
                             x=df_sorted["date"],
@@ -1251,15 +1572,13 @@ else:
                         row=1,
                         col=2,
                     )
-
                     fig_target.update_layout(
-                        height=ui_theme.CHART_HEIGHT,
-                        showlegend=True,
+                        height=ui_theme.CHART_HEIGHT, showlegend=True
                     )
                     st.plotly_chart(fig_target, use_container_width=True)
 
-                # Data table
-                st.markdown("### 📋 Daily Data")
+                # ── Daily Data Table ─────────────────────────────────────
+                st.markdown("### Daily Data")
                 if multi_analytics and not df_raw.empty:
                     dv = (
                         df_raw[
@@ -1275,16 +1594,16 @@ else:
                         .sort_values(["date", "Outlet"])
                         .copy()
                     )
-                    dv["covers"] = dv["covers"].apply(lambda x: f"{int(x or 0):,}")
-                    dv["net_total"] = dv["net_total"].apply(
-                        lambda x: utils.format_currency(float(x or 0))
-                    )
-                    dv["target"] = dv["target"].apply(
-                        lambda x: utils.format_currency(float(x or 0))
-                    )
-                    dv["pct_target"] = dv["pct_target"].apply(
-                        lambda x: f"{float(x or 0):.1f}%"
-                    )
+                    dv["covers"] = [f"{int(x or 0):,}" for x in dv["covers"]]
+                    dv["net_total"] = [
+                        utils.format_currency(float(x or 0)) for x in dv["net_total"]
+                    ]
+                    dv["target"] = [
+                        utils.format_currency(float(x or 0)) for x in dv["target"]
+                    ]
+                    dv["pct_target"] = [
+                        f"{float(x or 0):.1f}%" for x in dv["pct_target"]
+                    ]
                     st.dataframe(
                         dv,
                         use_container_width=True,
@@ -1293,29 +1612,29 @@ else:
                             "date": st.column_config.TextColumn("Date"),
                             "Outlet": st.column_config.TextColumn("Outlet"),
                             "covers": st.column_config.TextColumn("Covers"),
-                            "net_total": st.column_config.TextColumn("Net sales (₹)"),
+                            "net_total": st.column_config.TextColumn("Net Sales (₹)"),
                             "target": st.column_config.TextColumn("Target (₹)"),
-                            "pct_target": st.column_config.TextColumn(
-                                "Achievement (%)"
-                            ),
+                            "pct_target": st.column_config.TextColumn("Achievement"),
                         },
                     )
                 else:
                     daily_view = df[
                         ["date", "covers", "net_total", "target", "pct_target"]
                     ].copy()
-                    daily_view["covers"] = daily_view["covers"].apply(
-                        lambda x: f"{int(x or 0):,}"
-                    )
-                    daily_view["net_total"] = daily_view["net_total"].apply(
-                        lambda x: utils.format_currency(float(x or 0))
-                    )
-                    daily_view["target"] = daily_view["target"].apply(
-                        lambda x: utils.format_currency(float(x or 0))
-                    )
-                    daily_view["pct_target"] = daily_view["pct_target"].apply(
-                        lambda x: f"{float(x or 0):.1f}%"
-                    )
+                    daily_view["covers"] = [
+                        f"{int(x or 0):,}" for x in daily_view["covers"]
+                    ]
+                    daily_view["net_total"] = [
+                        utils.format_currency(float(x or 0))
+                        for x in daily_view["net_total"]
+                    ]
+                    daily_view["target"] = [
+                        utils.format_currency(float(x or 0))
+                        for x in daily_view["target"]
+                    ]
+                    daily_view["pct_target"] = [
+                        f"{float(x or 0):.1f}%" for x in daily_view["pct_target"]
+                    ]
                     st.dataframe(
                         daily_view,
                         use_container_width=True,
@@ -1323,11 +1642,9 @@ else:
                         column_config={
                             "date": st.column_config.TextColumn("Date"),
                             "covers": st.column_config.TextColumn("Covers"),
-                            "net_total": st.column_config.TextColumn("Net sales (₹)"),
+                            "net_total": st.column_config.TextColumn("Net Sales (₹)"),
                             "target": st.column_config.TextColumn("Target (₹)"),
-                            "pct_target": st.column_config.TextColumn(
-                                "Achievement (%)"
-                            ),
+                            "pct_target": st.column_config.TextColumn("Achievement"),
                         },
                     )
 
