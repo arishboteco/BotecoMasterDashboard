@@ -88,10 +88,10 @@ def _match_location_id(
 
 
 def _header_row_and_map(df: pd.DataFrame) -> Optional[Tuple[int, Dict[str, int]]]:
-    for i in range(min(45, len(df))):
+    for i in range(min(60, len(df))):
         parts = [_norm_header(x) for x in df.iloc[i].values if _norm_header(x)]
         joined = " ".join(parts)
-        if "date" not in joined:
+        if "date" not in joined and "booking" not in joined:
             continue
         if not any(
             x in joined
@@ -103,6 +103,11 @@ def _header_row_and_map(df: pd.DataFrame) -> Optional[Tuple[int, Dict[str, int]]
                 "customer",
                 "dinner",
                 "lunch",
+                "senior",
+                "adult",
+                "youth",
+                "children",
+                "booked for",
             )
         ):
             continue
@@ -115,6 +120,34 @@ def _header_row_and_map(df: pd.DataFrame) -> Optional[Tuple[int, Dict[str, int]]
     return None
 
 
+def _find_date_column(colmap: Dict[str, int]) -> Optional[int]:
+    """Find the best date column for the visit/booking date.
+
+    Priority:
+    1. 'booking start time' — full datetime of the actual visit
+    2. 'booked for date' — explicit visit date
+    3. 'booking created on date' — when booking was made (fallback)
+    4. Any column containing 'date'
+    """
+    # 1. booking start time (full datetime = actual visit)
+    for key, idx in colmap.items():
+        if "booking start time" in key:
+            return idx
+
+    # 2. booked for date (explicit visit date)
+    for key, idx in colmap.items():
+        if "booked for" in key and "date" in key:
+            return idx
+
+    # 3. booking created on date (fallback — when booking was made)
+    for key, idx in colmap.items():
+        if "booking created" in key and "date" in key:
+            return idx
+
+    # 4. generic 'date' column
+    return _col_idx(colmap, "date")
+
+
 def _parse_sheet(
     df: pd.DataFrame,
     locations: List[Dict[str, Any]],
@@ -125,19 +158,39 @@ def _parse_sheet(
     if not hm:
         return out
     header_idx, colmap = hm
-    idx_date = colmap.get("date") if "date" in colmap else _col_idx(colmap, "date")
+
+    # Use the improved date finder
+    idx_date = _find_date_column(colmap)
     idx_outlet = _col_idx(colmap, "outlet", "branch", "location", "store", "restaurant")
     idx_covers = _col_idx(colmap, "cover")
     if idx_covers is None:
         idx_covers = _col_idx(colmap, "footfall")
+    if idx_covers is None:
+        idx_covers = _col_idx(colmap, "pax")
     idx_lunch = _col_idx(colmap, "lunch")
     idx_dinner = _col_idx(colmap, "dinner")
+
+    # Age-group columns (Dineout/EazyDiner style)
+    idx_seniors = _col_idx(colmap, "senior")
+    idx_adults = _col_idx(colmap, "adult")
+    idx_youth = _col_idx(colmap, "youth")
+    idx_children = _col_idx(colmap, "children")
+
     if idx_date is None or (
-        idx_covers is None and idx_lunch is None and idx_dinner is None
+        idx_covers is None
+        and idx_lunch is None
+        and idx_dinner is None
+        and idx_seniors is None
+        and idx_adults is None
+        and idx_youth is None
+        and idx_children is None
     ):
         return out
 
     hint_id = _match_location_id(sheet_name_hint, locations)
+
+    # Accumulator: (location_id, date) -> {covers, lunch_covers, dinner_covers}
+    accum: Dict[Tuple[int, str], Dict[str, Any]] = {}
 
     for ri in range(header_idx + 1, len(df)):
         row = df.iloc[ri]
@@ -158,6 +211,38 @@ def _parse_sheet(
         if lid is None:
             continue
 
+        key = (lid, day)
+
+        # Get covers from primary column (PAX Count)
+        row_covers: Optional[int] = None
+        if idx_covers is not None and pd.notna(row.iloc[idx_covers]):
+            try:
+                row_covers = int(float(str(row.iloc[idx_covers]).replace(",", "")))
+            except ValueError:
+                row_covers = None
+
+        # If PAX Count is missing/0, sum age-group columns
+        if row_covers is None or row_covers == 0:
+            age_sum = 0
+            for age_idx in (idx_seniors, idx_adults, idx_youth, idx_children):
+                if age_idx is not None and pd.notna(row.iloc[age_idx]):
+                    try:
+                        age_sum += int(float(str(row.iloc[age_idx]).replace(",", "")))
+                    except ValueError:
+                        pass
+            if age_sum > 0:
+                row_covers = age_sum
+
+        if row_covers is None or row_covers == 0:
+            continue
+
+        # Accumulate covers for this (location, date)
+        if key not in accum:
+            accum[key] = {"covers": 0, "lunch_covers": None, "dinner_covers": None}
+
+        accum[key]["covers"] += row_covers
+
+        # Lunch/dinner split (if available)
         lunch_v: Optional[int] = None
         dinner_v: Optional[int] = None
         if idx_lunch is not None and pd.notna(row.iloc[idx_lunch]):
@@ -171,25 +256,23 @@ def _parse_sheet(
             except ValueError:
                 dinner_v = None
 
-        covers = 0
-        if idx_covers is not None and pd.notna(row.iloc[idx_covers]):
-            try:
-                covers = int(float(str(row.iloc[idx_covers]).replace(",", "")))
-            except ValueError:
-                covers = 0
-        if lunch_v is not None and dinner_v is not None:
-            covers = lunch_v + dinner_v
-        elif covers == 0 and lunch_v is not None:
-            covers = lunch_v
-        elif covers == 0 and dinner_v is not None:
-            covers = dinner_v
+        if lunch_v is not None:
+            if accum[key]["lunch_covers"] is None:
+                accum[key]["lunch_covers"] = 0
+            accum[key]["lunch_covers"] += lunch_v
+        if dinner_v is not None:
+            if accum[key]["dinner_covers"] is None:
+                accum[key]["dinner_covers"] = 0
+            accum[key]["dinner_covers"] += dinner_v
 
-        key = (lid, day)
+    # Convert accumulator to output format
+    for key, vals in accum.items():
         out[key] = {
-            "covers": covers,
-            "lunch_covers": lunch_v,
-            "dinner_covers": dinner_v,
+            "covers": vals["covers"],
+            "lunch_covers": vals["lunch_covers"],
+            "dinner_covers": vals["dinner_covers"],
         }
+
     return out
 
 
@@ -252,10 +335,12 @@ def build_covers_lookup(
                 notes.append(
                     f"Sheet '{sheet_name}': Header at row {header_idx}, columns: {list(colmap.keys())[:10]}..."
                 )
-                idx_date = (
-                    colmap.get("date") if "date" in colmap else _col_idx(colmap, "date")
+                idx_date = _find_date_column(colmap)
+                idx_covers = (
+                    _col_idx(colmap, "cover")
+                    or _col_idx(colmap, "footfall")
+                    or _col_idx(colmap, "pax")
                 )
-                idx_covers = _col_idx(colmap, "cover") or _col_idx(colmap, "footfall")
                 idx_lunch = _col_idx(colmap, "lunch")
                 idx_dinner = _col_idx(colmap, "dinner")
                 notes.append(

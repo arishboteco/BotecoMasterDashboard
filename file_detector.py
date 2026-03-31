@@ -129,8 +129,11 @@ def detect_file_type(file_content: bytes, filename: str) -> str:
         return "item_order_details"
 
     # 2. Customer / booking report
-    #    Has pax count, or booking + restaurant session
+    #    Has pax count, or booking + restaurant session, or Dineout-style columns
     if "pax count" in text or ("booking" in text and "restaurant session" in text):
+        return "customer_report"
+    # Dineout / EazyDiner style: booked for day + booking start time
+    if "booked for" in text and ("booking" in text or "restaurant" in text):
         return "customer_report"
 
     # 3. Restaurant Timing Report
