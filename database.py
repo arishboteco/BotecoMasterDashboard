@@ -50,12 +50,12 @@ def init_database():
         )
     """)
 
-    # Daily summaries table
+    # Daily summaries: composite UNIQUE(location_id, date) so each outlet has its own row per day
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS daily_summaries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             location_id INTEGER NOT NULL,
-            date DATE NOT NULL UNIQUE,
+            date DATE NOT NULL,
             covers INTEGER DEFAULT 0,
             turns REAL DEFAULT 0,
             gross_total REAL DEFAULT 0,
@@ -80,7 +80,15 @@ def init_database():
             mtd_target REAL DEFAULT 5000000,
             mtd_pct_target REAL DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (location_id) REFERENCES locations(id)
+            FOREIGN KEY (location_id) REFERENCES locations(id),
+            UNIQUE(location_id, date)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS app_meta (
+            k TEXT PRIMARY KEY,
+            v TEXT NOT NULL
         )
     """)
 
@@ -136,26 +144,108 @@ def init_database():
             "ALTER TABLE locations ADD COLUMN seat_count INTEGER DEFAULT NULL"
         )
 
+    _migrate_daily_summaries_composite_unique(cursor)
+
     conn.commit()
     conn.close()
 
 
-def create_default_location():
-    """Create default location if not exists."""
+def _migrate_daily_summaries_composite_unique(cursor) -> None:
+    """One-time: replace global UNIQUE(date) with UNIQUE(location_id, date). Preserves ids for FK children."""
+    cursor.execute("SELECT v FROM app_meta WHERE k = ?", ("ds_composite_unique",))
+    if cursor.fetchone():
+        return
+    cursor.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='daily_summaries'"
+    )
+    row = cursor.fetchone()
+    if not row or not row[0]:
+        cursor.execute(
+            "INSERT OR REPLACE INTO app_meta (k, v) VALUES (?, ?)",
+            ("ds_composite_unique", "1"),
+        )
+        return
+    sql_create = row[0].lower()
+    if "unique(location_id, date)" in sql_create.replace(" ", ""):
+        cursor.execute(
+            "INSERT OR REPLACE INTO app_meta (k, v) VALUES (?, ?)",
+            ("ds_composite_unique", "1"),
+        )
+        return
+    # Legacy: date was globally UNIQUE — only one row per calendar date
+    if "date" not in sql_create:
+        return
+
+    cursor.execute("DROP TABLE IF EXISTS daily_summaries_new")
+
+    cursor.execute("PRAGMA table_info(daily_summaries)")
+    col_rows = cursor.fetchall()
+    col_names = [c[1] for c in col_rows]
+
+    cursor.execute(
+        """
+        CREATE TABLE daily_summaries_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            location_id INTEGER NOT NULL,
+            date DATE NOT NULL,
+            covers INTEGER DEFAULT 0,
+            turns REAL DEFAULT 0,
+            gross_total REAL DEFAULT 0,
+            net_total REAL DEFAULT 0,
+            cash_sales REAL DEFAULT 0,
+            card_sales REAL DEFAULT 0,
+            gpay_sales REAL DEFAULT 0,
+            zomato_sales REAL DEFAULT 0,
+            other_sales REAL DEFAULT 0,
+            service_charge REAL DEFAULT 0,
+            cgst REAL DEFAULT 0,
+            sgst REAL DEFAULT 0,
+            discount REAL DEFAULT 0,
+            complimentary REAL DEFAULT 0,
+            apc REAL DEFAULT 0,
+            target REAL DEFAULT 166667,
+            pct_target REAL DEFAULT 0,
+            mtd_total_covers INTEGER DEFAULT 0,
+            mtd_net_sales REAL DEFAULT 0,
+            mtd_discount REAL DEFAULT 0,
+            mtd_avg_daily REAL DEFAULT 0,
+            mtd_target REAL DEFAULT 5000000,
+            mtd_pct_target REAL DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            lunch_covers INTEGER DEFAULT NULL,
+            dinner_covers INTEGER DEFAULT NULL,
+            FOREIGN KEY (location_id) REFERENCES locations(id),
+            UNIQUE(location_id, date)
+        )
+        """
+    )
+    cols_csv = ", ".join(col_names)
+    cursor.execute(
+        f"INSERT INTO daily_summaries_new ({cols_csv}) SELECT {cols_csv} FROM daily_summaries"
+    )
+    cursor.execute("DROP TABLE daily_summaries")
+    cursor.execute("ALTER TABLE daily_summaries_new RENAME TO daily_summaries")
+    cursor.execute(
+        "INSERT OR REPLACE INTO app_meta (k, v) VALUES (?, ?)",
+        ("ds_composite_unique", "1"),
+    )
+
+
+def ensure_default_locations():
+    """Ensure Boteco - Indiqube and Boteco - Bagmane exist (adds missing rows only)."""
     conn = get_connection()
     cursor = conn.cursor()
-
-    cursor.execute("SELECT id FROM locations WHERE name = ?", ("Boteco Bangalore",))
-    if cursor.fetchone() is None:
-        cursor.execute(
-            """
-            INSERT INTO locations (name, target_monthly_sales, target_daily_sales)
-            VALUES (?, ?, ?)
-        """,
-            ("Boteco Bangalore", config.MONTHLY_TARGET, config.DAILY_TARGET),
-        )
-        conn.commit()
-
+    for name in ("Boteco - Indiqube", "Boteco - Bagmane"):
+        cursor.execute("SELECT id FROM locations WHERE name = ?", (name,))
+        if cursor.fetchone() is None:
+            cursor.execute(
+                """
+                INSERT INTO locations (name, target_monthly_sales, target_daily_sales)
+                VALUES (?, ?, ?)
+            """,
+                (name, config.MONTHLY_TARGET, config.DAILY_TARGET),
+            )
+    conn.commit()
     conn.close()
 
 
@@ -467,6 +557,131 @@ def get_summaries_for_date_range(
     return [dict(row) for row in rows]
 
 
+def get_summaries_for_date_range_multi(
+    location_ids: List[int], start_date: str, end_date: str
+) -> List[Dict]:
+    """All summaries in range for multiple locations (not merged by date)."""
+    if not location_ids:
+        return []
+    conn = get_connection()
+    cursor = conn.cursor()
+    placeholders = ",".join("?" * len(location_ids))
+    cursor.execute(
+        f"""
+        SELECT * FROM daily_summaries
+        WHERE location_id IN ({placeholders}) AND date >= ? AND date <= ?
+        ORDER BY date, location_id
+        """,
+        (*location_ids, start_date, end_date),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_category_mtd_totals_multi(
+    location_ids: List[int], year: int, month: int
+) -> Dict[str, float]:
+    if not location_ids:
+        return {}
+    conn = get_connection()
+    cursor = conn.cursor()
+    start_date = f"{year}-{month:02d}-01"
+    if month == 12:
+        end_date = f"{year + 1}-01-01"
+    else:
+        end_date = f"{year}-{month + 1:02d}-01"
+    placeholders = ",".join("?" * len(location_ids))
+    cursor.execute(
+        f"""
+        SELECT cs.category, SUM(cs.amount) AS total
+        FROM category_sales cs
+        INNER JOIN daily_summaries ds ON cs.summary_id = ds.id
+        WHERE ds.location_id IN ({placeholders}) AND ds.date >= ? AND ds.date < ?
+        GROUP BY cs.category
+        """,
+        (*location_ids, start_date, end_date),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return {row["category"]: float(row["total"] or 0) for row in rows}
+
+
+def get_service_mtd_totals_multi(
+    location_ids: List[int], year: int, month: int
+) -> Dict[str, float]:
+    if not location_ids:
+        return {}
+    conn = get_connection()
+    cursor = conn.cursor()
+    start_date = f"{year}-{month:02d}-01"
+    if month == 12:
+        end_date = f"{year + 1}-01-01"
+    else:
+        end_date = f"{year}-{month + 1:02d}-01"
+    placeholders = ",".join("?" * len(location_ids))
+    cursor.execute(
+        f"""
+        SELECT sv.service_type, SUM(sv.amount) AS total
+        FROM service_sales sv
+        INNER JOIN daily_summaries ds ON sv.summary_id = ds.id
+        WHERE ds.location_id IN ({placeholders}) AND ds.date >= ? AND ds.date < ?
+        GROUP BY sv.service_type
+        """,
+        (*location_ids, start_date, end_date),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return {row["service_type"]: float(row["total"] or 0) for row in rows}
+
+
+def update_daily_summary_covers_only(
+    location_id: int,
+    date: str,
+    covers: int,
+    lunch_covers: Optional[int] = None,
+    dinner_covers: Optional[int] = None,
+) -> bool:
+    """Update covers fields on an existing row; recompute apc/turns requires caller."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT ds.id, ds.net_total, ds.target, loc.seat_count AS seat_count
+        FROM daily_summaries ds
+        LEFT JOIN locations loc ON loc.id = ds.location_id
+        WHERE ds.location_id = ? AND ds.date = ?
+        """,
+        (location_id, date),
+    )
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return False
+    summary_id = row["id"]
+    net = float(row["net_total"] or 0)
+    tgt = float(row["target"] or 0)
+    apc = (net / covers) if covers > 0 and net > 0 else 0.0
+    seats = row["seat_count"]
+    if seats and int(seats) > 0:
+        turns = round(covers / float(seats), 2)
+    else:
+        turns = round(covers / 100, 1) if covers else 0.0
+    pct_target = round((net / tgt) * 100, 2) if tgt > 0 else 0.0
+    cursor.execute(
+        """
+        UPDATE daily_summaries SET
+            covers = ?, lunch_covers = ?, dinner_covers = ?,
+            apc = ?, turns = ?, pct_target = ?
+        WHERE id = ?
+        """,
+        (covers, lunch_covers, dinner_covers, apc, turns, pct_target, summary_id),
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
 def get_location_settings(location_id: int) -> Optional[Dict]:
     """Get location settings."""
     conn = get_connection()
@@ -489,6 +704,8 @@ def update_location_settings(location_id: int, settings: Dict):
     if "target_monthly_sales" in settings and settings["target_monthly_sales"] is not None:
         updates.append("target_monthly_sales = ?")
         vals.append(settings["target_monthly_sales"])
+        updates.append("target_daily_sales = ?")
+        vals.append(float(settings["target_monthly_sales"]) / 30.0)
     if "seat_count" in settings:
         updates.append("seat_count = ?")
         vals.append(settings["seat_count"])
@@ -539,4 +756,4 @@ def save_upload_record(
 
 # Initialize database on module import
 init_database()
-create_default_location()
+ensure_default_locations()

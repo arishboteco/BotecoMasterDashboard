@@ -561,6 +561,46 @@ def calculate_mtd_metrics(
     }
 
 
+def calculate_mtd_metrics_multi(
+    location_ids: List[int],
+    target_monthly: float,
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    as_of_date: Optional[str] = None,
+) -> Dict:
+    """MTD across multiple locations (sum of each outlet's rows in the month)."""
+    from database import get_summaries_for_month
+
+    if year is None or month is None:
+        t = datetime.now()
+        year, month = t.year, t.month
+
+    summaries: List[Dict] = []
+    for lid in location_ids:
+        summaries.extend(get_summaries_for_month(lid, year, month))
+    if as_of_date:
+        cap = str(as_of_date)[:10]
+        summaries = [s for s in summaries if str(s.get("date", ""))[:10] <= cap]
+
+    total_covers = sum(s.get("covers", 0) or 0 for s in summaries)
+    total_sales = sum(s.get("net_total", 0) or 0 for s in summaries)
+    total_discount = sum(s.get("discount", 0) or 0 for s in summaries)
+    days_counted = len([s for s in summaries if (s.get("net_total", 0) or 0) > 0])
+
+    avg_daily = total_sales / days_counted if days_counted > 0 else 0
+    pct_target = (total_sales / target_monthly) * 100 if target_monthly > 0 else 0
+
+    return {
+        "mtd_total_covers": total_covers,
+        "mtd_net_sales": total_sales,
+        "mtd_discount": total_discount,
+        "mtd_avg_daily": avg_daily,
+        "mtd_target": target_monthly,
+        "mtd_pct_target": pct_target,
+        "days_counted": days_counted,
+    }
+
+
 def calculate_derived_metrics(data: Dict) -> Dict:
     out = dict(data)
     covers = int(out.get("covers") or 0)

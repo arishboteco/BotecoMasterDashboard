@@ -9,8 +9,10 @@ import base64
 import zipfile
 
 import config
+import customer_report_parser
 import database
 import pos_parser as parser
+import scope
 import sheet_reports as reports
 import utils
 import auth
@@ -94,9 +96,40 @@ else:
         # Render sidebar
         auth.render_auth_sidebar()
 
-        # Main content
+        report_loc_ids = auth.get_report_location_ids()
+        report_display_name = auth.get_report_display_name()
+        all_locs = database.get_all_locations()
+        if len(all_locs) > 1 and auth.is_admin():
+            imp_labels = {
+                str(loc["id"]): loc["name"]
+                for loc in sorted(all_locs, key=lambda x: x["name"])
+            }
+            imp_keys = list(imp_labels.keys())
+            default_imp = str(st.session_state.location_id)
+            if default_imp not in imp_keys:
+                default_imp = imp_keys[0]
+            import_loc_id = int(
+                st.sidebar.selectbox(
+                    "POS import for",
+                    options=imp_keys,
+                    index=imp_keys.index(default_imp),
+                    format_func=lambda k: imp_labels[k],
+                    key="sidebar_import_location",
+                )
+            )
+        elif len(all_locs) > 1:
+            import_loc_id = int(st.session_state.location_id)
+            imp_name = st.session_state.location_name or "your location"
+            for loc in all_locs:
+                if loc["id"] == import_loc_id:
+                    imp_name = loc["name"]
+                    break
+            st.sidebar.caption(f"POS imports save to **{imp_name}**.")
+        else:
+            import_loc_id = all_locs[0]["id"] if all_locs else st.session_state.location_id
+
+        import_location_settings = database.get_location_settings(import_loc_id)
         location_id = st.session_state.location_id
-        location_settings = database.get_location_settings(location_id)
 
         # Tabs
         tab1, tab2, tab3, tab4 = st.tabs(
@@ -116,6 +149,21 @@ else:
                 )
 
             st.markdown("### Upload Files")
+            cr_path = config.resolve_customer_report_path()
+            if cr_path:
+                st.caption(f"Customer report (covers): `{cr_path}`")
+            else:
+                st.caption(
+                    "Customer report path: set `CUSTOMER_REPORT_XLSX_PATH` env or Streamlit secrets."
+                )
+            customer_report_upload = st.file_uploader(
+                "Customer report for covers (optional XLSX)",
+                type=["xlsx", "xls"],
+                accept_multiple_files=False,
+                help="Overrides or supplements the file path above for cover counts.",
+                key="customer_report_upload",
+            )
+
             uploaded_files = st.file_uploader(
                 "Item Report with Customer/Order Details (XLSX)",
                 type=["xlsx", "xls"],
@@ -138,18 +186,34 @@ else:
                     for note in batch_notes:
                         st.warning(note)
 
+                    locs_for_cr = database.get_all_locations()
+                    cr_lookup: dict = {}
+                    cr_notes: list = []
+                    if cr_path:
+                        cr_lookup, cr_notes = customer_report_parser.load_lookup_from_path(
+                            cr_path, locs_for_cr
+                        )
+                    if customer_report_upload is not None:
+                        up_lookup, up_notes = customer_report_parser.build_covers_lookup(
+                            customer_report_upload.getvalue(), locs_for_cr
+                        )
+                        cr_lookup = {**cr_lookup, **up_lookup}
+                        cr_notes.extend(up_notes)
+                    for note in cr_notes:
+                        st.caption(note)
+
                     monthly_tgt = (
-                        location_settings.get(
+                        import_location_settings.get(
                             "target_monthly_sales", config.MONTHLY_TARGET
                         )
-                        if location_settings
+                        if import_location_settings
                         else config.MONTHLY_TARGET
                     )
                     daily_tgt = (
-                        location_settings.get(
+                        import_location_settings.get(
                             "target_daily_sales", config.DAILY_TARGET
                         )
-                        if location_settings
+                        if import_location_settings
                         else config.DAILY_TARGET
                     )
                     uploaded_by = st.session_state.get("username") or "user"
@@ -166,10 +230,16 @@ else:
                                 "Final Total in your Item Report export."
                             )
                             continue
+                        merged["covers"] = 0
+                        merged["lunch_covers"] = None
+                        merged["dinner_covers"] = None
+                        merged = customer_report_parser.apply_covers_overlay(
+                            merged, import_loc_id, cr_lookup
+                        )
                         merged["target"] = daily_tgt
                         sc = (
-                            location_settings.get("seat_count")
-                            if location_settings
+                            import_location_settings.get("seat_count")
+                            if import_location_settings
                             else None
                         )
                         if sc:
@@ -178,19 +248,19 @@ else:
                         merged.pop("seat_count", None)
                         y_m = [int(x) for x in date_str.split("-")[:2]]
                         mtd = parser.calculate_mtd_metrics(
-                            location_id,
+                            import_loc_id,
                             monthly_tgt,
                             year=y_m[0],
                             month=y_m[1],
                             as_of_date=date_str,
                         )
                         merged.update(mtd)
-                        database.save_daily_summary(location_id, merged)
+                        database.save_daily_summary(import_loc_id, merged)
                         fnames = ", ".join(f.name for f in uploaded_files)
                         if len(fnames) > 180:
                             fnames = fnames[:177] + "..."
                         database.save_upload_record(
-                            location_id,
+                            import_loc_id,
                             date_str,
                             fnames,
                             "item_order_details",
@@ -225,7 +295,7 @@ else:
                 - **Filename** must contain `CustomerOrder` or `customer_order`, or `item_report_with_customer`.
                 - **Net sales** = sum of **Sub Total**; **gross** = sum of **Final Total** (Success rows only).
                 - **Complimentary** rows go to the complimentary total only.
-                - **Covers** = sum of one **Covers** value per **Invoice No.** (max per invoice).
+                - **Covers** come from the **customer report** (path or upload), not from the item report.
                 - **Payments** from **Payment Type** (Cash, GPay, Zomato, Card, other).
                 - **Category mix** from **Category** / **Group Name**; **Breakfast/Lunch/Dinner** from **Timestamp** (optional).
                 - **Tax** column is split 50/50 into CGST/SGST on the sheet for display.
@@ -239,9 +309,43 @@ else:
             st.markdown("---")
             st.markdown("### Recent Entries")
 
+            if st.button(
+                "Apply covers from customer report only",
+                key="sync_covers_only",
+                help="Updates covers (and lunch/dinner if present) on existing saved days; no POS upload.",
+            ):
+                locs_for_cr = database.get_all_locations()
+                cr_lookup2: dict = {}
+                notes2: list = []
+                if cr_path:
+                    cr_lookup2, notes2 = customer_report_parser.load_lookup_from_path(
+                        cr_path, locs_for_cr
+                    )
+                if customer_report_upload is not None:
+                    up2, n2 = customer_report_parser.build_covers_lookup(
+                        customer_report_upload.getvalue(), locs_for_cr
+                    )
+                    cr_lookup2 = {**cr_lookup2, **up2}
+                    notes2.extend(n2)
+                updated = 0
+                for (lid, d), ent in cr_lookup2.items():
+                    ok = database.update_daily_summary_covers_only(
+                        lid,
+                        d,
+                        int(ent.get("covers") or 0),
+                        ent.get("lunch_covers"),
+                        ent.get("dinner_covers"),
+                    )
+                    if ok:
+                        updated += 1
+                for n in notes2:
+                    st.info(n)
+                st.success(f"Updated covers on **{updated}** saved day(s).")
+                st.rerun()
+
             col_hist1, col_hist2 = st.columns([1, 2])
             with col_hist1:
-                history = database.get_upload_history(location_id, 10)
+                history = database.get_upload_history(import_loc_id, 10)
                 if history:
                     st.dataframe(pd.DataFrame(history), use_container_width=True)
 
@@ -251,6 +355,7 @@ else:
         # ============ TAB 2: Daily Report ============
         with tab2:
             st.header("Daily Sales Report")
+            st.caption(f"Scope: **{report_display_name}**")
 
             # Date selector
             col_date_sel1, col_date_sel2 = st.columns([1, 2])
@@ -258,21 +363,14 @@ else:
                 selected_date = st.date_input("Select Date", datetime.now())
 
             date_str = selected_date.strftime("%Y-%m-%d")
-            summary = database.get_daily_summary(location_id, date_str)
+            summary = scope.get_daily_summary_for_scope(report_loc_ids, date_str)
 
             if summary:
-                # Calculate MTD for display (report month, through selected date)
                 y_m = [int(x) for x in date_str.split("-")[:2]]
-                mtd = parser.calculate_mtd_metrics(
-                    location_id,
-                    location_settings.get("target_monthly_sales", config.MONTHLY_TARGET)
-                    if location_settings
-                    else config.MONTHLY_TARGET,
-                    year=y_m[0],
-                    month=y_m[1],
-                    as_of_date=date_str,
+                monthly_for_mtd = scope.sum_location_monthly_targets(report_loc_ids)
+                summary = scope.enrich_summary_for_display(
+                    summary, report_loc_ids, monthly_for_mtd, date_str
                 )
-                summary.update(mtd)
 
                 # KPI Cards Row 1
                 col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
@@ -366,15 +464,30 @@ else:
                 st.markdown("### 📱 WhatsApp / sheet-style report")
 
                 y_m = [int(x) for x in date_str.split("-")[:2]]
-                mtd_cat = database.get_category_mtd_totals(location_id, y_m[0], y_m[1])
-                mtd_svc = database.get_service_mtd_totals(location_id, y_m[0], y_m[1])
-                foot_rows = database.get_summaries_for_month(
-                    location_id, y_m[0], y_m[1]
-                )
+                if len(report_loc_ids) > 1:
+                    mtd_cat = database.get_category_mtd_totals_multi(
+                        report_loc_ids, y_m[0], y_m[1]
+                    )
+                    mtd_svc = database.get_service_mtd_totals_multi(
+                        report_loc_ids, y_m[0], y_m[1]
+                    )
+                    foot_rows = scope.merge_month_footfall_rows(
+                        report_loc_ids, y_m[0], y_m[1]
+                    )
+                else:
+                    mtd_cat = database.get_category_mtd_totals(
+                        report_loc_ids[0], y_m[0], y_m[1]
+                    )
+                    mtd_svc = database.get_service_mtd_totals(
+                        report_loc_ids[0], y_m[0], y_m[1]
+                    )
+                    foot_rows = database.get_summaries_for_month(
+                        report_loc_ids[0], y_m[0], y_m[1]
+                    )
 
                 img_buffer = reports.generate_sheet_style_report_image(
                     summary,
-                    st.session_state.location_name or "Boteco",
+                    report_display_name,
                     mtd_category=mtd_cat,
                     mtd_service=mtd_svc,
                     month_footfall_rows=foot_rows,
@@ -382,16 +495,52 @@ else:
                 png_bytes = img_buffer.getvalue()
                 section_bufs = reports.generate_sheet_style_report_sections(
                     summary,
-                    st.session_state.location_name or "Boteco",
+                    report_display_name,
                     mtd_category=mtd_cat,
                     mtd_service=mtd_svc,
                     month_footfall_rows=foot_rows,
                 )
                 whatsapp_text = reports.generate_whatsapp_text(
-                    summary, st.session_state.location_name
+                    summary, report_display_name
                 )
 
                 st.image(BytesIO(png_bytes), use_container_width=True)
+
+                if len(report_loc_ids) > 1:
+                    with st.expander("Per-outlet reports (same date)", expanded=False):
+                        for lid in report_loc_ids:
+                            sub = database.get_daily_summary(lid, date_str)
+                            if not sub:
+                                st.caption(f"Location id {lid}: no data for this date")
+                                continue
+                            loc_st = database.get_location_settings(lid)
+                            sub_name = loc_st["name"] if loc_st else str(lid)
+                            m_tgt = (
+                                float(loc_st["target_monthly_sales"])
+                                if loc_st
+                                else config.MONTHLY_TARGET
+                            )
+                            sub = scope.enrich_summary_for_display(
+                                sub, [lid], m_tgt, date_str
+                            )
+                            sm_cat = database.get_category_mtd_totals(
+                                lid, y_m[0], y_m[1]
+                            )
+                            sm_svc = database.get_service_mtd_totals(
+                                lid, y_m[0], y_m[1]
+                            )
+                            sm_foot = database.get_summaries_for_month(
+                                lid, y_m[0], y_m[1]
+                            )
+                            buf = reports.generate_sheet_style_report_image(
+                                sub,
+                                sub_name,
+                                mtd_category=sm_cat,
+                                mtd_service=sm_svc,
+                                month_footfall_rows=sm_foot,
+                            )
+                            st.caption(sub_name)
+                            st.image(BytesIO(buf.getvalue()), use_container_width=True)
 
                 b1, b2, b3, b4 = st.columns(4)
                 with b1:
@@ -507,12 +656,12 @@ else:
                     f"**From:** {start_date.strftime('%d %b')} to {end_date.strftime('%d %b %Y')}"
                 )
 
-            # Get data for period
-            summaries = database.get_summaries_for_date_range(
-                location_id,
+            raw_summaries = database.get_summaries_for_date_range_multi(
+                report_loc_ids,
                 start_date.strftime("%Y-%m-%d"),
                 end_date.strftime("%Y-%m-%d"),
             )
+            summaries = scope.merge_summaries_by_date(raw_summaries)
 
             if summaries:
                 df = pd.DataFrame(summaries)
@@ -586,10 +735,8 @@ else:
                 # Target achievement
                 st.markdown("### 🎯 Target Achievement")
 
-                if location_settings:
-                    monthly_target = location_settings.get(
-                        "target_monthly_sales", config.MONTHLY_TARGET
-                    )
+                monthly_target = scope.sum_location_monthly_targets(report_loc_ids)
+                if monthly_target > 0:
                     days_in_month = utils.get_days_in_month(
                         datetime.now().year, datetime.now().month
                     )
@@ -672,6 +819,20 @@ else:
         with tab4:
             st.header("Settings")
 
+            if auth.is_admin() and all_locs:
+                sort_locs = sorted(all_locs, key=lambda x: x["name"])
+                name_by_id = {loc["id"]: loc["name"] for loc in sort_locs}
+                settings_location_id = st.selectbox(
+                    "Edit settings for",
+                    options=[loc["id"] for loc in sort_locs],
+                    format_func=lambda i: name_by_id[i],
+                    key="settings_which_location",
+                )
+            else:
+                settings_location_id = st.session_state.location_id
+
+            location_settings = database.get_location_settings(settings_location_id)
+
             if auth.is_admin():
                 col_set1, col_set2 = st.columns(2)
 
@@ -681,9 +842,9 @@ else:
                     with st.form("location_settings"):
                         new_name = st.text_input(
                             "Location Name",
-                            value=location_settings.get("name", "Boteco Bangalore")
+                            value=location_settings.get("name", "Boteco - Indiqube")
                             if location_settings
-                            else "Boteco Bangalore",
+                            else "Boteco - Indiqube",
                         )
                         new_target = st.number_input(
                             "Monthly Target (₹)",
@@ -712,7 +873,7 @@ else:
 
                         if settings_submit:
                             database.update_location_settings(
-                                location_id,
+                                settings_location_id,
                                 {
                                     "name": new_name,
                                     "target_monthly_sales": new_target,

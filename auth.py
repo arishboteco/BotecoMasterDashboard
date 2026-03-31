@@ -1,3 +1,5 @@
+from typing import List
+
 import streamlit as st
 import database
 from datetime import datetime
@@ -15,6 +17,8 @@ def init_auth_state():
         st.session_state.location_id = None
     if "location_name" not in st.session_state:
         st.session_state.location_name = None
+    if "view_scope" not in st.session_state:
+        st.session_state.view_scope = None
 
 
 def show_login_form():
@@ -63,8 +67,14 @@ def show_login_form():
                     st.session_state.user_role = user["role"]
                     st.session_state.location_id = user.get("location_id") or 1
                     st.session_state.location_name = (
-                        user.get("location_name") or "Boteco Bangalore"
+                        user.get("location_name") or "Boteco"
                     )
+                    if user.get("role") == "admin":
+                        st.session_state.view_scope = "all"
+                    else:
+                        st.session_state.view_scope = str(
+                            st.session_state.location_id
+                        )
                     st.rerun()
                 else:
                     st.error("Invalid username or password")
@@ -96,7 +106,7 @@ def show_setup_form():
 
         st.markdown("---")
         st.markdown("### Location Settings")
-        st.text_input("Location Name", key="setup_location", value="Boteco Bangalore")
+        st.text_input("Location Name", key="setup_location", value="Boteco - Indiqube")
         st.number_input(
             "Monthly Target (₹)",
             key="setup_target",
@@ -128,21 +138,24 @@ def show_setup_form():
             # Create user and location
             database.create_admin_user(username, password)
 
-            # Update location settings
             conn = database.get_connection()
             cursor = conn.cursor()
-            cursor.execute(
-                """
-                UPDATE locations 
-                SET name = ?, target_monthly_sales = ?, target_daily_sales = ?
-                WHERE name = 'Boteco Bangalore'
-            """,
-                (
-                    st.session_state.setup_location,
-                    st.session_state.setup_target,
-                    st.session_state.setup_target / 30,
-                ),
-            )
+            cursor.execute("SELECT id FROM locations ORDER BY id LIMIT 1")
+            loc_row = cursor.fetchone()
+            if loc_row:
+                cursor.execute(
+                    """
+                    UPDATE locations
+                    SET name = ?, target_monthly_sales = ?, target_daily_sales = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        st.session_state.setup_location,
+                        st.session_state.setup_target,
+                        st.session_state.setup_target / 30,
+                        loc_row["id"],
+                    ),
+                )
             conn.commit()
             conn.close()
 
@@ -162,6 +175,7 @@ def logout():
     st.session_state.user_role = None
     st.session_state.location_id = None
     st.session_state.location_name = None
+    st.session_state.view_scope = None
     st.rerun()
 
 
@@ -178,7 +192,34 @@ def render_auth_sidebar():
         st.markdown("### 👤 User Info")
         st.write(f"**Logged in as:** {st.session_state.username}")
         st.write(f"**Role:** {st.session_state.user_role}")
-        st.write(f"**Location:** {st.session_state.location_name}")
+        st.write(f"**Assigned location:** {st.session_state.location_name}")
+        locs = database.get_all_locations()
+        if is_admin() and len(locs) > 1:
+            options = ["all"] + [str(l["id"]) for l in sorted(locs, key=lambda x: x["name"])]
+
+            def _scope_label(k: str) -> str:
+                if k == "all":
+                    return "All locations"
+                for loc in locs:
+                    if str(loc["id"]) == k:
+                        return str(loc["name"])
+                return k
+
+            vs = st.session_state.get("view_scope")
+            if vs not in options:
+                st.session_state.view_scope = "all"
+                vs = "all"
+            ix = options.index(vs)
+            choice = st.selectbox(
+                "Report scope",
+                options=options,
+                index=ix,
+                format_func=_scope_label,
+                key="sidebar_report_scope",
+            )
+            st.session_state.view_scope = choice
+        else:
+            st.session_state.view_scope = str(st.session_state.location_id)
         st.markdown("---")
         if st.button("🚪 Logout"):
             logout()
@@ -193,3 +234,29 @@ def is_manager():
     """Check if current user is manager or admin."""
     role = st.session_state.get("user_role")
     return role in ["admin", "manager"]
+
+
+def get_report_location_ids() -> List[int]:
+    """Locations included in Daily Report / Analytics for the current scope."""
+    locs = database.get_all_locations()
+    vs = st.session_state.get("view_scope")
+    if is_admin() and vs == "all":
+        return [l["id"] for l in sorted(locs, key=lambda x: x["name"])]
+    if vs and str(vs) != "all":
+        try:
+            return [int(vs)]
+        except (TypeError, ValueError):
+            pass
+    lid = st.session_state.get("location_id")
+    return [int(lid)] if lid is not None else [1]
+
+
+def get_report_display_name() -> str:
+    locs = database.get_all_locations()
+    ids = get_report_location_ids()
+    if len(ids) > 1:
+        return "All locations"
+    for loc in locs:
+        if loc["id"] == ids[0]:
+            return str(loc["name"])
+    return st.session_state.get("location_name") or "Boteco"
