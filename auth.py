@@ -26,22 +26,28 @@ def show_login_form():
     st.markdown(
         """
         <style>
+        :root {
+            --brand: #e94560;
+            --login-surface: #fffafb;
+            --login-border: #f5c6cb;
+            --text: #1a1a1a;
+        }
         .login-container {
             max-width: 400px;
             margin: 100px auto;
             padding: 2rem;
-            background: #fffafb;
+            background: var(--login-surface);
             border-radius: 12px;
-            border: 1px solid #f5c6cb;
+            border: 1px solid var(--login-border);
             box-shadow: 0 4px 12px rgba(233, 69, 96, 0.12);
         }
         .stButton > button {
             width: 100%;
-            background-color: #e94560;
+            background-color: var(--brand);
             color: white;
             border: none;
             padding: 0.75rem;
-            border-radius: 5px;
+            border-radius: 8px;
             font-weight: bold;
         }
         </style>
@@ -51,6 +57,7 @@ def show_login_form():
 
     st.title("🥂 Boteco Dashboard")
     st.markdown("### Restaurant Sales Management")
+    st.caption("Internal use — your session is protected by login.")
 
     with st.form("login_form"):
         username = st.text_input("Username", placeholder="Enter username")
@@ -190,12 +197,12 @@ def require_auth():
 def render_auth_sidebar():
     """Render authentication info in sidebar."""
     with st.sidebar:
-        st.markdown("### 👤 Account")
+        st.markdown("##### Account")
         st.write(f"**Logged in as:** {st.session_state.username}")
         st.write(f"**Role:** {st.session_state.user_role}")
         st.write(f"**Assigned location:** {st.session_state.location_name}")
         st.divider()
-        st.caption("Reports")
+        st.markdown("##### Reports & scope")
         locs = database.get_all_locations()
         if is_admin() and len(locs) > 1:
             options = ["all"] + [str(l["id"]) for l in sorted(locs, key=lambda x: x["name"])]

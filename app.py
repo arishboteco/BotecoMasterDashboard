@@ -17,6 +17,9 @@ import sheet_reports as reports
 import utils
 import auth
 import clipboard_ui
+import ui_theme
+
+ui_theme.apply_plotly_theme()
 
 # Page configuration
 st.set_page_config(
@@ -26,55 +29,87 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS
+# Custom CSS (tokens align with .streamlit/config.toml)
 st.markdown(
     """
 <style>
+    :root {
+        --brand: #e94560;
+        --brand-soft: #fff5f7;
+        --surface: #f8f9fa;
+        --surface-elevated: #ffffff;
+        --text: #1a1a1a;
+        --text-muted: #495057;
+        --border-subtle: #dee2e6;
+        --success-bg: #d4edda;
+        --success-text: #155724;
+        --success-border: #c3e6cb;
+        --error-bg: #f8d7da;
+        --error-text: #721c24;
+        --error-border: #f5c6cb;
+    }
     .main-header {
         font-size: 2rem;
         font-weight: bold;
-        color: #e94560;
+        color: var(--brand);
     }
     .metric-card {
-        background: #f8f9fa;
+        background: var(--surface);
         padding: 1rem;
         border-radius: 10px;
-        border-left: 4px solid #e94560;
+        border-left: 4px solid var(--brand);
     }
-    .stMetric {
-        background: #ffffff;
-        padding: 1rem;
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        background: var(--surface) !important;
+        border-color: var(--border-subtle) !important;
+        border-radius: 12px !important;
+    }
+    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMetric"] {
+        background: var(--surface-elevated);
         border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        border: 1px solid var(--border-subtle);
     }
     .success-box {
-        background: #d4edda;
-        color: #155724;
+        background: var(--success-bg);
+        color: var(--success-text);
         padding: 1rem;
         border-radius: 5px;
-        border: 1px solid #c3e6cb;
+        border: 1px solid var(--success-border);
     }
     .error-box {
-        background: #f8d7da;
-        color: #721c24;
+        background: var(--error-bg);
+        color: var(--error-text);
         padding: 1rem;
         border-radius: 5px;
-        border: 1px solid #f5c6cb;
+        border: 1px solid var(--error-border);
     }
     .upload-zone {
-        border: 2px dashed #e94560;
+        border: 2px dashed var(--brand);
         border-radius: 10px;
         padding: 1rem 1.25rem;
         text-align: left;
-        background: #fff5f7;
+        background: var(--brand-soft);
         margin-bottom: 0.75rem;
+    }
+    .empty-upload-hint {
+        color: var(--text-muted);
+        font-size: 0.95rem;
+        padding: 0.75rem 1rem;
+        background: var(--surface);
+        border-radius: 8px;
+        border: 1px dashed var(--border-subtle);
+        margin-top: 0.5rem;
     }
     [data-testid="stSidebar"] hr {
         margin: 0.75rem 0;
     }
     div[data-testid="stMetricValue"] {
-        color: #e94560;
+        color: var(--brand);
         font-weight: bold;
+    }
+    .stCaption, [data-testid="stCaption"] {
+        color: var(--text-muted);
     }
 </style>
 """,
@@ -100,7 +135,7 @@ else:
         # Render sidebar
         auth.render_auth_sidebar()
         st.sidebar.divider()
-        st.sidebar.caption("Import target")
+        st.sidebar.markdown("##### POS import")
 
         report_loc_ids = auth.get_report_location_ids()
         report_display_name = auth.get_report_display_name()
@@ -139,7 +174,7 @@ else:
 
         # Tabs
         tab1, tab2, tab3, tab4 = st.tabs(
-            ["📤 Upload Data", "📊 Daily Report", "📈 Analytics", "⚙️ Settings"]
+            ["Upload", "Report", "Analytics", "Settings"]
         )
 
         # ============ TAB 1: Upload Data ============
@@ -151,7 +186,11 @@ else:
                 else ""
             ) or str(import_loc_id)
             st.caption(
-                f"POS files are saved under **{_imp_nm}**. Ensure **POS import for** in the sidebar matches this outlet."
+                f"Outlet for this import: **{_imp_nm}** — match **POS import** in the sidebar."
+            )
+            st.markdown(
+                "1. Set **POS import** in the sidebar · 2. Add XLSX files below · "
+                "3. Click **Import & save to database**"
             )
             st.divider()
 
@@ -163,10 +202,12 @@ else:
                     f"(validation), **{nc}** parser note(s)."
                 )
 
-            st.info(
-                "**Replacing data:** Saving for the same **location + date** **overwrites** that day’s sales, "
-                "categories, and services (not merged). Use **Remove incorrect data** below to delete a day without a new upload."
-            )
+            with st.expander("Data rules (replace & delete)", expanded=False):
+                st.markdown(
+                    "Saving for the same **location + date** **overwrites** that day’s sales, "
+                    "categories, and services (not merged). Use **Remove incorrect data** below "
+                    "to delete a day without a new upload."
+                )
 
             st.markdown("### Upload files")
             st.markdown(
@@ -196,6 +237,14 @@ else:
                 help="Filename must include CustomerOrder (or item_report_with_customer). "
                 "One file can contain multiple days.",
             )
+
+            if not uploaded_files:
+                st.markdown(
+                    '<div class="empty-upload-hint">'
+                    "No item report selected. Upload one or more XLSX files above to import POS data."
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
 
             if uploaded_files:
                 for file in uploaded_files:
@@ -465,19 +514,31 @@ else:
             with col_hist1:
                 history = database.get_upload_history(import_loc_id, 10)
                 if history:
-                    st.dataframe(
-                        pd.DataFrame(history),
-                        use_container_width=True,
-                        hide_index=True,
+                    hdf = pd.DataFrame(history)
+                    drop_cols = [c for c in ("id", "location_id") if c in hdf.columns]
+                    if drop_cols:
+                        hdf = hdf.drop(columns=drop_cols)
+                    rename = {
+                        "date": "Day",
+                        "filename": "File",
+                        "file_type": "Type",
+                        "uploaded_by": "Imported by",
+                        "uploaded_at": "When",
+                    }
+                    hdf = hdf.rename(
+                        columns={k: v for k, v in rename.items() if k in hdf.columns}
                     )
+                    st.dataframe(hdf, use_container_width=True, hide_index=True)
+                else:
+                    st.caption("No imports yet for this outlet.")
 
             with col_hist2:
-                st.info("📋 Entry history shows recent POS imports.")
+                st.caption("Recent POS imports for the outlet selected under **POS import**.")
 
         # ============ TAB 2: Daily Report ============
         with tab2:
             st.header("Daily Sales Report")
-            st.caption(f"Scope: **{report_display_name}**")
+            st.caption(f"Viewing: **{report_display_name}** — pick a date below.")
             st.divider()
 
             # Date selector
@@ -495,47 +556,47 @@ else:
                     summary, report_loc_ids, monthly_for_mtd, date_str
                 )
 
-                # KPI Cards Row 1
-                col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
+                with st.container(border=True):
+                    col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
 
-                with col_kpi1:
-                    st.metric(
-                        "Net Sales",
-                        utils.format_currency(summary.get("net_total", 0)),
-                        delta=f"vs {utils.format_currency(summary.get('target', 0))} target",
-                    )
+                    with col_kpi1:
+                        st.metric(
+                            "Net Sales",
+                            utils.format_currency(summary.get("net_total", 0)),
+                            delta=f"vs {utils.format_currency(summary.get('target', 0))} target",
+                        )
 
-                with col_kpi2:
-                    lc = summary.get("lunch_covers")
-                    dc = summary.get("dinner_covers")
-                    foot = (
-                        f"Lunch {lc:,} · Dinner {dc:,}"
-                        if lc is not None and dc is not None
-                        else None
-                    )
-                    st.metric(
-                        "Covers",
-                        f"{summary.get('covers', 0):,}",
-                        delta=foot or f"Turns: {summary.get('turns', 0):.1f}",
-                    )
+                    with col_kpi2:
+                        lc = summary.get("lunch_covers")
+                        dc = summary.get("dinner_covers")
+                        foot = (
+                            f"Lunch {lc:,} · Dinner {dc:,}"
+                            if lc is not None and dc is not None
+                            else None
+                        )
+                        st.metric(
+                            "Covers",
+                            f"{summary.get('covers', 0):,}",
+                            delta=foot or f"Turns: {summary.get('turns', 0):.1f}",
+                        )
 
-                with col_kpi3:
-                    st.metric(
-                        "APC",
-                        utils.format_currency(summary.get("apc", 0)),
-                        help="Average per cover: net sales ÷ covers.",
-                    )
+                    with col_kpi3:
+                        st.metric(
+                            "APC",
+                            utils.format_currency(summary.get("apc", 0)),
+                            help="Average per cover: net sales ÷ covers.",
+                        )
 
-                with col_kpi4:
-                    pct = summary.get("pct_target", 0)
-                    delta_color = "normal" if pct >= 100 else "inverse"
-                    st.metric(
-                        "Target Achievement",
-                        f"{pct:.1f}%",
-                        delta=f"vs {pct:.0f}%",
-                        delta_color=delta_color,
-                        help="Net sales for the day vs daily sales target.",
-                    )
+                    with col_kpi4:
+                        pct = summary.get("pct_target", 0)
+                        delta_color = "normal" if pct >= 100 else "inverse"
+                        st.metric(
+                            "Target Achievement",
+                            f"{pct:.1f}%",
+                            delta=f"vs {pct:.0f}%",
+                            delta_color=delta_color,
+                            help="Net sales for the day vs daily sales target.",
+                        )
 
                 st.markdown("---")
 
@@ -546,7 +607,7 @@ else:
                     st.markdown("### 💰 Sales Breakdown")
 
                     sales_data = {
-                        "Payment Mode": [
+                        "Payment mode": [
                             "Gross Total",
                             "Cash",
                             "GPay",
@@ -563,7 +624,20 @@ else:
                             summary.get("other_sales", 0),
                         ],
                     }
-                    st.dataframe(pd.DataFrame(sales_data), use_container_width=True)
+                    sales_df = pd.DataFrame(sales_data)
+                    st.dataframe(
+                        sales_df,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "Payment mode": st.column_config.TextColumn("Payment mode"),
+                            "Amount (₹)": st.column_config.NumberColumn(
+                                "Amount (₹)",
+                                format=",.0f",
+                                min_value=0,
+                            ),
+                        },
+                    )
 
                 with col_det2:
                     st.markdown("### 📊 MTD Summary")
@@ -584,7 +658,15 @@ else:
                             f"{summary.get('mtd_pct_target', 0):.1f}%",
                         ],
                     }
-                    st.dataframe(pd.DataFrame(mtd_data), use_container_width=True)
+                    st.dataframe(
+                        pd.DataFrame(mtd_data),
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "Metric": st.column_config.TextColumn("Metric"),
+                            "Value": st.column_config.TextColumn("Value"),
+                        },
+                    )
 
                 st.markdown("---")
 
@@ -634,6 +716,11 @@ else:
 
                 st.image(BytesIO(png_bytes), use_container_width=True)
 
+                st.caption(
+                    "**Next step:** Use **Copy report image** and paste into WhatsApp, "
+                    "or **Download PNG**. **Copy report text** for a plain-text version."
+                )
+
                 if len(report_loc_ids) > 1:
                     with st.expander("Per-outlet reports (same date)", expanded=False):
                         for lid in report_loc_ids:
@@ -682,6 +769,7 @@ else:
                         whatsapp_text,
                         "Copy report text",
                         f"clip_txt_{date_str}",
+                        primary=False,
                     )
                 with b3:
                     st.download_button(
@@ -690,6 +778,7 @@ else:
                         file_name=f"boteco_sheet_{date_str}.png",
                         mime="image/png",
                         key=f"dl_png_{date_str}",
+                        type="secondary",
                     )
                 with b4:
                     st.download_button(
@@ -698,6 +787,7 @@ else:
                         file_name=f"boteco_report_{date_str}.txt",
                         mime="text/plain",
                         key=f"dl_txt_{date_str}",
+                        type="secondary",
                     )
 
                 st.markdown("#### Individual sections")
@@ -722,6 +812,7 @@ else:
                     file_name=f"boteco_sections_{date_str}.zip",
                     mime="application/zip",
                     key=f"dl_zip_sections_{date_str}",
+                    type="secondary",
                 )
 
                 r1c1, r1c2 = st.columns(2)
@@ -739,6 +830,7 @@ else:
                                 "Copy",
                                 f"clip_sec_{key}_{date_str}",
                                 height=44,
+                                primary=False,
                             )
                         with cb2:
                             st.download_button(
@@ -747,6 +839,7 @@ else:
                                 file_name=f"boteco_{key}_{date_str}.png",
                                 mime="image/png",
                                 key=f"dl_sec_{key}_{date_str}",
+                                type="secondary",
                             )
 
                 with st.expander("Plain text preview"):
@@ -757,15 +850,15 @@ else:
                         key=f"whatsapp_text_{date_str}",
                     )
             else:
-                st.warning(f"No data found for {selected_date.strftime('%d %b %Y')}")
                 st.info(
-                    "Import POS files for this date from the **Upload Data** tab."
+                    f"No saved data for **{selected_date.strftime('%d %b %Y')}**. "
+                    "Go to the **Upload** tab and import POS files for that date."
                 )
 
         # ============ TAB 3: Analytics ============
         with tab3:
             st.header("Sales Analytics")
-            st.caption(f"Scope: **{report_display_name}**")
+            st.caption(f"Viewing: **{report_display_name}** — trends for the period below.")
             st.divider()
 
             # Period selector
@@ -796,7 +889,6 @@ else:
             if summaries:
                 df = pd.DataFrame(summaries)
 
-                # Summary metrics
                 st.markdown("### 📈 Period Summary")
 
                 total_sales = df["net_total"].sum()
@@ -804,16 +896,17 @@ else:
                 total_covers = df["covers"].sum()
                 days_with_data = len(df[df["net_total"] > 0])
 
-                col_ana1, col_ana2, col_ana3, col_ana4 = st.columns(4)
+                with st.container(border=True):
+                    col_ana1, col_ana2, col_ana3, col_ana4 = st.columns(4)
 
-                with col_ana1:
-                    st.metric("Total Sales", utils.format_currency(total_sales))
-                with col_ana2:
-                    st.metric("Avg Daily", utils.format_currency(avg_daily))
-                with col_ana3:
-                    st.metric("Total Covers", f"{total_covers:,}")
-                with col_ana4:
-                    st.metric("Days with Data", days_with_data)
+                    with col_ana1:
+                        st.metric("Total Sales", utils.format_currency(total_sales))
+                    with col_ana2:
+                        st.metric("Avg Daily", utils.format_currency(avg_daily))
+                    with col_ana3:
+                        st.metric("Total Covers", f"{total_covers:,}")
+                    with col_ana4:
+                        st.metric("Days with Data", days_with_data)
 
                 st.markdown("---")
 
@@ -830,10 +923,12 @@ else:
                         markers=True,
                         title="Net Sales Over Time",
                     )
+                    fig_line.update_traces(line_color=ui_theme.BRAND_PRIMARY)
                     fig_line.update_layout(
                         xaxis_title="Date",
                         yaxis_title="Net Sales (₹)",
                         hovermode="x unified",
+                        height=ui_theme.CHART_HEIGHT,
                     )
                     st.plotly_chart(fig_line, use_container_width=True)
 
@@ -841,10 +936,14 @@ else:
                     st.markdown("### 🍽️ Covers Trend")
 
                     fig_bar = px.bar(df, x="date", y="covers", title="Daily Covers")
-                    fig_bar.update_layout(xaxis_title="Date", yaxis_title="Covers")
+                    fig_bar.update_traces(marker_color=ui_theme.BRAND_SUCCESS)
+                    fig_bar.update_layout(
+                        xaxis_title="Date",
+                        yaxis_title="Covers",
+                        height=ui_theme.CHART_HEIGHT,
+                    )
                     st.plotly_chart(fig_bar, use_container_width=True)
 
-                # Payment breakdown pie chart
                 st.markdown("### 💳 Payment Mode Distribution")
 
                 payment_totals = {
@@ -854,13 +953,28 @@ else:
                     "Card": df["card_sales"].sum(),
                     "Other": df["other_sales"].sum(),
                 }
-
-                fig_pie = px.pie(
-                    values=list(payment_totals.values()),
-                    names=list(payment_totals.keys()),
-                    title="Payment Mode Split",
+                pay_df = pd.DataFrame(
+                    {
+                        "Mode": list(payment_totals.keys()),
+                        "Amount": list(payment_totals.values()),
+                    }
                 )
-                st.plotly_chart(fig_pie, use_container_width=True)
+                pay_df = pay_df.sort_values("Amount", ascending=True)
+
+                fig_pay = px.bar(
+                    pay_df,
+                    x="Amount",
+                    y="Mode",
+                    orientation="h",
+                    title="Payment mode split (₹)",
+                )
+                fig_pay.update_layout(
+                    xaxis_title="Amount (₹)",
+                    yaxis_title="",
+                    height=ui_theme.CHART_HEIGHT,
+                    showlegend=False,
+                )
+                st.plotly_chart(fig_pay, use_container_width=True)
 
                 # Target achievement
                 st.markdown("### 🎯 Target Achievement")
@@ -931,24 +1045,51 @@ else:
                         col=2,
                     )
 
-                    fig_target.update_layout(height=400, showlegend=True)
+                    fig_target.update_layout(
+                        height=ui_theme.CHART_HEIGHT,
+                        showlegend=True,
+                    )
                     st.plotly_chart(fig_target, use_container_width=True)
 
                 # Data table
                 st.markdown("### 📋 Daily Data")
+                daily_view = df[["date", "covers", "net_total", "target", "pct_target"]].copy()
                 st.dataframe(
-                    df[["date", "covers", "net_total", "target", "pct_target"]],
+                    daily_view,
                     use_container_width=True,
                     hide_index=True,
+                    column_config={
+                        "date": st.column_config.TextColumn("Date"),
+                        "covers": st.column_config.NumberColumn(
+                            "Covers", format=",d", min_value=0
+                        ),
+                        "net_total": st.column_config.NumberColumn(
+                            "Net sales (₹)",
+                            format=",.0f",
+                            min_value=0,
+                        ),
+                        "target": st.column_config.NumberColumn(
+                            "Target (₹)",
+                            format=",.0f",
+                            min_value=0,
+                        ),
+                        "pct_target": st.column_config.NumberColumn(
+                            "Achievement (%)",
+                            format=".1f",
+                        ),
+                    },
                 )
 
             else:
-                st.warning("No data available for the selected period.")
-                st.info("Please upload data for this date range.")
+                st.info(
+                    "No data in this period. Upload POS files from the **Upload** tab "
+                    "or choose a different time range."
+                )
 
         # ============ TAB 4: Settings ============
         with tab4:
             st.header("Settings")
+            st.caption("Location targets, seats, and your account (admins can edit outlets).")
             st.divider()
 
             if auth.is_admin() and all_locs:
@@ -1026,16 +1167,14 @@ else:
 
             st.markdown("---")
 
-            # Quick Stats
-            st.markdown("### 📊 Quick Stats")
-
-            all_locations = database.get_all_locations()
-            for loc in all_locations:
-                st.write(f"**{loc['name']}**")
-                st.write(
-                    f"- Monthly Target: {utils.format_currency(loc.get('target_monthly_sales', 0))}"
-                )
-                st.write(
-                    f"- Daily Target: {utils.format_currency(loc.get('target_daily_sales', 0))}"
-                )
-                st.markdown("---")
+            with st.expander("📊 Quick stats (all outlets)", expanded=False):
+                all_locations = database.get_all_locations()
+                for loc in all_locations:
+                    st.write(f"**{loc['name']}**")
+                    st.write(
+                        f"- Monthly target: {utils.format_currency(loc.get('target_monthly_sales', 0))}"
+                    )
+                    st.write(
+                        f"- Daily target: {utils.format_currency(loc.get('target_daily_sales', 0))}"
+                    )
+                    st.markdown("---")

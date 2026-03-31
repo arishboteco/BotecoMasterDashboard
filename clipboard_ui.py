@@ -6,6 +6,8 @@ import inspect
 
 import streamlit.components.v1 as components
 
+import ui_theme
+
 
 def _html(html: str, height: int, component_key: str) -> None:
     """Call components.html with key only if this Streamlit build supports it."""
@@ -20,12 +22,34 @@ def _safe_id(key: str) -> str:
     return "c" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
 
 
-def render_copy_text_button(text: str, label: str, component_key: str, height: int = 52) -> None:
+def _btn_style(*, primary: bool = True) -> str:
+    c = ui_theme.BRAND_PRIMARY
+    if primary:
+        return (
+            f"padding:0.45rem 1rem;cursor:pointer;border-radius:8px;border:none;"
+            f"background:{c};color:#fff;font-weight:600;font-size:0.9rem;"
+            f"box-shadow:0 1px 2px rgba(0,0,0,0.08);"
+        )
+    return (
+        "padding:0.45rem 1rem;cursor:pointer;border-radius:8px;border:1px solid #dee2e6;"
+        "background:#fff;color:#1a1a1a;font-weight:500;font-size:0.9rem;"
+    )
+
+
+def render_copy_text_button(
+    text: str,
+    label: str,
+    component_key: str,
+    height: int = 52,
+    *,
+    primary: bool = True,
+) -> None:
     b64 = base64.b64encode(text.encode("utf-8")).decode("ascii")
     uid = _safe_id(component_key + "t")
+    stl = _btn_style(primary=primary)
     html = f"""
 <div>
-  <button id="{uid}_btn" type="button" style="padding:0.4rem 1rem;cursor:pointer;border-radius:6px;">{label}</button>
+  <button id="{uid}_btn" type="button" style="{stl}">{label}</button>
   <span id="{uid}_msg" style="margin-left:10px;font-size:0.9rem;color:#2e7d32;"></span>
 </div>
 <script>
@@ -49,12 +73,20 @@ def render_copy_text_button(text: str, label: str, component_key: str, height: i
     _html(html, height, component_key)
 
 
-def render_copy_image_button(png_bytes: bytes, label: str, component_key: str, height: int = 52) -> None:
+def render_copy_image_button(
+    png_bytes: bytes,
+    label: str,
+    component_key: str,
+    height: int = 52,
+    *,
+    primary: bool = True,
+) -> None:
     b64 = base64.b64encode(png_bytes).decode("ascii")
     uid = _safe_id(component_key + "i")
+    stl = _btn_style(primary=primary)
     html = f"""
 <div>
-  <button id="{uid}_btn" type="button" style="padding:0.4rem 1rem;cursor:pointer;border-radius:6px;">{label}</button>
+  <button id="{uid}_btn" type="button" style="{stl}">{label}</button>
   <span id="{uid}_msg" style="margin-left:10px;font-size:0.9rem;color:#2e7d32;"></span>
 </div>
 <script>
