@@ -54,5 +54,5 @@ WHATSAPP_TEMPLATE = """
 ALLOWED_EXTENSIONS = ["xlsx", "xls"]
 MAX_FILE_SIZE_MB = 10
 
-# POS exports: filter All Restaurant Sales to this outlet (case-insensitive substring)
+# Legacy: was used by All Restaurant Sales parser (removed). Kept for any future multi-outlet tooling.
 DEFAULT_RESTAURANT_FILTER = "Boteco"

@@ -117,10 +117,11 @@ else:
 
             st.markdown("### Upload Files")
             uploaded_files = st.file_uploader(
-                "Upload XLSX files from POS system",
+                "Item Report with Customer/Order Details (XLSX)",
                 type=["xlsx", "xls"],
                 accept_multiple_files=True,
-                help="Upload one or more XLSX files from your POS system",
+                help="Filename must include CustomerOrder (or item_report_with_customer). "
+                "One file can contain multiple days.",
             )
 
             if uploaded_files:
@@ -161,11 +162,20 @@ else:
                             skipped_validation += 1
                             st.error(
                                 f"{date_str}: " + " ".join(day_errs)
-                                + " (add All Restaurant Sales or Sales Summary for this date)"
+                                + " — check that this date has Success rows with Sub Total / "
+                                "Final Total in your Item Report export."
                             )
                             continue
                         merged["target"] = daily_tgt
+                        sc = (
+                            location_settings.get("seat_count")
+                            if location_settings
+                            else None
+                        )
+                        if sc:
+                            merged["seat_count"] = int(sc)
                         merged = parser.calculate_derived_metrics(merged)
+                        merged.pop("seat_count", None)
                         y_m = [int(x) for x in date_str.split("-")[:2]]
                         mtd = parser.calculate_mtd_metrics(
                             location_id,
@@ -183,7 +193,7 @@ else:
                             location_id,
                             date_str,
                             fnames,
-                            "pos_batch",
+                            "item_order_details",
                             uploaded_by,
                         )
                         st.success(f"Saved data for {date_str}")
@@ -207,19 +217,21 @@ else:
 
             st.markdown("---")
 
-            with st.expander("ℹ️ Supported File Formats"):
+            with st.expander("ℹ️ Supported file format"):
                 st.info(
                     """
-                **Daily bundle (auto-detected by filename):**
-                - `All_Restaurant_Sales_Report` — payments, net/gross, Pax (covers); rows filtered to **Boteco** (`DEFAULT_RESTAURANT_FILTER` in `config.py`).
-                - `Restaurant_item_tax_report` — CGST, SGST, service charge (summed).
-                - `Flash_Report_*.xlsx` — POS Collection summary (tax/charge). **Item tax export overrides** Flash for CGST/SGST/service charge when both are uploaded. Flash can **fill** GPay/Zomato/cash splits only where All Restaurant Sales left those at 0.
-                - `Restaurant_timing_report` — Breakfast / Lunch / Dinner sales amounts.
-                - `Item_Report_Group_Wise` — category mix (Food, Coffee, etc.).
-                - `customer_report` — lunch/dinner **PAX** (served & walk-in) for footfall; fills `covers` if sales file has no Pax.
-                - `sales_summary` — XLS/XLSX or HTML-as-.xls; keyword parsing for legacy layouts.
+                **Item Report With Customer/Order Details** (`Item_Report_With_CustomerOrder_Details_*.xlsx`)
 
-                Files for the **same calendar date** in one batch are merged before save. **Multiple dates** in one upload are split and saved per day. Undated files are only auto-assigned when the whole batch is a single day; in a multi-day batch they are skipped with a warning. Each calendar day still needs at least one sales export (net/gross); footfall-only files alone cannot create a row.
+                - **Filename** must contain `CustomerOrder` or `customer_order`, or `item_report_with_customer`.
+                - **Net sales** = sum of **Sub Total**; **gross** = sum of **Final Total** (Success rows only).
+                - **Complimentary** rows go to the complimentary total only.
+                - **Covers** = sum of one **Covers** value per **Invoice No.** (max per invoice).
+                - **Payments** from **Payment Type** (Cash, GPay, Zomato, Card, other).
+                - **Category mix** from **Category** / **Group Name**; **Breakfast/Lunch/Dinner** from **Timestamp** (optional).
+                - **Tax** column is split 50/50 into CGST/SGST on the sheet for display.
+
+                A single workbook may include **multiple calendar dates** — each day is saved separately.
+                Uploading **more than one file** for the same date **adds** totals together.
                 """
                 )
 
@@ -685,13 +697,27 @@ else:
                             else config.MONTHLY_TARGET,
                             step=100000,
                         )
+                        seat_default = 0
+                        if location_settings and location_settings.get("seat_count"):
+                            seat_default = int(location_settings["seat_count"])
+                        new_seats = st.number_input(
+                            "Seat count (for turns)",
+                            min_value=0,
+                            value=seat_default,
+                            step=1,
+                            help="Covers ÷ seats = turns (e.g. 46 for Indiqube). Leave 0 to use the default formula.",
+                        )
 
                         settings_submit = st.form_submit_button("💾 Save Settings")
 
                         if settings_submit:
                             database.update_location_settings(
                                 location_id,
-                                {"name": new_name, "target_monthly_sales": new_target},
+                                {
+                                    "name": new_name,
+                                    "target_monthly_sales": new_target,
+                                    "seat_count": int(new_seats) if new_seats > 0 else None,
+                                },
                             )
                             st.success("Settings saved!")
                             st.rerun()

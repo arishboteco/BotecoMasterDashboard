@@ -1,11 +1,10 @@
 import re
+from collections import defaultdict
 from datetime import datetime
 from io import BytesIO
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
-
-import config
 
 
 def _f(val: Any) -> float:
@@ -30,24 +29,6 @@ def _norm_header(h: Any) -> str:
     return re.sub(r"\s+", " ", str(h).strip().lower())
 
 
-def _parse_date_range_cell(val: Any) -> Optional[str]:
-    if val is None or (isinstance(val, float) and pd.isna(val)):
-        return None
-    s = str(val).strip()
-    m = re.search(
-        r"(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\s+to\s+(20\d{2})[-/](\d{1,2})[-/](\d{1,2})",
-        s,
-        re.I,
-    )
-    if m:
-        y, mo, d = m.group(1), int(m.group(2)), int(m.group(3))
-        return f"{y}-{int(mo):02d}-{int(d):02d}"
-    m = re.search(r"(20\d{2})[-/](\d{1,2})[-/](\d{1,2})", s)
-    if m:
-        return f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
-    return _parse_date(s)
-
-
 def _parse_date(val: str) -> Optional[str]:
     val = str(val).strip()
     formats = [
@@ -69,15 +50,22 @@ def _parse_date(val: str) -> Optional[str]:
     return None
 
 
-def _date_from_filename(filename: str) -> Optional[str]:
-    m = re.search(r"(20\d{2})_(\d{2})_(\d{2})_", filename)
-    if m:
-        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
-    return None
+def _cell_date_to_iso(val: Any) -> Optional[str]:
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return None
+    if isinstance(val, datetime):
+        return val.strftime("%Y-%m-%d")
+    s = str(val).strip().lower()
+    if s == "total" or s == "nan":
+        return None
+    ts = pd.to_datetime(val, errors="coerce")
+    if pd.isna(ts):
+        return _parse_date(str(val).strip())
+    return ts.strftime("%Y-%m-%d")
 
 
 def _load_tabular(file_content: bytes, filename: str) -> Optional[pd.DataFrame]:
-    """Load first sheet (or HTML tables) into a single DataFrame without header."""
+    """Load first sheet into a single DataFrame without header."""
     bio = BytesIO(file_content)
     head = file_content[:2500].lower()
     if b"<html" in head or b"<!doctype html" in head:
@@ -117,470 +105,6 @@ def _header_map_row(df: pd.DataFrame, header_idx: int) -> Dict[str, int]:
     return out
 
 
-def _get_col(
-    colmap: Dict[str, int], row: pd.Series, *substrings: str
-) -> Optional[int]:
-    for key, idx in colmap.items():
-        if all(sub in key for sub in substrings):
-            return idx
-    for key, idx in colmap.items():
-        if any(sub in key for sub in substrings):
-            return idx
-    return None
-
-
-def detect_file_kind(filename: str) -> str:
-    n = filename.lower()
-    if "all_restaurant_sales" in n:
-        return "all_restaurant_sales"
-    if "flash_report" in n:
-        return "flash_report"
-    if "restaurant_item_tax" in n or "item_tax_report" in n:
-        return "item_tax_report"
-    if "restaurant_timing" in n or "timing_report" in n:
-        return "timing_report"
-    if "group_wise" in n:
-        return "group_wise"
-    if "customer_report" in n:
-        return "customer_report"
-    if "sales_summary" in n:
-        return "sales_summary"
-    if "customerorder" in n or "customer_order" in n:
-        return "item_order_details"
-    return "unknown"
-
-
-def parse_all_restaurant_sales(
-    file_content: bytes,
-    filename: str,
-    location_filter: Optional[str] = None,
-) -> Optional[Dict]:
-    loc_f = (location_filter or config.DEFAULT_RESTAURANT_FILTER or "").strip().lower()
-    df = _load_tabular(file_content, filename)
-    if df is None or df.empty:
-        return None
-
-    header_idx = None
-    for i in range(min(15, len(df))):
-        c0 = str(df.iat[i, 0]).strip().lower() if df.shape[1] > 0 else ""
-        if c0 == "restaurants" or c0.startswith("restaurant"):
-            header_idx = i
-            break
-    if header_idx is None:
-        return None
-
-    colmap = _header_map_row(df, header_idx)
-    date_str = None
-    for i in range(header_idx):
-        c0 = str(df.iat[i, 0]).strip().lower() if df.shape[1] > 0 else ""
-        if c0.startswith("date"):
-            date_str = _parse_date_range_cell(df.iat[i, 1])
-            break
-    if not date_str:
-        date_str = _date_from_filename(filename)
-
-    idx_rest = colmap.get("restaurants", 0)
-    idx_net = _get_col(colmap, df.iloc[header_idx], "net", "sales")
-    idx_gross = _get_col(colmap, df.iloc[header_idx], "total", "sales")
-    idx_my = _get_col(colmap, df.iloc[header_idx], "my", "amount")
-    idx_disc = _get_col(colmap, df.iloc[header_idx], "total", "discount")
-    idx_sc = _get_col(colmap, df.iloc[header_idx], "service", "charge")
-    idx_cash = _get_col(colmap, df.iloc[header_idx], "cash")
-    idx_card = _get_col(colmap, df.iloc[header_idx], "card")
-    idx_other = _get_col(colmap, df.iloc[header_idx], "other")
-    idx_wallet = _get_col(colmap, df.iloc[header_idx], "wallet")
-    idx_upi = _get_col(colmap, df.iloc[header_idx], "upi")
-    idx_online = _get_col(colmap, df.iloc[header_idx], "online")
-    idx_pax = _get_col(colmap, df.iloc[header_idx], "pax")
-    idx_bills = _get_col(colmap, df.iloc[header_idx], "bill")
-
-    skip = {"total", "min.", "max.", "avg."}
-    picked = None
-    for ri in range(header_idx + 1, len(df)):
-        loc = str(df.iat[ri, idx_rest]).strip()
-        if not loc or loc.lower() in skip:
-            continue
-        if loc_f and loc_f not in loc.lower():
-            continue
-        picked = df.iloc[ri]
-        break
-    if picked is None:
-        return None
-
-    net_total = _f(picked.iloc[idx_net]) if idx_net is not None else 0.0
-    gross_total = _f(picked.iloc[idx_gross]) if idx_gross is not None else 0.0
-    if gross_total <= 0 and idx_my is not None:
-        gross_total = _f(picked.iloc[idx_my])
-
-    structural: set = {idx_rest}
-    for ix in (idx_net, idx_gross, idx_my, idx_disc, idx_sc, idx_pax, idx_bills):
-        if ix is not None:
-            structural.add(ix)
-
-    cash = _f(picked.iloc[idx_cash]) if idx_cash is not None else 0.0
-    card = _f(picked.iloc[idx_card]) if idx_card is not None else 0.0
-    wallet = _f(picked.iloc[idx_wallet]) if idx_wallet is not None else 0.0
-    upi = _f(picked.iloc[idx_upi]) if idx_upi is not None else 0.0
-    online = _f(picked.iloc[idx_online]) if idx_online is not None else 0.0
-
-    pay_done = {
-        x for x in (idx_cash, idx_card, idx_upi, idx_wallet, idx_online) if x is not None
-    }
-    extra_gpay = 0.0
-    extra_zomato = 0.0
-    extra_other = 0.0
-    for key, j in colmap.items():
-        if j in structural or j in pay_done:
-            continue
-        kk = key
-        v = _f(picked.iloc[j])
-        if abs(v) < 1e-9:
-            continue
-        if "zomato" in kk or "swiggy" in kk:
-            extra_zomato += v
-        elif (
-            "g pay" in kk
-            or "gpay" in kk
-            or ("google" in kk and "pay" in kk)
-            or ("other" in kk and ("g pay" in kk or "gpay" in kk))
-        ):
-            extra_gpay += v
-        elif "upi" in kk or ("wallet" in kk and "other" not in kk):
-            extra_gpay += v
-        elif "online" in kk and "bank" not in kk:
-            extra_zomato += v
-        elif "other" in kk:
-            extra_other += v
-
-    discount = _f(picked.iloc[idx_disc]) if idx_disc is not None else 0.0
-    service_charge = _f(picked.iloc[idx_sc]) if idx_sc is not None else 0.0
-
-    covers = _i(picked.iloc[idx_pax]) if idx_pax is not None else 0
-    if covers <= 0 and idx_bills is not None:
-        covers = _i(picked.iloc[idx_bills])
-
-    out = {
-        "date": date_str,
-        "filename": filename,
-        "file_type": "all_restaurant_sales",
-        "gross_total": gross_total,
-        "net_total": net_total,
-        "cash_sales": cash,
-        "card_sales": card,
-        "gpay_sales": upi + wallet + extra_gpay,
-        "zomato_sales": online + extra_zomato,
-        "other_sales": extra_other,
-        "discount": discount,
-        "service_charge": service_charge,
-        "covers": covers,
-    }
-    return out if date_str else None
-
-
-def parse_item_tax_report(file_content: bytes, filename: str) -> Optional[Dict]:
-    df = _load_tabular(file_content, filename)
-    if df is None or df.empty:
-        return None
-
-    header_idx = None
-    for i in range(min(20, len(df))):
-        row = " ".join(_norm_header(x) for x in df.iloc[i].values)
-        if "cgst" in row and "sgst" in row:
-            header_idx = i
-            break
-    if header_idx is None:
-        return None
-
-    colmap = _header_map_row(df, header_idx)
-    ic = next((colmap[k] for k in colmap if "cgst" in k and "2.5" in k), None)
-    isgst = next((colmap[k] for k in colmap if "sgst" in k and "2.5" in k), None)
-    isc = next(
-        (colmap[k] for k in colmap if "service" in k and "charge" in k and "10" in k),
-        None,
-    )
-
-    cgst = sgst = sc = 0.0
-    for ri in range(header_idx + 1, len(df)):
-        row = df.iloc[ri]
-        if ic is not None:
-            cgst += _f(row.iloc[ic])
-        if isgst is not None:
-            sgst += _f(row.iloc[isgst])
-        if isc is not None:
-            sc += _f(row.iloc[isc])
-
-    date_str = _date_from_filename(filename)
-    if not date_str:
-        for i in range(header_idx):
-            t = " ".join(str(x) for x in df.iloc[i].values if pd.notna(x))
-            if "date" in t.lower():
-                date_str = _parse_date_range_cell(
-                    next((x for x in df.iloc[i].values if pd.notna(x)), None)
-                )
-                break
-
-    if not date_str:
-        return None
-
-    return {
-        "date": date_str,
-        "filename": filename,
-        "file_type": "item_tax_report",
-        "cgst": cgst,
-        "sgst": sgst,
-        "service_charge": sc,
-    }
-
-
-def parse_flash_report(file_content: bytes, filename: str) -> Optional[Dict]:
-    """
-    POS "Flash Report" / Collection Report: one summary row with CGST, SGST,
-    Service Charge (same merge role as Restaurant_item_tax_report).
-    """
-    df = _load_tabular(file_content, filename)
-    if df is None or df.empty:
-        return None
-
-    top_bits = []
-    for ri in range(min(8, len(df))):
-        for x in df.iloc[ri].values:
-            if pd.notna(x):
-                top_bits.append(_norm_header(x))
-    top = " ".join(top_bits)
-    if "pos collection" not in top and "collection report" not in top:
-        return None
-
-    header_idx = None
-    for i in range(min(30, len(df))):
-        c0 = _norm_header(df.iat[i, 0]) if df.shape[1] > 0 else ""
-        if c0 != "orders":
-            continue
-        row_txt = " ".join(_norm_header(x) for x in df.iloc[i].values)
-        if "cgst" not in row_txt or "sgst" not in row_txt:
-            continue
-        colmap = _header_map_row(df, i)
-        if "cgst" in colmap and "sgst" in colmap and "service charge" in colmap:
-            header_idx = i
-            break
-    if header_idx is None:
-        return None
-
-    if header_idx + 1 >= len(df):
-        return None
-
-    colmap = _header_map_row(df, header_idx)
-    row = df.iloc[header_idx + 1]
-    cgst = _f(row.iloc[colmap["cgst"]])
-    sgst = _f(row.iloc[colmap["sgst"]])
-    sc = _f(row.iloc[colmap["service charge"]])
-
-    date_str = None
-    for i in range(header_idx):
-        c0 = _norm_header(df.iat[i, 0]) if df.shape[1] > 0 else ""
-        if not c0.startswith("date"):
-            continue
-        v = df.iat[i, 1] if df.shape[1] > 1 else None
-        if v is None or (isinstance(v, float) and pd.isna(v)):
-            continue
-        try:
-            date_str = pd.Timestamp(v).strftime("%Y-%m-%d")
-        except Exception:
-            date_str = _parse_date_range_cell(v) or _parse_date(str(v).strip())
-        if date_str:
-            break
-    if not date_str:
-        date_str = _date_from_filename(filename)
-
-    if not date_str:
-        return None
-
-    pay = _parse_flash_payment_summary(df)
-    out: Dict[str, Any] = {
-        "date": date_str,
-        "filename": filename,
-        "file_type": "flash_report",
-        "cgst": cgst,
-        "sgst": sgst,
-        "service_charge": sc,
-    }
-    for pk, pv in pay.items():
-        if float(pv or 0) != 0:
-            out[pk] = pv
-    return out
-
-
-def _parse_flash_payment_summary(df: pd.DataFrame) -> Dict[str, float]:
-    """Payment Wise Summary block: label col 0, amount col 1."""
-    cash = gpay = zomato = other = 0.0
-    header_i = None
-    for i in range(min(40, len(df))):
-        c0 = _norm_header(df.iat[i, 0]) if df.shape[1] else ""
-        if c0 == "payment type":
-            header_i = i
-            break
-    if header_i is None or df.shape[1] < 2:
-        return {
-            "cash_sales": cash,
-            "gpay_sales": gpay,
-            "zomato_sales": zomato,
-            "other_sales": other,
-        }
-    for i in range(header_i + 1, len(df)):
-        c0 = _norm_header(df.iat[i, 0]) if df.shape[1] else ""
-        if not c0:
-            break
-        if "category" in c0 and "summary" in c0:
-            break
-        v = _f(df.iat[i, 1])
-        if c0 == "cash":
-            cash += v
-        elif "zomato" in c0:
-            zomato += v
-        elif "g pay" in c0 or "gpay" in c0 or ("google" in c0 and "pay" in c0):
-            gpay += v
-        elif "card" in c0 or "credit" in c0 or "amex" in c0:
-            other += v
-        elif "other" in c0:
-            other += v
-    return {
-        "cash_sales": cash,
-        "gpay_sales": gpay,
-        "zomato_sales": zomato,
-        "other_sales": other,
-    }
-
-
-def parse_timing_report(file_content: bytes, filename: str) -> Optional[Dict]:
-    df = _load_tabular(file_content, filename)
-    if df is None or df.empty:
-        return None
-
-    header_idx = None
-    for i in range(min(20, len(df))):
-        c0 = _norm_header(df.iat[i, 0])
-        if c0 == "timings":
-            header_idx = i
-            break
-    if header_idx is None:
-        return None
-
-    colmap = _header_map_row(df, header_idx)
-    idx_amt = next(
-        (colmap[k] for k in colmap if "total" in k and "amount" in k), None
-    )
-    if idx_amt is None:
-        idx_amt = colmap.get(list(colmap.keys())[-1], len(df.columns) - 1)
-
-    services: List[Dict] = []
-    for ri in range(header_idx + 1, len(df)):
-        label = str(df.iat[ri, 0]).strip()
-        if not label or label.lower() in ("nan",):
-            continue
-        low = label.lower()
-        if "whole day" in low:
-            continue
-        amt = _f(df.iat[ri, idx_amt]) if idx_amt < df.shape[1] else 0.0
-        svc_type = "Other"
-        if "breakfast" in low:
-            svc_type = "Breakfast"
-        elif "lunch" in low:
-            svc_type = "Lunch"
-        elif "dinner" in low:
-            svc_type = "Dinner"
-        services.append({"type": svc_type, "amount": amt})
-
-    date_str = _date_from_filename(filename)
-    if not date_str:
-        date_str = None
-
-    if not services:
-        return None
-
-    return {
-        "date": date_str,
-        "filename": filename,
-        "file_type": "timing_report",
-        "services": services,
-    }
-
-
-def parse_group_wise(file_content: bytes, filename: str) -> Optional[Dict]:
-    df = _load_tabular(file_content, filename)
-    if df is None or df.empty:
-        return None
-
-    header_idx = None
-    for i in range(min(15, len(df))):
-        c0 = _norm_header(df.iat[i, 0])
-        if c0 == "group name":
-            header_idx = i
-            break
-    if header_idx is None:
-        return None
-
-    colmap = _header_map_row(df, header_idx)
-    idx_group = colmap.get("group name", 0)
-    idx_item = colmap.get("item", 1)
-    idx_qty = next((colmap[k] for k in colmap if "qty" in k), None)
-    idx_net = next(
-        (colmap[k] for k in colmap if "net" in k and "sales" in k),
-        None,
-    )
-    if idx_net is None:
-        idx_net = next((colmap[k] for k in colmap if "net" in k), None)
-
-    date_str = None
-    for i in range(header_idx):
-        c0 = str(df.iat[i, 0]).strip().lower() if df.shape[1] > 0 else ""
-        if c0.startswith("date"):
-            date_str = _parse_date_range_cell(df.iat[i, 1])
-            break
-    if not date_str:
-        date_str = _date_from_filename(filename)
-
-    skip_group = {"", "total", "min.", "max.", "avg.", "sub total", "nan"}
-    agg: Dict[str, Dict[str, float]] = {}
-    last_group = ""
-
-    for ri in range(header_idx + 1, len(df)):
-        gcell = df.iat[ri, idx_group]
-        icell = df.iat[ri, idx_item] if idx_item < df.shape[1] else None
-        if pd.notna(gcell) and str(gcell).strip():
-            last_group = str(gcell).strip()
-        g = last_group
-        gl = g.lower()
-        if gl in skip_group or "sub total" in gl:
-            continue
-        item = str(icell).strip() if pd.notna(icell) else ""
-        if not item or item.lower() == "nan":
-            continue
-        if item.lower() == "sub total":
-            continue
-
-        qty = _i(df.iat[ri, idx_qty]) if idx_qty is not None else 0
-        amt = _f(df.iat[ri, idx_net]) if idx_net is not None else 0.0
-        cat = _normalize_group_category(g)
-        if cat not in agg:
-            agg[cat] = {"qty": 0, "amount": 0.0}
-        agg[cat]["qty"] += qty
-        agg[cat]["amount"] += amt
-
-    categories = [
-        {"category": k, "qty": int(v["qty"]), "amount": v["amount"]}
-        for k, v in sorted(agg.items(), key=lambda x: -x[1]["amount"])
-    ]
-
-    if not categories or not date_str:
-        return None
-
-    return {
-        "date": date_str,
-        "filename": filename,
-        "file_type": "group_wise",
-        "categories": categories,
-    }
-
-
 def _normalize_group_category(group_name: str) -> str:
     g = group_name.lower()
     if "coffee" in g or g.strip() == "coffee":
@@ -591,261 +115,296 @@ def _normalize_group_category(group_name: str) -> str:
         return "Liquor"
     if "tobacco" in g:
         return "Tobacco"
-    if "soft" in g or "drink" in g or "beverage" in g or "pfa" in g and "soft" in g:
+    if "soft" in g or "drink" in g or "beverage" in g:
         return "Soft Beverages"
     if "food" in g:
         return "Food"
     return group_name.strip() or "Other"
 
 
-def parse_customer_report(
-    file_content: bytes,
-    filename: str,
-    location_filter: Optional[str] = None,
-) -> Optional[Dict]:
-    loc_f = (location_filter or config.DEFAULT_RESTAURANT_FILTER or "").strip().lower()
-    bio = BytesIO(file_content)
+def _payment_bucket(payment_raw: str) -> str:
+    s = _norm_header(payment_raw)
+    if not s:
+        return "other"
+    if s == "cash":
+        return "cash"
+    if "zomato" in s:
+        return "zomato"
+    if "g pay" in s or "gpay" in s or ("google" in s and "pay" in s):
+        return "gpay"
+    if "card" in s or "credit" in s or "debit" in s or "amex" in s:
+        return "card"
+    return "other"
+
+
+def _meal_from_timestamp(ts_val: Any) -> Optional[str]:
+    if ts_val is None or (isinstance(ts_val, float) and pd.isna(ts_val)):
+        return None
     try:
-        df = pd.read_excel(bio, sheet_name="Customers", header=0, engine=None)
+        ts = pd.Timestamp(ts_val)
     except Exception:
-        df = _load_tabular(file_content, filename)
-        if df is None:
-            return None
-        for i in range(min(5, len(df))):
-            row = [str(x).lower() for x in df.iloc[i].values if pd.notna(x)]
-            if "pax" in " ".join(row) and "booked for day" in " ".join(row):
-                df = pd.read_excel(
-                    BytesIO(file_content),
-                    sheet_name=0,
-                    header=i,
-                    engine=None,
-                )
-                break
-
-    cols = {c.lower().strip(): c for c in df.columns}
-    def col(*names: str) -> Optional[str]:
-        for n in names:
-            for k, v in cols.items():
-                if n in k:
-                    return v
         return None
-
-    c_pax = col("pax")
-    c_day = col("booked for day")
-    c_rest = col("restaurant name")
-    c_sess = col("restaurant session", "session name")
-    c_status = col("booking status")
-
-    if not c_pax or not c_day:
+    if pd.isna(ts):
         return None
-
-    df["_day"] = pd.to_datetime(df[c_day], errors="coerce")
-    df = df[df["_day"].notna()]
-    if c_rest:
-        df = df[df[c_rest].astype(str).str.lower().str.contains(loc_f, na=False)]
-
-    ok_status = {"served", "walkin", "walk-in"}
-    if c_status:
-        df = df[df[c_status].astype(str).str.lower().isin(ok_status)]
-
-    if df.empty:
-        return None
-
-    mode_day = df["_day"].mode()
-    date_str = (
-        mode_day.iloc[0].strftime("%Y-%m-%d")
-        if len(mode_day) > 0
-        else _date_from_filename(filename)
-    )
-    if not date_str:
-        return None
-
-    ts = pd.Timestamp(date_str).normalize()
-    day_df = df[df["_day"].dt.normalize() == ts]
-
-    lunch = dinner = 0
-    if c_sess:
-        for _, row in day_df.iterrows():
-            s = str(row[c_sess]).lower()
-            p = _i(row[c_pax])
-            if "lunch" in s:
-                lunch += p
-            elif "dinner" in s:
-                dinner += p
-
-    total = _i(day_df[c_pax].sum())
-
-    return {
-        "date": date_str,
-        "filename": filename,
-        "file_type": "customer_report",
-        "lunch_covers": lunch,
-        "dinner_covers": dinner,
-        "covers": total,
-    }
+    h = int(ts.hour)
+    if h < 12:
+        return "Breakfast"
+    if h < 15:
+        return "Lunch"
+    return "Dinner"
 
 
-def parse_sales_summary(file_content: bytes, filename: str) -> Optional[Dict]:
-    """Parse sales summary: real XLS/XLSX or HTML-as-.xls export."""
+def detect_file_kind(filename: str) -> str:
+    n = filename.lower()
+    if (
+        "customerorder" in n
+        or "customer_order" in n
+        or "item_report_with_customer" in n
+    ):
+        return "item_order_details"
+    return "unknown"
+
+
+def parse_item_order_details(
+    file_content: bytes, filename: str
+) -> Optional[List[Dict[str, Any]]]:
+    """
+    Item Report With Customer/Order Details: line-item rows, multiple days per file.
+    net_total = sum(Sub Total), gross_total = sum(Final Total) for Success rows.
+    Complimentary rows contribute to complimentary only.
+    """
     df = _load_tabular(file_content, filename)
     if df is None or df.empty:
         return None
 
-    date = None
-    data: Dict[str, Any] = {}
-    df_str = df.astype(str)
-
-    for idx, row in df_str.iterrows():
-        row_values = " ".join(str(v) for v in row.values).lower()
-
-        if not date:
-            for val in row.values:
-                if _looks_like_date(val):
-                    parsed = _parse_date(str(val))
-                    if parsed:
-                        date = parsed
-                        break
-            if not date:
-                parsed = _parse_date_range_cell(row.iloc[0]) or _parse_date_range_cell(
-                    row.iloc[1] if len(row) > 1 else None
-                )
-                if parsed:
-                    date = parsed
-
-        if "covers" in row_values and "eod" not in row_values:
-            data["covers"] = _extract_number(row_values, ["covers"])
-
-        if "turns" in row_values:
-            t = _extract_decimal(row_values, ["turns"])
-            if t is not None:
-                data["turns"] = t
-
-        if "eod" in row_values and "gross" in row_values:
-            g = _extract_number(row_values, ["gross", "eod"])
-            if g:
-                data["gross_total"] = g
-
-        if "eod" in row_values and "net" in row_values:
-            n = _extract_number(row_values, ["net"])
-            if n:
-                data["net_total"] = n
-
-        if "cash" in row_values and "sale" in row_values:
-            data["cash_sales"] = _extract_number(row_values, ["cash"])
-
-        if "card" in row_values and "sale" in row_values:
-            data["card_sales"] = _extract_number(row_values, ["card"])
-
-        if "gpay" in row_values or "google" in row_values or "upi" in row_values:
-            data["gpay_sales"] = _extract_number(
-                row_values, ["gpay", "google", "upi", "wallet"]
-            )
-
-        if "zomato" in row_values:
-            data["zomato_sales"] = _extract_number(row_values, ["zomato"])
-
-        if "service" in row_values and "charge" in row_values:
-            data["service_charge"] = _extract_number(
-                row_values, ["service charge", "service"]
-            )
-
-        if "cgst" in row_values:
-            data["cgst"] = _extract_number(row_values, ["cgst"])
-
-        if "sgst" in row_values:
-            data["sgst"] = _extract_number(row_values, ["sgst"])
-
-        if "discount" in row_values:
-            data["discount"] = _extract_number(row_values, ["discount"])
-
-        if "complimentary" in row_values or "complementry" in row_values:
-            data["complimentary"] = _extract_number(
-                row_values, ["complimentary", "complementry"]
-            )
-
-    if not date:
-        date = _date_from_filename(filename)
-
-    if not date:
+    header_idx = None
+    for i in range(min(35, len(df))):
+        parts = [_norm_header(x) for x in df.iloc[i].values if _norm_header(x)]
+        joined = " ".join(parts)
+        if "sub total" in joined and "final total" in joined:
+            header_idx = i
+            break
+    if header_idx is None:
         return None
 
-    return {
-        "date": date,
-        "filename": filename,
-        "file_type": "sales_summary",
-        **{k: v for k, v in data.items() if v is not None},
-    }
+    colmap = _header_map_row(df, header_idx)
 
+    def col(*needles: str) -> Optional[int]:
+        for key, idx in colmap.items():
+            if all(n in key for n in needles):
+                return idx
+        for key, idx in colmap.items():
+            if any(n in key for n in needles):
+                return idx
+        return None
 
-def _looks_like_date(val: str) -> bool:
-    val = str(val).strip().lower()
-    return any(
-        p in val
-        for p in (
-            "2026",
-            "2025",
-            "2024",
-            "jan",
-            "feb",
-            "mar",
-            "apr",
-            "may",
-            "jun",
-            "jul",
-            "aug",
-            "sep",
-            "oct",
-            "nov",
-            "dec",
-        )
-    )
+    idx_date = colmap.get("date") if "date" in colmap else col("date")
+    idx_ts = colmap.get("timestamp") or col("time")
+    idx_inv = col("invoice", "no") or col("invoice")
+    idx_pay = colmap.get("payment type") or col("payment")
+    idx_status = colmap.get("status") or col("status")
+    idx_sub = colmap.get("sub total") or col("sub", "total")
+    idx_disc = colmap.get("discount") or col("discount")
+    idx_tax = colmap.get("tax") or col("tax")
+    idx_final = colmap.get("final total") or col("final", "total")
+    idx_covers = colmap.get("covers") or col("covers")
+    idx_cat = colmap.get("category") or col("category")
+    idx_group = colmap.get("group name") or col("group")
+    idx_qty = colmap.get("qty.") or colmap.get("qty") or col("qty")
 
+    required = [idx_date, idx_sub, idx_final, idx_status]
+    if any(x is None for x in required):
+        return None
 
-def _extract_number(text: str, keywords: List[str]) -> Optional[float]:
-    for keyword in keywords:
-        patterns = [
-            rf"{keyword}\s*[:\-]?\s*([\d,]+\.?\d*)",
-            rf"([\d,]+\.?\d*)\s*{keyword}",
+    DayAgg = Dict[str, Any]
+    days: Dict[str, DayAgg] = {}
+
+    def day_bucket(d: str) -> DayAgg:
+        if d not in days:
+            days[d] = {
+                "net": 0.0,
+                "gross": 0.0,
+                "cash": 0.0,
+                "card": 0.0,
+                "gpay": 0.0,
+                "zomato": 0.0,
+                "other": 0.0,
+                "discount": 0.0,
+                "tax": 0.0,
+                "complimentary": 0.0,
+                "inv_covers": defaultdict(float),
+                "categories": defaultdict(lambda: {"qty": 0, "amount": 0.0}),
+                "meal": defaultdict(float),
+            }
+        return days[d]
+
+    for ri in range(header_idx + 1, len(df)):
+        row = df.iloc[ri]
+        dcell = row.iloc[idx_date]
+        if pd.isna(dcell):
+            continue
+        if str(dcell).strip().lower() == "total":
+            continue
+        day = _cell_date_to_iso(dcell)
+        if not day:
+            continue
+
+        st = _norm_header(row.iloc[idx_status] if idx_status is not None else "")
+        is_complimentary = "complimentary" in st
+        is_success = st == "success"
+
+        sub = _f(row.iloc[idx_sub])
+        final = _f(row.iloc[idx_final])
+        disc = _f(row.iloc[idx_disc]) if idx_disc is not None else 0.0
+        tax = _f(row.iloc[idx_tax]) if idx_tax is not None else 0.0
+        pay_raw = str(row.iloc[idx_pay]).strip() if idx_pay is not None else ""
+        inv_key = str(row.iloc[idx_inv]).strip() if idx_inv is not None else f"row_{ri}"
+        qty = _i(row.iloc[idx_qty]) if idx_qty is not None else 0
+        cov = _f(row.iloc[idx_covers]) if idx_covers is not None else 0.0
+
+        cat_cell = ""
+        if idx_cat is not None and pd.notna(row.iloc[idx_cat]):
+            cat_cell = str(row.iloc[idx_cat]).strip()
+        if not cat_cell and idx_group is not None and pd.notna(row.iloc[idx_group]):
+            cat_cell = str(row.iloc[idx_group]).strip()
+        cat_name = _normalize_group_category(cat_cell) if cat_cell else "Other"
+
+        b = day_bucket(day)
+
+        if is_complimentary:
+            b["complimentary"] += final
+            continue
+
+        if not is_success:
+            continue
+
+        b["net"] += sub
+        b["gross"] += final
+        b["discount"] += disc
+        b["tax"] += tax
+
+        bucket = _payment_bucket(pay_raw)
+        if bucket == "cash":
+            b["cash"] += final
+        elif bucket == "card":
+            b["card"] += final
+        elif bucket == "gpay":
+            b["gpay"] += final
+        elif bucket == "zomato":
+            b["zomato"] += final
+        else:
+            b["other"] += final
+
+        if cov > 0:
+            b["inv_covers"][inv_key] = max(b["inv_covers"][inv_key], cov)
+
+        bc = b["categories"][cat_name]
+        bc["qty"] += max(qty, 1) if sub > 0 else qty
+        bc["amount"] += sub
+
+        if idx_ts is not None:
+            meal = _meal_from_timestamp(row.iloc[idx_ts])
+            if meal:
+                b["meal"][meal] += final
+
+    out: List[Dict[str, Any]] = []
+    for d in sorted(days.keys()):
+        b = days[d]
+        if b["net"] <= 0 and b["gross"] <= 0:
+            continue
+        covers = int(sum(b["inv_covers"].values()))
+        tax_sum = b["tax"]
+        half = tax_sum / 2.0
+        categories = [
+            {"category": k, "qty": int(v["qty"]), "amount": v["amount"]}
+            for k, v in sorted(
+                b["categories"].items(), key=lambda x: -x[1]["amount"]
+            )
         ]
-        for pattern in patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            if matches:
-                try:
-                    return float(matches[0].replace(",", ""))
-                except ValueError:
-                    continue
-    return None
+        services = [
+            {"type": k, "amount": v}
+            for k, v in sorted(b["meal"].items(), key=lambda x: -x[1])
+            if v > 0
+        ]
+        out.append(
+            {
+                "date": d,
+                "filename": filename,
+                "file_type": "item_order_details",
+                "gross_total": b["gross"],
+                "net_total": b["net"],
+                "cash_sales": b["cash"],
+                "card_sales": b["card"],
+                "gpay_sales": b["gpay"],
+                "zomato_sales": b["zomato"],
+                "other_sales": b["other"],
+                "discount": b["discount"],
+                "complimentary": b["complimentary"],
+                "cgst": half,
+                "sgst": half,
+                "service_charge": 0.0,
+                "covers": covers,
+                "categories": categories,
+                "services": services,
+            }
+        )
 
-
-def _extract_decimal(text: str, keywords: List[str]) -> Optional[float]:
-    for keyword in keywords:
-        pattern = rf"{keyword}\s*[:\-]?\s*([\d.]+)"
-        matches = re.findall(pattern, text, re.IGNORECASE)
-        if matches:
-            try:
-                return float(matches[0])
-            except ValueError:
-                continue
-    return None
-
-
-def parse_category_sales(file_content: bytes, filename: str) -> Optional[List[Dict]]:
-    """Legacy helper: try group-wise style via parse_group_wise."""
-    g = parse_group_wise(file_content, filename)
-    if g and g.get("categories"):
-        return g["categories"]
-    return None
+    return out if out else None
 
 
 _MERGE_PRIORITY = {
-    "sales_summary": 10,
-    "all_restaurant_sales": 20,
-    "flash_report": 25,
-    "item_tax_report": 35,
-    "timing_report": 40,
-    "group_wise": 50,
-    "customer_report": 60,
+    "item_order_details": 10,
 }
+
+_NUMERIC_SUM_KEYS = (
+    "gross_total",
+    "net_total",
+    "cash_sales",
+    "card_sales",
+    "gpay_sales",
+    "zomato_sales",
+    "other_sales",
+    "discount",
+    "complimentary",
+    "cgst",
+    "sgst",
+    "service_charge",
+    "covers",
+)
+
+
+def _merge_category_lists(
+    a: List[Dict[str, Any]], b: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    m: Dict[str, Dict[str, Any]] = {}
+    for c in a:
+        k = c.get("category") or "Other"
+        m[k] = {"qty": int(c.get("qty", 0)), "amount": float(c.get("amount", 0))}
+    for c in b:
+        k = c.get("category") or "Other"
+        if k not in m:
+            m[k] = {"qty": 0, "amount": 0.0}
+        m[k]["qty"] += int(c.get("qty", 0))
+        m[k]["amount"] += float(c.get("amount", 0))
+    return [
+        {"category": k, "qty": int(v["qty"]), "amount": v["amount"]}
+        for k, v in sorted(m.items(), key=lambda x: -x[1]["amount"])
+    ]
+
+
+def _merge_service_lists(
+    a: List[Dict[str, Any]], b: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    amt: Dict[str, float] = defaultdict(float)
+    for s in a or []:
+        amt[str(s.get("type", ""))] += float(s.get("amount", 0) or 0)
+    for s in b or []:
+        amt[str(s.get("type", ""))] += float(s.get("amount", 0) or 0)
+    return [
+        {"type": k, "amount": v}
+        for k, v in sorted(amt.items(), key=lambda x: -x[1])
+        if v > 0
+    ]
 
 
 def merge_upload_fragments(fragments: List[Dict]) -> Dict[str, Any]:
@@ -855,81 +414,41 @@ def merge_upload_fragments(fragments: List[Dict]) -> Dict[str, Any]:
         return {}
     fragments.sort(key=lambda f: _MERGE_PRIORITY.get(f.get("file_type", ""), 100))
 
-    merged: Dict[str, Any] = {}
-    for frag in fragments:
+    first = fragments[0]
+    merged: Dict[str, Any] = {"date": first["date"]}
+    for k, v in first.items():
+        if k in ("filename", "file_type"):
+            continue
+        if k == "date":
+            continue
+        if v is None:
+            continue
+        merged[k] = v
+
+    for frag in fragments[1:]:
         ft = frag.get("file_type")
-        for k, v in frag.items():
-            if k in ("filename", "file_type"):
+        for k in _NUMERIC_SUM_KEYS:
+            if k not in merged:
+                merged[k] = frag.get(k) or 0
                 continue
-            if v is None:
-                continue
-            if k == "date":
-                merged["date"] = v
-                continue
-            if ft == "item_tax_report" and k in (
-                "cgst",
-                "sgst",
-                "service_charge",
-            ):
-                merged[k] = v
-            elif ft == "flash_report" and k in ("cgst", "sgst", "service_charge"):
-                merged[k] = v
-            elif ft == "flash_report" and k in (
-                "cash_sales",
-                "gpay_sales",
-                "zomato_sales",
-                "other_sales",
-            ):
-                prev = float(merged.get(k) or 0)
-                if abs(prev) < 1e-9 and float(v or 0) != 0:
-                    merged[k] = v
-            elif ft == "timing_report" and k == "services":
-                merged["services"] = v
-            elif ft == "group_wise" and k == "categories":
-                merged["categories"] = v
-            elif ft == "customer_report":
-                if k in ("lunch_covers", "dinner_covers"):
-                    merged[k] = v
-                elif k == "covers":
-                    merged["covers"] = max(
-                        int(merged.get("covers") or 0), int(v or 0)
-                    )
-            elif ft in ("all_restaurant_sales", "sales_summary"):
-                merged[k] = v
-            elif ft not in _MERGE_PRIORITY:
-                merged[k] = v
-
-    if merged.get("lunch_covers") is not None and merged.get("dinner_covers") is not None:
-        lf = int(merged["lunch_covers"] or 0)
-        df = int(merged["dinner_covers"] or 0)
-        if lf + df > 0 and merged.get("covers", 0) <= 0:
-            merged["covers"] = lf + df
-
+            merged[k] = float(merged.get(k) or 0) + float(frag.get(k) or 0)
+        if ft == "item_order_details":
+            merged["categories"] = _merge_category_lists(
+                merged.get("categories") or [], frag.get("categories") or []
+            )
+            merged["services"] = _merge_service_lists(
+                merged.get("services") or [], frag.get("services") or []
+            )
     return merged
 
 
-def parse_upload_file(file_content: bytes, filename: str) -> Optional[Dict]:
+ParseResult = Optional[Union[Dict[str, Any], List[Dict[str, Any]]]]
+
+
+def parse_upload_file(file_content: bytes, filename: str) -> ParseResult:
     kind = detect_file_kind(filename)
-    if kind == "all_restaurant_sales":
-        return parse_all_restaurant_sales(file_content, filename)
-    if kind == "item_tax_report":
-        return parse_item_tax_report(file_content, filename)
-    if kind == "flash_report":
-        return parse_flash_report(file_content, filename)
-    if kind == "timing_report":
-        return parse_timing_report(file_content, filename)
-    if kind == "group_wise":
-        return parse_group_wise(file_content, filename)
-    if kind == "customer_report":
-        return parse_customer_report(file_content, filename)
-    if kind == "sales_summary":
-        return parse_sales_summary(file_content, filename)
     if kind == "item_order_details":
-        return None
-    if kind == "unknown":
-        return parse_sales_summary(file_content, filename) or parse_all_restaurant_sales(
-            file_content, filename
-        )
+        return parse_item_order_details(file_content, filename)
     return None
 
 
@@ -947,7 +466,7 @@ def process_upload_batch(
     files: List[Tuple[str, bytes]],
 ) -> Tuple[List[Tuple[str, Dict, List[str]]], List[str]]:
     """
-    Parse multiple uploads; merge by date. Returns list of (date, merged_data, errors_per_day)
+    Parse uploads; merge by date. Returns list of (date, merged_data, errors_per_day)
     and global messages (skipped files).
     """
     from collections import Counter
@@ -958,10 +477,12 @@ def process_upload_batch(
     for name, content in files:
         try:
             parsed = parse_upload_file(content, name)
-            if parsed:
-                fragments.append(parsed)
+            if parsed is None:
+                notes.append(f"Skipped (not Item Report with Customer/Order Details): {name}")
+            elif isinstance(parsed, list):
+                fragments.extend(parsed)
             else:
-                notes.append(f"Skipped (unrecognized or empty): {name}")
+                fragments.append(parsed)
         except Exception as ex:
             notes.append(f"Error parsing {name}: {ex}")
 
@@ -1049,7 +570,10 @@ def calculate_derived_metrics(data: Dict) -> Dict:
     else:
         out["apc"] = 0.0
 
-    if "turns" not in out or out.get("turns") is None:
+    seats = float(out.get("seat_count") or 0)
+    if seats > 0:
+        out["turns"] = round(covers / seats, 2)
+    elif "turns" not in out or out.get("turns") is None:
         out["turns"] = round(covers / 100, 1) if covers else 0.0
 
     tgt = float(out.get("target") or 0)

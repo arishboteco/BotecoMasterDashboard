@@ -129,6 +129,13 @@ def init_database():
                 f"ALTER TABLE daily_summaries ADD COLUMN {_col} {_typ} DEFAULT NULL"
             )
 
+    cursor.execute("PRAGMA table_info(locations)")
+    _loc_cols = {row[1] for row in cursor.fetchall()}
+    if "seat_count" not in _loc_cols:
+        cursor.execute(
+            "ALTER TABLE locations ADD COLUMN seat_count INTEGER DEFAULT NULL"
+        )
+
     conn.commit()
     conn.close()
 
@@ -474,15 +481,23 @@ def update_location_settings(location_id: int, settings: Dict):
     """Update location settings."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        """
-        UPDATE locations SET
-            name = COALESCE(?, name),
-            target_monthly_sales = COALESCE(?, target_monthly_sales)
-        WHERE id = ?
-    """,
-        (settings.get("name"), settings.get("target_monthly_sales"), location_id),
-    )
+    updates = []
+    vals = []
+    if "name" in settings and settings["name"] is not None:
+        updates.append("name = ?")
+        vals.append(settings["name"])
+    if "target_monthly_sales" in settings and settings["target_monthly_sales"] is not None:
+        updates.append("target_monthly_sales = ?")
+        vals.append(settings["target_monthly_sales"])
+    if "seat_count" in settings:
+        updates.append("seat_count = ?")
+        vals.append(settings["seat_count"])
+    if updates:
+        vals.append(location_id)
+        cursor.execute(
+            f"UPDATE locations SET {', '.join(updates)} WHERE id = ?",
+            vals,
+        )
     conn.commit()
     conn.close()
 
