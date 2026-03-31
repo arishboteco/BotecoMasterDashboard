@@ -211,6 +211,12 @@ def parse_item_order_details(
     idx_cat = colmap.get("category") or col("category")
     idx_group = colmap.get("group name") or col("group")
     idx_qty = colmap.get("qty.") or colmap.get("qty") or col("qty")
+    idx_item = (
+        colmap.get("item name")
+        or colmap.get("item")
+        or col("item", "name")
+        or col("item")
+    )
 
     required = [idx_date, idx_sub, idx_final, idx_status]
     if any(x is None for x in required):
@@ -233,8 +239,10 @@ def parse_item_order_details(
                 "tax": 0.0,
                 "complimentary": 0.0,
                 "inv_covers": defaultdict(float),
+                "invoices": set(),
                 "categories": defaultdict(lambda: {"qty": 0, "amount": 0.0}),
                 "meal": defaultdict(float),
+                "items": defaultdict(lambda: {"qty": 0, "amount": 0.0}),
             }
         return days[d]
 
@@ -298,9 +306,20 @@ def parse_item_order_details(
         if cov > 0:
             b["inv_covers"][inv_key] = max(b["inv_covers"][inv_key], cov)
 
+        # Count unique orders (invoices)
+        b["invoices"].add(inv_key)
+
         bc = b["categories"][cat_name]
         bc["qty"] += max(qty, 1) if sub > 0 else qty
         bc["amount"] += sub
+
+        # Item-level tracking for top-sellers
+        if idx_item is not None and pd.notna(row.iloc[idx_item]):
+            item_name = str(row.iloc[idx_item]).strip()
+            if item_name and item_name.lower() not in ("nan", ""):
+                bi = b["items"][item_name]
+                bi["qty"] += max(qty, 1) if sub > 0 else qty
+                bi["amount"] += sub
 
         if idx_ts is not None:
             meal = _meal_from_timestamp(row.iloc[idx_ts])
@@ -313,18 +332,22 @@ def parse_item_order_details(
         if b["net"] <= 0 and b["gross"] <= 0:
             continue
         covers = int(sum(b["inv_covers"].values()))
+        order_count = len(b["invoices"])
         tax_sum = b["tax"]
         half = tax_sum / 2.0
         categories = [
             {"category": k, "qty": int(v["qty"]), "amount": v["amount"]}
-            for k, v in sorted(
-                b["categories"].items(), key=lambda x: -x[1]["amount"]
-            )
+            for k, v in sorted(b["categories"].items(), key=lambda x: -x[1]["amount"])
         ]
         services = [
             {"type": k, "amount": v}
             for k, v in sorted(b["meal"].items(), key=lambda x: -x[1])
             if v > 0
+        ]
+        # Top 20 items by revenue (stored for item_sales table)
+        top_items = [
+            {"item_name": k, "qty": int(v["qty"]), "amount": v["amount"]}
+            for k, v in sorted(b["items"].items(), key=lambda x: -x[1]["amount"])[:20]
         ]
         out.append(
             {
@@ -344,8 +367,10 @@ def parse_item_order_details(
                 "sgst": half,
                 "service_charge": 0.0,
                 "covers": covers,
+                "order_count": order_count,
                 "categories": categories,
                 "services": services,
+                "top_items": top_items,
             }
         )
 
@@ -370,6 +395,7 @@ _NUMERIC_SUM_KEYS = (
     "sgst",
     "service_charge",
     "covers",
+    "order_count",
 )
 
 
@@ -407,6 +433,33 @@ def _merge_service_lists(
     ]
 
 
+def _merge_item_lists(
+    a: List[Dict[str, Any]], b: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Merge two top-items lists, keeping top 20 by amount."""
+    m: Dict[str, Dict[str, Any]] = {}
+    for item in a or []:
+        k = item.get("item_name") or ""
+        if not k:
+            continue
+        if k not in m:
+            m[k] = {"qty": 0, "amount": 0.0}
+        m[k]["qty"] += int(item.get("qty", 0))
+        m[k]["amount"] += float(item.get("amount", 0) or 0)
+    for item in b or []:
+        k = item.get("item_name") or ""
+        if not k:
+            continue
+        if k not in m:
+            m[k] = {"qty": 0, "amount": 0.0}
+        m[k]["qty"] += int(item.get("qty", 0))
+        m[k]["amount"] += float(item.get("amount", 0) or 0)
+    return [
+        {"item_name": k, "qty": int(v["qty"]), "amount": v["amount"]}
+        for k, v in sorted(m.items(), key=lambda x: -x[1]["amount"])[:20]
+    ]
+
+
 def merge_upload_fragments(fragments: List[Dict]) -> Dict[str, Any]:
     """Merge parser outputs for one business day (same date)."""
     fragments = [f for f in fragments if f and f.get("date")]
@@ -438,6 +491,9 @@ def merge_upload_fragments(fragments: List[Dict]) -> Dict[str, Any]:
             )
             merged["services"] = _merge_service_lists(
                 merged.get("services") or [], frag.get("services") or []
+            )
+            merged["top_items"] = _merge_item_lists(
+                merged.get("top_items") or [], frag.get("top_items") or []
             )
     return merged
 
@@ -478,7 +534,9 @@ def process_upload_batch(
         try:
             parsed = parse_upload_file(content, name)
             if parsed is None:
-                notes.append(f"Skipped (not Item Report with Customer/Order Details): {name}")
+                notes.append(
+                    f"Skipped (not Item Report with Customer/Order Details): {name}"
+                )
             elif isinstance(parsed, list):
                 fragments.extend(parsed)
             else:

@@ -691,7 +691,11 @@ else:
                             )
                     else:
                         _, _single_name, s_one = outlets_bundle[0]
-                        col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
+                        _oc = int(s_one.get("order_count") or 0)
+                        _aov = (
+                            float(s_one.get("net_total") or 0) / _oc if _oc > 0 else 0.0
+                        )
+                        col_kpi1, col_kpi2, col_kpi3, col_kpi4, col_kpi5 = st.columns(5)
                         with col_kpi1:
                             st.metric(
                                 "Net Sales",
@@ -719,11 +723,19 @@ else:
                                 help="Average per cover: net sales ÷ covers.",
                             )
                         with col_kpi4:
+                            st.metric(
+                                "Orders / AOV",
+                                f"{_oc:,}",
+                                delta=utils.format_currency(_aov) + " avg"
+                                if _oc > 0
+                                else None,
+                                help="Unique orders (invoices) and Average Order Value.",
+                            )
+                        with col_kpi5:
                             pct = float(s_one.get("pct_target") or 0)
                             st.metric(
                                 "Target Achievement",
                                 f"{pct:.1f}%",
-                                delta=f"vs {pct:.0f}%",
                                 delta_color="normal" if pct >= 100 else "inverse",
                                 help="Net sales for the day vs daily sales target.",
                             )
@@ -1385,6 +1397,64 @@ else:
                         st.plotly_chart(fig_cat_pie, use_container_width=True)
                 else:
                     st.caption("No category data for this period.")
+
+                st.markdown("---")
+
+                # ── Top Selling Items ────────────────────────────────────
+                st.markdown("### Top Selling Items")
+                top_items_data = database.get_top_items_for_date_range(
+                    report_loc_ids, start_str, end_str, limit=15
+                )
+                if top_items_data:
+                    items_df = pd.DataFrame(top_items_data)
+                    col_items1, col_items2 = st.columns([3, 2])
+                    with col_items1:
+                        fig_items = px.bar(
+                            items_df,
+                            x="amount",
+                            y="item_name",
+                            orientation="h",
+                            title="Top 15 items by revenue (₹)",
+                            color="amount",
+                            color_continuous_scale=[
+                                ui_theme.BRAND_SUCCESS,
+                                ui_theme.BRAND_PRIMARY,
+                            ],
+                        )
+                        fig_items.update_layout(
+                            xaxis_title="Revenue (₹)",
+                            yaxis_title="",
+                            height=420,
+                            coloraxis_showscale=False,
+                            yaxis={"categoryorder": "total ascending"},
+                        )
+                        st.plotly_chart(fig_items, use_container_width=True)
+                    with col_items2:
+                        items_tbl = items_df.copy()
+                        items_tbl["amount"] = [
+                            utils.format_currency(float(x or 0))
+                            for x in items_tbl["amount"]
+                        ]
+                        items_tbl["qty"] = [
+                            f"{int(x or 0):,}" for x in items_tbl["qty"]
+                        ]
+                        items_tbl = items_tbl.rename(
+                            columns={
+                                "item_name": "Item",
+                                "amount": "Revenue",
+                                "qty": "Qty",
+                            }
+                        )
+                        st.dataframe(
+                            items_tbl,
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+                else:
+                    st.caption(
+                        "No item-level data for this period. "
+                        "Re-import your Item Reports to populate top sellers."
+                    )
 
                 st.markdown("---")
 

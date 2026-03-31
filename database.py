@@ -129,9 +129,25 @@ def init_database():
         )
     """)
 
+    # item_sales table — top-selling items per day
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS item_sales (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            summary_id INTEGER NOT NULL,
+            item_name TEXT NOT NULL,
+            qty INTEGER DEFAULT 0,
+            amount REAL DEFAULT 0,
+            FOREIGN KEY (summary_id) REFERENCES daily_summaries(id)
+        )
+    """)
+
     cursor.execute("PRAGMA table_info(daily_summaries)")
     _ds_cols = {row[1] for row in cursor.fetchall()}
-    for _col, _typ in (("lunch_covers", "INTEGER"), ("dinner_covers", "INTEGER")):
+    for _col, _typ in (
+        ("lunch_covers", "INTEGER"),
+        ("dinner_covers", "INTEGER"),
+        ("order_count", "INTEGER"),
+    ):
         if _col not in _ds_cols:
             cursor.execute(
                 f"ALTER TABLE daily_summaries ADD COLUMN {_col} {_typ} DEFAULT NULL"
@@ -326,7 +342,7 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
                 discount = ?, complimentary = ?, apc = ?, target = ?,
                 pct_target = ?, mtd_total_covers = ?, mtd_net_sales = ?,
                 mtd_discount = ?, mtd_avg_daily = ?, mtd_target = ?, mtd_pct_target = ?,
-                lunch_covers = ?, dinner_covers = ?
+                lunch_covers = ?, dinner_covers = ?, order_count = ?
             WHERE id = ?
         """,
             (
@@ -355,6 +371,7 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
                 data.get("mtd_pct_target", 0),
                 data.get("lunch_covers"),
                 data.get("dinner_covers"),
+                data.get("order_count"),
                 summary_id,
             ),
         )
@@ -368,8 +385,8 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
                 service_charge, cgst, sgst, discount, complimentary, apc,
                 target, pct_target, mtd_total_covers, mtd_net_sales,
                 mtd_discount, mtd_avg_daily, mtd_target, mtd_pct_target,
-                lunch_covers, dinner_covers
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                lunch_covers, dinner_covers, order_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 location_id,
@@ -399,6 +416,7 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
                 data.get("mtd_pct_target", 0),
                 data.get("lunch_covers"),
                 data.get("dinner_covers"),
+                data.get("order_count"),
             ),
         )
         cursor.execute("SELECT last_insert_rowid()")
@@ -426,6 +444,23 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
                 VALUES (?, ?, ?)
             """,
                 (summary_id, svc["type"], svc.get("amount", 0)),
+            )
+
+    # Save item sales (top sellers)
+    if "top_items" in data and data["top_items"]:
+        cursor.execute("DELETE FROM item_sales WHERE summary_id = ?", (summary_id,))
+        for item in data["top_items"]:
+            cursor.execute(
+                """
+                INSERT INTO item_sales (summary_id, item_name, qty, amount)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    summary_id,
+                    item.get("item_name", ""),
+                    item.get("qty", 0),
+                    item.get("amount", 0),
+                ),
             )
 
     conn.commit()
@@ -796,6 +831,38 @@ def save_upload_record(
     )
     conn.commit()
     conn.close()
+
+
+def get_top_items_for_date_range(
+    location_ids: List[int], start_date: str, end_date: str, limit: int = 20
+) -> List[Dict]:
+    """
+    Top-selling menu items across a date range for one or more locations.
+    Returns list of {item_name, amount, qty} sorted by amount descending.
+    """
+    if not location_ids:
+        return []
+    placeholders = ",".join("?" * len(location_ids))
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        f"""
+        SELECT it.item_name,
+               SUM(it.amount) AS amount,
+               SUM(it.qty)    AS qty
+        FROM item_sales it
+        JOIN daily_summaries ds ON it.summary_id = ds.id
+        WHERE ds.location_id IN ({placeholders})
+          AND ds.date BETWEEN ? AND ?
+        GROUP BY it.item_name
+        ORDER BY amount DESC
+        LIMIT ?
+        """,
+        (*location_ids, start_date, end_date, limit),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
 
 
 def get_category_sales_for_date_range(
