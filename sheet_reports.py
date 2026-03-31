@@ -223,11 +223,9 @@ def _build_sheet_style_tables(
     sales_kinds.append(("hdr", "hdr"))
     sales_text.append(["Payment Mode", location_name[:20]])
     sales_kinds.append(("hdr", "hdr"))
-    sales_text.append(["Food vs Bar", "—"])
-    sales_kinds.append(("teal", "teal"))
-    sales_text.append(["Covers", f"{int(r.get('covers') or 0):,}"])
-    sales_kinds.append(("teal", "teal"))
-    sales_text.append(["Turns", f"{float(r.get('turns') or 0):.1f}"])
+    _cov = int(r.get("covers") or 0)
+    _turn = float(r.get("turns") or 0)
+    sales_text.append(["Covers / turns", f"{_cov:,} · {_turn:.1f}"])
     sales_kinds.append(("teal", "teal"))
 
     for label, val in [
@@ -241,7 +239,10 @@ def _build_sheet_style_tables(
         ("Online Bank Transfer", 0),
         ("Other / Wallet", r.get("other_sales", 0)),
     ]:
-        row = zpay(label, float(val or 0))
+        fv = float(val or 0)
+        if fv == 0:
+            continue
+        row = zpay(label, fv)
         sales_text.append([row[0], row[1]])
         sales_kinds.append((row[2], row[3]))
 
@@ -396,7 +397,7 @@ def _build_sheet_style_tables(
     )
 
 
-def _short_outlet_name(name: str, max_len: int = 11) -> str:
+def _short_outlet_name(name: str, max_len: int = 16) -> str:
     name = (name or "").strip()
     if len(name) <= max_len:
         return name
@@ -445,19 +446,15 @@ def _build_sheet_style_tables_multi(
     rs.append(["Payment mode"] + names + ["Combined"])
     rk.append(tuple(["hdr"] * ncols))
 
-    row_hdr_teal(["Food vs Bar"] + ["—"] * (n + 1))
-    covs = [int(o.get("covers") or 0) for o in ovs]
-    row_hdr_teal(
-        ["Covers"]
-        + [f"{x:,}" for x in covs]
-        + [f"{int(c.get('covers') or 0):,}"]
+    cov_turn_row = ["Covers / turns"]
+    for o in ovs:
+        ci = int(o.get("covers") or 0)
+        ti = float(o.get("turns") or 0)
+        cov_turn_row.append(f"{ci:,} · {ti:.1f}")
+    cov_turn_row.append(
+        f"{int(c.get('covers') or 0):,} · {float(c.get('turns') or 0):.1f}"
     )
-    turns = [float(o.get("turns") or 0) for o in ovs]
-    row_hdr_teal(
-        ["Turns"]
-        + [f"{t:.1f}" for t in turns]
-        + [f"{float(c.get('turns') or 0):.1f}"]
-    )
+    row_hdr_teal(cov_turn_row)
 
     pay_keys = [
         ("Cash Sales", "cash_sales"),
@@ -475,6 +472,8 @@ def _build_sheet_style_tables_multi(
             vals = [0.0] * n + [0.0]
         else:
             vals = [float(o.get(key) or 0) for o in ovs] + [float(c.get(key) or 0)]
+        if all(float(v or 0) == 0 for v in vals):
+            continue
         cells = [label] + [_rupee(v) for v in vals]
         rs.append(cells)
         rk.append(("white",) + _pay_kinds(vals))
