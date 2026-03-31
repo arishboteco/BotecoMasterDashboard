@@ -1,4 +1,5 @@
 """Parse customer_report.xlsx for outlet-specific cover counts (replaces POS-derived covers)."""
+
 from __future__ import annotations
 
 import re
@@ -20,7 +21,52 @@ def _norm(s: Any) -> str:
     return re.sub(r"\s+", " ", str(s).strip().lower())
 
 
-def _match_location_id(outlet_raw: Any, locations: List[Dict[str, Any]]) -> Optional[int]:
+def _col_idx(colmap: Dict[str, int], *needles: str) -> Optional[int]:
+    """Find column index by keyword(s) with fuzzy matching."""
+    if not needles:
+        return None
+
+    # First try: all needles must be present in key
+    for key, idx in colmap.items():
+        if all(n in key for n in needles):
+            return idx
+
+    # Second try: any needle matches (substring search)
+    for key, idx in colmap.items():
+        if any(n in key for n in needles):
+            return idx
+
+    # Third try: check for common variations
+    variations = {
+        "cover": [
+            "covers",
+            "pax",
+            "guests",
+            "footfall",
+            "headcount",
+            "head count",
+            "diners",
+            "patrons",
+        ],
+        "date": ["day", "booking date", "visit date"],
+        "outlet": ["location", "branch", "store", "restaurant", "unit", "site"],
+        "lunch": ["lunch covers", "lunch pax", "afternoon"],
+        "dinner": ["dinner covers", "dinner pax", "evening"],
+    }
+
+    for needle in needles:
+        if needle in variations:
+            for variant in variations[needle]:
+                for key, idx in colmap.items():
+                    if variant in key:
+                        return idx
+
+    return None
+
+
+def _match_location_id(
+    outlet_raw: Any, locations: List[Dict[str, Any]]
+) -> Optional[int]:
     o = _norm(outlet_raw)
     if not o:
         return None
@@ -69,16 +115,6 @@ def _header_row_and_map(df: pd.DataFrame) -> Optional[Tuple[int, Dict[str, int]]
     return None
 
 
-def _col_idx(colmap: Dict[str, int], *needles: str) -> Optional[int]:
-    for key, idx in colmap.items():
-        if all(n in key for n in needles):
-            return idx
-    for key, idx in colmap.items():
-        if any(n in key for n in needles):
-            return idx
-    return None
-
-
 def _parse_sheet(
     df: pd.DataFrame,
     locations: List[Dict[str, Any]],
@@ -96,7 +132,9 @@ def _parse_sheet(
         idx_covers = _col_idx(colmap, "footfall")
     idx_lunch = _col_idx(colmap, "lunch")
     idx_dinner = _col_idx(colmap, "dinner")
-    if idx_date is None or (idx_covers is None and idx_lunch is None and idx_dinner is None):
+    if idx_date is None or (
+        idx_covers is None and idx_lunch is None and idx_dinner is None
+    ):
         return out
 
     hint_id = _match_location_id(sheet_name_hint, locations)
@@ -156,7 +194,7 @@ def _parse_sheet(
 
 
 def build_covers_lookup(
-    content: bytes, locations: List[Dict[str, Any]]
+    content: bytes, locations: List[Dict[str, Any]], debug: bool = False
 ) -> Tuple[LookupMap, List[str]]:
     """Parse workbook; returns (location_id, date) -> cover fields and notes."""
     notes: List[str] = []
@@ -173,6 +211,8 @@ def build_covers_lookup(
             return {}, notes
 
     combined: LookupMap = {}
+    total_rows_found = 0
+
     for sheet_name in xl.sheet_names:
         try:
             bio.seek(0)
@@ -188,13 +228,53 @@ def build_covers_lookup(
                 continue
         if df is None or df.empty:
             continue
+
+        # Debug: Show first few rows to help diagnose issues
+        if debug:
+            notes.append(f"Sheet '{sheet_name}': {len(df)} rows, first 3 rows preview:")
+            for i in range(min(3, len(df))):
+                row_vals = [
+                    str(v) if pd.notna(v) else "" for v in df.iloc[i].values[:5]
+                ]
+                notes.append(f"  Row {i}: {row_vals}")
+
         part = _parse_sheet(df, locations, sheet_name)
+
+        if debug and not part:
+            # Debug: Try to detect what went wrong
+            hm = _header_row_and_map(df)
+            if not hm:
+                notes.append(
+                    f"Sheet '{sheet_name}': No header row found (need 'date' + 'cover/footfall/pax/lunch/dinner')"
+                )
+            else:
+                header_idx, colmap = hm
+                notes.append(
+                    f"Sheet '{sheet_name}': Header at row {header_idx}, columns: {list(colmap.keys())[:10]}..."
+                )
+                idx_date = (
+                    colmap.get("date") if "date" in colmap else _col_idx(colmap, "date")
+                )
+                idx_covers = _col_idx(colmap, "cover") or _col_idx(colmap, "footfall")
+                idx_lunch = _col_idx(colmap, "lunch")
+                idx_dinner = _col_idx(colmap, "dinner")
+                notes.append(
+                    f"  Detected: date={idx_date}, covers={idx_covers}, lunch={idx_lunch}, dinner={idx_dinner}"
+                )
+        elif part:
+            total_rows_found += len(part)
+            if debug:
+                notes.append(f"Sheet '{sheet_name}': Found {len(part)} cover entries")
+
         combined.update(part)
 
     if not combined:
         notes.append(
             "No cover rows found — expected columns like Date and Covers (or Lunch/Dinner)."
         )
+    elif debug:
+        notes.append(f"Total: Found {total_rows_found} cover entries across all sheets")
+
     return combined, notes
 
 
@@ -217,11 +297,13 @@ def apply_covers_overlay(
     return out
 
 
-def load_lookup_from_path(path: str, locations: List[Dict[str, Any]]) -> Tuple[LookupMap, List[str]]:
+def load_lookup_from_path(
+    path: str, locations: List[Dict[str, Any]], debug: bool = False
+) -> Tuple[LookupMap, List[str]]:
     if not path or not path.strip():
         return {}, ["Customer report path is not set."]
     try:
         with open(path, "rb") as f:
-            return build_covers_lookup(f.read(), locations)
+            return build_covers_lookup(f.read(), locations, debug=debug)
     except OSError as ex:
         return {}, [f"Cannot read customer report file: {ex}"]

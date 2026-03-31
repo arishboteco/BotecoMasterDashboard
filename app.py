@@ -442,6 +442,13 @@ else:
                 help="Overrides the configured path for cover counts.",
                 key="customer_report_upload_sync",
             )
+            # Debug mode toggle for troubleshooting
+            debug_covers = st.checkbox(
+                "Enable debug logging",
+                value=False,
+                key="debug_covers_sync",
+                help="Show detailed parsing information for troubleshooting",
+            )
             if cr_path_sync:
                 st.caption(f"Configured customer report path: `{cr_path_sync}`")
             if st.button(
@@ -454,11 +461,13 @@ else:
                 notes2: list = []
                 if cr_path_sync:
                     cr_lookup2, notes2 = customer_report_parser.load_lookup_from_path(
-                        cr_path_sync, locs_for_cr2
+                        cr_path_sync, locs_for_cr2, debug=debug_covers
                     )
                 if customer_report_upload_sync is not None:
                     up2, n2 = customer_report_parser.build_covers_lookup(
-                        customer_report_upload_sync.getvalue(), locs_for_cr2
+                        customer_report_upload_sync.getvalue(),
+                        locs_for_cr2,
+                        debug=debug_covers,
                     )
                     cr_lookup2 = {**cr_lookup2, **up2}
                     notes2.extend(n2)
