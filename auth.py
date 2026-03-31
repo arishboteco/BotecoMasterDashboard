@@ -30,9 +30,10 @@ def show_login_form():
             max-width: 400px;
             margin: 100px auto;
             padding: 2rem;
-            background: #f8f9fa;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            background: #fffafb;
+            border-radius: 12px;
+            border: 1px solid #f5c6cb;
+            box-shadow: 0 4px 12px rgba(233, 69, 96, 0.12);
         }
         .stButton > button {
             width: 100%;
@@ -189,10 +190,12 @@ def require_auth():
 def render_auth_sidebar():
     """Render authentication info in sidebar."""
     with st.sidebar:
-        st.markdown("### 👤 User Info")
+        st.markdown("### 👤 Account")
         st.write(f"**Logged in as:** {st.session_state.username}")
         st.write(f"**Role:** {st.session_state.user_role}")
         st.write(f"**Assigned location:** {st.session_state.location_name}")
+        st.divider()
+        st.caption("Reports")
         locs = database.get_all_locations()
         if is_admin() and len(locs) > 1:
             options = ["all"] + [str(l["id"]) for l in sorted(locs, key=lambda x: x["name"])]
@@ -220,7 +223,7 @@ def render_auth_sidebar():
             st.session_state.view_scope = choice
         else:
             st.session_state.view_scope = str(st.session_state.location_id)
-        st.markdown("---")
+        st.divider()
         if st.button("🚪 Logout"):
             logout()
 

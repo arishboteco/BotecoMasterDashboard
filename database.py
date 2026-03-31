@@ -433,6 +433,45 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
     return summary_id
 
 
+def peek_daily_net_sales(location_id: int, date: str) -> Optional[float]:
+    """Return saved net_total for a day if a row exists (lightweight; no categories)."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT net_total FROM daily_summaries
+        WHERE location_id = ? AND date = ?
+        """,
+        (location_id, date),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return float(row["net_total"] or 0)
+
+
+def delete_daily_summary_for_location_date(location_id: int, date: str) -> bool:
+    """Remove one day's summary and its category/service rows. Leaves upload_history for audit."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id FROM daily_summaries WHERE location_id = ? AND date = ?",
+        (location_id, date),
+    )
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return False
+    summary_id = row["id"]
+    cursor.execute("DELETE FROM category_sales WHERE summary_id = ?", (summary_id,))
+    cursor.execute("DELETE FROM service_sales WHERE summary_id = ?", (summary_id,))
+    cursor.execute("DELETE FROM daily_summaries WHERE id = ?", (summary_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+
 def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
     """Get daily summary for a specific date."""
     conn = get_connection()
