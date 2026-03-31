@@ -1,43 +1,67 @@
-import matplotlib.pyplot as plt
+"""
+Boteco EOD Report — PNG image generator and WhatsApp text formatter.
+
+Design language:
+  - Coral brand accent  (#e94560)
+  - Dark navy header    (#0f172a)
+  - Slate body text     (#1e293b)
+  - Light slate muted   (#64748b)
+  - Off-white page bg   (#f8fafc)
+  - White card bg       (#ffffff)
+  - Subtle border       (#e2e8f0)
+  - Green positive      (#16a34a)
+  - Amber warning       (#d97706)
+
+The composite PNG is built with matplotlib drawing primitives
+(patches + text), not tables, so every element can be positioned
+and styled independently.
+"""
+
+import math
 from io import BytesIO
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple, NamedTuple, Any
+from typing import Any, Dict, List, Optional, Tuple
+
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.patches import FancyBboxPatch
+
 import config
 
-# Modern report palette (aligned with dashboard coral; calm neutrals)
-CLR_BG_PAGE = "#f1f5f9"
-CLR_HEADER = "#0f172a"
-CLR_HEADER_TEXT = "#ffffff"
-CLR_BAND = "#e2e8f0"
-CLR_ROW = "#ffffff"
-CLR_ZERO = "#f8fafc"
-CLR_ZERO_TEXT = "#64748b"
-CLR_ACCENT_SOFT = "#fff1f2"
-CLR_FOOTER_DARK = "#1e293b"
-CLR_FOOTER_TEXT = "#f8fafc"
-CLR_BORDER = "#e2e8f0"
-CLR_TEXT = "#0f172a"
-CLR_TEXT_MUTED = "#475569"
+# ── Palette ──────────────────────────────────────────────────────────────────
+C_PAGE = "#f8fafc"
+C_CARD = "#ffffff"
+C_BRAND = "#e94560"  # Boteco coral
+C_BRAND_DARK = "#c73652"
+C_NAVY = "#0f172a"
+C_SLATE = "#1e293b"
+C_MUTED = "#64748b"
+C_BORDER = "#e2e8f0"
+C_BAND = "#f1f5f9"
+C_GREEN = "#16a34a"
+C_AMBER = "#d97706"
+C_RED = "#dc2626"
+C_WHITE = "#ffffff"
 
-FONT_SANS = "DejaVu Sans"
-
-# Composite layout: clearer gaps between the four blocks
-_COMPOSITE_HSPACE = 0.52
-_COMPOSITE_PAD_INCHES = 0.32
-CELL_LW = 0.35
+FONT = "DejaVu Sans"
+DPI = 150
 
 
-def _rupee(n: float) -> str:
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+def _r(n) -> str:
+    """Format as ₹ with Indian comma grouping."""
     if n is None:
         n = 0.0
     n = float(n)
-    if abs(n - round(n)) < 0.01:
-        return f"₹{int(round(n)):,}"
-    return f"₹{n:,.2f}"
+    if abs(n - round(n)) < 0.005:
+        return f"\u20b9{int(round(n)):,}"
+    return f"\u20b9{n:,.2f}"
 
 
-def _pct(n: float) -> str:
-    return f"{n:.2f}%"
+def _pct(n) -> str:
+    return f"{float(n or 0):.1f}%"
 
 
 def _sheet_date_label(iso_date: str) -> str:
@@ -48,329 +72,691 @@ def _sheet_date_label(iso_date: str) -> str:
     return f"{dt.strftime('%a')}, {dt.day} {dt.strftime('%b %Y')}"
 
 
-def _style_table(tbl, fontsize: float = 8.25) -> None:
-    tbl.auto_set_font_size(False)
-    tbl.set_fontsize(fontsize)
-    for cell in tbl.get_celld().values():
-        cell.set_text_props(fontfamily=FONT_SANS)
-    tbl.scale(1, 1.88)
+def _achievement_color(pct: float) -> str:
+    if pct >= 100:
+        return C_GREEN
+    if pct >= 80:
+        return C_AMBER
+    return C_RED
 
 
-def generate_whatsapp_text(
-    report_data: Dict,
-    location_name: str = "Boteco Bangalore",
-    per_outlet: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
-) -> str:
-    """Generate WhatsApp formatted text report."""
-
-    date_str = report_data.get("date", datetime.now().strftime("%d-%b-%Y"))
-
-    # Calculate payment breakdown percentages
-    net_total = report_data.get("net_total", 0)
-    cash_pct = (
-        (report_data.get("cash_sales", 0) / net_total * 100) if net_total > 0 else 0
+def _save_fig(fig) -> BytesIO:
+    buf = BytesIO()
+    fig.savefig(
+        buf,
+        format="png",
+        dpi=DPI,
+        bbox_inches="tight",
+        pad_inches=0.18,
+        facecolor=fig.get_facecolor(),
     )
-    card_pct = (
-        (report_data.get("card_sales", 0) / net_total * 100) if net_total > 0 else 0
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+# ── Drawing primitives ────────────────────────────────────────────────────────
+
+
+def _card(ax, x, y, w, h, radius=0.012, color=C_CARD, border=C_BORDER, lw=0.8):
+    """Draw a rounded-corner card."""
+    patch = FancyBboxPatch(
+        (x, y),
+        w,
+        h,
+        boxstyle=f"round,pad=0,rounding_size={radius}",
+        linewidth=lw,
+        edgecolor=border,
+        facecolor=color,
+        transform=ax.transData,
+        clip_on=False,
+        zorder=2,
     )
-    gpay_pct = (
-        (report_data.get("gpay_sales", 0) / net_total * 100) if net_total > 0 else 0
+    ax.add_patch(patch)
+
+
+def _hbar(ax, x, y, w, h=0.006, color=C_BRAND):
+    """Draw a solid horizontal rule / accent bar."""
+    patch = mpatches.Rectangle(
+        (x, y),
+        w,
+        h,
+        linewidth=0,
+        facecolor=color,
+        transform=ax.transData,
+        clip_on=False,
+        zorder=3,
     )
-    zomato_pct = (
-        (report_data.get("zomato_sales", 0) / net_total * 100) if net_total > 0 else 0
+    ax.add_patch(patch)
+
+
+def _label(
+    ax,
+    x,
+    y,
+    text,
+    size=7.5,
+    color=C_SLATE,
+    weight="normal",
+    ha="left",
+    va="top",
+    zorder=4,
+):
+    ax.text(
+        x,
+        y,
+        text,
+        fontsize=size,
+        color=color,
+        fontfamily=FONT,
+        fontweight=weight,
+        ha=ha,
+        va=va,
+        zorder=zorder,
+        clip_on=False,
     )
 
-    # Status emoji
-    pct_target = report_data.get("pct_target", 0)
-    if pct_target >= 100:
-        status_emoji = "✅"
-        status_text = "Target Achieved!"
-    elif pct_target >= 90:
-        status_emoji = "⚠️"
-        status_text = "Almost There"
-    else:
-        status_emoji = "🔴"
-        status_text = "Below Target"
 
-    # Category breakdown
-    categories = report_data.get("categories", [])
-    category_text = ""
-    if categories:
-        for cat in categories:
-            cat_total = sum(c.get("amount", 0) for c in categories)
-            cat_pct = (cat.get("amount", 0) / cat_total * 100) if cat_total > 0 else 0
-            amount_str = config.CURRENCY_FORMAT.format(cat.get("amount", 0))
-            category_text += (
-                f"• {cat.get('category', 'N/A')}: {cat_pct:.0f}% ({amount_str})\n"
-            )
-    else:
-        category_text = "• Data not available\n"
+def _divider(ax, x, y, w, color=C_BORDER, lw=0.5):
+    ax.plot(
+        [x, x + w],
+        [y, y],
+        color=color,
+        linewidth=lw,
+        transform=ax.transData,
+        clip_on=False,
+        zorder=3,
+    )
 
-    # Build report
-    report = f"""
-━━━━━━━━━━━━━━━━━━━━━━
-🥂 {location_name.upper()}
-📅 End of Day Report
-📆 {date_str}
-━━━━━━━━━━━━━━━━━━━━━━
 
-💰 SALES SUMMARY
-• Gross Total: {config.CURRENCY_FORMAT.format(report_data.get("gross_total", 0))}
-• Net Total: {config.CURRENCY_FORMAT.format(net_total)}
-• Covers: {report_data.get("covers", 0)} | Turns: {report_data.get("turns", 0):.1f}
-• APC: {config.CURRENCY_FORMAT.format(report_data.get("apc", 0))}
+# ── KPI tile ──────────────────────────────────────────────────────────────────
 
-💳 PAYMENT BREAKDOWN
-• Cash: {config.CURRENCY_FORMAT.format(report_data.get("cash_sales", 0))} ({cash_pct:.0f}%)
-• GPay: {config.CURRENCY_FORMAT.format(report_data.get("gpay_sales", 0))} ({gpay_pct:.0f}%)
-• Zomato: {config.CURRENCY_FORMAT.format(report_data.get("zomato_sales", 0))} ({zomato_pct:.0f}%)
-• Card: {config.CURRENCY_FORMAT.format(report_data.get("card_sales", 0))} ({card_pct:.0f}%)
 
-📊 VS TARGET
-• Target: {config.CURRENCY_FORMAT.format(report_data.get("target", 0))}
-• Achievement: {pct_target:.1f}%
-{status_emoji} Status: {status_text}
+def _kpi_tile(ax, x, y, w, h, label, value, sub=None, accent_color=C_BRAND):
+    """A single KPI card: accent top bar → label → big value → optional sub."""
+    _card(ax, x, y, w, h)
+    _hbar(ax, x, y + h - 0.006, w, color=accent_color)
+    _label(ax, x + 0.012, y + h - 0.024, label, size=6.8, color=C_MUTED)
+    _label(ax, x + 0.012, y + h - 0.058, value, size=12.5, color=C_SLATE, weight="bold")
+    if sub:
+        _label(ax, x + 0.012, y + 0.018, sub, size=6.5, color=C_MUTED)
 
-🍽️ CATEGORY MIX
-{category_text}👥 MTD SUMMARY
-• Total Covers: {report_data.get("mtd_total_covers", 0):,}
-• Net Sales: {config.CURRENCY_FORMAT.format(report_data.get("mtd_net_sales", 0))}
-• Avg Daily: {config.CURRENCY_FORMAT.format(report_data.get("mtd_avg_daily", 0))}
-• % of Target: {report_data.get("mtd_pct_target", 0):.1f}%
-"""
 
-    if per_outlet and len(per_outlet) >= 2:
-        po_lines = "\n".join(
-            f"• {nm}: Net {config.CURRENCY_FORMAT.format(d.get('net_total', 0))} | "
-            f"Covers {int(d.get('covers') or 0):,}"
-            for nm, d in per_outlet
+# ── Table row helpers ─────────────────────────────────────────────────────────
+
+
+def _table_header_row(ax, x, y, cols, widths, row_h=0.032, bg=C_NAVY):
+    """Dark header row for a data table."""
+    total_w = sum(widths)
+    patch = mpatches.Rectangle(
+        (x, y),
+        total_w,
+        row_h,
+        linewidth=0,
+        facecolor=bg,
+        transform=ax.transData,
+        clip_on=False,
+        zorder=2,
+    )
+    ax.add_patch(patch)
+    cx = x
+    for i, (col, cw) in enumerate(zip(cols, widths)):
+        ha = "left" if i == 0 else "right"
+        px = cx + 0.008 if ha == "left" else cx + cw - 0.008
+        _label(
+            ax,
+            px,
+            y + row_h - 0.008,
+            col,
+            size=6.8,
+            color=C_WHITE,
+            weight="bold",
+            ha=ha,
         )
-        report += f"""
-🏪 PER OUTLET
-{po_lines}
-"""
-
-    report += "━━━━━━━━━━━━━━━━━━━━━━"
-
-    return report.strip()
+        cx += cw
 
 
-def _cell_kind_bg(kind: str) -> str:
-    if kind == "hdr":
-        return CLR_HEADER
-    if kind == "teal":
-        return CLR_BAND
-    if kind == "tan":
-        return CLR_ACCENT_SOFT
-    if kind == "pink":
-        return CLR_ZERO
-    if kind == "dk":
-        return CLR_FOOTER_DARK
-    return CLR_ROW
+def _table_data_row(
+    ax,
+    x,
+    y,
+    cells,
+    widths,
+    row_h=0.028,
+    bg=C_CARD,
+    alt_bg=C_BAND,
+    is_alt=False,
+    bold=False,
+    text_color=C_SLATE,
+    right_color=None,
+):
+    """One data row — alternating band if is_alt."""
+    total_w = sum(widths)
+    fill = alt_bg if is_alt else bg
+    patch = mpatches.Rectangle(
+        (x, y),
+        total_w,
+        row_h,
+        linewidth=0,
+        facecolor=fill,
+        transform=ax.transData,
+        clip_on=False,
+        zorder=2,
+    )
+    ax.add_patch(patch)
+    cx = x
+    for i, (cell, cw) in enumerate(zip(cells, widths)):
+        ha = "left" if i == 0 else "right"
+        px = cx + 0.008 if ha == "left" else cx + cw - 0.008
+        rc = right_color if (i > 0 and right_color) else text_color
+        _label(
+            ax,
+            px,
+            y + row_h - 0.009,
+            str(cell),
+            size=7.2,
+            color=rc,
+            weight="bold" if bold else "normal",
+            ha=ha,
+        )
+        cx += cw
 
 
-def _fg_for_bg(bg: str) -> str:
-    if bg == CLR_HEADER:
-        return CLR_HEADER_TEXT
-    if bg == CLR_FOOTER_DARK:
-        return CLR_FOOTER_TEXT
-    if bg == CLR_ZERO:
-        return CLR_ZERO_TEXT
-    return CLR_TEXT
+def _table_section_label(ax, x, y, text, w, row_h=0.026, color=C_BRAND):
+    """A full-width accent-coloured section label inside a table."""
+    patch = mpatches.Rectangle(
+        (x, y),
+        w,
+        row_h,
+        linewidth=0,
+        facecolor=color + "18",  # ~10% alpha via hex
+        transform=ax.transData,
+        clip_on=False,
+        zorder=2,
+    )
+    ax.add_patch(patch)
+    _hbar(ax, x, y, 0.004, row_h, color=color)
+    _label(ax, x + 0.012, y + row_h - 0.009, text, size=6.8, color=color, weight="bold")
 
 
-def _apply_cell_frame(cell) -> None:
-    cell.set_edgecolor(CLR_BORDER)
-    cell.set_linewidth(CELL_LW)
+# ══════════════════════════════════════════════════════════════════════════════
+# Section builders
+# ══════════════════════════════════════════════════════════════════════════════
 
 
-class SheetStyleTables(NamedTuple):
-    sales_text: List[List[str]]
-    sales_kinds: List[Tuple[str, ...]]
-    cat_text: List[List[str]]
-    cat_rows_kinds: List[Tuple[str, str, str]]
-    svc_text: List[List[str]]
-    svc_rows_kinds: List[Tuple[str, str, str]]
-    ft_text: List[List[str]]
-    ft_kinds: List[Tuple[str, str, str, str]]
+def _section_sales_summary(
+    ax, r: Dict, location_name: str, per_outlet: Optional[List[Tuple[str, Dict]]] = None
+) -> None:
+    """
+    Top section: header banner → 4 KPI tiles → payment + tax table → MTD block.
+    """
+    ax.set_xlim(0, 1)
+    ax.axis("off")
 
-
-def _build_sheet_style_tables(
-    report_data: Dict,
-    location_name: str,
-    mtd_category: Dict[str, float],
-    mtd_service: Dict[str, float],
-    month_footfall_rows: List[Dict],
-) -> SheetStyleTables:
-    mtd_category = dict(mtd_category or {})
-    mtd_service = dict(mtd_service or {})
-    month_footfall_rows = list(month_footfall_rows or [])
-
-    iso = str(report_data.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]
+    iso = str(r.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]
     day_lbl = _sheet_date_label(iso)
-    r = report_data
+    pct_tgt = float(r.get("pct_target") or 0)
+    ach_color = _achievement_color(pct_tgt)
 
-    def zpay(label: str, val: float) -> Tuple[str, str, str, str]:
-        v = float(val or 0)
-        kind_r = "pink" if v == 0 else "white"
-        kind_l = "pink" if v == 0 else "white"
-        return (label, _rupee(v), kind_l, kind_r)
+    # ── Header banner ────────────────────────────────────────────────────
+    banner_h = 0.092
+    banner_y = 0.91
+    _card(ax, 0, banner_y, 1.0, banner_h, color=C_NAVY, border=C_NAVY)
+    _hbar(ax, 0, banner_y, 1.0, h=0.005, color=C_BRAND)
+    _label(
+        ax,
+        0.016,
+        banner_y + banner_h - 0.018,
+        location_name.upper(),
+        size=9.5,
+        color=C_WHITE,
+        weight="bold",
+    )
+    _label(
+        ax,
+        0.016,
+        banner_y + banner_h - 0.048,
+        "END OF DAY REPORT",
+        size=7.0,
+        color=C_BRAND,
+    )
+    _label(ax, 0.016, banner_y + banner_h - 0.072, day_lbl, size=7.2, color="#94a3b8")
+    # Achievement pill on the right
+    _label(
+        ax,
+        0.984,
+        banner_y + banner_h - 0.030,
+        f"{pct_tgt:.1f}% of target",
+        size=8.5,
+        color=ach_color,
+        weight="bold",
+        ha="right",
+    )
+    _label(
+        ax,
+        0.984,
+        banner_y + banner_h - 0.058,
+        _r(r.get("net_total", 0)) + " net",
+        size=7.5,
+        color=C_WHITE,
+        ha="right",
+    )
 
-    sales_text: List[List[str]] = []
-    sales_kinds: List[Tuple[str, str]] = []
+    # ── 4 KPI tiles ──────────────────────────────────────────────────────
+    kpi_y = 0.78
+    kpi_h = 0.10
+    tile_gap = 0.010
+    tile_w = (1.0 - 3 * tile_gap) / 4
+    kpis = [
+        (
+            "Net Sales",
+            _r(r.get("net_total", 0)),
+            f"Gross {_r(r.get('gross_total', 0))}",
+            C_BRAND,
+        ),
+        (
+            "Covers",
+            f"{int(r.get('covers') or 0):,}",
+            f"Turns {float(r.get('turns') or 0):.1f}x",
+            C_SLATE,
+        ),
+        ("APC", _r(r.get("apc", 0)), "per cover", C_SLATE),
+        ("vs Target", _pct(pct_tgt), _r(r.get("target", 0)) + " target", ach_color),
+    ]
+    for i, (lbl, val, sub, accent) in enumerate(kpis):
+        tx = i * (tile_w + tile_gap)
+        _kpi_tile(ax, tx, kpi_y, tile_w, kpi_h, lbl, val, sub, accent_color=accent)
 
-    sales_text.append([day_lbl, "Sales Summary"])
-    sales_kinds.append(("hdr", "hdr"))
-    sales_text.append(["Payment Mode", location_name[:20]])
-    sales_kinds.append(("hdr", "hdr"))
-    _cov = int(r.get("covers") or 0)
-    _turn = float(r.get("turns") or 0)
-    sales_text.append(["Covers / turns", f"{_cov:,} · {_turn:.1f}"])
-    sales_kinds.append(("teal", "teal"))
+    # ── Per-outlet mini-row (multi-outlet only) ───────────────────────────
+    table_top = kpi_y - 0.018
+    if per_outlet and len(per_outlet) >= 2:
+        row_h = 0.028
+        _hbar(ax, 0, table_top - 0.002, 1.0, h=0.001, color=C_BORDER)
+        ox = 0.0
+        col_w_each = 1.0 / len(per_outlet)
+        for nm, od in per_outlet:
+            _label(
+                ax,
+                ox + 0.010,
+                table_top - 0.004,
+                _short_outlet_name(nm),
+                size=6.5,
+                color=C_MUTED,
+                weight="bold",
+            )
+            _label(
+                ax,
+                ox + 0.010,
+                table_top - 0.022,
+                f"{_r(od.get('net_total', 0))}  ·  {int(od.get('covers') or 0):,} cvr",
+                size=7.0,
+                color=C_SLATE,
+            )
+            ox += col_w_each
+        table_top -= row_h * 2.2
 
-    for label, val in [
-        ("Cash Sales", r.get("cash_sales", 0)),
-        ("Gpay", r.get("gpay_sales", 0)),
-        ("Zomato Gold", r.get("zomato_sales", 0)),
-        ("Bill On Hold", 0),
-        ("Credit Card Sales", r.get("card_sales", 0)),
-        ("AMEX Sales", 0),
-        ("Coupon Sale", 0),
-        ("Online Bank Transfer", 0),
+    # ── Payment + tax table ───────────────────────────────────────────────
+    tbl_x = 0.0
+    tbl_w = 1.0
+    col_w = [0.55, 0.45]
+    row_h = 0.028
+
+    pay_rows = [
+        ("Cash", r.get("cash_sales", 0)),
+        ("GPay", r.get("gpay_sales", 0)),
+        ("Zomato", r.get("zomato_sales", 0)),
+        ("Card", r.get("card_sales", 0)),
         ("Other / Wallet", r.get("other_sales", 0)),
-    ]:
-        fv = float(val or 0)
-        if fv == 0:
-            continue
-        row = zpay(label, fv)
-        sales_text.append([row[0], row[1]])
-        sales_kinds.append((row[2], row[3]))
+    ]
+    pay_rows = [(lbl, v) for lbl, v in pay_rows if float(v or 0) != 0]
 
-    sales_text.append(["EOD Gross Total", _rupee(r.get("gross_total", 0))])
-    sales_kinds.append(("tan", "tan"))
-    sales_text.append(["CGST@2.5%", _rupee(r.get("cgst", 0))])
-    sales_kinds.append(("teal", "teal"))
-    sales_text.append(["SGST@2.5%", _rupee(r.get("sgst", 0))])
-    sales_kinds.append(("teal", "teal"))
-    sales_text.append(["Service Charge@10%", _rupee(r.get("service_charge", 0))])
-    sales_kinds.append(("teal", "teal"))
-    sales_text.append(["Discount", _rupee(r.get("discount", 0))])
-    d0 = float(r.get("discount") or 0)
-    sales_kinds.append(("pink", "pink") if d0 == 0 else ("white", "white"))
-    sales_text.append(["EOD Net Total", _rupee(r.get("net_total", 0))])
-    sales_kinds.append(("tan", "tan"))
+    tax_rows = [
+        ("CGST @ 2.5%", r.get("cgst", 0)),
+        ("SGST @ 2.5%", r.get("sgst", 0)),
+        ("Service Charge", r.get("service_charge", 0)),
+        ("Discount", r.get("discount", 0)),
+        ("Complimentary", r.get("complimentary", 0)),
+    ]
+    tax_rows = [(lbl, v) for lbl, v in tax_rows if float(v or 0) != 0]
 
+    cur_y = table_top
+    _table_header_row(ax, tbl_x, cur_y - row_h, ["Payment", "Amount"], col_w, row_h)
+    cur_y -= row_h
+
+    for idx, (lbl, val) in enumerate(pay_rows):
+        cur_y -= row_h
+        _table_data_row(
+            ax, tbl_x, cur_y, [lbl, _r(val)], col_w, row_h=row_h, is_alt=(idx % 2 == 1)
+        )
+
+    if tax_rows:
+        cur_y -= row_h * 0.4
+        _table_section_label(
+            ax,
+            tbl_x,
+            cur_y - row_h * 0.85,
+            "Tax & Adjustments",
+            tbl_w,
+            row_h=row_h * 0.85,
+        )
+        cur_y -= row_h * 0.85
+        for idx, (lbl, val) in enumerate(tax_rows):
+            cur_y -= row_h
+            disc_color = C_RED if lbl == "Discount" else None
+            _table_data_row(
+                ax,
+                tbl_x,
+                cur_y,
+                [lbl, _r(val)],
+                col_w,
+                row_h=row_h,
+                is_alt=(idx % 2 == 1),
+                right_color=disc_color,
+            )
+
+    # EOD Net Total highlight row
+    cur_y -= row_h * 0.3
+    net_y = cur_y - row_h * 1.1
+    patch = mpatches.Rectangle(
+        (tbl_x, net_y),
+        tbl_w,
+        row_h * 1.1,
+        linewidth=0,
+        facecolor=C_NAVY,
+        transform=ax.transData,
+        clip_on=False,
+        zorder=2,
+    )
+    ax.add_patch(patch)
+    _label(
+        ax,
+        tbl_x + 0.010,
+        net_y + row_h * 1.1 - 0.012,
+        "EOD Net Total",
+        size=7.8,
+        color=C_WHITE,
+        weight="bold",
+    )
+    _label(
+        ax,
+        tbl_x + tbl_w - 0.010,
+        net_y + row_h * 1.1 - 0.012,
+        _r(r.get("net_total", 0)),
+        size=7.8,
+        color=C_BRAND,
+        weight="bold",
+        ha="right",
+    )
+    cur_y = net_y
+
+    # ── MTD block ────────────────────────────────────────────────────────
+    mtd_y = cur_y - 0.032
     mtd_cov = int(r.get("mtd_total_covers") or 0)
     mtd_net = float(r.get("mtd_net_sales") or 0)
-    apc_m = (mtd_net / mtd_cov) if mtd_cov > 0 else 0.0
-    sales_text.append(["MTD Total Covers", f"{mtd_cov:,}"])
-    sales_kinds.append(("teal", "teal"))
-    sales_text.append(["APC For The Day", _rupee(r.get("apc", 0))])
-    sales_kinds.append(("teal", "teal"))
-    sales_text.append(["APC For The Month", _rupee(apc_m)])
-    sales_kinds.append(("teal", "teal"))
-    sales_text.append(["Complimentary", _rupee(r.get("complimentary", 0))])
-    cq = float(r.get("complimentary") or 0)
-    sales_kinds.append(("pink", "pink") if cq == 0 else ("tan", "tan"))
-    sales_text.append(["Daily Avg. Net Sales", _rupee(r.get("mtd_avg_daily", 0))])
-    sales_kinds.append(("tan", "tan"))
-    sales_text.append(["MTD Net Sales", _rupee(mtd_net)])
-    sales_kinds.append(("dk", "dk"))
-    sales_text.append(["MTD Discount", _rupee(r.get("mtd_discount", 0))])
-    sales_kinds.append(("dk", "dk"))
+    mtd_avg = float(r.get("mtd_avg_daily") or 0)
     mtd_tgt = float(r.get("mtd_target") or config.MONTHLY_TARGET)
-    sales_text.append(["Sales Target (month)", _rupee(mtd_tgt)])
-    sales_kinds.append(("teal", "teal"))
-    sales_text.append(
-        ["Percentage of Target (MTD)", _pct(float(r.get("mtd_pct_target") or 0))]
-    )
-    sales_kinds.append(("dk", "dk"))
+    mtd_pct = float(r.get("mtd_pct_target") or 0)
+    apc_day = float(r.get("apc") or 0)
+    apc_mtd = (mtd_net / mtd_cov) if mtd_cov > 0 else 0.0
+    mtd_ach_color = _achievement_color(mtd_pct)
 
-    total_cat_mtd = sum(mtd_category.values()) or 1.0
-    std_cats = [
-        "Food",
-        "Liquor",
-        "Beer",
-        "Soft Beverages",
-        "Coffee",
-        "Tobacco",
+    _table_header_row(ax, tbl_x, mtd_y - row_h, ["MTD Summary", ""], col_w, row_h)
+    mtd_rows_data = [
+        ("MTD Net Sales", _r(mtd_net)),
+        ("MTD Total Covers", f"{mtd_cov:,}"),
+        ("Avg Daily Sales", _r(mtd_avg)),
+        ("APC (Day / Month)", f"{_r(apc_day)} / {_r(apc_mtd)}"),
+        ("Sales Target (month)", _r(mtd_tgt)),
+        ("MTD Achievement", _pct(mtd_pct)),
+        ("MTD Discount", _r(r.get("mtd_discount", 0))),
     ]
+    cur_y = mtd_y - row_h
+    for idx, (lbl, val) in enumerate(mtd_rows_data):
+        cur_y -= row_h
+        rc = mtd_ach_color if lbl == "MTD Achievement" else None
+        bold = lbl in ("MTD Net Sales", "MTD Achievement")
+        _table_data_row(
+            ax,
+            tbl_x,
+            cur_y,
+            [lbl, val],
+            col_w,
+            row_h=row_h,
+            is_alt=(idx % 2 == 1),
+            bold=bold,
+            right_color=rc,
+        )
+
+    ax.set_ylim(cur_y - 0.04, 1.0)
+
+
+def _section_category(
+    ax,
+    r: Dict,
+    location_name: str,
+    mtd_category: Dict[str, float],
+    day_lbl: str,
+) -> None:
+    ax.set_xlim(0, 1)
+    ax.axis("off")
+
+    std_cats = ["Food", "Liquor", "Beer", "Soft Beverages", "Coffee", "Tobacco"]
     daily_cat = {
-        c.get("category"): float(c.get("amount") or 0) for c in r.get("categories") or []
+        c.get("category"): float(c.get("amount") or 0)
+        for c in r.get("categories") or []
     }
-    cat_order = [x for x in std_cats if x in daily_cat or mtd_category.get(x)]
+    mtd_category = dict(mtd_category or {})
+    total_cat_mtd = sum(mtd_category.values()) or 1.0
+
+    cat_order = [x for x in std_cats if x in daily_cat or x in mtd_category]
     for k in sorted(mtd_category.keys()):
         if k not in cat_order:
             cat_order.append(k)
     if not cat_order:
-        cat_order = ["—"]
+        cat_order = []
 
-    cat_text: List[List[str]] = []
-    cat_text.append([f"Category Sales — {location_name[:24]}", day_lbl, "MTD"])
-    cat_rows_kinds: List[Tuple[str, str, str]] = [("hdr", "hdr", "hdr")]
-    cat_text.append(["Category & MTD %", "Daily", "MTD"])
-    cat_rows_kinds.append(("hdr", "hdr", "hdr"))
-    daily_cat_total = 0.0
-    mtd_cat_total = 0.0
-    for name in cat_order:
-        d_amt = daily_cat.get(name, 0.0) if name != "—" else 0.0
-        m_amt = float(mtd_category.get(name, 0) or 0) if name != "—" else 0.0
-        daily_cat_total += d_amt
-        mtd_cat_total += m_amt
-        pct_lbl = int(round(100 * m_amt / total_cat_mtd)) if total_cat_mtd > 0 else 0
-        label = f"{name} ({pct_lbl:02d}%)" if name != "—" else "No category data"
-        row_kind = (
-            ("pink", "pink", "pink")
-            if d_amt == 0 and m_amt == 0
-            else ("white", "white", "white")
+    row_h = 0.038
+    col_w = [0.50, 0.22, 0.22, 0.06]
+    tbl_x = 0.0
+    tbl_w = 1.0
+
+    # Header
+    _card(ax, 0, 0.92, 1.0, 0.07, color=C_NAVY, border=C_NAVY)
+    _hbar(ax, 0, 0.985, 1.0, h=0.005, color=C_BRAND)
+    _label(
+        ax,
+        0.012,
+        0.974,
+        f"Category Sales — {location_name[:28]}",
+        size=8.0,
+        color=C_WHITE,
+        weight="bold",
+    )
+    _label(ax, 0.012, 0.946, day_lbl, size=6.8, color="#94a3b8")
+
+    cur_y = 0.90
+    _table_header_row(
+        ax, tbl_x, cur_y - row_h, ["Category", "Daily", "MTD", "%"], col_w, row_h
+    )
+    cur_y -= row_h
+
+    daily_total = 0.0
+    mtd_total = 0.0
+    for idx, name in enumerate(cat_order):
+        d_amt = daily_cat.get(name, 0.0)
+        m_amt = float(mtd_category.get(name, 0) or 0)
+        daily_total += d_amt
+        mtd_total += m_amt
+        pct_lbl = (
+            f"{int(round(100 * m_amt / total_cat_mtd))}%" if total_cat_mtd > 0 else "—"
         )
-        cat_text.append([label, _rupee(d_amt), _rupee(m_amt)])
-        cat_rows_kinds.append(row_kind)
-    cat_text.append(["Total", _rupee(daily_cat_total), _rupee(mtd_cat_total)])
-    cat_rows_kinds.append(("hdr", "hdr", "hdr"))
+        cur_y -= row_h
+        _table_data_row(
+            ax,
+            tbl_x,
+            cur_y,
+            [name, _r(d_amt), _r(m_amt), pct_lbl],
+            col_w,
+            row_h=row_h,
+            is_alt=(idx % 2 == 1),
+        )
+
+    # Totals row
+    cur_y -= row_h
+    _table_data_row(
+        ax,
+        tbl_x,
+        cur_y,
+        ["Total", _r(daily_total), _r(mtd_total), ""],
+        col_w,
+        row_h=row_h,
+        bg=C_NAVY,
+        bold=True,
+        text_color=C_WHITE,
+    )
+
+    ax.set_ylim(cur_y - 0.04, 1.0)
+
+
+def _section_service(
+    ax,
+    r: Dict,
+    location_name: str,
+    mtd_service: Dict[str, float],
+    day_lbl: str,
+) -> None:
+    ax.set_xlim(0, 1)
+    ax.axis("off")
 
     std_svc = ["Breakfast", "Lunch", "Dinner", "Delivery", "Events", "Party"]
     daily_svc = {
         s.get("service_type") or s.get("type"): float(s.get("amount") or 0)
         for s in r.get("services") or []
     }
-    svc_order = [x for x in std_svc if x in daily_svc or mtd_service.get(x)]
+    mtd_service = dict(mtd_service or {})
+    total_svc_mtd = sum(mtd_service.values()) or 1.0
+
+    svc_order = [x for x in std_svc if x in daily_svc or x in mtd_service]
     for k in sorted(mtd_service.keys()):
         if k not in svc_order:
             svc_order.append(k)
-    if not svc_order:
-        svc_order = ["—"]
 
-    total_svc_mtd = sum(mtd_service.values()) or 1.0
-    svc_text: List[List[str]] = []
-    svc_text.append([f"Service Sales — {location_name[:24]}", day_lbl, "MTD"])
-    svc_rows_kinds: List[Tuple[str, str, str]] = [("hdr", "hdr", "hdr")]
-    svc_text.append(["Service & MTD %", "Daily", "MTD"])
-    svc_rows_kinds.append(("hdr", "hdr", "hdr"))
-    daily_svc_total = 0.0
-    mtd_svc_total = 0.0
-    for name in svc_order:
-        d_amt = daily_svc.get(name, 0.0) if name != "—" else 0.0
-        m_amt = float(mtd_service.get(name, 0) or 0) if name != "—" else 0.0
-        daily_svc_total += d_amt
-        mtd_svc_total += m_amt
-        pct_lbl = int(round(100 * m_amt / total_svc_mtd)) if total_svc_mtd > 0 else 0
-        label = f"{name} ({pct_lbl:02d}%)" if name != "—" else "No service data"
-        row_kind = (
-            ("pink", "pink", "pink")
-            if d_amt == 0 and m_amt == 0
-            else ("white", "white", "white")
+    row_h = 0.040
+    col_w = [0.50, 0.22, 0.22, 0.06]
+    tbl_x = 0.0
+
+    _card(ax, 0, 0.92, 1.0, 0.07, color=C_NAVY, border=C_NAVY)
+    _hbar(ax, 0, 0.985, 1.0, h=0.005, color=C_BRAND)
+    _label(
+        ax,
+        0.012,
+        0.974,
+        f"Service Sales — {location_name[:28]}",
+        size=8.0,
+        color=C_WHITE,
+        weight="bold",
+    )
+    _label(ax, 0.012, 0.946, day_lbl, size=6.8, color="#94a3b8")
+
+    cur_y = 0.90
+    _table_header_row(
+        ax, tbl_x, cur_y - row_h, ["Service", "Daily", "MTD", "%"], col_w, row_h
+    )
+    cur_y -= row_h
+
+    daily_total = 0.0
+    mtd_total = 0.0
+    for idx, name in enumerate(svc_order):
+        d_amt = daily_svc.get(name, 0.0)
+        m_amt = float(mtd_service.get(name, 0) or 0)
+        daily_total += d_amt
+        mtd_total += m_amt
+        pct_lbl = (
+            f"{int(round(100 * m_amt / total_svc_mtd))}%" if total_svc_mtd > 0 else "—"
         )
-        svc_text.append([label, _rupee(d_amt), _rupee(m_amt)])
-        svc_rows_kinds.append(row_kind)
-    svc_text.append(["Total", _rupee(daily_svc_total), _rupee(mtd_svc_total)])
-    svc_rows_kinds.append(("hdr", "hdr", "hdr"))
+        cur_y -= row_h
+        _table_data_row(
+            ax,
+            tbl_x,
+            cur_y,
+            [name, _r(d_amt), _r(m_amt), pct_lbl],
+            col_w,
+            row_h=row_h,
+            is_alt=(idx % 2 == 1),
+        )
 
-    ft_text: List[List[str]] = []
-    ft_kinds: List[Tuple[str, str, str, str]] = []
-    ft_text.append(["Daily footfall (month)", "Dinner", "Lunch", "Total"])
-    ft_kinds.append(("hdr", "hdr", "hdr", "hdr"))
-    for row in month_footfall_rows:
+    if not svc_order:
+        _label(
+            ax,
+            0.5,
+            0.82,
+            "No service data for this date",
+            size=8.0,
+            color=C_MUTED,
+            ha="center",
+        )
+        ax.set_ylim(0.76, 1.0)
+        return
+
+    cur_y -= row_h
+    _table_data_row(
+        ax,
+        tbl_x,
+        cur_y,
+        ["Total", _r(daily_total), _r(mtd_total), ""],
+        col_w,
+        row_h=row_h,
+        bg=C_NAVY,
+        bold=True,
+        text_color=C_WHITE,
+    )
+    ax.set_ylim(cur_y - 0.04, 1.0)
+
+
+def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -> None:
+    ax.set_xlim(0, 1)
+    ax.axis("off")
+
+    rows = list(month_footfall_rows or [])
+
+    _card(ax, 0, 0.92, 1.0, 0.07, color=C_NAVY, border=C_NAVY)
+    _hbar(ax, 0, 0.985, 1.0, h=0.005, color=C_BRAND)
+    _label(
+        ax,
+        0.012,
+        0.974,
+        "Daily Footfall — Month to Date",
+        size=8.0,
+        color=C_WHITE,
+        weight="bold",
+    )
+    _label(ax, 0.012, 0.946, location_name[:32], size=6.8, color="#94a3b8")
+
+    if not rows:
+        _label(
+            ax,
+            0.5,
+            0.82,
+            "No footfall data for this month",
+            size=8.5,
+            color=C_MUTED,
+            ha="center",
+        )
+        ax.set_ylim(0.74, 1.0)
+        return
+
+    col_w = [0.44, 0.18, 0.18, 0.20]
+    row_h = 0.032
+    tbl_x = 0.0
+
+    cur_y = 0.90
+    _table_header_row(
+        ax, tbl_x, cur_y - row_h, ["Date", "Dinner", "Lunch", "Total"], col_w, row_h
+    )
+    cur_y -= row_h
+
+    tot_din = tot_lun = tot_cov = 0
+    for idx, row in enumerate(rows):
         ds = str(row.get("date", ""))[:10]
         lc = row.get("lunch_covers")
         dcv = row.get("dinner_covers")
@@ -382,390 +768,86 @@ def _build_sheet_style_tables(
         else:
             di = lu = 0
             tot = cov
-        ft_text.append([_sheet_date_label(ds), str(di), str(lu), str(tot)])
-        ft_kinds.append(("white", "white", "white", "white"))
+        tot_din += di
+        tot_lun += lu
+        tot_cov += tot
+        cur_y -= row_h
+        _table_data_row(
+            ax,
+            tbl_x,
+            cur_y,
+            [
+                _sheet_date_label(ds),
+                str(di) if di else "—",
+                str(lu) if lu else "—",
+                str(tot),
+            ],
+            col_w,
+            row_h=row_h,
+            is_alt=(idx % 2 == 1),
+        )
 
-    return SheetStyleTables(
-        sales_text=sales_text,
-        sales_kinds=sales_kinds,
-        cat_text=cat_text,
-        cat_rows_kinds=cat_rows_kinds,
-        svc_text=svc_text,
-        svc_rows_kinds=svc_rows_kinds,
-        ft_text=ft_text,
-        ft_kinds=ft_kinds,
+    # Totals row
+    cur_y -= row_h
+    _table_data_row(
+        ax,
+        tbl_x,
+        cur_y,
+        ["TOTAL", str(tot_din), str(tot_lun), str(tot_cov)],
+        col_w,
+        row_h=row_h,
+        bg=C_NAVY,
+        bold=True,
+        text_color=C_WHITE,
     )
+    # Average row
+    n = len(rows)
+    if n > 0:
+        cur_y -= row_h
+        avg_din = tot_din / n
+        avg_lun = tot_lun / n
+        avg_cov = tot_cov / n
+        _table_data_row(
+            ax,
+            tbl_x,
+            cur_y,
+            [
+                f"Avg / day ({n} days)",
+                f"{avg_din:.1f}",
+                f"{avg_lun:.1f}",
+                f"{avg_cov:.1f}",
+            ],
+            col_w,
+            row_h=row_h,
+            bg=C_BAND,
+            bold=False,
+            text_color=C_MUTED,
+        )
+
+    ax.set_ylim(cur_y - 0.04, 1.0)
 
 
-def _short_outlet_name(name: str, max_len: int = 16) -> str:
+# ── Short outlet name helper ──────────────────────────────────────────────────
+
+
+def _short_outlet_name(name: str, max_len: int = 18) -> str:
     name = (name or "").strip()
-    if len(name) <= max_len:
-        return name
-    return name[: max_len - 1] + "…"
+    return name if len(name) <= max_len else name[: max_len - 1] + "\u2026"
 
 
-def _pay_kinds(amounts: List[float]) -> Tuple[str, ...]:
-    return tuple("pink" if float(a or 0) == 0 else "white" for a in amounts)
+# ══════════════════════════════════════════════════════════════════════════════
+# Public API
+# ══════════════════════════════════════════════════════════════════════════════
 
 
-def _build_sheet_style_tables_multi(
-    outlets: List[Tuple[str, Dict[str, Any]]],
-    combined: Dict[str, Any],
-    mtd_category: Dict[str, float],
-    mtd_service: Dict[str, float],
-    month_footfall_rows: List[Dict],
-    location_title: str,
-) -> SheetStyleTables:
-    """Sales grid: Label | Outlet1 | … | Combined. Category/service/footfall stay combined-only."""
-    base = _build_sheet_style_tables(
-        combined,
-        location_title,
-        mtd_category,
-        mtd_service,
-        month_footfall_rows,
-    )
-    if len(outlets) < 2:
-        return base
-
-    n = len(outlets)
-    ncols = n + 2
-    rs: List[List[str]] = []
-    rk: List[Tuple[str, ...]] = []
-    iso = str(combined.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]
-    day_lbl = _sheet_date_label(iso)
-    names = [_short_outlet_name(nm) for nm, _ in outlets]
-    c = combined
-    ovs = [d for _, d in outlets]
-
-    def row_hdr_teal(cells: List[str]) -> None:
-        rs.append(cells)
-        rk.append(tuple(["teal"] * ncols))
-
-    rs.append([day_lbl, "Sales summary"] + [""] * n)
-    rk.append(tuple(["hdr"] * ncols))
-    rs.append(["Payment mode"] + names + ["Combined"])
-    rk.append(tuple(["hdr"] * ncols))
-
-    cov_turn_row = ["Covers / turns"]
-    for o in ovs:
-        ci = int(o.get("covers") or 0)
-        ti = float(o.get("turns") or 0)
-        cov_turn_row.append(f"{ci:,} · {ti:.1f}")
-    cov_turn_row.append(
-        f"{int(c.get('covers') or 0):,} · {float(c.get('turns') or 0):.1f}"
-    )
-    row_hdr_teal(cov_turn_row)
-
-    pay_keys = [
-        ("Cash Sales", "cash_sales"),
-        ("Gpay", "gpay_sales"),
-        ("Zomato Gold", "zomato_sales"),
-        ("Bill On Hold", None),
-        ("Credit Card Sales", "card_sales"),
-        ("AMEX Sales", None),
-        ("Coupon Sale", None),
-        ("Online Bank Transfer", None),
-        ("Other / Wallet", "other_sales"),
-    ]
-    for label, key in pay_keys:
-        if key is None:
-            vals = [0.0] * n + [0.0]
-        else:
-            vals = [float(o.get(key) or 0) for o in ovs] + [float(c.get(key) or 0)]
-        if all(float(v or 0) == 0 for v in vals):
-            continue
-        cells = [label] + [_rupee(v) for v in vals]
-        rs.append(cells)
-        rk.append(("white",) + _pay_kinds(vals))
-
-    gross_vals = [float(o.get("gross_total") or 0) for o in ovs] + [
-        float(c.get("gross_total") or 0)
-    ]
-    rs.append(["EOD Gross Total"] + [_rupee(v) for v in gross_vals])
-    rk.append(("tan",) + tuple(["tan"] * (n + 1)))
-
-    for lbl, key in [
-        ("CGST@2.5%", "cgst"),
-        ("SGST@2.5%", "sgst"),
-        ("Service Charge@10%", "service_charge"),
-    ]:
-        vals = [float(o.get(key) or 0) for o in ovs] + [float(c.get(key) or 0)]
-        row_hdr_teal([lbl] + [_rupee(v) for v in vals])
-
-    disc = [float(o.get("discount") or 0) for o in ovs] + [float(c.get("discount") or 0)]
-    rs.append(["Discount"] + [_rupee(v) for v in disc])
-    rk.append(("white",) + _pay_kinds(disc))
-
-    net_vals = [float(o.get("net_total") or 0) for o in ovs] + [
-        float(c.get("net_total") or 0)
-    ]
-    rs.append(["EOD Net Total"] + [_rupee(v) for v in net_vals])
-    rk.append(("tan",) + tuple(["tan"] * (n + 1)))
-
-    mtd_cov = [int(o.get("mtd_total_covers") or 0) for o in ovs]
-    mtd_cov_c = int(c.get("mtd_total_covers") or 0)
-    row_hdr_teal(
-        ["MTD Total Covers"]
-        + [f"{x:,}" for x in mtd_cov]
-        + [f"{mtd_cov_c:,}"]
-    )
-
-    apc_d = [float(o.get("apc") or 0) for o in ovs]
-    row_hdr_teal(["APC For The Day"] + [_rupee(x) for x in apc_d] + [_rupee(c.get("apc", 0))])
-
-    apc_m_list = []
-    for o in ovs:
-        mc = int(o.get("mtd_total_covers") or 0)
-        mn = float(o.get("mtd_net_sales") or 0)
-        apc_m_list.append((mn / mc) if mc > 0 else 0.0)
-    mc_c = int(c.get("mtd_total_covers") or 0)
-    mn_c = float(c.get("mtd_net_sales") or 0)
-    apc_m_c = (mn_c / mc_c) if mc_c > 0 else 0.0
-    row_hdr_teal(
-        ["APC For The Month"]
-        + [_rupee(x) for x in apc_m_list]
-        + [_rupee(apc_m_c)]
-    )
-
-    comp = [float(o.get("complimentary") or 0) for o in ovs] + [
-        float(c.get("complimentary") or 0)
-    ]
-    comp_kinds = tuple("pink" if float(v or 0) == 0 else "tan" for v in comp)
-    rs.append(["Complimentary"] + [_rupee(v) for v in comp])
-    rk.append(("white",) + comp_kinds)
-
-    mtd_avg = [float(o.get("mtd_avg_daily") or 0) for o in ovs] + [
-        float(c.get("mtd_avg_daily") or 0)
-    ]
-    rs.append(["Daily Avg. Net Sales"] + [_rupee(v) for v in mtd_avg])
-    rk.append(("tan",) + tuple(["tan"] * (n + 1)))
-
-    mtd_net = [float(o.get("mtd_net_sales") or 0) for o in ovs] + [
-        float(c.get("mtd_net_sales") or 0)
-    ]
-    rs.append(["MTD Net Sales"] + [_rupee(v) for v in mtd_net])
-    rk.append(("dk",) + tuple(["dk"] * (n + 1)))
-
-    mtd_disc = [float(o.get("mtd_discount") or 0) for o in ovs] + [
-        float(c.get("mtd_discount") or 0)
-    ]
-    rs.append(["MTD Discount"] + [_rupee(v) for v in mtd_disc])
-    rk.append(("dk",) + tuple(["dk"] * (n + 1)))
-
-    mtd_tgt = float(c.get("mtd_target") or config.MONTHLY_TARGET)
-    row_hdr_teal(
-        ["Sales Target (month)"] + [_rupee(mtd_tgt)] * (n + 1)
-    )
-
-    pct_row = ["Percentage of Target (MTD)"] + [
-        _pct(float(o.get("mtd_pct_target") or 0)) for o in ovs
-    ] + [_pct(float(c.get("mtd_pct_target") or 0))]
-    rs.append(pct_row)
-    rk.append(("dk",) + tuple(["dk"] * (n + 1)))
-
-    return SheetStyleTables(
-        sales_text=rs,
-        sales_kinds=rk,
-        cat_text=base.cat_text,
-        cat_rows_kinds=base.cat_rows_kinds,
-        svc_text=base.svc_text,
-        svc_rows_kinds=base.svc_rows_kinds,
-        ft_text=base.ft_text,
-        ft_kinds=base.ft_kinds,
-    )
-
-
-def _emphasize_row_text(cell, kind_key: str) -> None:
-    if kind_key in ("hdr", "dk", "tan"):
-        cell.get_text().set_weight("bold")
-
-
-def _paint_sales_table(ax, tables: SheetStyleTables) -> None:
-    ax.axis("off")
-    st = tables.sales_text
-    if not st:
-        return
-    ncols = len(st[0])
-    w0 = min(0.44, 0.26 + 0.06 * max(0, 4 - ncols))
-    rest = max(0.08, (1.0 - w0) / max(1, ncols - 1))
-    col_widths = [w0] + [rest] * (ncols - 1)
-    if abs(sum(col_widths) - 1.0) > 0.02:
-        scale = 1.0 / sum(col_widths)
-        col_widths = [w * scale for w in col_widths]
-
-    fs = 7.35 if ncols > 4 else 8.25
-    t1 = ax.table(
-        cellText=st,
-        loc="upper center",
-        cellLoc="right",
-        colWidths=col_widths,
-    )
-    _style_table(t1, fs)
-    sk = tables.sales_kinds
-    for i in range(len(st)):
-        row = st[i]
-        n_j = len(row)
-        for j in range(ncols):
-            c = t1[(i, j)]
-            kk = sk[i] if i < len(sk) else tuple(["white"] * ncols)
-            kind_key = kk[j] if j < len(kk) else "white"
-            bg = _cell_kind_bg(kind_key)
-            c.set_facecolor(bg)
-            fg = _fg_for_bg(bg)
-            c.set_text_props(color=fg, fontfamily=FONT_SANS)
-            c.get_text().set_ha("left" if j == 0 else "right")
-            _apply_cell_frame(c)
-            if i < 2:
-                c.get_text().set_weight("bold")
-                c.get_text().set_fontsize(fs + 0.85)
-            else:
-                _emphasize_row_text(c, kind_key)
-    t1[(0, 0)].get_text().set_ha("left")
-    if ncols > 1:
-        t1[(0, 1)].get_text().set_ha("right")
-
-
-def _paint_category_table(ax, tables: SheetStyleTables) -> None:
-    ax.axis("off")
-    t2 = ax.table(
-        cellText=tables.cat_text,
-        loc="upper center",
-        cellLoc="right",
-        colWidths=[0.5, 0.22, 0.22],
-    )
-    _style_table(t2, 8.0)
-    for i in range(len(tables.cat_text)):
-        for j in range(3):
-            c = t2[(i, j)]
-            kk = tables.cat_rows_kinds[i][j]
-            bg = _cell_kind_bg(kk)
-            c.set_facecolor(bg)
-            fg = _fg_for_bg(bg)
-            c.set_text_props(color=fg, fontfamily=FONT_SANS)
-            c.get_text().set_ha("right" if j else "left")
-            _apply_cell_frame(c)
-            if i < 2:
-                c.get_text().set_weight("bold")
-                c.get_text().set_fontsize(9.0)
-            else:
-                _emphasize_row_text(c, kk)
-
-
-def _paint_service_table(ax, tables: SheetStyleTables) -> None:
-    ax.axis("off")
-    t3 = ax.table(
-        cellText=tables.svc_text,
-        loc="upper center",
-        cellLoc="right",
-        colWidths=[0.5, 0.22, 0.22],
-    )
-    _style_table(t3, 8.0)
-    for i in range(len(tables.svc_text)):
-        for j in range(3):
-            c = t3[(i, j)]
-            kk = tables.svc_rows_kinds[i][j]
-            bg = _cell_kind_bg(kk)
-            c.set_facecolor(bg)
-            fg = _fg_for_bg(bg)
-            c.set_text_props(color=fg, fontfamily=FONT_SANS)
-            c.get_text().set_ha("right" if j else "left")
-            _apply_cell_frame(c)
-            if i < 2:
-                c.get_text().set_weight("bold")
-                c.get_text().set_fontsize(9.0)
-            else:
-                _emphasize_row_text(c, kk)
-
-
-def _paint_footfall_table(ax, tables: SheetStyleTables) -> None:
-    ax.axis("off")
-    if len(tables.ft_text) <= 1:
-        ax.text(
-            0.5,
-            0.5,
-            "No footfall rows for month",
-            ha="center",
-            va="center",
-            fontsize=9.5,
-            color=CLR_TEXT_MUTED,
-            fontfamily=FONT_SANS,
-        )
-        return
-    t4 = ax.table(
-        cellText=tables.ft_text,
-        loc="upper center",
-        cellLoc="right",
-        colWidths=[0.42, 0.18, 0.18, 0.18],
-    )
-    _style_table(t4, 8.0)
-    for i in range(len(tables.ft_text)):
-        for j in range(4):
-            c = t4[(i, j)]
-            kk = tables.ft_kinds[i][j] if i < len(tables.ft_kinds) else "white"
-            bg = _cell_kind_bg(kk)
-            c.set_facecolor(bg)
-            fg = _fg_for_bg(bg)
-            c.set_text_props(color=fg, fontfamily=FONT_SANS)
-            c.get_text().set_ha("right" if j else "left")
-            _apply_cell_frame(c)
-            if i < 1:
-                c.get_text().set_weight("bold")
-                c.get_text().set_fontsize(9.0)
-            else:
-                _emphasize_row_text(c, kk)
-
-
-def _fig_height_for_rows(n_rows: int, min_rows: int = 4, cap: float = 24.0) -> float:
-    n = max(n_rows, min_rows)
-    return min(cap, 1.2 + 0.22 * n)
-
-
-def _save_figure_png(fig) -> BytesIO:
-    buf = BytesIO()
-    fig.savefig(
-        buf,
-        format="png",
-        facecolor=fig.get_facecolor(),
-        bbox_inches="tight",
-        pad_inches=_COMPOSITE_PAD_INCHES,
-    )
-    plt.close(fig)
-    buf.seek(0)
-    return buf
-
-
-def _sheet_tables(
-    report_data: Dict,
-    location_name: str,
-    mtd_category: Optional[Dict[str, float]],
-    mtd_service: Optional[Dict[str, float]],
-    month_footfall_rows: Optional[List[Dict]],
-    per_outlet_summaries: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
-) -> SheetStyleTables:
-    mc = dict(mtd_category or {})
-    ms = dict(mtd_service or {})
-    mf = list(month_footfall_rows or [])
-    if per_outlet_summaries and len(per_outlet_summaries) >= 2:
-        return _build_sheet_style_tables_multi(
-            list(per_outlet_summaries),
-            report_data,
-            mc,
-            ms,
-            mf,
-            location_name,
-        )
-    return _build_sheet_style_tables(
-        report_data, location_name, mc, ms, mf
-    )
-
-
-def _sales_fig_width(tables: SheetStyleTables) -> float:
-    nc = len(tables.sales_text[0]) if tables.sales_text else 2
-    if nc > 4:
-        return 12.0
-    if nc > 2:
-        return 11.0
-    return 10.0
+def _fig_for_section(
+    n_rows: int, min_rows: int = 4, cap_h: float = 20.0, w: float = 8.5
+) -> Tuple[plt.Figure, plt.Axes]:
+    h = min(cap_h, 2.2 + 0.32 * max(n_rows, min_rows))
+    fig, ax = plt.subplots(figsize=(w, h), dpi=DPI)
+    fig.patch.set_facecolor(C_PAGE)
+    ax.set_facecolor(C_PAGE)
+    return fig, ax
 
 
 def generate_sheet_style_report_sections(
@@ -776,45 +858,60 @@ def generate_sheet_style_report_sections(
     month_footfall_rows: Optional[List[Dict]] = None,
     per_outlet_summaries: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
 ) -> Dict[str, BytesIO]:
-    """
-    Four separate PNGs: sales_summary, category, service, footfall.
-    Same styling as the composite sheet report.
-    """
-    tables = _sheet_tables(
-        report_data,
-        location_name,
-        mtd_category,
-        mtd_service,
-        month_footfall_rows,
-        per_outlet_summaries,
-    )
+    """Four separate PNGs: sales_summary, category, service, footfall."""
+    r = report_data
+    mc = dict(mtd_category or {})
+    ms = dict(mtd_service or {})
+    mf = list(month_footfall_rows or [])
+    iso = str(r.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]
+    day_lbl = _sheet_date_label(iso)
+    per_outlet = list(per_outlet_summaries) if per_outlet_summaries else None
+
     out: Dict[str, BytesIO] = {}
 
-    fig_h = _fig_height_for_rows(len(tables.sales_text), 6)
-    fig_w = _sales_fig_width(tables)
-    fig, ax = plt.subplots(1, 1, figsize=(fig_w, fig_h), dpi=120)
-    fig.patch.set_facecolor(CLR_BG_PAGE)
-    _paint_sales_table(ax, tables)
-    out["sales_summary"] = _save_figure_png(fig)
+    # Sales summary
+    n_pay = len(
+        [
+            1
+            for k in (
+                "cash_sales",
+                "gpay_sales",
+                "zomato_sales",
+                "card_sales",
+                "other_sales",
+            )
+            if float(r.get(k) or 0) != 0
+        ]
+    )
+    n_tax = len(
+        [
+            1
+            for k in ("cgst", "sgst", "service_charge", "discount", "complimentary")
+            if float(r.get(k) or 0) != 0
+        ]
+    )
+    est_rows = 10 + n_pay + n_tax + (2 if per_outlet else 0)
+    fig, ax = _fig_for_section(est_rows, min_rows=12, cap_h=24.0, w=8.5)
+    _section_sales_summary(ax, r, location_name, per_outlet)
+    out["sales_summary"] = _save_fig(fig)
 
-    fig_h = _fig_height_for_rows(len(tables.cat_text), 4)
-    fig, ax = plt.subplots(1, 1, figsize=(10, fig_h), dpi=120)
-    fig.patch.set_facecolor(CLR_BG_PAGE)
-    _paint_category_table(ax, tables)
-    out["category"] = _save_figure_png(fig)
+    # Category
+    n_cat = len(mc) or 3
+    fig, ax = _fig_for_section(n_cat + 4, min_rows=6, cap_h=14.0, w=8.5)
+    _section_category(ax, r, location_name, mc, day_lbl)
+    out["category"] = _save_fig(fig)
 
-    fig_h = _fig_height_for_rows(len(tables.svc_text), 4)
-    fig, ax = plt.subplots(1, 1, figsize=(10, fig_h), dpi=120)
-    fig.patch.set_facecolor(CLR_BG_PAGE)
-    _paint_service_table(ax, tables)
-    out["service"] = _save_figure_png(fig)
+    # Service
+    n_svc = len(ms) or 3
+    fig, ax = _fig_for_section(n_svc + 4, min_rows=5, cap_h=12.0, w=8.5)
+    _section_service(ax, r, location_name, ms, day_lbl)
+    out["service"] = _save_fig(fig)
 
-    ft_n = max(len(tables.ft_text), 3)
-    fig_h = _fig_height_for_rows(ft_n, 3)
-    fig, ax = plt.subplots(1, 1, figsize=(10, fig_h), dpi=120)
-    fig.patch.set_facecolor(CLR_BG_PAGE)
-    _paint_footfall_table(ax, tables)
-    out["footfall"] = _save_figure_png(fig)
+    # Footfall
+    n_ft = len(mf) + 4
+    fig, ax = _fig_for_section(n_ft, min_rows=5, cap_h=22.0, w=8.5)
+    _section_footfall(ax, mf, location_name)
+    out["footfall"] = _save_fig(fig)
 
     return out
 
@@ -828,10 +925,10 @@ def generate_sheet_style_report_image(
     per_outlet_summaries: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
 ) -> BytesIO:
     """
-    Composite PNG styled like the Google Sheet EOD dashboard: Sales Summary,
-    Category Sales, Service Sales, and optional footfall grid for the month.
+    Composite PNG: 4 sections stacked vertically.
+    Sales Summary → Category Sales → Service Sales → Footfall Grid.
     """
-    tables = _sheet_tables(
+    sections = generate_sheet_style_report_sections(
         report_data,
         location_name,
         mtd_category,
@@ -840,43 +937,36 @@ def generate_sheet_style_report_image(
         per_outlet_summaries,
     )
 
-    n1, n2, n3, n4 = (
-        len(tables.sales_text),
-        len(tables.cat_text),
-        len(tables.svc_text),
-        max(len(tables.ft_text), 2),
-    )
-    h_ratios = [max(n1, 6), max(n2, 4), max(n3, 4), max(n4, 3)]
-    fig_h = min(36, 2.0 + 0.22 * sum(h_ratios))
-    fig_w = _sales_fig_width(tables)
-    fig, axes = plt.subplots(
-        4,
-        1,
-        figsize=(fig_w, fig_h),
-        dpi=120,
-        height_ratios=h_ratios,
-    )
-    fig.patch.set_facecolor(CLR_BG_PAGE)
+    # Stack the 4 PNGs into one tall image using matplotlib
+    from PIL import Image as PILImage
+    import numpy as np
 
-    _paint_sales_table(axes[0], tables)
-    _paint_category_table(axes[1], tables)
-    _paint_service_table(axes[2], tables)
-    _paint_footfall_table(axes[3], tables)
+    imgs = []
+    for key in ("sales_summary", "category", "service", "footfall"):
+        buf = sections[key]
+        buf.seek(0)
+        imgs.append(PILImage.open(buf).convert("RGB"))
 
-    plt.subplots_adjust(
-        hspace=_COMPOSITE_HSPACE,
-        left=0.04,
-        right=0.96,
-        top=0.98,
-        bottom=0.02,
-    )
-    return _save_figure_png(fig)
+    total_h = sum(im.height for im in imgs)
+    max_w = max(im.width for im in imgs)
+    composite = PILImage.new("RGB", (max_w, total_h), color=(248, 250, 252))
+    y_off = 0
+    for im in imgs:
+        # centre narrower images
+        x_off = (max_w - im.width) // 2
+        composite.paste(im, (x_off, y_off))
+        y_off += im.height
+
+    buf = BytesIO()
+    composite.save(buf, format="PNG", optimize=False)
+    buf.seek(0)
+    return buf
 
 
 def generate_report_image(
     report_data: Dict, location_name: str = "Boteco Bangalore"
 ) -> BytesIO:
-    """Backward-compatible alias: sheet style without precomputed MTD breakdowns."""
+    """Backward-compatible alias."""
     return generate_sheet_style_report_image(
         report_data,
         location_name,
@@ -886,11 +976,114 @@ def generate_report_image(
     )
 
 
+# ── WhatsApp text ─────────────────────────────────────────────────────────────
+
+
+def generate_whatsapp_text(
+    report_data: Dict,
+    location_name: str = "Boteco Bangalore",
+    per_outlet: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
+) -> str:
+    r = report_data
+    date_str = r.get("date", datetime.now().strftime("%d-%b-%Y"))
+    net_total = float(r.get("net_total") or 0)
+    pct_target = float(r.get("pct_target") or 0)
+
+    def _pct_of(val):
+        return f"{val / net_total * 100:.0f}%" if net_total > 0 else "—"
+
+    if pct_target >= 100:
+        status_emoji, status_text = "\u2705", "Target Achieved!"
+    elif pct_target >= 80:
+        status_emoji, status_text = "\u26a0\ufe0f", "Almost There"
+    else:
+        status_emoji, status_text = "\U0001f534", "Below Target"
+
+    # Category lines
+    categories = r.get("categories") or []
+    cat_total = sum(c.get("amount", 0) for c in categories) or 1
+    cat_lines = (
+        "\n".join(
+            f"  \u2022 {c.get('category', '?')}: "
+            f"{int(c.get('amount', 0) / cat_total * 100)}% "
+            f"({config.CURRENCY_FORMAT.format(c.get('amount', 0))})"
+            for c in categories
+        )
+        or "  \u2022 Data not available"
+    )
+
+    # Service lines
+    services = r.get("services") or []
+    svc_lines = "\n".join(
+        f"  \u2022 {s.get('type') or s.get('service_type', '?')}: "
+        f"{config.CURRENCY_FORMAT.format(s.get('amount', 0))}"
+        for s in services
+        if float(s.get("amount") or 0) > 0
+    )
+
+    # Payment lines — now includes Other
+    pay_items = [
+        ("Cash", r.get("cash_sales", 0)),
+        ("GPay", r.get("gpay_sales", 0)),
+        ("Zomato", r.get("zomato_sales", 0)),
+        ("Card", r.get("card_sales", 0)),
+        ("Other", r.get("other_sales", 0)),
+    ]
+    pay_lines = "\n".join(
+        f"  \u2022 {lbl}: {config.CURRENCY_FORMAT.format(float(v or 0))} ({_pct_of(float(v or 0))})"
+        for lbl, v in pay_items
+        if float(v or 0) > 0
+    )
+
+    report = (
+        f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+        f"\U0001f942 {location_name.upper()}\n"
+        f"\U0001f4c5 End of Day Report  |  {date_str}\n"
+        f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n"
+        f"\U0001f4b0 SALES SUMMARY\n"
+        f"  \u2022 Gross: {config.CURRENCY_FORMAT.format(r.get('gross_total', 0))}\n"
+        f"  \u2022 Net:   {config.CURRENCY_FORMAT.format(net_total)}\n"
+        f"  \u2022 Covers: {int(r.get('covers') or 0):,}  |  Turns: {float(r.get('turns') or 0):.1f}x\n"
+        f"  \u2022 APC: {config.CURRENCY_FORMAT.format(r.get('apc', 0))}\n\n"
+        f"\U0001f4b3 PAYMENT BREAKDOWN\n"
+        f"{pay_lines}\n\n"
+        f"\U0001f3af VS TARGET\n"
+        f"  \u2022 Target: {config.CURRENCY_FORMAT.format(r.get('target', 0))}\n"
+        f"  \u2022 Achievement: {pct_target:.1f}%\n"
+        f"  {status_emoji} {status_text}\n\n"
+        f"\U0001f37d\ufe0f CATEGORY MIX\n"
+        f"{cat_lines}\n"
+    )
+
+    if svc_lines:
+        report += f"\n\u23f0 SERVICE SPLIT\n{svc_lines}\n"
+
+    report += (
+        f"\n\U0001f465 MTD SUMMARY\n"
+        f"  \u2022 Total Covers: {int(r.get('mtd_total_covers') or 0):,}\n"
+        f"  \u2022 Net Sales: {config.CURRENCY_FORMAT.format(r.get('mtd_net_sales', 0))}\n"
+        f"  \u2022 Avg Daily: {config.CURRENCY_FORMAT.format(r.get('mtd_avg_daily', 0))}\n"
+        f"  \u2022 % of Target: {float(r.get('mtd_pct_target') or 0):.1f}%\n"
+    )
+
+    if per_outlet and len(per_outlet) >= 2:
+        po_lines = "\n".join(
+            f"  \u2022 {nm}: Net {config.CURRENCY_FORMAT.format(d.get('net_total', 0))} "
+            f"| Covers {int(d.get('covers') or 0):,}"
+            for nm, d in per_outlet
+        )
+        report += f"\n\U0001f3ea PER OUTLET\n{po_lines}\n"
+
+    report += "\u2501" * 22
+    return report.strip()
+
+
+# ── Dead code kept for backward compatibility (not called by app.py) ──────────
+
+
 def generate_simple_text_report(report_data: Dict) -> str:
-    """Generate simple text report without emojis."""
-
+    """Plain-text report without emojis (legacy, unused)."""
     date_str = report_data.get("date", datetime.now().strftime("%d-%b-%Y"))
-
     lines = [
         "=" * 50,
         "BOTECO BANGALORE",
@@ -900,73 +1093,48 @@ def generate_simple_text_report(report_data: Dict) -> str:
         "",
         "SALES SUMMARY",
         "-" * 30,
-        f"Gross Total: {config.CURRENCY_FORMAT.format(report_data.get('gross_total', 0))}",
-        f"Net Total: {config.CURRENCY_FORMAT.format(report_data.get('net_total', 0))}",
+        f"Gross: {config.CURRENCY_FORMAT.format(report_data.get('gross_total', 0))}",
+        f"Net:   {config.CURRENCY_FORMAT.format(report_data.get('net_total', 0))}",
         f"Covers: {report_data.get('covers', 0)}",
-        f"Turns: {report_data.get('turns', 0):.1f}",
-        f"APC: {config.CURRENCY_FORMAT.format(report_data.get('apc', 0))}",
-        "",
-        "PAYMENT BREAKDOWN",
-        "-" * 30,
-        f"Cash: {config.CURRENCY_FORMAT.format(report_data.get('cash_sales', 0))}",
-        f"GPay: {config.CURRENCY_FORMAT.format(report_data.get('gpay_sales', 0))}",
-        f"Zomato: {config.CURRENCY_FORMAT.format(report_data.get('zomato_sales', 0))}",
-        f"Card: {config.CURRENCY_FORMAT.format(report_data.get('card_sales', 0))}",
+        f"Turns:  {report_data.get('turns', 0):.1f}",
+        f"APC:    {config.CURRENCY_FORMAT.format(report_data.get('apc', 0))}",
         "",
         "TARGET",
         "-" * 30,
         f"Target: {config.CURRENCY_FORMAT.format(report_data.get('target', 0))}",
         f"Achievement: {report_data.get('pct_target', 0):.1f}%",
         "",
-        "MTD SUMMARY",
+        "MTD",
         "-" * 30,
-        f"Total Covers: {report_data.get('mtd_total_covers', 0):,}",
-        f"Net Sales: {config.CURRENCY_FORMAT.format(report_data.get('mtd_net_sales', 0))}",
-        f"Avg Daily: {config.CURRENCY_FORMAT.format(report_data.get('mtd_avg_daily', 0))}",
-        f"% of Target: {report_data.get('mtd_pct_target', 0):.1f}%",
+        f"Covers:  {report_data.get('mtd_total_covers', 0):,}",
+        f"Sales:   {config.CURRENCY_FORMAT.format(report_data.get('mtd_net_sales', 0))}",
+        f"Avg/day: {config.CURRENCY_FORMAT.format(report_data.get('mtd_avg_daily', 0))}",
+        f"Target:  {report_data.get('mtd_pct_target', 0):.1f}%",
         "=" * 50,
     ]
-
     return "\n".join(lines)
 
 
 def generate_comparison_text(
     reports: List[Dict], location_name: str = "Boteco Bangalore"
 ) -> str:
-    """Generate comparison report between multiple days."""
-
+    """Day-over-day comparison text (legacy, unused)."""
     if not reports:
         return "No data to compare"
-
-    lines = [
-        "=" * 50,
-        f"{location_name.upper()}",
-        "Daily Comparison Report",
-        "=" * 50,
-        "",
-    ]
-
+    lines = ["=" * 50, location_name.upper(), "Daily Comparison", "=" * 50, ""]
     for i, report in enumerate(reports, 1):
-        date_str = report.get("date", "N/A")
         net = report.get("net_total", 0)
-
+        comparison = ""
         if i > 1:
-            prev = reports[i - 2]
-            prev_net = prev.get("net_total", 0)
+            prev_net = reports[i - 2].get("net_total", 0)
             diff = net - prev_net
-            diff_pct = ((diff / prev_net) * 100) if prev_net > 0 else 0
-            arrow = "↑" if diff > 0 else "↓" if diff < 0 else "→"
+            diff_pct = (diff / prev_net * 100) if prev_net > 0 else 0
+            arrow = "\u2191" if diff > 0 else "\u2193" if diff < 0 else "\u2192"
             comparison = f" ({arrow} {diff_pct:+.1f}%)"
-        else:
-            comparison = ""
-
-        lines.extend(
-            [
-                f"📅 {date_str}",
-                f"   Net Sales: {config.CURRENCY_FORMAT.format(net)}{comparison}",
-                f"   Covers: {report.get('covers', 0)} | APC: {config.CURRENCY_FORMAT.format(report.get('apc', 0))}",
-                "",
-            ]
-        )
-
+        lines += [
+            f"\U0001f4c5 {report.get('date', 'N/A')}",
+            f"   Net: {config.CURRENCY_FORMAT.format(net)}{comparison}",
+            f"   Covers: {report.get('covers', 0)} | APC: {config.CURRENCY_FORMAT.format(report.get('apc', 0))}",
+            "",
+        ]
     return "\n".join(lines)

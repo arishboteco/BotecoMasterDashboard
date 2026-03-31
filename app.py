@@ -1362,7 +1362,7 @@ else:
                             title="Revenue by category (₹)",
                             color="amount",
                             color_continuous_scale=[
-                                ui_theme.BRAND_SECONDARY,
+                                ui_theme.BRAND_SUCCESS,
                                 ui_theme.BRAND_PRIMARY,
                             ],
                         )
