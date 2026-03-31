@@ -11,9 +11,11 @@ import zipfile
 import config
 import customer_report_parser
 import database
+import file_detector
 import pos_parser as parser
 import scope
 import sheet_reports as reports
+import smart_upload
 import utils
 import auth
 import clipboard_ui
@@ -167,260 +169,321 @@ else:
                     break
             st.sidebar.caption(f"POS imports save to **{imp_name}**.")
         else:
-            import_loc_id = all_locs[0]["id"] if all_locs else st.session_state.location_id
+            import_loc_id = (
+                all_locs[0]["id"] if all_locs else st.session_state.location_id
+            )
 
         import_location_settings = database.get_location_settings(import_loc_id)
         location_id = st.session_state.location_id
 
         # Tabs
-        tab1, tab2, tab3, tab4 = st.tabs(
-            ["Upload", "Report", "Analytics", "Settings"]
-        )
+        tab1, tab2, tab3, tab4 = st.tabs(["Upload", "Report", "Analytics", "Settings"])
 
         # ============ TAB 1: Upload Data ============
         with tab1:
             st.header("Upload POS Data")
-            st.caption(
-                "Import item reports and optional customer covers file; history reflects the "
-                "sidebar **POS import** outlet."
-            )
+
             _imp_nm = (
                 import_location_settings.get("name", "")
                 if import_location_settings
                 else ""
             ) or str(import_loc_id)
+
             st.caption(
-                f"Outlet for this import: **{_imp_nm}** — match **POS import** in the sidebar."
+                f"Drop **any** Petpooja exports below — the system auto-detects file types. "
+                f"Importing to: **{_imp_nm}**"
             )
-            st.markdown(
-                "1. Set **POS import** in the sidebar · 2. Add XLSX files below · "
-                "3. Click **Import & save to database**"
-            )
-            st.divider()
 
             flash = st.session_state.pop("_import_summary_flash", None)
             if flash is not None:
                 sd, sk, nc = flash
                 st.success(
-                    f"Last import: **{sd}** day(s) saved, **{sk}** day(s) skipped "
-                    f"(validation), **{nc}** parser note(s)."
+                    f"Last import: **{sd}** day(s) saved, **{sk}** day(s) skipped, "
+                    f"**{nc}** note(s)."
                 )
 
-            with st.expander("Data rules (replace & delete)", expanded=False):
+            with st.expander("How it works", expanded=False):
                 st.markdown(
-                    "Saving for the same **location + date** **overwrites** that day’s sales, "
-                    "categories, and services (not merged). Use **Remove incorrect data** below "
-                    "to delete a day without a new upload."
+                    "**Just drop all your Petpooja downloads at once.** The system will:\n\n"
+                    "1. **Auto-detect** each file type from its content (not filename)\n"
+                    "2. **Import** Item Reports (primary data), Customer Reports (covers), "
+                    "and Timing Reports (meal breakdown)\n"
+                    "3. **Skip** redundant files (Group Wise, All Restaurant, Comparison)\n"
+                    "4. **Merge** data for the same date from multiple files\n\n"
+                    "Saving for the same **location + date** overwrites that day's data."
                 )
 
-            st.markdown("### Upload files")
-            st.markdown(
-                '<div class="upload-zone"><p style="margin:0;font-size:0.95rem;">'
-                "Drop the item report below (required). Optional customer report sets covers.</p></div>",
-                unsafe_allow_html=True,
-            )
-            cr_path = config.resolve_customer_report_path()
-            if cr_path:
-                st.caption(f"Customer report (covers): `{cr_path}`")
-            else:
-                st.caption(
-                    "Customer report path: set `CUSTOMER_REPORT_XLSX_PATH` env or Streamlit secrets."
-                )
-            customer_report_upload = st.file_uploader(
-                "Customer report for covers (optional XLSX)",
-                type=["xlsx", "xls"],
-                accept_multiple_files=False,
-                help="Overrides or supplements the file path above for cover counts.",
-                key="customer_report_upload",
-            )
-
+            # ── Single upload zone for ALL file types ──
+            st.markdown("### Drop your files")
             uploaded_files = st.file_uploader(
-                "Item Report with Customer/Order Details (XLSX)",
-                type=["xlsx", "xls"],
+                "Petpooja exports (XLSX, XLS, CSV — any report type)",
+                type=["xlsx", "xls", "csv"],
                 accept_multiple_files=True,
-                help="Filename must include CustomerOrder (or item_report_with_customer). "
-                "One file can contain multiple days.",
+                help=(
+                    "Drop Item Reports, Customer Reports, Timing Reports, Order Summaries, "
+                    "Flash Reports — anything from Petpooja. The system figures out what each file is."
+                ),
+                key="smart_upload_files",
             )
 
             if not uploaded_files:
                 st.markdown(
                     '<div class="empty-upload-hint">'
-                    "No item report selected. Upload one or more XLSX files above to import POS data."
+                    "No files selected. Download your reports from Petpooja and "
+                    "drop them all here — any combination works."
                     "</div>",
                     unsafe_allow_html=True,
                 )
 
             if uploaded_files:
-                for file in uploaded_files:
-                    st.success(f"✅ {file.name} ready")
-
+                # ── Phase 1: Detect and display what we found ──
+                st.markdown("#### Detected files")
                 files_payload = [(f.name, f.getvalue()) for f in uploaded_files]
-                results, batch_notes = parser.process_upload_batch(files_payload)
-                overlap_rows: list = []
-                for date_str, merged, day_errs in results:
-                    if day_errs:
-                        continue
-                    prev_net = database.peek_daily_net_sales(import_loc_id, date_str)
-                    if prev_net is not None:
-                        overlap_rows.append((date_str, prev_net))
-                must_confirm_replace = len(overlap_rows) > 0
-                if overlap_rows:
-                    lines = "\n".join(
-                        f"- **{d}** — saved net sales {utils.format_currency(n)}"
-                        for d, n in overlap_rows
-                    )
-                    st.warning(
-                        f"The following day(s) already have data for **{_imp_nm}** and will be **replaced**:\n{lines}"
-                    )
-                if must_confirm_replace:
-                    confirm_replace = st.checkbox(
-                        "I understand existing days listed above will be replaced.",
-                        key="confirm_replace_import",
-                    )
-                else:
-                    confirm_replace = True
-                import_blocked = must_confirm_replace and not confirm_replace
 
-                if st.button(
-                    "Import & save to database",
-                    type="primary",
-                    key="import_pos_batch",
-                    disabled=import_blocked,
-                ):
-                    if must_confirm_replace and not confirm_replace:
-                        st.error("Confirm replacement above to import.")
+                importable_count = 0
+                for fname, content in files_payload:
+                    kind, label = file_detector.detect_and_describe(content, fname)
+                    if file_detector.is_importable(kind):
+                        st.success(f"\u2705 **{fname}** \u2192 {label}")
+                        importable_count += 1
+                    elif file_detector.is_skippable(kind):
+                        st.caption(
+                            f"\u23ed **{fname}** \u2192 {label} (will skip \u2014 redundant)"
+                        )
                     else:
-                        for note in batch_notes:
-                            st.warning(note)
+                        st.warning(f"\u2753 **{fname}** \u2192 {label}")
 
-                        locs_for_cr = database.get_all_locations()
-                        cr_lookup: dict = {}
-                        cr_notes: list = []
-                        if cr_path:
-                            cr_lookup, cr_notes = (
-                                customer_report_parser.load_lookup_from_path(
-                                    cr_path, locs_for_cr
-                                )
-                            )
-                        if customer_report_upload is not None:
-                            up_lookup, up_notes = (
-                                customer_report_parser.build_covers_lookup(
-                                    customer_report_upload.getvalue(), locs_for_cr
-                                )
-                            )
-                            cr_lookup = {**cr_lookup, **up_lookup}
-                            cr_notes.extend(up_notes)
-                        for note in cr_notes:
-                            st.caption(note)
+                if importable_count == 0:
+                    st.error(
+                        "No importable files detected. Make sure you include an "
+                        "**Item Report With Customer/Order Details** \u2014 that is the primary data source."
+                    )
 
-                        monthly_tgt = (
-                            import_location_settings.get(
-                                "target_monthly_sales", config.MONTHLY_TARGET
-                            )
-                            if import_location_settings
-                            else config.MONTHLY_TARGET
+                # ── Phase 2: Pre-parse to find dates and check overlaps ──
+                if importable_count > 0:
+                    upload_result = smart_upload.process_smart_upload(
+                        files_payload, import_loc_id
+                    )
+
+                    overlap_rows: list = []
+                    for day in upload_result.days:
+                        if day.errors:
+                            continue
+                        prev_net = database.peek_daily_net_sales(
+                            import_loc_id, day.date
                         )
-                        daily_tgt = (
-                            import_location_settings.get(
-                                "target_daily_sales", config.DAILY_TARGET
-                            )
-                            if import_location_settings
-                            else config.DAILY_TARGET
-                        )
-                        uploaded_by = st.session_state.get("username") or "user"
-                        saved_any = False
-                        saved_days = 0
-                        skipped_validation = 0
+                        if prev_net is not None:
+                            overlap_rows.append((day.date, prev_net))
 
-                        for date_str, merged, day_errs in results:
-                            if day_errs:
-                                skipped_validation += 1
-                                st.error(
-                                    f"{date_str}: " + " ".join(day_errs)
-                                    + " — check that this date has Success rows with Sub Total / "
-                                    "Final Total in your Item Report export."
+                    must_confirm_replace = len(overlap_rows) > 0
+                    if overlap_rows:
+                        lines = "\n".join(
+                            f"- **{d}** \u2014 saved net sales {utils.format_currency(n)}"
+                            for d, n in overlap_rows
+                        )
+                        st.warning(
+                            f"These dates already have data for **{_imp_nm}** "
+                            f"and will be **replaced**:\n{lines}"
+                        )
+
+                    if must_confirm_replace:
+                        confirm_replace = st.checkbox(
+                            "I understand existing days listed above will be replaced.",
+                            key="confirm_replace_smart",
+                        )
+                    else:
+                        confirm_replace = True
+
+                    import_blocked = must_confirm_replace and not confirm_replace
+
+                    # ── Phase 3: Import button ──
+                    if st.button(
+                        f"Import {importable_count} file(s) \u2192 save to database",
+                        type="primary",
+                        key="smart_import_btn",
+                        disabled=import_blocked,
+                    ):
+                        if must_confirm_replace and not confirm_replace:
+                            st.error("Confirm replacement above to import.")
+                        else:
+                            for note in upload_result.global_notes:
+                                st.info(note)
+                            for fr in upload_result.files:
+                                for note in fr.notes:
+                                    st.caption(note)
+                                if fr.error:
+                                    st.error(f"**{fr.filename}**: {fr.error}")
+
+                            # Build covers lookup
+                            locs_for_cr = database.get_all_locations()
+                            cr_path = config.resolve_customer_report_path()
+                            cr_lookup: dict = {}
+                            cr_notes: list = []
+                            if cr_path:
+                                cr_lookup, cr_notes = (
+                                    customer_report_parser.load_lookup_from_path(
+                                        cr_path, locs_for_cr
+                                    )
                                 )
-                                continue
-                            merged["covers"] = 0
-                            merged["lunch_covers"] = None
-                            merged["dinner_covers"] = None
-                            merged = customer_report_parser.apply_covers_overlay(
-                                merged, import_loc_id, cr_lookup
+                            # Customer report detected in the upload batch
+                            if upload_result.customer_content is not None:
+                                up_lookup, up_notes = (
+                                    customer_report_parser.build_covers_lookup(
+                                        upload_result.customer_content, locs_for_cr
+                                    )
+                                )
+                                cr_lookup = {**cr_lookup, **up_lookup}
+                                cr_notes.extend(up_notes)
+                            for note in cr_notes:
+                                st.caption(note)
+
+                            monthly_tgt = (
+                                import_location_settings.get(
+                                    "target_monthly_sales", config.MONTHLY_TARGET
+                                )
+                                if import_location_settings
+                                else config.MONTHLY_TARGET
                             )
-                            merged["target"] = daily_tgt
-                            sc = (
+                            daily_tgt = (
+                                import_location_settings.get(
+                                    "target_daily_sales", config.DAILY_TARGET
+                                )
+                                if import_location_settings
+                                else config.DAILY_TARGET
+                            )
+                            sc_setting = (
                                 import_location_settings.get("seat_count")
                                 if import_location_settings
                                 else None
                             )
-                            if sc:
-                                merged["seat_count"] = int(sc)
-                            merged = parser.calculate_derived_metrics(merged)
-                            merged.pop("seat_count", None)
-                            y_m = [int(x) for x in date_str.split("-")[:2]]
-                            mtd = parser.calculate_mtd_metrics(
-                                import_loc_id,
-                                monthly_tgt,
-                                year=y_m[0],
-                                month=y_m[1],
-                                as_of_date=date_str,
-                            )
-                            merged.update(mtd)
-                            database.save_daily_summary(import_loc_id, merged)
-                            fnames = ", ".join(f.name for f in uploaded_files)
-                            if len(fnames) > 180:
-                                fnames = fnames[:177] + "..."
-                            database.save_upload_record(
-                                import_loc_id,
-                                date_str,
-                                fnames,
-                                "item_order_details",
-                                uploaded_by,
-                            )
-                            st.success(f"Saved data for {date_str}")
-                            saved_any = True
-                            saved_days += 1
+                            uploaded_by = st.session_state.get("username") or "user"
+                            saved_any = False
+                            saved_days = 0
+                            skipped_validation = 0
 
-                        note_count = len(batch_notes)
-                        st.info(
-                            f"**Import summary:** {saved_days} day(s) saved, "
-                            f"{skipped_validation} day(s) skipped (validation), "
-                            f"{note_count} parser note(s)."
-                        )
+                            for day in upload_result.days:
+                                if day.errors:
+                                    skipped_validation += 1
+                                    st.error(
+                                        f"{day.date}: "
+                                        + " \u00b7 ".join(day.errors)
+                                        + " \u2014 check that this date has Success rows with "
+                                        "Sub Total / Final Total in your Item Report."
+                                    )
+                                    continue
 
-                        if saved_any:
-                            st.session_state["_import_summary_flash"] = (
-                                saved_days,
-                                skipped_validation,
-                                note_count,
+                                merged = dict(day.merged)
+                                merged["covers"] = 0
+                                merged["lunch_covers"] = None
+                                merged["dinner_covers"] = None
+                                merged = customer_report_parser.apply_covers_overlay(
+                                    merged, import_loc_id, cr_lookup
+                                )
+                                merged["target"] = daily_tgt
+                                if sc_setting:
+                                    merged["seat_count"] = int(sc_setting)
+                                merged = parser.calculate_derived_metrics(merged)
+                                merged.pop("seat_count", None)
+                                y_m = [int(x) for x in day.date.split("-")[:2]]
+                                mtd = parser.calculate_mtd_metrics(
+                                    import_loc_id,
+                                    monthly_tgt,
+                                    year=y_m[0],
+                                    month=y_m[1],
+                                    as_of_date=day.date,
+                                )
+                                merged.update(mtd)
+                                database.save_daily_summary(import_loc_id, merged)
+
+                                fnames = ", ".join(
+                                    fr.filename
+                                    for fr in upload_result.files
+                                    if fr.importable and fr.kind != "customer_report"
+                                )
+                                if len(fnames) > 180:
+                                    fnames = fnames[:177] + "..."
+                                database.save_upload_record(
+                                    import_loc_id,
+                                    day.date,
+                                    fnames,
+                                    "item_order_details",
+                                    uploaded_by,
+                                )
+                                st.success(f"Saved data for {day.date}")
+                                saved_any = True
+                                saved_days += 1
+
+                            note_count = len(upload_result.global_notes)
+                            st.info(
+                                f"**Import complete:** {saved_days} day(s) saved, "
+                                f"{skipped_validation} day(s) skipped."
                             )
-                            st.rerun()
 
+                            if saved_any:
+                                st.session_state["_import_summary_flash"] = (
+                                    saved_days,
+                                    skipped_validation,
+                                    note_count,
+                                )
+                                st.rerun()
+
+            # ── Covers-only sync ──
             st.markdown("---")
+            st.markdown("### Sync covers only")
+            st.caption(
+                "Updates covers on existing saved days from the customer report "
+                "without re-importing POS data."
+            )
+            cr_path_sync = config.resolve_customer_report_path()
+            customer_report_upload_sync = st.file_uploader(
+                "Customer report for covers (optional XLSX)",
+                type=["xlsx", "xls"],
+                accept_multiple_files=False,
+                help="Overrides the configured path for cover counts.",
+                key="customer_report_upload_sync",
+            )
+            if cr_path_sync:
+                st.caption(f"Configured customer report path: `{cr_path_sync}`")
+            if st.button(
+                "Apply covers from customer report",
+                key="sync_covers_only",
+                help="Updates covers (and lunch/dinner if present) on existing saved days; no POS upload.",
+            ):
+                locs_for_cr2 = database.get_all_locations()
+                cr_lookup2: dict = {}
+                notes2: list = []
+                if cr_path_sync:
+                    cr_lookup2, notes2 = customer_report_parser.load_lookup_from_path(
+                        cr_path_sync, locs_for_cr2
+                    )
+                if customer_report_upload_sync is not None:
+                    up2, n2 = customer_report_parser.build_covers_lookup(
+                        customer_report_upload_sync.getvalue(), locs_for_cr2
+                    )
+                    cr_lookup2 = {**cr_lookup2, **up2}
+                    notes2.extend(n2)
+                updated = 0
+                for (lid, d), ent in cr_lookup2.items():
+                    ok2 = database.update_daily_summary_covers_only(
+                        lid,
+                        d,
+                        int(ent.get("covers") or 0),
+                        ent.get("lunch_covers"),
+                        ent.get("dinner_covers"),
+                    )
+                    if ok2:
+                        updated += 1
+                for n in notes2:
+                    st.info(n)
+                st.success(f"Updated covers on **{updated}** saved day(s).")
+                st.rerun()
 
-            with st.expander("ℹ️ Supported file format"):
-                st.info(
-                    """
-                **Item Report With Customer/Order Details** (`Item_Report_With_CustomerOrder_Details_*.xlsx`)
-
-                - **Filename** must contain `CustomerOrder` or `customer_order`, or `item_report_with_customer`.
-                - **Net sales** = sum of **Sub Total**; **gross** = sum of **Final Total** (Success rows only).
-                - **Complimentary** rows go to the complimentary total only.
-                - **Covers** come from the **customer report** (path or upload), not from the item report.
-                - **Payments** from **Payment Type** (Cash, GPay, Zomato, Card, other).
-                - **Category mix** from **Category** / **Group Name**; **Breakfast/Lunch/Dinner** from **Timestamp** (optional).
-                - **Tax** column is split 50/50 into CGST/SGST on the sheet for display.
-
-                A single workbook may include **multiple calendar dates** — each day is saved separately.
-                Uploading **more than one file** for the same date **adds** totals together.
-                """
-                )
-
-            st.divider()
+            # ── Remove incorrect data ──
+            st.markdown("---")
             st.markdown("### Remove incorrect data")
             st.caption(
-                "Deletes the saved summary for one outlet and date (including category and service breakdown). "
-                "Upload history is kept for audit."
+                "Deletes the saved summary for one outlet and date (including category and service "
+                "breakdown). Upload history is kept for audit."
             )
             if auth.is_admin() and all_locs:
                 _sort_del = sorted(all_locs, key=lambda x: x["name"])
@@ -443,7 +506,7 @@ else:
                     st.write("")
                     st.write("")
                     del_date_str = delete_target_date.strftime("%Y-%m-%d")
-                    if st.button("Delete this day’s data", key="delete_day_btn"):
+                    if st.button("Delete this day's data", key="delete_day_btn"):
                         st.session_state["_pending_delete"] = (
                             int(delete_target_loc),
                             del_date_str,
@@ -457,15 +520,21 @@ else:
                     )
                     dc1, dc2 = st.columns(2)
                     with dc1:
-                        if st.button("Yes, delete", key="delete_confirm_yes", type="primary"):
+                        if st.button(
+                            "Yes, delete", key="delete_confirm_yes", type="primary"
+                        ):
                             removed = database.delete_daily_summary_for_location_date(
                                 ploc, pdate
                             )
                             st.session_state.pop("_pending_delete", None)
                             if removed:
-                                st.success("Deleted. You can re-import a correct file if needed.")
+                                st.success(
+                                    "Deleted. You can re-import a correct file if needed."
+                                )
                             else:
-                                st.info("No saved row existed for that outlet and date.")
+                                st.info(
+                                    "No saved row existed for that outlet and date."
+                                )
                             st.rerun()
                     with dc2:
                         if st.button("Cancel", key="delete_confirm_no"):
@@ -476,68 +545,28 @@ else:
             else:
                 st.caption("Contact an admin to remove a mistaken import.")
 
-            # Show recent uploads
+            # ── Recent uploads ──
             st.markdown("---")
             st.markdown("### Recent Entries")
-
-            if st.button(
-                "Apply covers from customer report only",
-                key="sync_covers_only",
-                help="Updates covers (and lunch/dinner if present) on existing saved days; no POS upload.",
-            ):
-                locs_for_cr = database.get_all_locations()
-                cr_lookup2: dict = {}
-                notes2: list = []
-                if cr_path:
-                    cr_lookup2, notes2 = customer_report_parser.load_lookup_from_path(
-                        cr_path, locs_for_cr
-                    )
-                if customer_report_upload is not None:
-                    up2, n2 = customer_report_parser.build_covers_lookup(
-                        customer_report_upload.getvalue(), locs_for_cr
-                    )
-                    cr_lookup2 = {**cr_lookup2, **up2}
-                    notes2.extend(n2)
-                updated = 0
-                for (lid, d), ent in cr_lookup2.items():
-                    ok = database.update_daily_summary_covers_only(
-                        lid,
-                        d,
-                        int(ent.get("covers") or 0),
-                        ent.get("lunch_covers"),
-                        ent.get("dinner_covers"),
-                    )
-                    if ok:
-                        updated += 1
-                for n in notes2:
-                    st.info(n)
-                st.success(f"Updated covers on **{updated}** saved day(s).")
-                st.rerun()
-
-            col_hist1, col_hist2 = st.columns([1, 2])
-            with col_hist1:
-                history = database.get_upload_history(import_loc_id, 10)
-                if history:
-                    hdf = pd.DataFrame(history)
-                    drop_cols = [c for c in ("id", "location_id") if c in hdf.columns]
-                    if drop_cols:
-                        hdf = hdf.drop(columns=drop_cols)
-                    rename = {
-                        "date": "Day",
-                        "filename": "File",
-                        "file_type": "Type",
-                        "uploaded_by": "Imported by",
-                        "uploaded_at": "When",
-                    }
-                    hdf = hdf.rename(
-                        columns={k: v for k, v in rename.items() if k in hdf.columns}
-                    )
-                    st.dataframe(hdf, use_container_width=True, hide_index=True)
-                else:
-                    st.caption("No imports yet for this outlet.")
-
-            with col_hist2:
-                st.caption("Recent POS imports for the outlet selected under **POS import**.")
+            history = database.get_upload_history(import_loc_id, 10)
+            if history:
+                hdf = pd.DataFrame(history)
+                drop_cols = [c for c in ("id", "location_id") if c in hdf.columns]
+                if drop_cols:
+                    hdf = hdf.drop(columns=drop_cols)
+                rename = {
+                    "date": "Day",
+                    "filename": "File",
+                    "file_type": "Type",
+                    "uploaded_by": "Imported by",
+                    "uploaded_at": "When",
+                }
+                hdf = hdf.rename(
+                    columns={k: v for k, v in rename.items() if k in hdf.columns}
+                )
+                st.dataframe(hdf, use_container_width=True, hide_index=True)
+            else:
+                st.caption("No imports yet for this outlet.")
 
         # ============ TAB 2: Daily Report ============
         with tab2:
@@ -592,8 +621,9 @@ else:
                                         delta=f"Turns {float(s.get('turns') or 0):.1f}",
                                     )
                             with cr[-1]:
-                                lc, dc = summary.get("lunch_covers"), summary.get(
-                                    "dinner_covers"
+                                lc, dc = (
+                                    summary.get("lunch_covers"),
+                                    summary.get("dinner_covers"),
                                 )
                                 foot = (
                                     f"Lunch {lc:,} · Dinner {dc:,}"
@@ -603,7 +633,8 @@ else:
                                 st.metric(
                                     "Combined",
                                     f"{int(summary.get('covers') or 0):,}",
-                                    delta=foot or f"Turns: {float(summary.get('turns') or 0):.1f}",
+                                    delta=foot
+                                    or f"Turns: {float(summary.get('turns') or 0):.1f}",
                                 )
                             st.markdown("##### APC")
                             cr = st.columns(ncols)
@@ -658,7 +689,8 @@ else:
                                 st.metric(
                                     "Covers",
                                     f"{int(s_one.get('covers') or 0):,}",
-                                    delta=foot or f"Turns: {float(s_one.get('turns') or 0):.1f}",
+                                    delta=foot
+                                    or f"Turns: {float(s_one.get('turns') or 0):.1f}",
                                 )
                             with col_kpi3:
                                 st.metric(
@@ -805,9 +837,7 @@ else:
                 # Sheet-style report + clipboard (matches Google Sheet EOD layout)
                 st.markdown("### 📱 WhatsApp / sheet-style report")
                 per_outlet_sheet = (
-                    [(n, d) for _i, n, d in outlets_bundle]
-                    if multi_outlet
-                    else None
+                    [(n, d) for _i, n, d in outlets_bundle] if multi_outlet else None
                 )
 
                 y_m = [int(x) for x in date_str.split("-")[:2]]
@@ -1005,7 +1035,9 @@ else:
         # ============ TAB 3: Analytics ============
         with tab3:
             st.header("Sales Analytics")
-            st.caption(f"Viewing: **{report_display_name}** — trends for the period below.")
+            st.caption(
+                f"Viewing: **{report_display_name}** — trends for the period below."
+            )
             st.divider()
 
             # Period selector
@@ -1293,7 +1325,9 @@ else:
                             "covers": st.column_config.TextColumn("Covers"),
                             "net_total": st.column_config.TextColumn("Net sales (₹)"),
                             "target": st.column_config.TextColumn("Target (₹)"),
-                            "pct_target": st.column_config.TextColumn("Achievement (%)"),
+                            "pct_target": st.column_config.TextColumn(
+                                "Achievement (%)"
+                            ),
                         },
                     )
 
@@ -1306,7 +1340,9 @@ else:
         # ============ TAB 4: Settings ============
         with tab4:
             st.header("Settings")
-            st.caption("Location targets, seats, and your account (admins can edit outlets).")
+            st.caption(
+                "Location targets, seats, and your account (admins can edit outlets)."
+            )
             st.divider()
 
             if auth.is_admin() and all_locs:
@@ -1367,7 +1403,9 @@ else:
                                 {
                                     "name": new_name,
                                     "target_monthly_sales": new_target,
-                                    "seat_count": int(new_seats) if new_seats > 0 else None,
+                                    "seat_count": int(new_seats)
+                                    if new_seats > 0
+                                    else None,
                                 },
                             )
                             st.success("Settings saved!")
