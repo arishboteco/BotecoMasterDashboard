@@ -54,10 +54,7 @@ def _r(n) -> str:
     """Format as ₹ with Indian comma grouping."""
     if n is None:
         n = 0.0
-    n = float(n)
-    if abs(n - round(n)) < 0.005:
-        return f"\u20b9{int(round(n)):,}"
-    return f"\u20b9{n:,.2f}"
+    return f"\u20b9{int(round(float(n))):,}"
 
 
 def _pct(n) -> str:
