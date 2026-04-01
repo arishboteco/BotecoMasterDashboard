@@ -6,10 +6,11 @@ import zipfile
 from datetime import datetime, timedelta
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import quote_plus
 
 import pandas as pd
 import streamlit as st
-from urllib.parse import quote_plus
+
 
 import clipboard_ui
 import config
@@ -481,15 +482,14 @@ def render(ctx: TabContext) -> None:
                             primary=False,
                         )
                     with cb2:
-                        # WhatsApp share button - unique label per section to avoid duplicate widget issues
-                        message = (
-                            f"Check out the Boteco Bangalore EOD Report for {date_str}!"
-                        )
-                        whatsapp_url = f"https://wa.me/?text={quote_plus(message)}"
-                        st.link_button(
+                        _wa_text = f"Boteco Bangalore EOD Report – {date_str} ({title})"
+                        clipboard_ui.render_share_images_button(
+                            [(f"boteco_{key}_{date_str}.png", sec_bytes)],
                             f"📱 WhatsApp ({title})",
-                            whatsapp_url,
-                            use_container_width=True,
+                            f"share_sec_{key}_{date_str}",
+                            height=44,
+                            primary=False,
+                            fallback_url=f"https://wa.me/?text={quote_plus(_wa_text)}",
                         )
                     with cb3:
                         st.download_button(

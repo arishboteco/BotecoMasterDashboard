@@ -117,6 +117,7 @@ def render_share_images_button(
     *,
     primary: bool = True,
     share_text: str = "Boteco EOD Report",
+    fallback_url: Optional[str] = None,
 ) -> None:
     """Share multiple PNG images via native share API (mobile) or show fallback (desktop)."""
     if not files:
@@ -137,6 +138,7 @@ def render_share_images_button(
         + ",".join('{{"name":{!r},"b64":{!r}}}'.format(n, b) for n, b in files_b64)
         + "]"
     )
+    fallback_url_json = json.dumps(fallback_url)
 
     # Use str.format to avoid f-string issues with JS braces
     html = """<div>
@@ -147,6 +149,7 @@ def render_share_images_button(
 (function() {{
   const filesData = {files_json};
   const shareText = {share_text_json};
+  const fallbackUrl = {fallback_url_json};
   const msgEl = document.getElementById("{uid}_msg");
   const btnEl = document.getElementById("{uid}_btn");
 
@@ -163,7 +166,7 @@ def render_share_images_button(
     if (!navigator.canShare) return false;
     try {{
       const testBlob = await b64ToBlob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "image/png");
-      return navigator.canShare({{files: [new File([testBlob], "test.png", {{type: "image/png"}})]]}});
+      return navigator.canShare({{files: [new File([testBlob], "test.png", {{type: "image/png"}})]}});
     }} catch(e) {{
       return false;
     }}
@@ -189,8 +192,21 @@ def render_share_images_button(
         msgEl.style.color = "#2e7d32";
       }} else {{
         // Fallback for desktop browsers
-        msgEl.textContent = "Use download (ZIP/PNG)";
-        msgEl.style.color = "#d97706";
+        if (fallbackUrl) {{
+          try {{
+            const blob = await b64ToBlob(filesData[0].b64, "image/png");
+            await navigator.clipboard.write([new ClipboardItem({{"image/png": blob}})]);
+            msgEl.textContent = "Image copied \u2014 paste in WhatsApp";
+            msgEl.style.color = "#2e7d32";
+          }} catch (clipErr) {{
+            msgEl.textContent = "Open WhatsApp \u2014 attach image manually";
+            msgEl.style.color = "#d97706";
+          }}
+          window.open(fallbackUrl, "_blank");
+        }} else {{
+          msgEl.textContent = "Use download (ZIP/PNG)";
+          msgEl.style.color = "#d97706";
+        }}
       }}
     }} catch (e) {{
       console.error("Share error:", e);
@@ -200,8 +216,21 @@ def render_share_images_button(
       }}
       // Check if it's the "not supported" error
       if (e.message && e.message.includes("not supported")) {{
-        msgEl.textContent = "Use download (ZIP/PNG)";
-        msgEl.style.color = "#d97706";
+        if (fallbackUrl) {{
+          try {{
+            const blob = await b64ToBlob(filesData[0].b64, "image/png");
+            await navigator.clipboard.write([new ClipboardItem({{"image/png": blob}})]);
+            msgEl.textContent = "Image copied \u2014 paste in WhatsApp";
+            msgEl.style.color = "#2e7d32";
+          }} catch (clipErr) {{
+            msgEl.textContent = "Open WhatsApp \u2014 attach image manually";
+            msgEl.style.color = "#d97706";
+          }}
+          window.open(fallbackUrl, "_blank");
+        }} else {{
+          msgEl.textContent = "Use download (ZIP/PNG)";
+          msgEl.style.color = "#d97706";
+        }}
       }} else {{
         msgEl.textContent = "Share failed";
         msgEl.style.color = "#dc2626";
@@ -216,5 +245,6 @@ def render_share_images_button(
         label=label,
         files_json=files_json,
         share_text_json=json.dumps(share_text),
+        fallback_url_json=fallback_url_json,
     )
     _html(html, height, component_key)
