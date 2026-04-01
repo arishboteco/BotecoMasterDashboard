@@ -1,0 +1,498 @@
+"""Report tab — Daily sales report, KPIs, PNG/WhatsApp generation."""
+
+from __future__ import annotations
+
+import zipfile
+from datetime import datetime, timedelta
+from io import BytesIO
+from typing import Any, Dict, List, Optional, Tuple
+
+import pandas as pd
+import streamlit as st
+
+import clipboard_ui
+import config
+import database
+import scope
+import sheet_reports as reports
+import utils
+from tabs import TabContext
+
+
+def render(ctx: TabContext) -> None:
+    """Render the Daily Report tab UI."""
+    st.header("Daily Sales Report")
+    st.caption(f"Viewing: **{ctx.report_display_name}** — pick a date below.")
+    st.divider()
+
+    # Date selector with Prev/Next navigation
+    if "report_date" not in st.session_state:
+        st.session_state["report_date"] = datetime.now().date()
+
+    nav_col1, nav_col2, nav_col3 = st.columns([1, 3, 1])
+    with nav_col1:
+        st.write("")
+        if st.button("← Prev", key="report_prev_day", use_container_width=True):
+            st.session_state["report_date"] -= timedelta(days=1)
+            st.rerun()
+    with nav_col2:
+        picked = st.date_input(
+            "Select Date",
+            value=st.session_state["report_date"],
+            key="report_date_picker",
+        )
+        if picked != st.session_state["report_date"]:
+            st.session_state["report_date"] = picked
+            st.rerun()
+    with nav_col3:
+        st.write("")
+        if st.button("Next →", key="report_next_day", use_container_width=True):
+            st.session_state["report_date"] += timedelta(days=1)
+            st.rerun()
+
+    selected_date = st.session_state["report_date"]
+    date_str = selected_date.strftime("%Y-%m-%d")
+    outlets_bundle, summary = scope.get_daily_report_bundle(
+        ctx.report_loc_ids, date_str
+    )
+
+    if summary:
+        y_m = [int(x) for x in date_str.split("-")[:2]]
+        multi_outlet = len(outlets_bundle) > 1
+
+        def _col_head(nm: str, max_len: int = 14) -> str:
+            nm = str(nm).strip()
+            return nm if len(nm) <= max_len else nm[: max_len - 1] + "…"
+
+        with st.container(border=True):
+            if multi_outlet:
+                ncols = len(outlets_bundle) + 1
+                st.caption("Each outlet vs **Combined** (same date).")
+                st.markdown("##### Net sales")
+                cr = st.columns(ncols)
+                for i, (_, oname, s) in enumerate(outlets_bundle):
+                    with cr[i]:
+                        st.metric(
+                            _col_head(oname),
+                            utils.format_currency(s.get("net_total", 0)),
+                        )
+                with cr[-1]:
+                    st.metric(
+                        "Combined",
+                        utils.format_currency(summary.get("net_total", 0)),
+                        delta=f"vs {utils.format_currency(summary.get('target', 0))} target",
+                    )
+                st.markdown("##### Covers")
+                cr = st.columns(ncols)
+                for i, (_, _on, s) in enumerate(outlets_bundle):
+                    with cr[i]:
+                        st.metric(
+                            _col_head(_on),
+                            f"{int(s.get('covers') or 0):,}",
+                            delta=f"Turns {float(s.get('turns') or 0):.1f}",
+                        )
+                with cr[-1]:
+                    lc, dc = (
+                        summary.get("lunch_covers"),
+                        summary.get("dinner_covers"),
+                    )
+                    foot = (
+                        f"Lunch {lc:,} · Dinner {dc:,}"
+                        if lc is not None and dc is not None
+                        else None
+                    )
+                    st.metric(
+                        "Combined",
+                        f"{int(summary.get('covers') or 0):,}",
+                        delta=foot or f"Turns: {float(summary.get('turns') or 0):.1f}",
+                    )
+                st.markdown("##### APC")
+                cr = st.columns(ncols)
+                for i, (_, _on, s) in enumerate(outlets_bundle):
+                    with cr[i]:
+                        st.metric(
+                            _col_head(_on),
+                            utils.format_currency(s.get("apc", 0)),
+                        )
+                with cr[-1]:
+                    st.metric(
+                        "Combined",
+                        utils.format_currency(summary.get("apc", 0)),
+                        help="Average per cover: net sales ÷ covers.",
+                    )
+                st.markdown("##### Target achievement (day)")
+                cr = st.columns(ncols)
+                for i, (_, _on, s) in enumerate(outlets_bundle):
+                    p = float(s.get("pct_target") or 0)
+                    with cr[i]:
+                        st.metric(
+                            _col_head(_on),
+                            f"{p:.1f}%",
+                            delta_color="normal" if p >= 100 else "inverse",
+                        )
+                with cr[-1]:
+                    pct = float(summary.get("pct_target") or 0)
+                    st.metric(
+                        "Combined",
+                        f"{pct:.1f}%",
+                        delta=f"vs {pct:.0f}%",
+                        delta_color="normal" if pct >= 100 else "inverse",
+                        help="Net sales for the day vs daily sales target.",
+                    )
+            else:
+                _, _single_name, s_one = outlets_bundle[0]
+                _oc = int(s_one.get("order_count") or 0)
+                _aov = float(s_one.get("net_total") or 0) / _oc if _oc > 0 else 0.0
+                col_kpi1, col_kpi2, col_kpi3, col_kpi4, col_kpi5 = st.columns(5)
+                with col_kpi1:
+                    st.metric(
+                        "Net Sales",
+                        utils.format_currency(s_one.get("net_total", 0)),
+                        delta=f"vs {utils.format_currency(s_one.get('target', 0))} target",
+                    )
+                with col_kpi2:
+                    lc = s_one.get("lunch_covers")
+                    dc = s_one.get("dinner_covers")
+                    foot = (
+                        f"Lunch {lc:,} · Dinner {dc:,}"
+                        if lc is not None and dc is not None
+                        else None
+                    )
+                    st.metric(
+                        "Covers",
+                        f"{int(s_one.get('covers') or 0):,}",
+                        delta=foot or f"Turns: {float(s_one.get('turns') or 0):.1f}",
+                    )
+                with col_kpi3:
+                    st.metric(
+                        "APC",
+                        utils.format_currency(s_one.get("apc", 0)),
+                        help="Average per cover: net sales ÷ covers.",
+                    )
+                with col_kpi4:
+                    st.metric(
+                        "Orders / AOV",
+                        f"{_oc:,}",
+                        delta=utils.format_currency(_aov) + " avg" if _oc > 0 else None,
+                        help="Unique orders (invoices) and Average Order Value.",
+                    )
+                with col_kpi5:
+                    pct = float(s_one.get("pct_target") or 0)
+                    st.metric(
+                        "Target Achievement",
+                        f"{pct:.1f}%",
+                        delta_color="normal" if pct >= 100 else "inverse",
+                        help="Net sales for the day vs daily sales target.",
+                    )
+
+        st.markdown("---")
+
+        col_det1, col_det2 = st.columns(2)
+
+        _pay_fields = [
+            ("Gross Total", "gross_total"),
+            ("Net Total", "net_total"),
+            ("Cash", "cash_sales"),
+            ("GPay", "gpay_sales"),
+            ("Zomato", "zomato_sales"),
+            ("Card", "card_sales"),
+            ("Other", "other_sales"),
+            ("Discount", "discount"),
+            ("Complimentary", "complimentary"),
+            ("Service Charge", "service_charge"),
+            ("CGST", "cgst"),
+            ("SGST", "sgst"),
+        ]
+
+        with col_det1:
+            st.markdown("### 💰 Sales & Tax Breakdown")
+            if multi_outlet:
+                sd = {
+                    "Line item": [x[0] for x in _pay_fields],
+                }
+                for _, oname, s in outlets_bundle:
+                    sd[_col_head(oname, 12)] = [
+                        utils.format_currency(float(s.get(f) or 0))
+                        for _l, f in _pay_fields
+                    ]
+                sd["Combined"] = [
+                    utils.format_currency(float(summary.get(f) or 0))
+                    for _l, f in _pay_fields
+                ]
+                sales_df = pd.DataFrame(sd)
+                st.dataframe(
+                    sales_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                _, _sn, s_one = outlets_bundle[0]
+                sales_data = {
+                    "Line item": [x[0] for x in _pay_fields],
+                    "Amount (₹)": [
+                        utils.format_currency(float(s_one.get(f) or 0))
+                        for _l, f in _pay_fields
+                    ],
+                }
+                sales_df = pd.DataFrame(sales_data)
+                st.dataframe(
+                    sales_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Line item": st.column_config.TextColumn("Line item"),
+                        "Amount (₹)": st.column_config.TextColumn("Amount (₹)"),
+                    },
+                )
+
+        with col_det2:
+            st.markdown("### 📊 MTD Summary")
+            _mtd_rows = [
+                ("Net Sales", "mtd_net_sales", "cur"),
+                ("Total Covers", "mtd_total_covers", "int"),
+                ("Avg Daily", "mtd_avg_daily", "cur"),
+                ("Target", "mtd_target", "cur"),
+                ("Achievement", "mtd_pct_target", "pct"),
+            ]
+            if multi_outlet:
+                md = {"Metric": [x[0] for x in _mtd_rows]}
+                for _, oname, s in outlets_bundle:
+                    col_vals = []
+                    for _lab, key, kind in _mtd_rows:
+                        v = s.get(key, 0)
+                        if kind == "int":
+                            col_vals.append(f"{int(v or 0):,}")
+                        elif kind == "pct":
+                            col_vals.append(f"{float(v or 0):.1f}%")
+                        else:
+                            col_vals.append(utils.format_currency(float(v or 0)))
+                    md[_col_head(oname, 12)] = col_vals
+                md["Combined"] = []
+                for _lab, key, kind in _mtd_rows:
+                    v = summary.get(key, 0)
+                    if kind == "int":
+                        md["Combined"].append(f"{int(v or 0):,}")
+                    elif kind == "pct":
+                        md["Combined"].append(f"{float(v or 0):.1f}%")
+                    else:
+                        md["Combined"].append(utils.format_currency(float(v or 0)))
+                st.dataframe(
+                    pd.DataFrame(md),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                _, _sn, s_one = outlets_bundle[0]
+                mtd_data = {
+                    "Metric": [x[0] for x in _mtd_rows],
+                    "Value": [],
+                }
+                for _lab, key, kind in _mtd_rows:
+                    v = s_one.get(key, 0)
+                    if kind == "int":
+                        mtd_data["Value"].append(f"{int(v or 0):,}")
+                    elif kind == "pct":
+                        mtd_data["Value"].append(f"{float(v or 0):.1f}%")
+                    else:
+                        mtd_data["Value"].append(utils.format_currency(float(v or 0)))
+                st.dataframe(
+                    pd.DataFrame(mtd_data),
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Metric": st.column_config.TextColumn("Metric"),
+                        "Value": st.column_config.TextColumn("Value"),
+                    },
+                )
+
+        st.markdown("---")
+
+        # Sheet-style report + clipboard (matches Google Sheet EOD layout)
+        st.markdown("### 📱 WhatsApp / sheet-style report")
+        per_outlet_sheet = (
+            [(n, d) for _i, n, d in outlets_bundle] if multi_outlet else None
+        )
+
+        y_m = [int(x) for x in date_str.split("-")[:2]]
+        if len(ctx.report_loc_ids) > 1:
+            mtd_cat = database.get_category_mtd_totals_multi(
+                ctx.report_loc_ids, y_m[0], y_m[1]
+            )
+            mtd_svc = database.get_service_mtd_totals_multi(
+                ctx.report_loc_ids, y_m[0], y_m[1]
+            )
+            foot_rows = scope.merge_month_footfall_rows(
+                ctx.report_loc_ids, y_m[0], y_m[1]
+            )
+        else:
+            mtd_cat = database.get_category_mtd_totals(
+                ctx.report_loc_ids[0], y_m[0], y_m[1]
+            )
+            mtd_svc = database.get_service_mtd_totals(
+                ctx.report_loc_ids[0], y_m[0], y_m[1]
+            )
+            foot_rows = database.get_summaries_for_month(
+                ctx.report_loc_ids[0], y_m[0], y_m[1]
+            )
+
+        img_buffer = reports.generate_sheet_style_report_image(
+            summary,
+            ctx.report_display_name,
+            mtd_category=mtd_cat,
+            mtd_service=mtd_svc,
+            month_footfall_rows=foot_rows,
+            per_outlet_summaries=per_outlet_sheet,
+        )
+        png_bytes = img_buffer.getvalue()
+        section_bufs = reports.generate_sheet_style_report_sections(
+            summary,
+            ctx.report_display_name,
+            mtd_category=mtd_cat,
+            mtd_service=mtd_svc,
+            month_footfall_rows=foot_rows,
+            per_outlet_summaries=per_outlet_sheet,
+        )
+        whatsapp_text = reports.generate_whatsapp_text(
+            summary,
+            ctx.report_display_name,
+            per_outlet=per_outlet_sheet,
+        )
+
+        st.image(BytesIO(png_bytes), use_container_width=True)
+        if multi_outlet:
+            st.caption(
+                "Lower sections of the image (category, service, footfall) use **combined** "
+                "MTD for all outlets in scope."
+            )
+
+        st.caption(
+            "**Next step:** Use **Copy report image** and paste into WhatsApp, "
+            "or **Download PNG**. **Copy report text** for a plain-text version."
+        )
+
+        if len(ctx.report_loc_ids) > 1:
+            with st.expander("Per-outlet reports (same date)", expanded=False):
+                for lid in ctx.report_loc_ids:
+                    sub = database.get_daily_summary(lid, date_str)
+                    if not sub:
+                        st.caption(f"Location id {lid}: no data for this date")
+                        continue
+                    loc_st = database.get_location_settings(lid)
+                    sub_name = loc_st["name"] if loc_st else str(lid)
+                    m_tgt = (
+                        float(loc_st["target_monthly_sales"])
+                        if loc_st
+                        else config.MONTHLY_TARGET
+                    )
+                    sub = scope.enrich_summary_for_display(sub, [lid], m_tgt, date_str)
+                    sm_cat = database.get_category_mtd_totals(lid, y_m[0], y_m[1])
+                    sm_svc = database.get_service_mtd_totals(lid, y_m[0], y_m[1])
+                    sm_foot = database.get_summaries_for_month(lid, y_m[0], y_m[1])
+                    buf = reports.generate_sheet_style_report_image(
+                        sub,
+                        sub_name,
+                        mtd_category=sm_cat,
+                        mtd_service=sm_svc,
+                        month_footfall_rows=sm_foot,
+                    )
+                    st.caption(sub_name)
+                    st.image(BytesIO(buf.getvalue()), use_container_width=True)
+
+        b1, b2, b3, b4 = st.columns(4)
+        with b1:
+            clipboard_ui.render_copy_image_button(
+                png_bytes,
+                "Copy report image",
+                f"clip_img_{date_str}",
+            )
+        with b2:
+            clipboard_ui.render_copy_text_button(
+                whatsapp_text,
+                "Copy report text",
+                f"clip_txt_{date_str}",
+                primary=False,
+            )
+        with b3:
+            st.download_button(
+                "Download PNG",
+                png_bytes,
+                file_name=f"boteco_sheet_{date_str}.png",
+                mime="image/png",
+                key=f"dl_png_{date_str}",
+                type="secondary",
+            )
+        with b4:
+            st.download_button(
+                "Download text",
+                whatsapp_text,
+                file_name=f"boteco_report_{date_str}.txt",
+                mime="text/plain",
+                key=f"dl_txt_{date_str}",
+                type="secondary",
+            )
+
+        with st.expander("Individual PNG sections", expanded=False):
+            st.markdown("#### Individual sections")
+            _sec_meta = [
+                ("sales_summary", "Sales summary"),
+                ("category", "Category sales"),
+                ("service", "Service sales"),
+                ("footfall", "Footfall (month)"),
+            ]
+            zip_buf = BytesIO()
+            with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                for key, title in _sec_meta:
+                    b = section_bufs[key].getvalue()
+                    zf.writestr(
+                        f"boteco_{key}_{date_str}.png",
+                        b,
+                    )
+            zip_buf.seek(0)
+            st.download_button(
+                "Download all sections (ZIP)",
+                zip_buf.getvalue(),
+                file_name=f"boteco_sections_{date_str}.zip",
+                mime="application/zip",
+                key=f"dl_zip_sections_{date_str}",
+                type="secondary",
+            )
+
+            r1c1, r1c2 = st.columns(2)
+            r2c1, r2c2 = st.columns(2)
+            _cells = [r1c1, r1c2, r2c1, r2c2]
+            for idx, (key, title) in enumerate(_sec_meta):
+                sec_bytes = section_bufs[key].getvalue()
+                with _cells[idx]:
+                    st.caption(title)
+                    st.image(BytesIO(sec_bytes), use_container_width=True)
+                    cb1, cb2 = st.columns(2)
+                    with cb1:
+                        clipboard_ui.render_copy_image_button(
+                            sec_bytes,
+                            "Copy",
+                            f"clip_sec_{key}_{date_str}",
+                            height=44,
+                            primary=False,
+                        )
+                    with cb2:
+                        st.download_button(
+                            "PNG",
+                            sec_bytes,
+                            file_name=f"boteco_{key}_{date_str}.png",
+                            mime="image/png",
+                            key=f"dl_sec_{key}_{date_str}",
+                            type="secondary",
+                        )
+
+        with st.expander("Plain text preview"):
+            st.text_area(
+                "Report text",
+                whatsapp_text,
+                height=280,
+                key=f"whatsapp_text_{date_str}",
+            )
+    else:
+        st.info(
+            f"No saved data for **{selected_date.strftime('%d %b %Y')}**. "
+            "Go to the **Upload** tab and import POS files for that date."
+        )
