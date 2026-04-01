@@ -27,28 +27,33 @@ def show_login_form():
         """
         <style>
         :root {
-            --brand: #e94560;
-            --login-surface: #fffafb;
-            --login-border: #f5c6cb;
-            --text: #1a1a1a;
+            --brand: #C2703E;
+            --brand-dark: #A45A2E;
+            --login-surface: #FFF8F0;
+            --login-border: #E0D5C8;
+            --text: #3D2B1F;
         }
         .login-container {
             max-width: 400px;
             margin: 100px auto;
-            padding: 2rem;
+            padding: 2.5rem;
             background: var(--login-surface);
-            border-radius: 12px;
+            border-radius: 14px;
             border: 1px solid var(--login-border);
-            box-shadow: 0 4px 12px rgba(233, 69, 96, 0.12);
+            box-shadow: 0 4px 16px rgba(60, 40, 20, 0.10);
         }
         .stButton > button {
             width: 100%;
             background-color: var(--brand);
-            color: white;
+            color: #FFF8F0;
             border: none;
             padding: 0.75rem;
-            border-radius: 8px;
+            border-radius: 10px;
             font-weight: bold;
+            font-family: 'DM Sans', sans-serif;
+        }
+        .stButton > button:hover {
+            background-color: var(--brand-dark);
         }
         </style>
     """,

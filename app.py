@@ -28,64 +28,88 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS (tokens align with .streamlit/config.toml)
+# Custom CSS (warm editorial theme — tokens align with .streamlit/config.toml)
 st.markdown(
     """
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&display=swap');
+
     :root {
-        --brand: #e94560;
-        --brand-soft: #fff5f7;
-        --surface: #f8f9fa;
-        --surface-elevated: #ffffff;
-        --text: #1a1a1a;
-        --text-muted: #495057;
-        --border-subtle: #dee2e6;
-        --success-bg: #d4edda;
-        --success-text: #155724;
-        --success-border: #c3e6cb;
-        --error-bg: #f8d7da;
-        --error-text: #721c24;
-        --error-border: #f5c6cb;
+        --brand: #C2703E;
+        --brand-dark: #A45A2E;
+        --brand-soft: #F5EAE0;
+        --surface: #FAF6F1;
+        --surface-elevated: #FFF8F0;
+        --text: #3D2B1F;
+        --text-muted: #8C7B6B;
+        --border-subtle: #E0D5C8;
+        --success-bg: #EDF2E8;
+        --success-text: #3D5A2E;
+        --success-border: #D4DFC9;
+        --error-bg: #F5E8E6;
+        --error-text: #7A2E22;
+        --error-border: #E8CFCB;
+        --font-display: 'DM Serif Display', serif;
+        --font-body: 'DM Sans', sans-serif;
     }
+
+    /* ── Typography ─────────────────────────────────────────── */
+    html, body, [class*="st-"], .stMarkdown, p, li, span, label,
+    [data-testid="stText"], input, textarea, select {
+        font-family: var(--font-body) !important;
+    }
+    h1, h2, h3, .main-header,
+    [data-testid="stHeadingWithActionElements"] {
+        font-family: var(--font-display) !important;
+        color: var(--text) !important;
+        letter-spacing: -0.01em;
+    }
+    button[data-baseweb="tab"] {
+        font-family: var(--font-display) !important;
+        font-size: 1.05rem !important;
+        letter-spacing: 0.01em;
+    }
+
+    /* ── Components ─────────────────────────────────────────── */
     .main-header {
         font-size: 2rem;
         font-weight: bold;
-        color: var(--brand);
+        color: var(--brand) !important;
     }
     .metric-card {
         background: var(--surface);
         padding: 1rem;
-        border-radius: 10px;
+        border-radius: 14px;
         border-left: 4px solid var(--brand);
     }
     [data-testid="stVerticalBlockBorderWrapper"] {
         background: var(--surface) !important;
         border-color: var(--border-subtle) !important;
-        border-radius: 12px !important;
+        border-radius: 14px !important;
     }
     [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMetric"] {
         background: var(--surface-elevated);
-        border-radius: 8px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        border-radius: 10px;
+        box-shadow: 0 1px 4px rgba(60,40,20,0.06);
         border: 1px solid var(--border-subtle);
     }
     .success-box {
         background: var(--success-bg);
         color: var(--success-text);
         padding: 1rem;
-        border-radius: 5px;
+        border-radius: 8px;
         border: 1px solid var(--success-border);
     }
     .error-box {
         background: var(--error-bg);
         color: var(--error-text);
         padding: 1rem;
-        border-radius: 5px;
+        border-radius: 8px;
         border: 1px solid var(--error-border);
     }
     .upload-zone {
         border: 2px dashed var(--brand);
-        border-radius: 10px;
+        border-radius: 14px;
         padding: 1rem 1.25rem;
         text-align: left;
         background: var(--brand-soft);
@@ -96,7 +120,7 @@ st.markdown(
         font-size: 0.95rem;
         padding: 0.75rem 1rem;
         background: var(--surface);
-        border-radius: 8px;
+        border-radius: 10px;
         border: 1px dashed var(--border-subtle);
         margin-top: 0.5rem;
     }
@@ -109,6 +133,19 @@ st.markdown(
     }
     .stCaption, [data-testid="stCaption"] {
         color: var(--text-muted);
+    }
+
+    /* ── Buttons ────────────────────────────────────────────── */
+    .stButton > button {
+        font-family: var(--font-body) !important;
+        border-radius: 10px !important;
+    }
+    .stButton > button[kind="primary"] {
+        background-color: var(--brand) !important;
+        color: #FFF8F0 !important;
+    }
+    .stButton > button[kind="primary"]:hover {
+        background-color: var(--brand-dark) !important;
     }
 </style>
 """,
