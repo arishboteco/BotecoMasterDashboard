@@ -109,3 +109,8 @@ Files uploaded → `file_detector.py` classifies → `smart_upload.py` orchestra
 - Framework: pytest (default config, no `pytest.ini` or `conftest.py`).
 - Tests in `tests/` directory, class-based grouping (e.g., `class TestF:`).
 - Currently only `tests/test_pos_parser.py` exists — tests pure helper functions from `pos_parser.py`.
+
+## Context7 Usage
+- Always use Context7 when library/API documentation, code generation, setup, or configuration steps are needed — do not wait for explicit requests.
+- Use `resolve-library-id` first to find the correct library ID (format: `/org/project`), then `query-docs` with your specific question.
+- Applies to all libraries, frameworks, SDKs, APIs, and cloud services — even well-known ones.
