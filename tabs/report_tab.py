@@ -482,7 +482,10 @@ def render(ctx: TabContext) -> None:
                         )
                     with cb2:
                         # WhatsApp share button - unique label per section to avoid duplicate widget issues
-                        whatsapp_url = f"https://wa.me/?text={quote_plus('Check out the Boteco Bangalore EOD Report for {date_str}!')}"
+                        message = (
+                            f"Check out the Boteco Bangalore EOD Report for {date_str}!"
+                        )
+                        whatsapp_url = f"https://wa.me/?text={quote_plus(message)}"
                         st.link_button(
                             f"📱 WhatsApp ({title})",
                             whatsapp_url,

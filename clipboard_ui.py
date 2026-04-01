@@ -8,7 +8,7 @@ import json
 import streamlit.components.v1 as components
 
 import ui_theme
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 
 def _html(html: str, height: int, component_key: str) -> None:
@@ -193,6 +193,7 @@ def render_share_images_button(
         msgEl.style.color = "#d97706";
       }}
     }} catch (e) {{
+      console.error("Share error:", e);
       if (e.name === "AbortError") {{
         // User cancelled - no message needed
         return;
