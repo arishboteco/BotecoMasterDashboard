@@ -27,7 +27,13 @@ def render(ctx: TabContext) -> None:
 
     # Date selector with Prev/Next navigation
     if "report_date" not in st.session_state:
-        st.session_state["report_date"] = datetime.now().date()
+        most_recent_date = database.get_most_recent_date_with_data(ctx.report_loc_ids)
+        if most_recent_date:
+            st.session_state["report_date"] = datetime.strptime(
+                most_recent_date, "%Y-%m-%d"
+            ).date()
+        else:
+            st.session_state["report_date"] = datetime.now().date()
 
     nav_col1, nav_col2, nav_col3 = st.columns([1, 3, 1])
     with nav_col1:

@@ -282,6 +282,16 @@ def render(ctx: TabContext) -> None:
                     )
 
                     if saved_any:
+                        most_recent_date = database.get_most_recent_date_with_data(
+                            ctx.report_loc_ids
+                        )
+                        if most_recent_date:
+                            latest_date = datetime.strptime(
+                                most_recent_date, "%Y-%m-%d"
+                            ).date()
+                            st.session_state["report_date"] = latest_date
+                            st.session_state["report_date_picker"] = latest_date
+
                         st.session_state["_import_summary_flash"] = (
                             saved_days,
                             skipped_validation,

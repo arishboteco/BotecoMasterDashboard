@@ -960,6 +960,29 @@ def get_summaries_for_date_range_multi(
     return [dict(row) for row in rows]
 
 
+def get_most_recent_date_with_data(location_ids: List[int]) -> Optional[str]:
+    """Get most recent saved summary date across one or more locations."""
+    if not location_ids:
+        return None
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    placeholders = ",".join("?" * len(location_ids))
+    cursor.execute(
+        f"""
+        SELECT MAX(date) AS most_recent_date
+        FROM daily_summaries
+        WHERE location_id IN ({placeholders})
+        """,
+        (*location_ids,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if row and row["most_recent_date"]:
+        return str(row["most_recent_date"])
+    return None
+
+
 def get_monthly_footfall_multi(
     location_ids: List[int], start_date: str, end_date: str
 ) -> List[Dict[str, Any]]:
