@@ -999,7 +999,6 @@ def generate_whatsapp_text(
     else:
         status_emoji, status_text = "\U0001f534", "Below Target"
 
-    # Category lines
     categories = r.get("categories") or []
     cat_total = sum(c.get("amount", 0) for c in categories) or 1
     cat_lines = (
@@ -1012,7 +1011,6 @@ def generate_whatsapp_text(
         or "  \u2022 Data not available"
     )
 
-    # Service lines
     services = r.get("services") or []
     svc_lines = "\n".join(
         f"  \u2022 {s.get('type') or s.get('service_type', '?')}: "
@@ -1021,7 +1019,6 @@ def generate_whatsapp_text(
         if float(s.get("amount") or 0) > 0
     )
 
-    # Payment lines — now includes Other
     pay_items = [
         ("Cash", r.get("cash_sales", 0)),
         ("GPay", r.get("gpay_sales", 0)),
@@ -1076,65 +1073,3 @@ def generate_whatsapp_text(
 
     report += "\u2501" * 22
     return report.strip()
-
-
-# ── Dead code kept for backward compatibility (not called by app.py) ──────────
-
-
-def generate_simple_text_report(report_data: Dict) -> str:
-    """Plain-text report without emojis (legacy, unused)."""
-    date_str = report_data.get("date", datetime.now().strftime("%d-%b-%Y"))
-    lines = [
-        "=" * 50,
-        "BOTECO BANGALORE",
-        "End of Day Report",
-        f"Date: {date_str}",
-        "=" * 50,
-        "",
-        "SALES SUMMARY",
-        "-" * 30,
-        f"Gross: {config.CURRENCY_FORMAT.format(report_data.get('gross_total', 0))}",
-        f"Net:   {config.CURRENCY_FORMAT.format(report_data.get('net_total', 0))}",
-        f"Covers: {report_data.get('covers', 0)}",
-        f"Turns:  {report_data.get('turns', 0):.1f}",
-        f"APC:    {config.CURRENCY_FORMAT.format(report_data.get('apc', 0))}",
-        "",
-        "TARGET",
-        "-" * 30,
-        f"Target: {config.CURRENCY_FORMAT.format(report_data.get('target', 0))}",
-        f"Achievement: {report_data.get('pct_target', 0):.1f}%",
-        "",
-        "MTD",
-        "-" * 30,
-        f"Covers:  {report_data.get('mtd_total_covers', 0):,}",
-        f"Sales:   {config.CURRENCY_FORMAT.format(report_data.get('mtd_net_sales', 0))}",
-        f"Avg/day: {config.CURRENCY_FORMAT.format(report_data.get('mtd_avg_daily', 0))}",
-        f"Target:  {report_data.get('mtd_pct_target', 0):.1f}%",
-        "=" * 50,
-    ]
-    return "\n".join(lines)
-
-
-def generate_comparison_text(
-    reports: List[Dict], location_name: str = "Boteco Bangalore"
-) -> str:
-    """Day-over-day comparison text (legacy, unused)."""
-    if not reports:
-        return "No data to compare"
-    lines = ["=" * 50, location_name.upper(), "Daily Comparison", "=" * 50, ""]
-    for i, report in enumerate(reports, 1):
-        net = report.get("net_total", 0)
-        comparison = ""
-        if i > 1:
-            prev_net = reports[i - 2].get("net_total", 0)
-            diff = net - prev_net
-            diff_pct = (diff / prev_net * 100) if prev_net > 0 else 0
-            arrow = "\u2191" if diff > 0 else "\u2193" if diff < 0 else "\u2192"
-            comparison = f" ({arrow} {diff_pct:+.1f}%)"
-        lines += [
-            f"\U0001f4c5 {report.get('date', 'N/A')}",
-            f"   Net: {config.CURRENCY_FORMAT.format(net)}{comparison}",
-            f"   Covers: {report.get('covers', 0)} | APC: {config.CURRENCY_FORMAT.format(report.get('apc', 0))}",
-            "",
-        ]
-    return "\n".join(lines)

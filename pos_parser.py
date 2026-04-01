@@ -694,3 +694,14 @@ def validate_data(data: Dict) -> Tuple[bool, List[str]]:
     if net <= 0:
         errors.append("Net total should be greater than 0")
     return len(errors) == 0, errors
+
+
+# Public API aliases for helper functions used by other modules (smart_upload.py).
+# These were previously private (_f, _norm_header, etc.) but are part of the parsing contract.
+f = _f
+i = _i
+norm_header = _norm_header
+parse_date = _parse_date
+cell_date_to_iso = _cell_date_to_iso
+payment_bucket = _payment_bucket
+normalize_group_category = _normalize_group_category

@@ -22,6 +22,7 @@ import clipboard_ui
 import ui_theme
 
 ui_theme.apply_plotly_theme()
+database.bootstrap()
 
 # Page configuration
 st.set_page_config(

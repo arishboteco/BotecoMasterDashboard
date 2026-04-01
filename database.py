@@ -1,20 +1,23 @@
 import sqlite3
 import hashlib
 import os
+import logging
+from contextlib import contextmanager
 from datetime import datetime
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any, Tuple, Generator
 
 try:
     import bcrypt
 except ImportError:
     bcrypt = None
 import config
+from logger import get_logger
 
-# Handle both local and cloud deployment
+logger = get_logger(__name__)
+
 DB_DIR = os.path.dirname(os.path.abspath(__file__))
-DATABASE_PATH = os.path.join(DB_DIR, "data", "boteco.db")
+DATABASE_PATH = os.path.join(DB_DIR, config.DATABASE_PATH.lstrip("./\\"))
 
-# Ensure data directory exists
 os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
 
 
@@ -59,6 +62,16 @@ def get_connection():
     conn = sqlite3.connect(DATABASE_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+@contextmanager
+def db_connection():
+    """Context manager for database connections. Preferred for new code."""
+    conn = get_connection()
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def init_database():
@@ -365,6 +378,9 @@ def get_all_locations() -> List[Dict]:
 
 def save_daily_summary(location_id: int, data: Dict) -> int:
     """Save or update daily summary."""
+    logger.info(
+        "Saving daily summary for location_id=%s date=%s", location_id, data.get("date")
+    )
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -532,6 +548,7 @@ def peek_daily_net_sales(location_id: int, date: str) -> Optional[float]:
 
 def delete_daily_summary_for_location_date(location_id: int, date: str) -> bool:
     """Remove one day's summary and its child rows. Leaves upload_history for audit."""
+    logger.info("Deleting daily summary for location_id=%s date=%s", location_id, date)
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
@@ -1246,6 +1263,8 @@ def get_daily_service_sales_for_date_range(
     return [dict(row) for row in rows]
 
 
-# Initialize database on module import
-init_database()
-ensure_default_locations()
+def bootstrap():
+    """Initialize database and ensure default locations exist. Call explicitly from app.py."""
+    logger.info("Bootstrapping database")
+    init_database()
+    ensure_default_locations()

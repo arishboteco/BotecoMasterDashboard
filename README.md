@@ -1,12 +1,16 @@
 # Boteco Dashboard - Restaurant Sales Management System
 
+A sales management system for **Boteco Bangalore** with multiple outlets. Ingests POS data from Petpooja exports, generates daily End-of-Day reports as formatted PNG images and WhatsApp-ready text, and provides analytics dashboards.
+
+**Deployed at:** https://arishboteco-botecomasterdashboard.streamlit.app
+
 ## Setup Instructions
 
 ### 1. Create Virtual Environment
 ```bash
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
-venv\Scripts\activate   # Windows
+venv\Scripts\activate     # Windows
 ```
 
 ### 2. Install Dependencies
@@ -21,8 +25,8 @@ streamlit run app.py
 
 ### 4. First Time Setup
 - On first run, you'll be prompted to create an admin account
-- Default location "Boteco Bangalore" will be created
-- Set your monthly sales target (default: ₹5,00,000)
+- Default locations "Boteco - Indiqube" and "Boteco - Bagmane" will be created
+- Set your monthly sales target (default: ₹5,000,000)
 
 ## Cloud Deployment (Streamlit Cloud)
 
@@ -31,30 +35,63 @@ streamlit run app.py
 3. Connect your GitHub repository
 4. Deploy
 
-**Note:** For cloud deployment, SQLite file storage is limited.
-Consider using an external database (PostgreSQL, MySQL) for production.
+**Note:** For cloud deployment, SQLite file storage is limited. Consider using an external database (PostgreSQL, MySQL) for production.
 
 ## Default Credentials
 - Username: admin
 - Password: (set during first run)
 
 ## Features
-- Multi-location support
-- XLSX file upload for POS data
-- WhatsApp-ready report generation
-- Historical analytics and trends
-- Target tracking
+- **Smart file upload** — Drop any mix of Petpooja exports; the system auto-detects file types by content
+- **Multi-location support** — Manage multiple outlets with per-outlet targets and settings
+- **Role-based access** — Admin and manager roles with location scoping
+- **Daily EOD reports** — Polished PNG images and WhatsApp-ready text with sales, covers, APC, payment breakdown, category mix, and MTD summary
+- **Analytics dashboard** — Sales trends, covers, APC, payment distribution, category mix, top-selling items, meal period breakdown, weekday analysis, and target tracking
+- **Data export** — Download daily summaries as CSV or Excel
 
 ## File Structure
 ```
-boteco_dashboard/
-├── app.py              # Main application
-├── database.py          # Database models
-├── parser.py           # File parsing
-├── reports.py           # Report generation
-├── auth.py             # Authentication
-├── utils.py            # Utilities
-├── config.py           # Configuration
+BotecoMasterDashboard/
+├── app.py                      # Main Streamlit application (4 tabs)
+├── auth.py                     # Authentication & session management
+├── clipboard_ui.py             # HTML/JS clipboard helpers
+├── config.py                   # Configuration constants & env resolution
+├── customer_report_parser.py   # Parses customer/booking reports for cover counts
+├── database.py                 # SQLite database layer & schema
+├── file_detector.py            # Auto-detects Petpooja export file types
+├── logger.py                   # Centralized logging configuration
+├── pos_parser.py               # Parses Item Report XLSX files
+├── scope.py                    # Multi-location report aggregation
+├── sheet_reports.py            # PNG report image generation + WhatsApp text
+├── smart_upload.py             # Orchestrates multi-file upload pipeline
+├── timing_parser.py            # Parses Restaurant Timing Report XLSX
+├── ui_theme.py                 # Shared UI constants and Plotly theme defaults
+├── utils.py                    # Helper functions (formatting, dates, growth calc)
+├── requirements.txt            # Python dependencies
+├── .streamlit/
+│   └── config.toml             # Streamlit theme config
+├── .devcontainer/
+│   └── devcontainer.json       # VS Code dev container config
+├── scripts/
+│   └── inspect_exports.py      # Diagnostic script for POS files
 └── data/
-    └── boteco.db       # SQLite database (auto-created)
+    └── boteco.db               # SQLite database (auto-created, gitignored)
 ```
+
+## Supported Petpooja Export Types
+
+| Type | File | Usage |
+|------|------|-------|
+| Item Report With Customer/Order Details | `.xlsx` | Primary data source — sales, categories, items, payments |
+| Customer/Booking Report | `.xlsx` | Cover counts per outlet per day |
+| Restaurant Timing Report | `.xlsx` | Meal period breakdown (Breakfast, Lunch, Dinner) |
+| Order Summary Report | `.csv` | Backup data source when Item Report unavailable |
+| Flash Report / POS Collection | `.xlsx` | Supplement for service charge data |
+| Group Wise / All Restaurant / Comparison | `.xlsx/.xls` | Skipped — redundant data |
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `CUSTOMER_REPORT_XLSX_PATH` | Path to the customer report XLSX file for cover counts |
+| `BOTECO_LOG_FILE` | Optional file path for persistent logging |
