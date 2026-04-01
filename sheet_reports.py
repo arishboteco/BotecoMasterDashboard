@@ -935,8 +935,8 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
 
 def _section_footfall_metrics(
     ax,
-    monthly_rows: List[Dict],
-    weekly_rows: List[Dict],
+    monthly_rows: Optional[List[Dict]],
+    weekly_rows: Optional[List[Dict]],
     location_name: str,
 ) -> None:
     """Footfall metrics section with monthly and weekly summary tables."""
@@ -963,8 +963,8 @@ def _section_footfall_metrics(
     )
     _label(ax, 0.012, banner_top - 0.045, location_name[:32], size=9.0, color="#94a3b8")
 
-    cur_y = banner_y - 0.02
-    row_h = 0.038
+    cur_y = banner_y - 0.015
+    row_h = 0.042
 
     # Helper to calculate MoM/WoW % change
     def _calc_pct_change(current: float, previous: float) -> str:
@@ -986,12 +986,13 @@ def _section_footfall_metrics(
 
     # ── Monthly Table ─────────────────────────────────────────────────────────
     if monthly:
-        cur_y -= row_h * 0.5
-        _label(ax, 0.012, cur_y, "Monthly", size=10.0, color=C_MUTED, weight="bold")
-        cur_y -= row_h * 1.2
+        cur_y -= row_h * 0.3
+        # Section label above table
+        _label(ax, 0.012, cur_y, "Monthly", size=10.0, color=C_SLATE, weight="bold")
+        cur_y -= row_h * 0.9
 
-        # Header
-        col_w = [0.18, 0.16, 0.16, 0.16, 0.18, 0.16]
+        # Header - equal column widths for cleaner look
+        col_w = [0.17, 0.166, 0.166, 0.166, 0.166, 0.166]
         headers = [
             "Month",
             "Footfall",
@@ -1003,7 +1004,7 @@ def _section_footfall_metrics(
         _table_header_row(ax, 0, cur_y, headers, col_w, row_h, font_size=9.0)
         cur_y -= row_h
 
-        # Sort by month descending (most recent first), but we'll display in that order
+        # Sort by month descending (most recent first)
         sorted_monthly = sorted(monthly, key=lambda x: x.get("month", ""), reverse=True)
 
         for idx, row in enumerate(sorted_monthly[:9]):  # Show last 9 months
@@ -1049,19 +1050,20 @@ def _section_footfall_metrics(
                 col_w,
                 row_h=row_h,
                 is_alt=(idx % 2 == 1),
-                font_size=8.5,
+                font_size=9.0,
             )
 
-        cur_y -= row_h * 0.5
+        cur_y -= row_h * 0.3
 
     # ── Weekly Table ──────────────────────────────────────────────────────────
     if weekly:
-        cur_y -= row_h * 0.5
-        _label(ax, 0.012, cur_y, "Weekly", size=10.0, color=C_MUTED, weight="bold")
-        cur_y -= row_h * 1.2
+        cur_y -= row_h * 0.3
+        # Section label above table
+        _label(ax, 0.012, cur_y, "Weekly", size=10.0, color=C_SLATE, weight="bold")
+        cur_y -= row_h * 0.9
 
-        # Header
-        col_w = [0.18, 0.16, 0.16, 0.16, 0.18, 0.16]
+        # Header - equal column widths
+        col_w = [0.17, 0.166, 0.166, 0.166, 0.166, 0.166]
         headers = [
             "Week",
             "Footfall",
@@ -1112,7 +1114,7 @@ def _section_footfall_metrics(
                 col_w,
                 row_h=row_h,
                 is_alt=(idx % 2 == 1),
-                font_size=8.5,
+                font_size=9.0,
             )
 
     # If no data at all
@@ -1128,7 +1130,7 @@ def _section_footfall_metrics(
             ha="center",
         )
 
-    ax.set_ylim(cur_y - 0.06, 1.0)
+    ax.set_ylim(cur_y - 0.04, 1.0)
 
 
 # ── Short outlet name helper ──────────────────────────────────────────────────
