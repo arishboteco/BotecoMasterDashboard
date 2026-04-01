@@ -327,9 +327,11 @@ def render(ctx: TabContext) -> None:
             mtd_svc = database.get_service_mtd_totals_multi(
                 ctx.report_loc_ids, y_m[0], y_m[1]
             )
-            foot_rows = scope.merge_month_footfall_rows(
-                ctx.report_loc_ids, y_m[0], y_m[1]
-            )
+            per_outlet_footfall = [
+                (name, database.get_summaries_for_month(lid, y_m[0], y_m[1]))
+                for lid, name, _ in outlets_bundle
+            ]
+            foot_rows = []
             # Per-outlet MTD category & service for PNG sections
             per_outlet_cat = [
                 (name, database.get_category_mtd_totals(lid, y_m[0], y_m[1]))
@@ -349,6 +351,7 @@ def render(ctx: TabContext) -> None:
             foot_rows = database.get_summaries_for_month(
                 ctx.report_loc_ids[0], y_m[0], y_m[1]
             )
+            per_outlet_footfall = None
 
         section_bufs = reports.generate_sheet_style_report_sections(
             summary,
@@ -359,12 +362,28 @@ def render(ctx: TabContext) -> None:
             per_outlet_summaries=per_outlet_sheet,
             per_outlet_category=per_outlet_cat,
             per_outlet_service=per_outlet_svc,
+            per_outlet_footfall=per_outlet_footfall,
         )
+
+        def _footfall_sections() -> List[Tuple[str, str]]:
+            items: List[Tuple[str, str]] = []
+            for key in section_bufs.keys():
+                if key == "footfall":
+                    items.append((key, "Footfall (month)"))
+                    continue
+                if key.startswith("footfall__"):
+                    parts = key.split("__")
+                    if len(parts) >= 3:
+                        slug = parts[1].replace("_", " ")
+                        items.append((key, f"Footfall ({slug.title()})"))
+                    else:
+                        items.append((key, "Footfall"))
+            return items
 
         if multi_outlet:
             st.caption(
-                "Category, service, and footfall sections use **combined** "
-                "MTD for all outlets in scope."
+                "Category and service sections use **combined** "
+                "MTD for all outlets in scope. Footfall is shown per outlet."
             )
 
         with st.expander("Individual PNG sections", expanded=True):
@@ -373,8 +392,8 @@ def render(ctx: TabContext) -> None:
                 ("sales_summary", "Sales summary"),
                 ("category", "Category sales"),
                 ("service", "Service sales"),
-                ("footfall", "Footfall (month)"),
             ]
+            _sec_meta.extend(_footfall_sections())
             zip_buf = BytesIO()
             with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
                 for key, title in _sec_meta:
@@ -393,12 +412,12 @@ def render(ctx: TabContext) -> None:
                 type="secondary",
             )
 
-            r1c1, r1c2 = st.columns(2)
-            r2c1, r2c2 = st.columns(2)
-            _cells = [r1c1, r1c2, r2c1, r2c2]
+            rows = max(1, (len(_sec_meta) + 1) // 2)
+            _cells = [st.columns(2) for _ in range(rows)]
             for idx, (key, title) in enumerate(_sec_meta):
                 sec_bytes = section_bufs[key].getvalue()
-                with _cells[idx]:
+                row_idx, col_idx = divmod(idx, 2)
+                with _cells[row_idx][col_idx]:
                     st.caption(title)
                     st.image(BytesIO(sec_bytes), use_container_width=True)
                     cb1, cb2 = st.columns(2)

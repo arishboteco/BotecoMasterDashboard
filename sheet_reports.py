@@ -18,6 +18,7 @@ and styled independently.
 """
 
 import math
+import re
 from io import BytesIO
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -944,6 +945,15 @@ def _short_outlet_name(name: str, max_len: int = 18) -> str:
     return name if len(name) <= max_len else name[: max_len - 1] + "\u2026"
 
 
+def _section_key_slug(value: str, default: str = "outlet") -> str:
+    """Create a compact ascii-safe slug for PNG section keys."""
+    slug = re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower())
+    slug = slug.strip("_")
+    if not slug:
+        slug = default
+    return slug[:22]
+
+
 def _outlet_col_widths(n_outlets: int, label_frac: float = 0.30) -> List[float]:
     """Compute column widths for [Label, Outlet1, ..., OutletN, Combined].
 
@@ -990,8 +1000,17 @@ def generate_sheet_style_report_sections(
     per_outlet_summaries: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
     per_outlet_category: Optional[List[Tuple[str, Dict[str, float]]]] = None,
     per_outlet_service: Optional[List[Tuple[str, Dict[str, float]]]] = None,
+    per_outlet_footfall: Optional[List[Tuple[str, List[Dict[str, Any]]]]] = None,
 ) -> Dict[str, BytesIO]:
-    """Four separate PNGs: sales_summary, category, service, footfall."""
+    """Generate section PNG buffers.
+
+    Returns keys:
+      - sales_summary
+      - category
+      - service
+      - footfall (single-outlet/legacy)
+      - footfall__{outlet_slug}_{idx} (multi-outlet per-outlet footfall)
+    """
     r = report_data
     mc = dict(mtd_category or {})
     ms = dict(mtd_service or {})
@@ -1001,6 +1020,7 @@ def generate_sheet_style_report_sections(
     per_outlet = list(per_outlet_summaries) if per_outlet_summaries else None
     per_outlet_cat = list(per_outlet_category) if per_outlet_category else None
     per_outlet_svc = list(per_outlet_service) if per_outlet_service else None
+    per_outlet_ff = list(per_outlet_footfall) if per_outlet_footfall else None
 
     out: Dict[str, BytesIO] = {}
 
@@ -1063,10 +1083,19 @@ def generate_sheet_style_report_sections(
     out["service"] = _save_fig(fig)
 
     # Footfall
-    n_ft = len(mf) + 4
-    fig, ax = _fig_for_section(n_ft, min_rows=5, cap_h=33.0, w=fig_w)
-    _section_footfall(ax, mf, location_name)
-    out["footfall"] = _save_fig(fig)
+    if per_outlet_ff and len(per_outlet_ff) > 1:
+        for idx, (outlet_name, ff_rows) in enumerate(per_outlet_ff):
+            ff_rows = list(ff_rows or [])
+            n_ft = len(ff_rows) + 4
+            fig, ax = _fig_for_section(n_ft, min_rows=5, cap_h=33.0, w=fig_w)
+            _section_footfall(ax, ff_rows, outlet_name)
+            outlet_slug = _section_key_slug(outlet_name, default=f"outlet_{idx}")
+            out[f"footfall__{outlet_slug}_{idx}"] = _save_fig(fig)
+    else:
+        n_ft = len(mf) + 4
+        fig, ax = _fig_for_section(n_ft, min_rows=5, cap_h=33.0, w=fig_w)
+        _section_footfall(ax, mf, location_name)
+        out["footfall"] = _save_fig(fig)
 
     return out
 
@@ -1080,10 +1109,12 @@ def generate_sheet_style_report_image(
     per_outlet_summaries: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
     per_outlet_category: Optional[List[Tuple[str, Dict[str, float]]]] = None,
     per_outlet_service: Optional[List[Tuple[str, Dict[str, float]]]] = None,
+    per_outlet_footfall: Optional[List[Tuple[str, List[Dict[str, Any]]]]] = None,
 ) -> BytesIO:
     """
-    Composite PNG: 4 sections stacked vertically.
-    Sales Summary → Category Sales → Service Sales → Footfall Grid.
+    Composite PNG from generated sections stacked vertically.
+    For multi-outlet inputs this includes one footfall section per outlet,
+    otherwise a single combined footfall section.
     """
     sections = generate_sheet_style_report_sections(
         report_data,
@@ -1094,14 +1125,29 @@ def generate_sheet_style_report_image(
         per_outlet_summaries,
         per_outlet_category,
         per_outlet_service,
+        per_outlet_footfall,
     )
 
-    # Stack the 4 PNGs into one tall image using matplotlib
+    # Stack generated sections into one tall image using matplotlib
     from PIL import Image as PILImage
     import numpy as np
 
     imgs = []
-    for key in ("sales_summary", "category", "service", "footfall"):
+    for key in ("sales_summary", "category", "service"):
+        if key in sections:
+            buf = sections[key]
+            buf.seek(0)
+            imgs.append(PILImage.open(buf).convert("RGB"))
+
+    footfall_keys = [
+        key
+        for key in sections.keys()
+        if isinstance(key, str) and key.startswith("footfall")
+    ]
+    if not footfall_keys:
+        return BytesIO()
+
+    for key in footfall_keys:
         buf = sections[key]
         buf.seek(0)
         imgs.append(PILImage.open(buf).convert("RGB"))
