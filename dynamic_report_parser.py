@@ -66,6 +66,31 @@ def _safe_int(val: Any) -> int:
         return 0
 
 
+def _meal_from_time(ts_val: Any) -> Optional[str]:
+    """Classify a datetime value as 'Lunch' (before 18:00) or 'Dinner' (18:00+).
+
+    Args:
+        ts_val: Raw value from the 'Created Date Time' column.
+
+    Returns:
+        'Lunch', 'Dinner', or None if unparseable.
+    """
+    if ts_val is None:
+        return None
+    s = str(ts_val).strip()
+    if s in ("", "nan", "None"):
+        return None
+    try:
+        ts = pd.Timestamp(s)
+    except Exception:
+        return None
+    if pd.isna(ts):
+        return None
+    if ts.hour < 18:
+        return "Lunch"
+    return "Dinner"
+
+
 def parse_dynamic_report(
     content: bytes, filename: str
 ) -> Tuple[Optional[List[Dict[str, Any]]], List[str]]:
@@ -134,6 +159,7 @@ def parse_dynamic_report(
     sc_col = col_map.get("service charge (10)")
     cgst_col = col_map.get("cgst (2.5)")
     sgst_col = col_map.get("sgst (2.5)")
+    cdt_col = col_map.get("created date time")
 
     # Group by date
     days: Dict[str, Dict[str, Any]] = {}
@@ -161,6 +187,7 @@ def parse_dynamic_report(
                 "order_count": 0,
                 "bills": set(),
                 "categories": {},
+                "meals": {},
             }
 
         day = days[date_raw]
@@ -193,6 +220,13 @@ def parse_dynamic_report(
                         day["categories"].get(clean_name, 0.0) + val
                     )
 
+        # Meal period (service) breakdown
+        if cdt_col:
+            meal = _meal_from_time(row.get(cdt_col))
+            if meal:
+                net_val = _safe_float(row.get(net_col, 0))
+                day["meals"][meal] = day["meals"].get(meal, 0.0) + net_val
+
     # Build output records
     results: List[Dict[str, Any]] = []
     for date_str in sorted(days.keys()):
@@ -203,6 +237,12 @@ def parse_dynamic_report(
         categories = [
             {"category": name, "qty": 0, "amount": round(amt, 2)}
             for name, amt in sorted(day["categories"].items(), key=lambda x: -x[1])
+        ]
+
+        services = [
+            {"type": k, "amount": round(v, 2)}
+            for k, v in sorted(day["meals"].items(), key=lambda x: -x[1])
+            if v > 0
         ]
 
         record = {
@@ -221,6 +261,7 @@ def parse_dynamic_report(
             "other_sales": round(day["other_sales"], 2),
             "order_count": bill_count,
             "categories": categories,
+            "services": services,
             "file_type": "dynamic_report",
         }
         results.append(record)
