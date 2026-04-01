@@ -200,15 +200,15 @@ def _table_header_row(ax, x, y, cols, widths, row_h=0.048, bg=C_NAVY, font_size=
     )
     ax.add_patch(patch)
     n_cols = len(cols)
-    fs = font_size if font_size else (10.2 if n_cols > 4 else 10.8)
+    fs = font_size if font_size else (11.0 if n_cols > 4 else 11.5)
     cx = x
     for i, (col, cw) in enumerate(zip(cols, widths)):
         ha = "left" if i == 0 else "right"
-        px = cx + 0.012 if ha == "left" else cx + cw - 0.012
+        px = cx + 0.006 if ha == "left" else cx + cw - 0.006
         _label(
             ax,
             px,
-            y + row_h - 0.012,
+            y + row_h - 0.010,
             col,
             size=fs,
             color=C_WHITE,
@@ -248,16 +248,16 @@ def _table_data_row(
     )
     ax.add_patch(patch)
     n_cols = len(cells)
-    fs = font_size if font_size else (10.8 if n_cols > 4 else 11.2)
+    fs = font_size if font_size else (11.2 if n_cols > 4 else 11.8)
     cx = x
     for i, (cell, cw) in enumerate(zip(cells, widths)):
         ha = "left" if i == 0 else "right"
-        px = cx + 0.012 if ha == "left" else cx + cw - 0.012
+        px = cx + 0.006 if ha == "left" else cx + cw - 0.006
         rc = right_color if (i > 0 and right_color) else text_color
         _label(
             ax,
             px,
-            y + row_h - 0.0135,
+            y + row_h - 0.011,
             str(cell),
             size=fs,
             color=rc,
@@ -568,7 +568,7 @@ def _section_category(
         data_w = remaining / n_data
         col_w = [label_w] + [data_w] * n_data + [mtd_w, pct_w]
     else:
-        col_w = [0.50, 0.22, 0.22, 0.06]
+        col_w = [0.44, 0.22, 0.22, 0.06]
 
     tbl_x = 0.0
 
@@ -710,7 +710,7 @@ def _section_service(
         data_w = remaining / n_data
         col_w = [label_w] + [data_w] * n_data + [mtd_w, pct_w]
     else:
-        col_w = [0.50, 0.22, 0.22, 0.06]
+        col_w = [0.44, 0.22, 0.22, 0.06]
     tbl_x = 0.0
 
     # Slim header banner
@@ -851,13 +851,19 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
         ax.set_ylim(banner_y - 0.15, 1.0)
         return
 
-    col_w = [0.44, 0.18, 0.18, 0.20]
+    col_w = [0.40, 0.16, 0.16, 0.16]
     row_h = 0.045
     tbl_x = 0.0
 
     cur_y = banner_y - 0.01
     _table_header_row(
-        ax, tbl_x, cur_y - row_h, ["Date", "Dinner", "Lunch", "Total"], col_w, row_h
+        ax,
+        tbl_x,
+        cur_y - row_h,
+        ["Date", "Dinner", "Lunch", "Total"],
+        col_w,
+        row_h,
+        font_size=10.5,
     )
     cur_y -= row_h
 
@@ -991,8 +997,8 @@ def _section_footfall_metrics(
         _label(ax, 0.012, cur_y, "Monthly", size=10.0, color=C_SLATE, weight="bold")
         cur_y -= row_h * 0.9
 
-        # Header - equal column widths for cleaner look
-        col_w = [0.17, 0.166, 0.166, 0.166, 0.166, 0.166]
+        # Header - compact column widths
+        col_w = [0.16, 0.144, 0.144, 0.144, 0.144, 0.144]
         headers = [
             "Month",
             "Footfall",
@@ -1001,7 +1007,7 @@ def _section_footfall_metrics(
             "Daily Avg.",
             "% Change",
         ]
-        _table_header_row(ax, 0, cur_y, headers, col_w, row_h, font_size=9.0)
+        _table_header_row(ax, 0, cur_y, headers, col_w, row_h, font_size=10.5)
         cur_y -= row_h
 
         # Sort by month descending (most recent first)
@@ -1050,7 +1056,7 @@ def _section_footfall_metrics(
                 col_w,
                 row_h=row_h,
                 is_alt=(idx % 2 == 1),
-                font_size=9.0,
+                font_size=10.5,
             )
 
         cur_y -= row_h * 0.3
@@ -1062,8 +1068,8 @@ def _section_footfall_metrics(
         _label(ax, 0.012, cur_y, "Weekly", size=10.0, color=C_SLATE, weight="bold")
         cur_y -= row_h * 0.9
 
-        # Header - equal column widths
-        col_w = [0.17, 0.166, 0.166, 0.166, 0.166, 0.166]
+        # Header - compact column widths
+        col_w = [0.16, 0.144, 0.144, 0.144, 0.144, 0.144]
         headers = [
             "Week",
             "Footfall",
@@ -1072,7 +1078,7 @@ def _section_footfall_metrics(
             "Daily Avg.",
             "% Change",
         ]
-        _table_header_row(ax, 0, cur_y, headers, col_w, row_h, font_size=9.0)
+        _table_header_row(ax, 0, cur_y, headers, col_w, row_h, font_size=10.5)
         cur_y -= row_h
 
         # Sort by week descending (most recent first)
@@ -1114,7 +1120,7 @@ def _section_footfall_metrics(
                 col_w,
                 row_h=row_h,
                 is_alt=(idx % 2 == 1),
-                font_size=9.0,
+                font_size=10.5,
             )
 
     # If no data at all
@@ -1154,7 +1160,7 @@ def _section_key_slug(value: str, default: str = "outlet") -> str:
     return slug[:22]
 
 
-def _outlet_col_widths(n_outlets: int, label_frac: float = 0.30) -> List[float]:
+def _outlet_col_widths(n_outlets: int, label_frac: float = 0.24) -> List[float]:
     """Compute column widths for [Label, Outlet1, ..., OutletN, Combined].
 
     When n_outlets <= 1, returns [label_frac, 1 - label_frac] (two columns).
