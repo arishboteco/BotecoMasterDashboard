@@ -49,8 +49,8 @@ def render(ctx: TabContext) -> None:
         st.markdown(
             "**Just drop all your Petpooja downloads at once.** The system will:\n\n"
             "1. **Auto-detect** each file type from its content (not filename)\n"
-            "2. **Import** Item Reports (primary data), Customer Reports (covers), "
-            "and Timing Reports (meal breakdown)\n"
+            "2. **Import** Dynamic Report CSV (primary data), Item Reports (fallback), "
+            "Customer Reports (covers), and Timing Reports (meal breakdown)\n"
             "3. **Skip** redundant files (Group Wise, All Restaurant, Comparison)\n"
             "4. **Merge** data for the same date from multiple files\n\n"
             "Saving for the same **location + date** overwrites that day's data."
@@ -98,8 +98,8 @@ def render(ctx: TabContext) -> None:
 
         if importable_count == 0:
             st.error(
-                "No importable files detected. Make sure you include an "
-                "**Item Report With Customer/Order Details** \u2014 that is the primary data source."
+                "No importable files detected. Make sure you include a "
+                "**Dynamic Report CSV** or **Item Report With Customer/Order Details** — one of these is required as the primary data source."
             )
 
         # ── Phase 2: Pre-parse to find dates and check overlaps ──
@@ -236,6 +236,16 @@ def render(ctx: TabContext) -> None:
                         merged.update(mtd)
                         database.save_daily_summary(ctx.import_loc_id, merged)
 
+                        # Determine primary file type for this day's data
+                        primary_kind = "dynamic_report"
+                        for fr in upload_result.files:
+                            if fr.importable and fr.kind in (
+                                "dynamic_report",
+                                "item_order_details",
+                            ):
+                                primary_kind = fr.kind
+                                break
+
                         fnames = ", ".join(
                             fr.filename
                             for fr in upload_result.files
@@ -247,7 +257,7 @@ def render(ctx: TabContext) -> None:
                             ctx.import_loc_id,
                             day.date,
                             fnames,
-                            "item_order_details",
+                            primary_kind,
                             uploaded_by,
                         )
                         st.success(f"Saved data for {day.date}")

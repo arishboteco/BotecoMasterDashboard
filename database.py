@@ -1267,3 +1267,40 @@ def bootstrap():
     logger.info("Bootstrapping database")
     init_database()
     ensure_default_locations()
+
+
+def wipe_all_data() -> Dict[str, int]:
+    """Delete ALL operational data (summaries, categories, services, uploads, items).
+
+    Preserves: locations, users, location_settings tables.
+    Returns dict of {table_name: deleted_count} for confirmation.
+
+    WARNING: This is irreversible. Only call from admin UI with explicit confirmation.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    counts = {}
+
+    # Delete in foreign-key dependency order (children first)
+    for table in [
+        "item_sales",
+        "category_sales",
+        "service_sales",
+        "daily_summaries",
+        "upload_history",
+    ]:
+        try:
+            cursor.execute(f"SELECT COUNT(*) FROM {table}")
+            count = cursor.fetchone()[0]
+            cursor.execute(f"DELETE FROM {table}")
+            counts[table] = count
+        except Exception:
+            counts[table] = 0
+
+    conn.commit()
+    conn.close()
+
+    total = sum(counts.values())
+    logger.info(f"Wiped all data: {total} records deleted across {len(counts)} tables")
+    return counts

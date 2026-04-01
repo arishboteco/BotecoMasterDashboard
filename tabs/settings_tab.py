@@ -413,6 +413,33 @@ def render(ctx: TabContext) -> None:
 
     st.markdown("---")
 
+    # ── Wipe All Data (DEV ONLY) ──────────────────────────────────
+    with st.container(border=True):
+        st.markdown("### ⚠️ Wipe All Data (Development Only)")
+        st.caption(
+            "Permanently deletes ALL daily summaries, categories, services, items, and upload history. "
+            "Outlets and users are preserved. This action cannot be undone."
+        )
+        wipe_confirm = st.checkbox(
+            "I understand this will permanently delete ALL operational data",
+            key="wipe_all_confirm",
+        )
+        if st.button(
+            "🗑️ Wipe All Data",
+            type="primary",
+            disabled=not wipe_confirm,
+            key="wipe_all_btn",
+        ):
+            counts = database.wipe_all_data()
+            total = sum(counts.values())
+            st.success(f"✅ Wiped **{total:,}** records across {len(counts)} tables:")
+            for table, count in counts.items():
+                if count > 0:
+                    st.write(f"- `{table}`: {count:,} records deleted")
+            st.rerun()
+
+    st.markdown("---")
+
     # ── Quick outlet stats ────────────────────────────────────────
     with st.expander("Quick stats (all outlets)", expanded=False):
         for loc in sorted(database.get_all_locations(), key=lambda x: x["name"]):

@@ -3,7 +3,8 @@ Smart upload: accept any mix of Petpooja exports, auto-detect each file type,
 route to the right parser, merge data by date, and return save-ready records.
 
 Supports:
-  item_order_details   - Item Report With Customer/Order Details (.xlsx)  [PRIMARY]
+  dynamic_report       - Dynamic Report CSV (per-bill order-level)        [PRIMARY]
+  item_order_details   - Item Report With Customer/Order Details (.xlsx)  [FALLBACK]
   customer_report      - Customer/Booking report (.xlsx)                  [COVERS]
   timing_report        - Restaurant Timing Report (.xlsx)                 [SERVICE BREAKDOWN]
   order_summary_csv    - Order Summary Report (.csv)                      [BACKUP]
@@ -23,6 +24,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
+import dynamic_report_parser
 import file_detector
 import pos_parser
 import timing_parser
@@ -421,15 +423,63 @@ def process_smart_upload(
     # Step 4 — parse primary data sources in priority order
     fragments: List[Dict[str, Any]] = []
 
-    # 4a. Item Report (primary — richest data)
+    # 4a. Dynamic Report CSV (primary — per-bill order-level data)
+    dynamic_dates: set = set()
+    for fname, content in classified.get("dynamic_report", []):
+        fr_match = next((f for f in file_results if f.filename == fname), None)
+        try:
+            parsed, dr_notes = dynamic_report_parser.parse_dynamic_report(
+                content, fname
+            )
+            for n in dr_notes:
+                global_notes.append(n)
+            if parsed:
+                fragments.extend(parsed)
+                dynamic_dates = {f["date"] for f in parsed}
+                if fr_match:
+                    fr_match.notes.append(
+                        f"Parsed {len(parsed)} day(s) from Dynamic Report."
+                    )
+            else:
+                note = f"Dynamic Report {fname}: no data rows found."
+                global_notes.append(note)
+                if fr_match:
+                    fr_match.error = note
+        except Exception as ex:
+            note = f"Error parsing Dynamic Report {fname}: {ex}"
+            global_notes.append(note)
+            if fr_match:
+                fr_match.error = str(ex)
+
+    # 4b. Item Report (fallback — only for dates not covered by Dynamic Report)
     for fname, content in classified.get("item_order_details", []):
         fr_match = next((f for f in file_results if f.filename == fname), None)
         try:
             parsed = pos_parser.parse_item_order_details(content, fname)
             if parsed:
-                fragments.extend(parsed)
+                new_days = 0
+                for p in parsed:
+                    if p["date"] not in dynamic_dates:
+                        fragments.append(p)
+                        new_days += 1
+                    else:
+                        if fr_match:
+                            fr_match.notes.append(
+                                f"Date {p['date']} already covered by Dynamic Report — skipped."
+                            )
                 if fr_match:
-                    fr_match.notes.append(f"Parsed {len(parsed)} day(s) of sales data.")
+                    if new_days > 0:
+                        fr_match.notes.append(
+                            f"Added {new_days} day(s) not in Dynamic Report."
+                        )
+                    elif dynamic_dates:
+                        fr_match.notes.append(
+                            "All dates already covered by Dynamic Report."
+                        )
+                    else:
+                        fr_match.notes.append(
+                            f"Parsed {len(parsed)} day(s) of sales data."
+                        )
             else:
                 note = f"Item Report {fname}: no data rows found."
                 global_notes.append(note)
@@ -510,6 +560,7 @@ def process_smart_upload(
     day_results: List[DayResult] = []
 
     _KIND_PRIORITY = {
+        "dynamic_report": 5,
         "item_order_details": 10,
         "order_summary_csv": 20,
         "flash_report": 30,

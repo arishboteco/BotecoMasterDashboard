@@ -2,6 +2,7 @@
 Auto-detect Petpooja export file types from CONTENT (not filename).
 
 Detects:
+  dynamic_report       - Dynamic Report CSV (per-bill order-level) [PRIMARY]
   item_order_details   - Item Report With Customer/Order Details (.xlsx)
   customer_report      - Customer/Booking report (.xlsx)
   timing_report        - Restaurant Timing Report (.xlsx)
@@ -25,6 +26,7 @@ import pandas as pd
 # -- Priority: which types contribute new importable data ----------------
 
 IMPORT_PRIORITY = {
+    "dynamic_report": 0,
     "item_order_details": 1,
     "customer_report": 2,
     "timing_report": 3,
@@ -35,6 +37,7 @@ IMPORT_PRIORITY = {
 SKIP_TYPES = {"group_wise", "all_restaurant", "comparison", "unknown"}
 
 KIND_LABELS = {
+    "dynamic_report": "Dynamic Report (per-bill CSV — primary data source)",
     "item_order_details": "Item Report (line-item sales — primary data source)",
     "customer_report": "Customer Report (covers with lunch/dinner split)",
     "timing_report": "Timing Report (breakfast/lunch/dinner revenue breakdown)",
@@ -136,7 +139,17 @@ def detect_file_type(file_content: bytes, filename: str) -> str:
     if "booked for" in text and ("booking" in text or "restaurant" in text):
         return "customer_report"
 
-    # 3. Restaurant Timing Report
+    # 3. Dynamic Report CSV (per-bill)
+    #    Has bill no + pax + net amount + gross sale
+    if (
+        "bill no" in text
+        and "pax" in text
+        and "net amount" in text
+        and "gross sale" in text
+    ):
+        return "dynamic_report"
+
+    # 4. Restaurant Timing Report
     #    Breakfast + Lunch + Dinner + timing keyword
     if (
         "breakfast" in text
