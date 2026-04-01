@@ -87,7 +87,7 @@ def _save_fig(fig) -> BytesIO:
         format="png",
         dpi=DPI,
         bbox_inches="tight",
-        pad_inches=0.27,
+        pad_inches=0.02,
         facecolor=fig.get_facecolor(),
     )
     plt.close(fig)
@@ -202,7 +202,7 @@ def _table_header_row(ax, x, y, cols, widths, row_h=0.048, bg=C_NAVY, font_size=
     )
     ax.add_patch(patch)
     n_cols = len(cols)
-    fs = font_size if font_size else (9.0 if n_cols > 4 else 10.0)
+    fs = font_size if font_size else (10.2 if n_cols > 4 else 10.8)
     cx = x
     for i, (col, cw) in enumerate(zip(cols, widths)):
         ha = "left" if i == 0 else "right"
@@ -250,7 +250,7 @@ def _table_data_row(
     )
     ax.add_patch(patch)
     n_cols = len(cells)
-    fs = font_size if font_size else (9.5 if n_cols > 4 else 10.5)
+    fs = font_size if font_size else (10.8 if n_cols > 4 else 11.2)
     cx = x
     for i, (cell, cw) in enumerate(zip(cells, widths)):
         ha = "left" if i == 0 else "right"
@@ -940,10 +940,14 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
 
 def _short_outlet_name(name: str, max_len: int = 18) -> str:
     name = (name or "").strip()
+    for prefix in ("Boteco - ", "Boteco-", "Boteco "):
+        if name.lower().startswith(prefix.lower()):
+            name = name[len(prefix) :].strip()
+            break
     return name if len(name) <= max_len else name[: max_len - 1] + "\u2026"
 
 
-def _outlet_col_widths(n_outlets: int, label_frac: float = 0.35) -> List[float]:
+def _outlet_col_widths(n_outlets: int, label_frac: float = 0.30) -> List[float]:
     """Compute column widths for [Label, Outlet1, ..., OutletN, Combined].
 
     When n_outlets <= 1, returns [label_frac, 1 - label_frac] (two columns).
@@ -960,7 +964,9 @@ def _section_fig_width(n_outlets: int) -> float:
     """Figure width in inches. Wider when multi-outlet."""
     if n_outlets <= 1:
         return 8.5
-    return 8.5 + 2.0 * n_outlets  # e.g. 12.5 for 2 outlets
+    if n_outlets == 2:
+        return 10.0
+    return min(12.0, 10.0 + (n_outlets - 2) * 1.0)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
