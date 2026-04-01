@@ -134,7 +134,7 @@ def render(ctx: TabContext) -> None:
                     return None
                 g = utils.calculate_growth(current, prior)
                 sign = "+" if g["change"] >= 0 else ""
-                return f"{sign}{utils.format_currency(g['change'])} ({sign}{g['percentage']:.1f}%)"
+                return f"{sign}{utils.format_currency(g['change'])} ({sign}{utils.format_percent(g['percentage'])})"
 
             with kpi_cols[0]:
                 st.metric(
@@ -147,9 +147,7 @@ def render(ctx: TabContext) -> None:
                 if prior_covers is not None and prior_covers > 0:
                     g = utils.calculate_growth(total_covers, prior_covers)
                     sign = "+" if g["change"] >= 0 else ""
-                    cov_delta = (
-                        f"{sign}{int(g['change']):,} ({sign}{g['percentage']:.1f}%)"
-                    )
+                    cov_delta = f"{sign}{int(g['change']):,} ({sign}{utils.format_percent(g['percentage'])})"
                 st.metric(
                     "Total Covers",
                     f"{total_covers:,}",
@@ -599,7 +597,9 @@ def render(ctx: TabContext) -> None:
                 utils.format_currency(float(x or 0)) for x in dv["net_total"]
             ]
             dv["target"] = [utils.format_currency(float(x or 0)) for x in dv["target"]]
-            dv["pct_target"] = [f"{float(x or 0):.1f}%" for x in dv["pct_target"]]
+            dv["pct_target"] = [
+                utils.format_percent(float(x or 0)) for x in dv["pct_target"]
+            ]
             st.dataframe(
                 dv,
                 use_container_width=True,
@@ -625,7 +625,7 @@ def render(ctx: TabContext) -> None:
                 utils.format_currency(float(x or 0)) for x in daily_view["target"]
             ]
             daily_view["pct_target"] = [
-                f"{float(x or 0):.1f}%" for x in daily_view["pct_target"]
+                utils.format_percent(float(x or 0)) for x in daily_view["pct_target"]
             ]
             st.dataframe(
                 daily_view,

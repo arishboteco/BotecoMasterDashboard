@@ -61,7 +61,7 @@ def _r(n) -> str:
 
 
 def _pct(n) -> str:
-    return f"{float(n or 0):.1f}%"
+    return f"{float(n or 0):.0f}%"
 
 
 def _sheet_date_label(iso_date: str) -> str:
@@ -338,7 +338,7 @@ def _section_sales_summary(
         ax,
         0.988,
         banner_y + banner_h - 0.018,
-        f"{pct_tgt:.1f}% of target",
+        f"{pct_tgt:.0f}% of target",
         size=11.0,
         color=ach_color,
         weight="bold",
@@ -408,7 +408,7 @@ def _section_sales_summary(
             elif fmt == "int":
                 return f"{int(v or 0):,}"
             elif fmt == "float1":
-                return f"{float(v or 0):.1f}"
+                return f"{float(v or 0):.0f}"
             elif fmt == "pct":
                 return _pct(v)
             elif fmt == "str":
@@ -921,9 +921,9 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
             cur_y,
             [
                 f"Avg / day ({n} days)",
-                f"{avg_din:.1f}",
-                f"{avg_lun:.1f}",
-                f"{avg_cov:.1f}",
+                f"{avg_din:.0f}",
+                f"{avg_lun:.0f}",
+                f"{avg_cov:.0f}",
             ],
             col_w,
             row_h=row_h,
@@ -1202,13 +1202,13 @@ def generate_whatsapp_text(
         f"\U0001f4b0 SALES SUMMARY\n"
         f"  \u2022 Gross: {config.CURRENCY_FORMAT.format(r.get('gross_total', 0))}\n"
         f"  \u2022 Net:   {config.CURRENCY_FORMAT.format(net_total)}\n"
-        f"  \u2022 Covers: {int(r.get('covers') or 0):,}  |  Turns: {float(r.get('turns') or 0):.1f}x\n"
+        f"  \u2022 Covers: {int(r.get('covers') or 0):,}  |  Turns: {float(r.get('turns') or 0):.0f}x\n"
         f"  \u2022 APC: {config.CURRENCY_FORMAT.format(r.get('apc', 0))}\n\n"
         f"\U0001f4b3 PAYMENT BREAKDOWN\n"
         f"{pay_lines}\n\n"
         f"\U0001f3af VS TARGET\n"
         f"  \u2022 Target: {config.CURRENCY_FORMAT.format(r.get('target', 0))}\n"
-        f"  \u2022 Achievement: {pct_target:.1f}%\n"
+        f"  \u2022 Achievement: {pct_target:.0f}%\n"
         f"  {status_emoji} {status_text}\n\n"
         f"\U0001f37d\ufe0f CATEGORY MIX\n"
         f"{cat_lines}\n"
@@ -1222,7 +1222,7 @@ def generate_whatsapp_text(
         f"  \u2022 Total Covers: {int(r.get('mtd_total_covers') or 0):,}\n"
         f"  \u2022 Net Sales: {config.CURRENCY_FORMAT.format(r.get('mtd_net_sales', 0))}\n"
         f"  \u2022 Avg Daily: {config.CURRENCY_FORMAT.format(r.get('mtd_avg_daily', 0))}\n"
-        f"  \u2022 % of Target: {float(r.get('mtd_pct_target') or 0):.1f}%\n"
+        f"  \u2022 % of Target: {float(r.get('mtd_pct_target') or 0):.0f}%\n"
     )
 
     if per_outlet and len(per_outlet) >= 2:

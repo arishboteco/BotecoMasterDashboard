@@ -15,6 +15,11 @@ def format_number(num: float, decimals: int = 0) -> str:
     return f"{num:,.0f}"
 
 
+def format_percent(value: Optional[float]) -> str:
+    """Format percentage without decimal places."""
+    return f"{float(value or 0):.0f}%"
+
+
 def format_date(date_str: Optional[str], output_format: Optional[str] = None) -> str:
     """Format date string."""
     if not date_str:

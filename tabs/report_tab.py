@@ -95,7 +95,7 @@ def render(ctx: TabContext) -> None:
                         st.metric(
                             _col_head(_on),
                             f"{int(s.get('covers') or 0):,}",
-                            delta=f"Turns {float(s.get('turns') or 0):.1f}",
+                            delta=f"Turns {float(s.get('turns') or 0):.0f}",
                         )
                 with cr[-1]:
                     lc, dc = (
@@ -110,7 +110,7 @@ def render(ctx: TabContext) -> None:
                     st.metric(
                         "Combined",
                         f"{int(summary.get('covers') or 0):,}",
-                        delta=foot or f"Turns: {float(summary.get('turns') or 0):.1f}",
+                        delta=foot or f"Turns: {float(summary.get('turns') or 0):.0f}",
                     )
                 st.markdown("##### APC")
                 cr = st.columns(ncols)
@@ -133,14 +133,14 @@ def render(ctx: TabContext) -> None:
                     with cr[i]:
                         st.metric(
                             _col_head(_on),
-                            f"{p:.1f}%",
+                            utils.format_percent(p),
                             delta_color="normal" if p >= 100 else "inverse",
                         )
                 with cr[-1]:
                     pct = float(summary.get("pct_target") or 0)
                     st.metric(
                         "Combined",
-                        f"{pct:.1f}%",
+                        utils.format_percent(pct),
                         delta=f"vs {pct:.0f}%",
                         delta_color="normal" if pct >= 100 else "inverse",
                         help="Net sales for the day vs daily sales target.",
@@ -167,7 +167,7 @@ def render(ctx: TabContext) -> None:
                     st.metric(
                         "Covers",
                         f"{int(s_one.get('covers') or 0):,}",
-                        delta=foot or f"Turns: {float(s_one.get('turns') or 0):.1f}",
+                        delta=foot or f"Turns: {float(s_one.get('turns') or 0):.0f}",
                     )
                 with col_kpi3:
                     st.metric(
@@ -186,7 +186,7 @@ def render(ctx: TabContext) -> None:
                     pct = float(s_one.get("pct_target") or 0)
                     st.metric(
                         "Target Achievement",
-                        f"{pct:.1f}%",
+                        utils.format_percent(pct),
                         delta_color="normal" if pct >= 100 else "inverse",
                         help="Net sales for the day vs daily sales target.",
                     )
@@ -269,7 +269,7 @@ def render(ctx: TabContext) -> None:
                         if kind == "int":
                             col_vals.append(f"{int(v or 0):,}")
                         elif kind == "pct":
-                            col_vals.append(f"{float(v or 0):.1f}%")
+                            col_vals.append(utils.format_percent(float(v or 0)))
                         else:
                             col_vals.append(utils.format_currency(float(v or 0)))
                     md[_col_head(oname, 12)] = col_vals
@@ -279,7 +279,7 @@ def render(ctx: TabContext) -> None:
                     if kind == "int":
                         md["Combined"].append(f"{int(v or 0):,}")
                     elif kind == "pct":
-                        md["Combined"].append(f"{float(v or 0):.1f}%")
+                        md["Combined"].append(utils.format_percent(float(v or 0)))
                     else:
                         md["Combined"].append(utils.format_currency(float(v or 0)))
                 st.dataframe(
@@ -298,7 +298,7 @@ def render(ctx: TabContext) -> None:
                     if kind == "int":
                         mtd_data["Value"].append(f"{int(v or 0):,}")
                     elif kind == "pct":
-                        mtd_data["Value"].append(f"{float(v or 0):.1f}%")
+                        mtd_data["Value"].append(utils.format_percent(float(v or 0)))
                     else:
                         mtd_data["Value"].append(utils.format_currency(float(v or 0)))
                 st.dataframe(
@@ -476,12 +476,12 @@ def render(ctx: TabContext) -> None:
                     "Month": _df_m["month_label"],
                     "Footfall": _df_m["footfall"].apply(lambda x: f"{x:,}"),
                     "% Change": _df_m["pct_footfall"].apply(
-                        lambda x: f"{x * 100:.2f}%" if pd.notna(x) else ""
+                        lambda x: utils.format_percent(x * 100) if pd.notna(x) else ""
                     ),
                     "Total Days": _df_m["total_days"].astype(int),
                     "Daily Avg.": _df_m["daily_avg"].apply(lambda x: f"{x:,}"),
                     "Avg % Change": _df_m["pct_avg"].apply(
-                        lambda x: f"{x * 100:.2f}%" if pd.notna(x) else ""
+                        lambda x: utils.format_percent(x * 100) if pd.notna(x) else ""
                     ),
                 }
             )
