@@ -413,7 +413,7 @@ def render(ctx: TabContext) -> None:
                     color_discrete_map={
                         "Lunch": ui_theme.BRAND_SUCCESS,
                         "Dinner": ui_theme.BRAND_PRIMARY,
-                        "Breakfast": "#ffd93d",
+                        "Breakfast": "#C4A55A",
                     },
                 )
                 fig_svc_stack.update_layout(
@@ -433,7 +433,7 @@ def render(ctx: TabContext) -> None:
                     color_discrete_map={
                         "Lunch": ui_theme.BRAND_SUCCESS,
                         "Dinner": ui_theme.BRAND_PRIMARY,
-                        "Breakfast": "#ffd93d",
+                        "Breakfast": "#C4A55A",
                     },
                 )
                 fig_svc_tot.update_layout(
@@ -480,11 +480,11 @@ def render(ctx: TabContext) -> None:
                 else 0
             )
             wd_colors = [
-                "#4ecca3"
+                "#5B7F4A"
                 if v >= _daily_tgt
-                else "#ffd93d"
+                else "#C28B2D"
                 if v >= _daily_tgt * 0.8
-                else "#e94560"
+                else "#B84233"
                 for v in wd_agg["avg_sales"]
             ]
             fig_wd = px.bar(
@@ -531,7 +531,7 @@ def render(ctx: TabContext) -> None:
                 df["net_total"] / daily_target * 100 if daily_target > 0 else 0
             )
             colors = [
-                "#4ecca3" if x >= 100 else "#ffd93d" if x >= 80 else "#e94560"
+                "#5B7F4A" if x >= 100 else "#C28B2D" if x >= 80 else "#B84233"
                 for x in df["achievement"]
             ]
             fig_target.add_trace(

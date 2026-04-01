@@ -1,16 +1,16 @@
 """
 Boteco EOD Report — PNG image generator and WhatsApp text formatter.
 
-Design language:
-  - Coral brand accent  (#e94560)
-  - Dark navy header    (#0f172a)
-  - Slate body text     (#1e293b)
-  - Light slate muted   (#64748b)
-  - Off-white page bg   (#f8fafc)
-  - White card bg       (#ffffff)
-  - Subtle border       (#e2e8f0)
-  - Green positive      (#16a34a)
-  - Amber warning       (#d97706)
+Design language (warm editorial):
+  - Terracotta accent   (#C2703E)
+  - Espresso header     (#2C1810)
+  - Deep walnut text    (#3D2B1F)
+  - Warm gray muted     (#8C7B6B)
+  - Warm ivory page bg  (#FAF6F1)
+  - Cream card bg       (#FFF8F0)
+  - Warm border         (#E0D5C8)
+  - Sage green positive (#5B7F4A)
+  - Antique gold warn   (#C28B2D)
 
 The composite PNG is built with matplotlib drawing primitives
 (patches + text), not tables, so every element can be positioned
@@ -29,20 +29,20 @@ from matplotlib.patches import FancyBboxPatch
 
 import config
 
-# ── Palette ──────────────────────────────────────────────────────────────────
-C_PAGE = "#f8fafc"
-C_CARD = "#ffffff"
-C_BRAND = "#e94560"  # Boteco coral
-C_BRAND_DARK = "#c73652"
-C_NAVY = "#0f172a"
-C_SLATE = "#1e293b"
-C_MUTED = "#64748b"
-C_BORDER = "#e2e8f0"
-C_BAND = "#f1f5f9"
-C_GREEN = "#16a34a"
-C_AMBER = "#d97706"
-C_RED = "#dc2626"
-C_WHITE = "#ffffff"
+# ── Palette (warm editorial) ─────────────────────────────────────────────────
+C_PAGE = "#FAF6F1"
+C_CARD = "#FFF8F0"
+C_BRAND = "#C2703E"  # Boteco terracotta
+C_BRAND_DARK = "#A45A2E"
+C_NAVY = "#2C1810"   # Espresso (header bars)
+C_SLATE = "#3D2B1F"  # Deep walnut (body text)
+C_MUTED = "#8C7B6B"  # Warm gray
+C_BORDER = "#E0D5C8"
+C_BAND = "#F0E8DD"   # Parchment (alternating rows)
+C_GREEN = "#5B7F4A"  # Sage green
+C_AMBER = "#C28B2D"  # Antique gold
+C_RED = "#B84233"    # Warm red
+C_WHITE = "#FFF8F0"  # Cream
 
 FONT = "DejaVu Sans"
 DPI = 150
@@ -330,7 +330,7 @@ def _section_sales_summary(
         banner_y + banner_h - 0.048,
         day_lbl,
         size=9.5,
-        color="#94a3b8",
+        color="#8C7B6B",
     )
     _label(
         ax,
@@ -587,7 +587,7 @@ def _section_category(
         color=C_WHITE,
         weight="bold",
     )
-    _label(ax, 0.012, banner_top - 0.045, day_lbl, size=9.0, color="#94a3b8")
+    _label(ax, 0.012, banner_top - 0.045, day_lbl, size=9.0, color="#8C7B6B")
 
     cur_y = banner_y - 0.01
 
@@ -728,7 +728,7 @@ def _section_service(
         color=C_WHITE,
         weight="bold",
     )
-    _label(ax, 0.012, banner_top - 0.045, day_lbl, size=9.0, color="#94a3b8")
+    _label(ax, 0.012, banner_top - 0.045, day_lbl, size=9.0, color="#8C7B6B")
 
     cur_y = banner_y - 0.01
 
@@ -836,7 +836,7 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
         color=C_WHITE,
         weight="bold",
     )
-    _label(ax, 0.012, banner_top - 0.045, location_name[:32], size=9.0, color="#94a3b8")
+    _label(ax, 0.012, banner_top - 0.045, location_name[:32], size=9.0, color="#8C7B6B")
 
     if not rows:
         _label(
@@ -967,7 +967,7 @@ def _section_footfall_metrics(
         color=C_WHITE,
         weight="bold",
     )
-    _label(ax, 0.012, banner_top - 0.045, location_name[:32], size=9.0, color="#94a3b8")
+    _label(ax, 0.012, banner_top - 0.045, location_name[:32], size=9.0, color="#8C7B6B")
 
     cur_y = banner_y - 0.015
     row_h = 0.042

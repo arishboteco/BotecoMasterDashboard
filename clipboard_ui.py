@@ -28,13 +28,15 @@ def _btn_style(*, primary: bool = True) -> str:
     c = ui_theme.BRAND_PRIMARY
     if primary:
         return (
-            f"padding:0.45rem 1rem;cursor:pointer;border-radius:8px;border:none;"
-            f"background:{c};color:#fff;font-weight:600;font-size:0.9rem;"
-            f"box-shadow:0 1px 2px rgba(0,0,0,0.08);"
+            f"padding:0.45rem 1rem;cursor:pointer;border-radius:10px;border:none;"
+            f"background:{c};color:#FFF8F0;font-weight:600;font-size:0.9rem;"
+            f"font-family:'DM Sans',sans-serif;"
+            f"box-shadow:0 1px 2px rgba(60,40,20,0.08);"
         )
     return (
-        "padding:0.45rem 1rem;cursor:pointer;border-radius:8px;border:1px solid #dee2e6;"
-        "background:#fff;color:#1a1a1a;font-weight:500;font-size:0.9rem;"
+        "padding:0.45rem 1rem;cursor:pointer;border-radius:10px;border:1px solid #E0D5C8;"
+        "background:#FFF8F0;color:#3D2B1F;font-weight:500;font-size:0.9rem;"
+        "font-family:'DM Sans',sans-serif;"
     )
 
 
@@ -52,7 +54,7 @@ def render_copy_text_button(
     html = f"""
 <div>
   <button id="{uid}_btn" type="button" style="{stl}">{label}</button>
-  <span id="{uid}_msg" style="margin-left:10px;font-size:0.9rem;color:#2e7d32;"></span>
+  <span id="{uid}_msg" style="margin-left:10px;font-size:0.9rem;color:#5B7F4A;"></span>
 </div>
 <script>
 (function() {{
@@ -89,7 +91,7 @@ def render_copy_image_button(
     html = f"""
 <div>
   <button id="{uid}_btn" type="button" style="{stl}">{label}</button>
-  <span id="{uid}_msg" style="margin-left:10px;font-size:0.9rem;color:#2e7d32;"></span>
+  <span id="{uid}_msg" style="margin-left:10px;font-size:0.9rem;color:#5B7F4A;"></span>
 </div>
 <script>
 (function() {{
@@ -189,7 +191,7 @@ def render_share_images_button(
           text: shareText
         }});
         msgEl.textContent = "Shared!";
-        msgEl.style.color = "#2e7d32";
+        msgEl.style.color = "#5B7F4A";
       }} else {{
         // Fallback for desktop browsers
         if (fallbackUrl) {{
@@ -197,15 +199,15 @@ def render_share_images_button(
             const blob = await b64ToBlob(filesData[0].b64, "image/png");
             await navigator.clipboard.write([new ClipboardItem({{"image/png": blob}})]);
             msgEl.textContent = "Image copied \u2014 paste in WhatsApp";
-            msgEl.style.color = "#2e7d32";
+            msgEl.style.color = "#5B7F4A";
           }} catch (clipErr) {{
             msgEl.textContent = "Open WhatsApp \u2014 attach image manually";
-            msgEl.style.color = "#d97706";
+            msgEl.style.color = "#C28B2D";
           }}
           window.open(fallbackUrl, "_blank");
         }} else {{
           msgEl.textContent = "Use download (ZIP/PNG)";
-          msgEl.style.color = "#d97706";
+          msgEl.style.color = "#C28B2D";
         }}
       }}
     }} catch (e) {{
@@ -221,19 +223,19 @@ def render_share_images_button(
             const blob = await b64ToBlob(filesData[0].b64, "image/png");
             await navigator.clipboard.write([new ClipboardItem({{"image/png": blob}})]);
             msgEl.textContent = "Image copied \u2014 paste in WhatsApp";
-            msgEl.style.color = "#2e7d32";
+            msgEl.style.color = "#5B7F4A";
           }} catch (clipErr) {{
             msgEl.textContent = "Open WhatsApp \u2014 attach image manually";
-            msgEl.style.color = "#d97706";
+            msgEl.style.color = "#C28B2D";
           }}
           window.open(fallbackUrl, "_blank");
         }} else {{
           msgEl.textContent = "Use download (ZIP/PNG)";
-          msgEl.style.color = "#d97706";
+          msgEl.style.color = "#C28B2D";
         }}
       }} else {{
         msgEl.textContent = "Share failed";
-        msgEl.style.color = "#dc2626";
+        msgEl.style.color = "#B84233";
       }}
     }}
   }};
