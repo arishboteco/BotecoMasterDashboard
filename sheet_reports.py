@@ -187,7 +187,7 @@ def _kpi_tile(ax, x, y, w, h, label, value, sub=None, accent_color=C_BRAND):
 # ── Table row helpers ─────────────────────────────────────────────────────────
 
 
-def _table_header_row(ax, x, y, cols, widths, row_h=0.048, bg=C_NAVY):
+def _table_header_row(ax, x, y, cols, widths, row_h=0.048, bg=C_NAVY, font_size=None):
     """Dark header row for a data table."""
     total_w = sum(widths)
     patch = mpatches.Rectangle(
@@ -201,6 +201,8 @@ def _table_header_row(ax, x, y, cols, widths, row_h=0.048, bg=C_NAVY):
         zorder=2,
     )
     ax.add_patch(patch)
+    n_cols = len(cols)
+    fs = font_size if font_size else (9.0 if n_cols > 4 else 10.0)
     cx = x
     for i, (col, cw) in enumerate(zip(cols, widths)):
         ha = "left" if i == 0 else "right"
@@ -210,7 +212,7 @@ def _table_header_row(ax, x, y, cols, widths, row_h=0.048, bg=C_NAVY):
             px,
             y + row_h - 0.012,
             col,
-            size=10.0,
+            size=fs,
             color=C_WHITE,
             weight="bold",
             ha=ha,
@@ -231,6 +233,7 @@ def _table_data_row(
     bold=False,
     text_color=C_SLATE,
     right_color=None,
+    font_size=None,
 ):
     """One data row — alternating band if is_alt."""
     total_w = sum(widths)
@@ -246,6 +249,8 @@ def _table_data_row(
         zorder=2,
     )
     ax.add_patch(patch)
+    n_cols = len(cells)
+    fs = font_size if font_size else (9.5 if n_cols > 4 else 10.5)
     cx = x
     for i, (cell, cw) in enumerate(zip(cells, widths)):
         ha = "left" if i == 0 else "right"
@@ -256,7 +261,7 @@ def _table_data_row(
             px,
             y + row_h - 0.0135,
             str(cell),
-            size=10.5,
+            size=fs,
             color=rc,
             weight="bold" if bold else "normal",
             ha=ha,
@@ -292,246 +297,226 @@ def _section_sales_summary(
     ax, r: Dict, location_name: str, per_outlet: Optional[List[Tuple[str, Dict]]] = None
 ) -> None:
     """
-    Top section: header banner → 4 KPI tiles → payment + tax table → MTD block.
+    Compact sales summary table — Google Sheets style.
+    Columns: Metric | (Outlet1 | Outlet2 | ...) Combined/Value
     """
     ax.set_xlim(0, 1)
     ax.axis("off")
+
+    multi = per_outlet and len(per_outlet) >= 2
+    n_outlets = len(per_outlet) if multi else 0
+    col_w = _outlet_col_widths(n_outlets)
 
     iso = str(r.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]
     day_lbl = _sheet_date_label(iso)
     pct_tgt = float(r.get("pct_target") or 0)
     ach_color = _achievement_color(pct_tgt)
 
-    # ── Header banner ────────────────────────────────────────────────────
-    banner_h = 0.138
-    banner_y = 0.87
+    # ── Header banner (slim) ─────────────────────────────────────────────
+    banner_h = 0.08
+    banner_y = 0.93
     _card(ax, 0, banner_y, 1.0, banner_h, color=C_NAVY, border=C_NAVY)
-    _hbar(ax, 0, banner_y, 1.0, h=0.0075, color=C_BRAND)
+    _hbar(ax, 0, banner_y + banner_h, 1.0, h=0.005, color=C_BRAND)
     _label(
         ax,
-        0.016,
-        banner_y + banner_h - 0.027,
-        location_name.upper(),
-        size=14.0,
+        0.012,
+        banner_y + banner_h - 0.018,
+        f"{location_name.upper()}  —  END OF DAY REPORT",
+        size=11.5,
         color=C_WHITE,
         weight="bold",
     )
     _label(
         ax,
-        0.016,
-        banner_y + banner_h - 0.072,
-        "END OF DAY REPORT",
-        size=10.5,
-        color=C_BRAND,
+        0.012,
+        banner_y + banner_h - 0.048,
+        day_lbl,
+        size=9.5,
+        color="#94a3b8",
     )
-    _label(ax, 0.016, banner_y + banner_h - 0.108, day_lbl, size=10.5, color="#94a3b8")
-    # Achievement pill on the right
     _label(
         ax,
-        0.984,
-        banner_y + banner_h - 0.045,
+        0.988,
+        banner_y + banner_h - 0.018,
         f"{pct_tgt:.1f}% of target",
-        size=12.5,
+        size=11.0,
         color=ach_color,
         weight="bold",
         ha="right",
     )
     _label(
         ax,
-        0.984,
-        banner_y + banner_h - 0.087,
+        0.988,
+        banner_y + banner_h - 0.048,
         _r(r.get("net_total", 0)) + " net",
-        size=11.0,
+        size=9.5,
         color=C_WHITE,
         ha="right",
     )
 
-    # ── 4 KPI tiles ──────────────────────────────────────────────────────
-    kpi_y = 0.67
-    kpi_h = 0.15
-    tile_gap = 0.015
-    tile_w = (1.0 - 3 * tile_gap) / 4
-    kpis = [
-        (
-            "Net Sales",
-            _r(r.get("net_total", 0)),
-            f"Gross {_r(r.get('gross_total', 0))}",
-            C_BRAND,
-        ),
-        (
-            "Covers",
-            f"{int(r.get('covers') or 0):,}",
-            f"Turns {float(r.get('turns') or 0):.1f}x",
-            C_SLATE,
-        ),
-        ("APC", _r(r.get("apc", 0)), "per cover", C_SLATE),
-        ("vs Target", _pct(pct_tgt), _r(r.get("target", 0)) + " target", ach_color),
-    ]
-    for i, (lbl, val, sub, accent) in enumerate(kpis):
-        tx = i * (tile_w + tile_gap)
-        _kpi_tile(ax, tx, kpi_y, tile_w, kpi_h, lbl, val, sub, accent_color=accent)
-
-    # ── Per-outlet mini-row (multi-outlet only) ───────────────────────────
-    table_top = kpi_y - 0.027
-    if per_outlet and len(per_outlet) >= 2:
-        row_h = 0.042
-        _hbar(ax, 0, table_top - 0.003, 1.0, h=0.0015, color=C_BORDER)
-        ox = 0.0
-        col_w_each = 1.0 / len(per_outlet)
-        for nm, od in per_outlet:
-            _label(
-                ax,
-                ox + 0.015,
-                table_top - 0.006,
-                _short_outlet_name(nm),
-                size=9.5,
-                color=C_MUTED,
-                weight="bold",
-            )
-            _label(
-                ax,
-                ox + 0.015,
-                table_top - 0.033,
-                f"{_r(od.get('net_total', 0))}  ·  {int(od.get('covers') or 0):,} cvr",
-                size=10.5,
-                color=C_SLATE,
-            )
-            ox += col_w_each
-        table_top -= row_h * 2.2
-
-    # ── Payment + tax table ───────────────────────────────────────────────
-    tbl_x = 0.0
-    tbl_w = 1.0
-    col_w = [0.55, 0.45]
-    row_h = 0.042
-
-    pay_rows = [
-        ("Cash", r.get("cash_sales", 0)),
-        ("GPay", r.get("gpay_sales", 0)),
-        ("Zomato", r.get("zomato_sales", 0)),
-        ("Card", r.get("card_sales", 0)),
-        ("Other / Wallet", r.get("other_sales", 0)),
-    ]
-    pay_rows = [(lbl, v) for lbl, v in pay_rows if float(v or 0) != 0]
-
-    tax_rows = [
-        ("CGST @ 2.5%", r.get("cgst", 0)),
-        ("SGST @ 2.5%", r.get("sgst", 0)),
-        ("Service Charge", r.get("service_charge", 0)),
-        ("Discount", r.get("discount", 0)),
-        ("Complimentary", r.get("complimentary", 0)),
-    ]
-    tax_rows = [(lbl, v) for lbl, v in tax_rows if float(v or 0) != 0]
-
-    cur_y = table_top
-    _table_header_row(ax, tbl_x, cur_y - row_h, ["Payment", "Amount"], col_w, row_h)
+    # ── Column headers ───────────────────────────────────────────────────
+    row_h = 0.038
+    cur_y = banner_y - 0.01
+    if multi:
+        headers = (
+            [""] + [_short_outlet_name(nm, 16) for nm, _ in per_outlet] + ["Combined"]
+        )
+    else:
+        headers = ["", ""]
+    _table_header_row(ax, 0, cur_y - row_h, headers, col_w, row_h)
     cur_y -= row_h
 
-    for idx, (lbl, val) in enumerate(pay_rows):
-        cur_y -= row_h
-        _table_data_row(
-            ax, tbl_x, cur_y, [lbl, _r(val)], col_w, row_h=row_h, is_alt=(idx % 2 == 1)
-        )
+    # ── Helper to add a data row ─────────────────────────────────────────
+    row_idx = [0]
 
-    if tax_rows:
-        cur_y -= row_h * 0.4
-        _table_section_label(
-            ax,
-            tbl_x,
-            cur_y - row_h * 0.85,
-            "Tax & Adjustments",
-            tbl_w,
-            row_h=row_h * 0.85,
-        )
-        cur_y -= row_h * 0.85
-        for idx, (lbl, val) in enumerate(tax_rows):
-            cur_y -= row_h
-            disc_color = C_RED if lbl == "Discount" else None
-            _table_data_row(
+    def _row(
+        label,
+        key_or_fn,
+        fmt="currency",
+        bold=False,
+        bg=None,
+        text_color=C_SLATE,
+        right_color=None,
+        section_label=None,
+    ):
+        nonlocal cur_y
+        if section_label:
+            _table_section_label(
                 ax,
-                tbl_x,
-                cur_y,
-                [lbl, _r(val)],
-                col_w,
-                row_h=row_h,
-                is_alt=(idx % 2 == 1),
-                right_color=disc_color,
+                0,
+                cur_y - row_h * 0.85,
+                section_label,
+                sum(col_w),
+                row_h=row_h * 0.85,
+            )
+            cur_y -= row_h * 0.85
+            row_idx[0] = 0
+            return
+        # Gather values
+        if callable(key_or_fn):
+            combined_val = key_or_fn(r)
+            outlet_vals = [key_or_fn(od) for _, od in per_outlet] if multi else []
+        else:
+            combined_val = r.get(key_or_fn, 0)
+            outlet_vals = (
+                [od.get(key_or_fn, 0) for _, od in per_outlet] if multi else []
             )
 
-    # EOD Net Total highlight row
-    cur_y -= row_h * 0.3
-    net_y = cur_y - row_h * 1.1
-    patch = mpatches.Rectangle(
-        (tbl_x, net_y),
-        tbl_w,
-        row_h * 1.1,
-        linewidth=0,
-        facecolor=C_NAVY,
-        transform=ax.transData,
-        clip_on=False,
-        zorder=2,
-    )
-    ax.add_patch(patch)
-    _label(
-        ax,
-        tbl_x + 0.015,
-        net_y + row_h * 1.1 - 0.018,
-        "EOD Net Total",
-        size=11.5,
-        color=C_WHITE,
-        weight="bold",
-    )
-    _label(
-        ax,
-        tbl_x + tbl_w - 0.015,
-        net_y + row_h * 1.1 - 0.018,
-        _r(r.get("net_total", 0)),
-        size=11.5,
-        color=C_BRAND,
-        weight="bold",
-        ha="right",
-    )
-    cur_y = net_y
+        def _fmt(v):
+            if fmt == "currency":
+                return _r(v)
+            elif fmt == "int":
+                return f"{int(v or 0):,}"
+            elif fmt == "float1":
+                return f"{float(v or 0):.1f}"
+            elif fmt == "pct":
+                return _pct(v)
+            elif fmt == "str":
+                return str(v or "—")
+            return str(v)
 
-    # ── MTD block ────────────────────────────────────────────────────────
-    mtd_y = cur_y - 0.048
-    mtd_cov = int(r.get("mtd_total_covers") or 0)
-    mtd_net = float(r.get("mtd_net_sales") or 0)
-    mtd_avg = float(r.get("mtd_avg_daily") or 0)
-    mtd_tgt = float(r.get("mtd_target") or config.MONTHLY_TARGET)
-    mtd_pct = float(r.get("mtd_pct_target") or 0)
-    apc_day = float(r.get("apc") or 0)
-    apc_mtd = (mtd_net / mtd_cov) if mtd_cov > 0 else 0.0
-    mtd_ach_color = _achievement_color(mtd_pct)
+        if multi:
+            cells = [label] + [_fmt(v) for v in outlet_vals] + [_fmt(combined_val)]
+        else:
+            cells = [label, _fmt(combined_val)]
 
-    _table_header_row(ax, tbl_x, mtd_y - row_h, ["MTD Summary", ""], col_w, row_h)
-    mtd_rows_data = [
-        ("MTD Net Sales", _r(mtd_net)),
-        ("MTD Total Covers", f"{mtd_cov:,}"),
-        ("Avg Daily Sales", _r(mtd_avg)),
-        ("APC (Day / Month)", f"{_r(apc_day)} / {_r(apc_mtd)}"),
-        ("Sales Target (month)", _r(mtd_tgt)),
-        ("MTD Achievement", _pct(mtd_pct)),
-        ("MTD Discount", _r(r.get("mtd_discount", 0))),
-    ]
-    cur_y = mtd_y - row_h
-    for idx, (lbl, val) in enumerate(mtd_rows_data):
         cur_y -= row_h
-        rc = mtd_ach_color if lbl == "MTD Achievement" else None
-        bold = lbl in ("MTD Net Sales", "MTD Achievement")
         _table_data_row(
             ax,
-            tbl_x,
+            0,
             cur_y,
-            [lbl, val],
+            cells,
             col_w,
             row_h=row_h,
-            is_alt=(idx % 2 == 1),
+            bg=bg or C_CARD,
+            is_alt=(bg is None and row_idx[0] % 2 == 1),
             bold=bold,
-            right_color=rc,
+            text_color=text_color,
+            right_color=right_color,
         )
+        row_idx[0] += 1
 
-    ax.set_ylim(cur_y - 0.06, 1.0)
+    # ── Daily sales rows ─────────────────────────────────────────────────
+    _row("Covers", "covers", fmt="int")
+    _row("Turns", "turns", fmt="float1")
+
+    # Payment rows
+    _row(None, None, section_label="Payment")
+    pay_keys = [
+        ("Cash", "cash_sales"),
+        ("GPay", "gpay_sales"),
+        ("Zomato", "zomato_sales"),
+        ("Card", "card_sales"),
+        ("Other / Wallet", "other_sales"),
+    ]
+    for lbl, key in pay_keys:
+        combined_v = float(r.get(key) or 0)
+        outlet_vs = [float(od.get(key) or 0) for _, od in per_outlet] if multi else []
+        if combined_v != 0 or any(v != 0 for v in outlet_vs):
+            _row(lbl, key)
+
+    # EOD Gross Total
+    _row("EOD Gross Total", "gross_total", bold=True, bg=C_BAND)
+
+    # Tax & adjustments
+    _row(None, None, section_label="Tax & Adjustments")
+    tax_keys = [
+        ("CGST @ 2.5%", "cgst"),
+        ("SGST @ 2.5%", "sgst"),
+        ("Service Charge", "service_charge"),
+        ("Discount", "discount"),
+        ("Complimentary", "complimentary"),
+    ]
+    for lbl, key in tax_keys:
+        combined_v = float(r.get(key) or 0)
+        outlet_vs = [float(od.get(key) or 0) for _, od in per_outlet] if multi else []
+        if combined_v != 0 or any(v != 0 for v in outlet_vs):
+            disc_color = C_RED if key == "discount" else None
+            _row(lbl, key, right_color=disc_color)
+
+    # EOD Net Total highlight
+    _row(
+        "EOD Net Total",
+        "net_total",
+        bold=True,
+        bg=C_NAVY,
+        text_color=C_WHITE,
+        right_color=C_BRAND,
+    )
+
+    # ── MTD block ────────────────────────────────────────────────────────
+    cur_y -= row_h * 0.3
+    _table_header_row(
+        ax, 0, cur_y - row_h, ["MTD Summary"] + [""] * (len(col_w) - 1), col_w, row_h
+    )
+    cur_y -= row_h
+    row_idx[0] = 0
+
+    _row("MTD Total Covers", "mtd_total_covers", fmt="int", bold=True)
+    _row("APC (Day)", "apc", fmt="currency")
+
+    def _apc_month(d):
+        mtd_net = float(d.get("mtd_net_sales") or 0)
+        mtd_cov = int(d.get("mtd_total_covers") or 0)
+        return mtd_net / mtd_cov if mtd_cov > 0 else 0.0
+
+    _row("APC (Month)", _apc_month, fmt="currency")
+
+    _row("Complimentary", "complimentary", fmt="currency")
+    _row("MTD Complimentary", "mtd_complimentary", fmt="currency")
+    _row("Daily Avg. Net Sales", "mtd_avg_daily", fmt="currency")
+    _row("MTD Net Sales", "mtd_net_sales", fmt="currency", bold=True)
+    _row("MTD Discount", "mtd_discount", fmt="currency")
+
+    def _mtd_net_excl(d):
+        return float(d.get("mtd_net_sales") or 0) - float(d.get("mtd_discount") or 0)
+
+    _row("MTD Net (Excl. Disc.)", _mtd_net_excl, fmt="currency", bold=True)
+
+    _row("Sales Target", "mtd_target", fmt="currency")
+    _row("% of Target", "mtd_pct_target", fmt="pct", bold=True, right_color=ach_color)
+
+    ax.set_ylim(cur_y - 0.04, 1.0)
 
 
 def _section_category(
@@ -540,17 +525,31 @@ def _section_category(
     location_name: str,
     mtd_category: Dict[str, float],
     day_lbl: str,
+    per_outlet: Optional[List[Tuple[str, Dict]]] = None,
+    per_outlet_category: Optional[List[Tuple[str, Dict[str, float]]]] = None,
 ) -> None:
     ax.set_xlim(0, 1)
     ax.axis("off")
 
+    multi = per_outlet and len(per_outlet) >= 2
     std_cats = ["Food", "Liquor", "Beer", "Soft Beverages", "Coffee", "Tobacco"]
+
     daily_cat = {
         c.get("category"): float(c.get("amount") or 0)
         for c in r.get("categories") or []
     }
     mtd_category = dict(mtd_category or {})
     total_cat_mtd = sum(mtd_category.values()) or 1.0
+
+    # Per-outlet daily category data
+    outlet_daily_cats = []
+    if multi and per_outlet:
+        for _, od in per_outlet:
+            od_cats = {
+                c.get("category"): float(c.get("amount") or 0)
+                for c in od.get("categories") or []
+            }
+            outlet_daily_cats.append(od_cats)
 
     cat_order = [x for x in std_cats if x in daily_cat or x in mtd_category]
     for k in sorted(mtd_category.keys()):
@@ -559,33 +558,57 @@ def _section_category(
     if not cat_order:
         cat_order = []
 
-    row_h = 0.057
-    col_w = [0.50, 0.22, 0.22, 0.06]
-    tbl_x = 0.0
-    tbl_w = 1.0
+    row_h = 0.052
 
-    # Header
-    _card(ax, 0, 0.88, 1.0, 0.105, color=C_NAVY, border=C_NAVY)
-    _hbar(ax, 0, 0.978, 1.0, h=0.0075, color=C_BRAND)
+    # Column widths: for multi-outlet add per-outlet daily columns
+    if multi:
+        n_data = len(per_outlet) + 1  # outlets + combined
+        label_w = 0.22
+        mtd_w = 0.14
+        pct_w = 0.06
+        remaining = 1.0 - label_w - mtd_w - pct_w
+        data_w = remaining / n_data
+        col_w = [label_w] + [data_w] * n_data + [mtd_w, pct_w]
+    else:
+        col_w = [0.50, 0.22, 0.22, 0.06]
+
+    tbl_x = 0.0
+
+    # Header banner (slim)
+    banner_h = 0.065
+    banner_top = 0.995
+    banner_y = banner_top - banner_h
+    _card(ax, 0, banner_y, 1.0, banner_h, color=C_NAVY, border=C_NAVY)
+    _hbar(ax, 0, banner_top, 1.0, h=0.005, color=C_BRAND)
     _label(
         ax,
         0.012,
-        0.961,
+        banner_top - 0.018,
         f"Category Sales — {location_name[:28]}",
-        size=12.0,
+        size=11.0,
         color=C_WHITE,
         weight="bold",
     )
-    _label(ax, 0.012, 0.919, day_lbl, size=10.0, color="#94a3b8")
+    _label(ax, 0.012, banner_top - 0.045, day_lbl, size=9.0, color="#94a3b8")
 
-    cur_y = 0.85
-    _table_header_row(
-        ax, tbl_x, cur_y - row_h, ["Category", "Daily", "MTD", "%"], col_w, row_h
-    )
+    cur_y = banner_y - 0.01
+
+    # Table header
+    if multi:
+        headers = (
+            ["Category"]
+            + [_short_outlet_name(nm, 12) for nm, _ in per_outlet]
+            + ["Combined", "MTD", "%"]
+        )
+    else:
+        headers = ["Category", "Daily", "MTD", "%"]
+    _table_header_row(ax, tbl_x, cur_y - row_h, headers, col_w, row_h)
     cur_y -= row_h
 
     daily_total = 0.0
     mtd_total = 0.0
+    outlet_totals = [0.0] * len(outlet_daily_cats) if multi else []
+
     for idx, name in enumerate(cat_order):
         d_amt = daily_cat.get(name, 0.0)
         m_amt = float(mtd_category.get(name, 0) or 0)
@@ -594,12 +617,23 @@ def _section_category(
         pct_lbl = (
             f"{int(round(100 * m_amt / total_cat_mtd))}%" if total_cat_mtd > 0 else "—"
         )
+
+        if multi:
+            outlet_amts = []
+            for oi, od_cats in enumerate(outlet_daily_cats):
+                ov = od_cats.get(name, 0.0)
+                outlet_totals[oi] += ov
+                outlet_amts.append(_r(ov))
+            cells = [name] + outlet_amts + [_r(d_amt), _r(m_amt), pct_lbl]
+        else:
+            cells = [name, _r(d_amt), _r(m_amt), pct_lbl]
+
         cur_y -= row_h
         _table_data_row(
             ax,
             tbl_x,
             cur_y,
-            [name, _r(d_amt), _r(m_amt), pct_lbl],
+            cells,
             col_w,
             row_h=row_h,
             is_alt=(idx % 2 == 1),
@@ -607,11 +641,19 @@ def _section_category(
 
     # Totals row
     cur_y -= row_h
+    if multi:
+        tot_cells = (
+            ["Total"]
+            + [_r(t) for t in outlet_totals]
+            + [_r(daily_total), _r(mtd_total), ""]
+        )
+    else:
+        tot_cells = ["Total", _r(daily_total), _r(mtd_total), ""]
     _table_data_row(
         ax,
         tbl_x,
         cur_y,
-        ["Total", _r(daily_total), _r(mtd_total), ""],
+        tot_cells,
         col_w,
         row_h=row_h,
         bg=C_NAVY,
@@ -619,7 +661,7 @@ def _section_category(
         text_color=C_WHITE,
     )
 
-    ax.set_ylim(cur_y - 0.06, 1.0)
+    ax.set_ylim(cur_y - 0.04, 1.0)
 
 
 def _section_service(
@@ -628,11 +670,15 @@ def _section_service(
     location_name: str,
     mtd_service: Dict[str, float],
     day_lbl: str,
+    per_outlet: Optional[List[Tuple[str, Dict]]] = None,
+    per_outlet_service: Optional[List[Tuple[str, Dict[str, float]]]] = None,
 ) -> None:
     ax.set_xlim(0, 1)
     ax.axis("off")
 
+    multi = per_outlet and len(per_outlet) >= 2
     std_svc = ["Breakfast", "Lunch", "Dinner", "Delivery", "Events", "Party"]
+
     daily_svc = {
         s.get("service_type") or s.get("type"): float(s.get("amount") or 0)
         for s in r.get("services") or []
@@ -640,36 +686,82 @@ def _section_service(
     mtd_service = dict(mtd_service or {})
     total_svc_mtd = sum(mtd_service.values()) or 1.0
 
+    # Per-outlet daily service data
+    outlet_daily_svcs = []
+    if multi and per_outlet:
+        for _, od in per_outlet:
+            od_svcs = {
+                s.get("service_type") or s.get("type"): float(s.get("amount") or 0)
+                for s in od.get("services") or []
+            }
+            outlet_daily_svcs.append(od_svcs)
+
     svc_order = [x for x in std_svc if x in daily_svc or x in mtd_service]
     for k in sorted(mtd_service.keys()):
         if k not in svc_order:
             svc_order.append(k)
 
-    row_h = 0.060
-    col_w = [0.50, 0.22, 0.22, 0.06]
+    row_h = 0.052
+
+    if multi:
+        n_data = len(per_outlet) + 1
+        label_w = 0.22
+        mtd_w = 0.14
+        pct_w = 0.06
+        remaining = 1.0 - label_w - mtd_w - pct_w
+        data_w = remaining / n_data
+        col_w = [label_w] + [data_w] * n_data + [mtd_w, pct_w]
+    else:
+        col_w = [0.50, 0.22, 0.22, 0.06]
     tbl_x = 0.0
 
-    _card(ax, 0, 0.88, 1.0, 0.105, color=C_NAVY, border=C_NAVY)
-    _hbar(ax, 0, 0.978, 1.0, h=0.0075, color=C_BRAND)
+    # Slim header banner
+    banner_h = 0.065
+    banner_top = 0.995
+    banner_y = banner_top - banner_h
+    _card(ax, 0, banner_y, 1.0, banner_h, color=C_NAVY, border=C_NAVY)
+    _hbar(ax, 0, banner_top, 1.0, h=0.005, color=C_BRAND)
     _label(
         ax,
         0.012,
-        0.961,
+        banner_top - 0.018,
         f"Service Sales — {location_name[:28]}",
-        size=12.0,
+        size=11.0,
         color=C_WHITE,
         weight="bold",
     )
-    _label(ax, 0.012, 0.919, day_lbl, size=10.0, color="#94a3b8")
+    _label(ax, 0.012, banner_top - 0.045, day_lbl, size=9.0, color="#94a3b8")
 
-    cur_y = 0.85
-    _table_header_row(
-        ax, tbl_x, cur_y - row_h, ["Service", "Daily", "MTD", "%"], col_w, row_h
-    )
+    cur_y = banner_y - 0.01
+
+    if multi:
+        headers = (
+            ["Service"]
+            + [_short_outlet_name(nm, 12) for nm, _ in per_outlet]
+            + ["Combined", "MTD", "%"]
+        )
+    else:
+        headers = ["Service", "Daily", "MTD", "%"]
+    _table_header_row(ax, tbl_x, cur_y - row_h, headers, col_w, row_h)
     cur_y -= row_h
+
+    if not svc_order:
+        _label(
+            ax,
+            0.5,
+            cur_y - 0.05,
+            "No service data for this date",
+            size=11.0,
+            color=C_MUTED,
+            ha="center",
+        )
+        ax.set_ylim(cur_y - 0.12, 1.0)
+        return
 
     daily_total = 0.0
     mtd_total = 0.0
+    outlet_totals = [0.0] * len(outlet_daily_svcs) if multi else []
+
     for idx, name in enumerate(svc_order):
         d_amt = daily_svc.get(name, 0.0)
         m_amt = float(mtd_service.get(name, 0) or 0)
@@ -678,43 +770,51 @@ def _section_service(
         pct_lbl = (
             f"{int(round(100 * m_amt / total_svc_mtd))}%" if total_svc_mtd > 0 else "—"
         )
+
+        if multi:
+            outlet_amts = []
+            for oi, od_svcs in enumerate(outlet_daily_svcs):
+                ov = od_svcs.get(name, 0.0)
+                outlet_totals[oi] += ov
+                outlet_amts.append(_r(ov))
+            cells = [name] + outlet_amts + [_r(d_amt), _r(m_amt), pct_lbl]
+        else:
+            cells = [name, _r(d_amt), _r(m_amt), pct_lbl]
+
         cur_y -= row_h
         _table_data_row(
             ax,
             tbl_x,
             cur_y,
-            [name, _r(d_amt), _r(m_amt), pct_lbl],
+            cells,
             col_w,
             row_h=row_h,
             is_alt=(idx % 2 == 1),
         )
 
-    if not svc_order:
-        _label(
-            ax,
-            0.5,
-            0.73,
-            "No service data for this date",
-            size=12.0,
-            color=C_MUTED,
-            ha="center",
-        )
-        ax.set_ylim(0.65, 1.0)
-        return
-
+    # Totals row
     cur_y -= row_h
+    if multi:
+        tot_cells = (
+            ["Total"]
+            + [_r(t) for t in outlet_totals]
+            + [_r(daily_total), _r(mtd_total), ""]
+        )
+    else:
+        tot_cells = ["Total", _r(daily_total), _r(mtd_total), ""]
     _table_data_row(
         ax,
         tbl_x,
         cur_y,
-        ["Total", _r(daily_total), _r(mtd_total), ""],
+        tot_cells,
         col_w,
         row_h=row_h,
         bg=C_NAVY,
         bold=True,
         text_color=C_WHITE,
     )
-    ax.set_ylim(cur_y - 0.06, 1.0)
+
+    ax.set_ylim(cur_y - 0.04, 1.0)
 
 
 def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -> None:
@@ -723,37 +823,41 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
 
     rows = list(month_footfall_rows or [])
 
-    _card(ax, 0, 0.88, 1.0, 0.105, color=C_NAVY, border=C_NAVY)
-    _hbar(ax, 0, 0.978, 1.0, h=0.0075, color=C_BRAND)
+    # Slim header banner (consistent with other sections)
+    banner_h = 0.065
+    banner_top = 0.995
+    banner_y = banner_top - banner_h
+    _card(ax, 0, banner_y, 1.0, banner_h, color=C_NAVY, border=C_NAVY)
+    _hbar(ax, 0, banner_top, 1.0, h=0.005, color=C_BRAND)
     _label(
         ax,
         0.012,
-        0.961,
+        banner_top - 0.018,
         "Daily Footfall — Month to Date",
-        size=12.0,
+        size=11.0,
         color=C_WHITE,
         weight="bold",
     )
-    _label(ax, 0.012, 0.919, location_name[:32], size=10.0, color="#94a3b8")
+    _label(ax, 0.012, banner_top - 0.045, location_name[:32], size=9.0, color="#94a3b8")
 
     if not rows:
         _label(
             ax,
             0.5,
-            0.73,
+            banner_y - 0.06,
             "No footfall data for this month",
-            size=12.5,
+            size=11.0,
             color=C_MUTED,
             ha="center",
         )
-        ax.set_ylim(0.65, 1.0)
+        ax.set_ylim(banner_y - 0.15, 1.0)
         return
 
     col_w = [0.44, 0.18, 0.18, 0.20]
-    row_h = 0.048
+    row_h = 0.045
     tbl_x = 0.0
 
-    cur_y = 0.85
+    cur_y = banner_y - 0.01
     _table_header_row(
         ax, tbl_x, cur_y - row_h, ["Date", "Dinner", "Lunch", "Total"], col_w, row_h
     )
@@ -839,6 +943,26 @@ def _short_outlet_name(name: str, max_len: int = 18) -> str:
     return name if len(name) <= max_len else name[: max_len - 1] + "\u2026"
 
 
+def _outlet_col_widths(n_outlets: int, label_frac: float = 0.35) -> List[float]:
+    """Compute column widths for [Label, Outlet1, ..., OutletN, Combined].
+
+    When n_outlets <= 1, returns [label_frac, 1 - label_frac] (two columns).
+    When n_outlets >= 2, splits remaining space equally among outlets + combined.
+    """
+    if n_outlets <= 1:
+        return [label_frac, 1.0 - label_frac]
+    data_cols = n_outlets + 1  # per-outlet + combined
+    data_w = (1.0 - label_frac) / data_cols
+    return [label_frac] + [data_w] * data_cols
+
+
+def _section_fig_width(n_outlets: int) -> float:
+    """Figure width in inches. Wider when multi-outlet."""
+    if n_outlets <= 1:
+        return 8.5
+    return 8.5 + 2.0 * n_outlets  # e.g. 12.5 for 2 outlets
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Public API
 # ══════════════════════════════════════════════════════════════════════════════
@@ -861,6 +985,8 @@ def generate_sheet_style_report_sections(
     mtd_service: Optional[Dict[str, float]] = None,
     month_footfall_rows: Optional[List[Dict]] = None,
     per_outlet_summaries: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
+    per_outlet_category: Optional[List[Tuple[str, Dict[str, float]]]] = None,
+    per_outlet_service: Optional[List[Tuple[str, Dict[str, float]]]] = None,
 ) -> Dict[str, BytesIO]:
     """Four separate PNGs: sales_summary, category, service, footfall."""
     r = report_data
@@ -870,8 +996,14 @@ def generate_sheet_style_report_sections(
     iso = str(r.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]
     day_lbl = _sheet_date_label(iso)
     per_outlet = list(per_outlet_summaries) if per_outlet_summaries else None
+    per_outlet_cat = list(per_outlet_category) if per_outlet_category else None
+    per_outlet_svc = list(per_outlet_service) if per_outlet_service else None
 
     out: Dict[str, BytesIO] = {}
+
+    # Dynamic figure width for multi-outlet
+    n_outlets = len(per_outlet) if per_outlet and len(per_outlet) >= 2 else 0
+    fig_w = _section_fig_width(n_outlets)
 
     # Sales summary
     n_pay = len(
@@ -894,26 +1026,42 @@ def generate_sheet_style_report_sections(
             if float(r.get(k) or 0) != 0
         ]
     )
-    est_rows = 10 + n_pay + n_tax + (2 if per_outlet else 0)
-    fig, ax = _fig_for_section(est_rows, min_rows=12, cap_h=36.0, w=8.5)
+    est_rows = 10 + n_pay + n_tax + 12  # MTD rows
+    fig, ax = _fig_for_section(est_rows, min_rows=12, cap_h=36.0, w=fig_w)
     _section_sales_summary(ax, r, location_name, per_outlet)
     out["sales_summary"] = _save_fig(fig)
 
     # Category
     n_cat = len(mc) or 3
-    fig, ax = _fig_for_section(n_cat + 4, min_rows=6, cap_h=21.0, w=8.5)
-    _section_category(ax, r, location_name, mc, day_lbl)
+    fig, ax = _fig_for_section(n_cat + 4, min_rows=6, cap_h=21.0, w=fig_w)
+    _section_category(
+        ax,
+        r,
+        location_name,
+        mc,
+        day_lbl,
+        per_outlet=per_outlet,
+        per_outlet_category=per_outlet_cat,
+    )
     out["category"] = _save_fig(fig)
 
     # Service
     n_svc = len(ms) or 3
-    fig, ax = _fig_for_section(n_svc + 4, min_rows=5, cap_h=18.0, w=8.5)
-    _section_service(ax, r, location_name, ms, day_lbl)
+    fig, ax = _fig_for_section(n_svc + 4, min_rows=5, cap_h=18.0, w=fig_w)
+    _section_service(
+        ax,
+        r,
+        location_name,
+        ms,
+        day_lbl,
+        per_outlet=per_outlet,
+        per_outlet_service=per_outlet_svc,
+    )
     out["service"] = _save_fig(fig)
 
     # Footfall
     n_ft = len(mf) + 4
-    fig, ax = _fig_for_section(n_ft, min_rows=5, cap_h=33.0, w=8.5)
+    fig, ax = _fig_for_section(n_ft, min_rows=5, cap_h=33.0, w=fig_w)
     _section_footfall(ax, mf, location_name)
     out["footfall"] = _save_fig(fig)
 
@@ -927,6 +1075,8 @@ def generate_sheet_style_report_image(
     mtd_service: Optional[Dict[str, float]] = None,
     month_footfall_rows: Optional[List[Dict]] = None,
     per_outlet_summaries: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
+    per_outlet_category: Optional[List[Tuple[str, Dict[str, float]]]] = None,
+    per_outlet_service: Optional[List[Tuple[str, Dict[str, float]]]] = None,
 ) -> BytesIO:
     """
     Composite PNG: 4 sections stacked vertically.
@@ -939,6 +1089,8 @@ def generate_sheet_style_report_image(
         mtd_service,
         month_footfall_rows,
         per_outlet_summaries,
+        per_outlet_category,
+        per_outlet_service,
     )
 
     # Stack the 4 PNGs into one tall image using matplotlib

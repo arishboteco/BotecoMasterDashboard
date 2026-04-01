@@ -318,6 +318,8 @@ def render(ctx: TabContext) -> None:
             [(n, d) for _i, n, d in outlets_bundle] if multi_outlet else None
         )
         y_m = [int(x) for x in date_str.split("-")[:2]]
+        per_outlet_cat = None
+        per_outlet_svc = None
         if len(ctx.report_loc_ids) > 1:
             mtd_cat = database.get_category_mtd_totals_multi(
                 ctx.report_loc_ids, y_m[0], y_m[1]
@@ -328,6 +330,15 @@ def render(ctx: TabContext) -> None:
             foot_rows = scope.merge_month_footfall_rows(
                 ctx.report_loc_ids, y_m[0], y_m[1]
             )
+            # Per-outlet MTD category & service for PNG sections
+            per_outlet_cat = [
+                (name, database.get_category_mtd_totals(lid, y_m[0], y_m[1]))
+                for lid, name, _ in outlets_bundle
+            ]
+            per_outlet_svc = [
+                (name, database.get_service_mtd_totals(lid, y_m[0], y_m[1]))
+                for lid, name, _ in outlets_bundle
+            ]
         else:
             mtd_cat = database.get_category_mtd_totals(
                 ctx.report_loc_ids[0], y_m[0], y_m[1]
@@ -346,6 +357,8 @@ def render(ctx: TabContext) -> None:
             mtd_service=mtd_svc,
             month_footfall_rows=foot_rows,
             per_outlet_summaries=per_outlet_sheet,
+            per_outlet_category=per_outlet_cat,
+            per_outlet_service=per_outlet_svc,
         )
 
         if multi_outlet:
