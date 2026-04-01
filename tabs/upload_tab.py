@@ -289,68 +289,6 @@ def render(ctx: TabContext) -> None:
                         )
                         st.rerun()
 
-    # ── Covers-only sync ──
-    st.markdown("---")
-    st.markdown("### Sync covers only")
-    st.caption(
-        "Updates covers on existing saved days from the customer report "
-        "without re-importing POS data."
-    )
-    cr_path_sync = config.resolve_customer_report_path()
-    customer_report_upload_sync = st.file_uploader(
-        "Customer report for covers (optional XLSX)",
-        type=["xlsx", "xls"],
-        accept_multiple_files=False,
-        help="Overrides the configured path for cover counts.",
-        key="customer_report_upload_sync",
-    )
-    # Debug mode toggle for troubleshooting
-    debug_covers = st.checkbox(
-        "Enable debug logging",
-        value=False,
-        key="debug_covers_sync",
-        help="Show detailed parsing information for troubleshooting",
-    )
-    if cr_path_sync:
-        st.caption(f"Configured customer report path: `{cr_path_sync}`")
-    if st.button(
-        "Apply covers from customer report",
-        key="sync_covers_only",
-        help="Updates covers (and lunch/dinner if present) on existing saved days; no POS upload.",
-    ):
-        locs_for_cr2 = database.get_all_locations()
-        cr_lookup2: dict = {}
-        notes2: list = []
-        if cr_path_sync:
-            cr_lookup2, notes2 = customer_report_parser.load_lookup_from_path(
-                cr_path_sync, locs_for_cr2, debug=debug_covers
-            )
-        if customer_report_upload_sync is not None:
-            up2, n2 = customer_report_parser.build_covers_lookup(
-                customer_report_upload_sync.getvalue(),
-                locs_for_cr2,
-                debug=debug_covers,
-            )
-            cr_lookup2 = {**cr_lookup2, **up2}
-            notes2.extend(n2)
-        updated = 0
-        for (lid, d), ent in cr_lookup2.items():
-            covers_raw = ent.get("covers")
-            covers = int(covers_raw) if covers_raw is not None else 0
-            ok2 = database.update_daily_summary_covers_only(
-                lid,
-                d,
-                covers,
-                ent.get("lunch_covers"),
-                ent.get("dinner_covers"),
-            )
-            if ok2:
-                updated += 1
-        for n in notes2:
-            st.info(n)
-        st.success(f"Updated covers on **{updated}** saved day(s).")
-        st.rerun()
-
     # ── Remove incorrect data ──
     st.markdown("---")
     st.markdown("### Remove incorrect data")
