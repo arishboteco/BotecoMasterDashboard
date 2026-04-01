@@ -327,11 +327,33 @@ def render(ctx: TabContext) -> None:
             mtd_svc = database.get_service_mtd_totals_multi(
                 ctx.report_loc_ids, y_m[0], y_m[1]
             )
-            per_outlet_footfall = [
-                (name, database.get_summaries_for_month(lid, y_m[0], y_m[1]))
+            # Get per-outlet footfall metrics (monthly + weekly aggregated data)
+            # Calculate date range: last 9 months for monthly, last 5 weeks for weekly
+            _today = datetime.now().date()
+            _end = _today.strftime("%Y-%m-%d")
+            # 9 months back
+            _start_mo = _today
+            for _ in range(9):
+                _m = _start_mo.month - 1
+                if _m == 0:
+                    _m = 12
+                    _start_mo = _start_mo.replace(year=_start_mo.year - 1, month=_m)
+                else:
+                    _start_mo = _start_mo.replace(month=_m)
+            _start_mo_str = _start_mo.replace(day=1).strftime("%Y-%m-%d")
+            # 5 weeks back
+            _start_wk = (_today - timedelta(weeks=5)).strftime("%Y-%m-%d")
+
+            per_outlet_footfall_metrics = [
+                (
+                    name,
+                    database.get_monthly_footfall_multi([lid], _start_mo_str, _end),
+                    database.get_weekly_footfall_multi([lid], _start_wk, _end),
+                )
                 for lid, name, _ in outlets_bundle
             ]
             foot_rows = []
+            per_outlet_footfall = None
             # Per-outlet MTD category & service for PNG sections
             per_outlet_cat = [
                 (name, database.get_category_mtd_totals(lid, y_m[0], y_m[1]))
@@ -352,6 +374,7 @@ def render(ctx: TabContext) -> None:
                 ctx.report_loc_ids[0], y_m[0], y_m[1]
             )
             per_outlet_footfall = None
+            per_outlet_footfall_metrics = None
 
         section_bufs = reports.generate_sheet_style_report_sections(
             summary,
@@ -363,13 +386,25 @@ def render(ctx: TabContext) -> None:
             per_outlet_category=per_outlet_cat,
             per_outlet_service=per_outlet_svc,
             per_outlet_footfall=per_outlet_footfall,
+            per_outlet_footfall_metrics=per_outlet_footfall_metrics,
         )
 
         def _footfall_sections() -> List[Tuple[str, str]]:
             items: List[Tuple[str, str]] = []
             for key in section_bufs.keys():
+                if key == "footfall_metrics":
+                    items.append((key, "Footfall Metrics"))
+                    continue
                 if key == "footfall":
                     items.append((key, "Footfall (month)"))
+                    continue
+                if key.startswith("footfall_metrics__"):
+                    parts = key.split("__")
+                    if len(parts) >= 3:
+                        slug = parts[1].replace("_", " ")
+                        items.append((key, f"Footfall Metrics ({slug.title()})"))
+                    else:
+                        items.append((key, "Footfall Metrics"))
                     continue
                 if key.startswith("footfall__"):
                     parts = key.split("__")
@@ -383,7 +418,7 @@ def render(ctx: TabContext) -> None:
         if multi_outlet:
             st.caption(
                 "Category and service sections use **combined** "
-                "MTD for all outlets in scope. Footfall is shown per outlet."
+                "MTD for all outlets in scope. Footfall metrics are shown per outlet."
             )
 
         with st.expander("Individual PNG sections", expanded=True):

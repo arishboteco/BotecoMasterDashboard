@@ -933,6 +933,204 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
     ax.set_ylim(cur_y - 0.06, 1.0)
 
 
+def _section_footfall_metrics(
+    ax,
+    monthly_rows: List[Dict],
+    weekly_rows: List[Dict],
+    location_name: str,
+) -> None:
+    """Footfall metrics section with monthly and weekly summary tables."""
+    ax.set_xlim(0, 1)
+    ax.axis("off")
+
+    monthly = list(monthly_rows or [])
+    weekly = list(weekly_rows or [])
+
+    # Slim header banner
+    banner_h = 0.065
+    banner_top = 0.995
+    banner_y = banner_top - banner_h
+    _card(ax, 0, banner_y, 1.0, banner_h, color=C_NAVY, border=C_NAVY)
+    _hbar(ax, 0, banner_top, 1.0, h=0.005, color=C_BRAND)
+    _label(
+        ax,
+        0.012,
+        banner_top - 0.018,
+        "Footfall Metrics",
+        size=11.0,
+        color=C_WHITE,
+        weight="bold",
+    )
+    _label(ax, 0.012, banner_top - 0.045, location_name[:32], size=9.0, color="#94a3b8")
+
+    cur_y = banner_y - 0.02
+    row_h = 0.038
+
+    # Helper to calculate MoM/WoW % change
+    def _calc_pct_change(current: float, previous: float) -> str:
+        if previous == 0:
+            return "—"
+        pct = ((current - previous) / previous) * 100
+        return f"{pct:+.2f}%"
+
+    # Helper to calculate daily avg % change
+    def _calc_avg_pct_change(
+        curr_foot: int, curr_days: int, prev_foot: int, prev_days: int
+    ) -> str:
+        if prev_days == 0 or prev_foot == 0:
+            return "—"
+        curr_avg = curr_foot / curr_days
+        prev_avg = prev_foot / prev_days
+        pct = ((curr_avg - prev_avg) / prev_avg) * 100
+        return f"{pct:+.2f}%"
+
+    # ── Monthly Table ─────────────────────────────────────────────────────────
+    if monthly:
+        cur_y -= row_h * 0.5
+        _label(ax, 0.012, cur_y, "Monthly", size=10.0, color=C_MUTED, weight="bold")
+        cur_y -= row_h * 1.2
+
+        # Header
+        col_w = [0.18, 0.16, 0.16, 0.16, 0.18, 0.16]
+        headers = [
+            "Month",
+            "Footfall",
+            "% Change",
+            "Total Days",
+            "Daily Avg.",
+            "% Change",
+        ]
+        _table_header_row(ax, 0, cur_y, headers, col_w, row_h, font_size=9.0)
+        cur_y -= row_h
+
+        # Sort by month descending (most recent first), but we'll display in that order
+        sorted_monthly = sorted(monthly, key=lambda x: x.get("month", ""), reverse=True)
+
+        for idx, row in enumerate(sorted_monthly[:9]):  # Show last 9 months
+            month = str(row.get("month", ""))
+            covers = int(row.get("covers") or 0)
+            total_days = int(row.get("total_days") or 0)
+            daily_avg = covers / total_days if total_days > 0 else 0
+
+            # Format month label
+            try:
+                dt = datetime.strptime(f"{month}-01", "%Y-%m-%d")
+                month_label = dt.strftime("%b-%Y")
+            except ValueError:
+                month_label = month
+
+            # Calculate % changes (compare to previous month in sorted list)
+            foot_pct = "—"
+            avg_pct = "—"
+            if idx < len(sorted_monthly) - 1:
+                prev_row = sorted_monthly[idx + 1]
+                prev_covers = int(prev_row.get("covers") or 0)
+                prev_days = int(prev_row.get("total_days") or 0)
+                foot_pct = _calc_pct_change(covers, prev_covers)
+                avg_pct = _calc_avg_pct_change(
+                    covers, total_days, prev_covers, prev_days
+                )
+
+            cells = [
+                month_label,
+                f"{covers:,}",
+                foot_pct,
+                str(total_days),
+                f"{daily_avg:.0f}",
+                avg_pct,
+            ]
+
+            cur_y -= row_h
+            _table_data_row(
+                ax,
+                0,
+                cur_y,
+                cells,
+                col_w,
+                row_h=row_h,
+                is_alt=(idx % 2 == 1),
+                font_size=8.5,
+            )
+
+        cur_y -= row_h * 0.5
+
+    # ── Weekly Table ──────────────────────────────────────────────────────────
+    if weekly:
+        cur_y -= row_h * 0.5
+        _label(ax, 0.012, cur_y, "Weekly", size=10.0, color=C_MUTED, weight="bold")
+        cur_y -= row_h * 1.2
+
+        # Header
+        col_w = [0.18, 0.16, 0.16, 0.16, 0.18, 0.16]
+        headers = [
+            "Week",
+            "Footfall",
+            "% Change",
+            "Total Days",
+            "Daily Avg.",
+            "% Change",
+        ]
+        _table_header_row(ax, 0, cur_y, headers, col_w, row_h, font_size=9.0)
+        cur_y -= row_h
+
+        # Sort by week descending (most recent first)
+        sorted_weekly = sorted(weekly, key=lambda x: x.get("week", ""), reverse=True)
+
+        for idx, row in enumerate(sorted_weekly[:5]):  # Show last 5 weeks
+            week = str(row.get("week", ""))
+            covers = int(row.get("covers") or 0)
+            total_days = int(row.get("total_days") or 0)
+            daily_avg = covers / total_days if total_days > 0 else 0
+
+            # Calculate % changes (compare to previous week in sorted list)
+            foot_pct = "—"
+            avg_pct = "—"
+            if idx < len(sorted_weekly) - 1:
+                prev_row = sorted_weekly[idx + 1]
+                prev_covers = int(prev_row.get("covers") or 0)
+                prev_days = int(prev_row.get("total_days") or 0)
+                foot_pct = _calc_pct_change(covers, prev_covers)
+                avg_pct = _calc_avg_pct_change(
+                    covers, total_days, prev_covers, prev_days
+                )
+
+            cells = [
+                week,
+                f"{covers:,}",
+                foot_pct,
+                str(total_days),
+                f"{daily_avg:.0f}",
+                avg_pct,
+            ]
+
+            cur_y -= row_h
+            _table_data_row(
+                ax,
+                0,
+                cur_y,
+                cells,
+                col_w,
+                row_h=row_h,
+                is_alt=(idx % 2 == 1),
+                font_size=8.5,
+            )
+
+    # If no data at all
+    if not monthly and not weekly:
+        cur_y -= row_h * 2
+        _label(
+            ax,
+            0.5,
+            cur_y,
+            "No footfall metrics data available",
+            size=11.0,
+            color=C_MUTED,
+            ha="center",
+        )
+
+    ax.set_ylim(cur_y - 0.06, 1.0)
+
+
 # ── Short outlet name helper ──────────────────────────────────────────────────
 
 
@@ -1001,6 +1199,11 @@ def generate_sheet_style_report_sections(
     per_outlet_category: Optional[List[Tuple[str, Dict[str, float]]]] = None,
     per_outlet_service: Optional[List[Tuple[str, Dict[str, float]]]] = None,
     per_outlet_footfall: Optional[List[Tuple[str, List[Dict[str, Any]]]]] = None,
+    footfall_metrics_monthly: Optional[List[Dict]] = None,
+    footfall_metrics_weekly: Optional[List[Dict]] = None,
+    per_outlet_footfall_metrics: Optional[
+        List[Tuple[str, List[Dict], List[Dict]]]
+    ] = None,
 ) -> Dict[str, BytesIO]:
     """Generate section PNG buffers.
 
@@ -1008,8 +1211,10 @@ def generate_sheet_style_report_sections(
       - sales_summary
       - category
       - service
-      - footfall (single-outlet/legacy)
-      - footfall__{outlet_slug}_{idx} (multi-outlet per-outlet footfall)
+      - footfall (single-outlet/legacy daily footfall)
+      - footfall__{outlet_slug}_{idx} (multi-outlet per-outlet daily footfall)
+      - footfall_metrics (single-outlet metrics)
+      - footfall_metrics__{outlet_slug}_{idx} (multi-outlet per-outlet metrics)
     """
     r = report_data
     mc = dict(mtd_category or {})
@@ -1021,6 +1226,11 @@ def generate_sheet_style_report_sections(
     per_outlet_cat = list(per_outlet_category) if per_outlet_category else None
     per_outlet_svc = list(per_outlet_service) if per_outlet_service else None
     per_outlet_ff = list(per_outlet_footfall) if per_outlet_footfall else None
+    ff_metrics_mo = list(footfall_metrics_monthly) if footfall_metrics_monthly else None
+    ff_metrics_wk = list(footfall_metrics_weekly) if footfall_metrics_weekly else None
+    per_outlet_ff_metrics = (
+        list(per_outlet_footfall_metrics) if per_outlet_footfall_metrics else None
+    )
 
     out: Dict[str, BytesIO] = {}
 
@@ -1083,7 +1293,28 @@ def generate_sheet_style_report_sections(
     out["service"] = _save_fig(fig)
 
     # Footfall
-    if per_outlet_ff and len(per_outlet_ff) > 1:
+    # Prefer new metrics-based sections if data provided
+    if per_outlet_ff_metrics and len(per_outlet_ff_metrics) > 1:
+        # Multi-outlet with per-outlet metrics
+        for idx, (outlet_name, mo_rows, wk_rows) in enumerate(per_outlet_ff_metrics):
+            # Calculate estimated rows: header + monthly rows + spacing + weekly rows
+            n_mo = len(mo_rows) if mo_rows else 0
+            n_wk = len(wk_rows) if wk_rows else 0
+            n_ft = 4 + n_mo + n_wk  # header + spacing + tables
+            fig, ax = _fig_for_section(n_ft, min_rows=8, cap_h=28.0, w=fig_w)
+            _section_footfall_metrics(ax, mo_rows, wk_rows, outlet_name)
+            outlet_slug = _section_key_slug(outlet_name, default=f"outlet_{idx}")
+            out[f"footfall_metrics__{outlet_slug}_{idx}"] = _save_fig(fig)
+    elif ff_metrics_mo or ff_metrics_wk:
+        # Single-outlet with metrics
+        n_mo = len(ff_metrics_mo) if ff_metrics_mo else 0
+        n_wk = len(ff_metrics_wk) if ff_metrics_wk else 0
+        n_ft = 4 + n_mo + n_wk
+        fig, ax = _fig_for_section(n_ft, min_rows=8, cap_h=28.0, w=fig_w)
+        _section_footfall_metrics(ax, ff_metrics_mo, ff_metrics_wk, location_name)
+        out["footfall_metrics"] = _save_fig(fig)
+    elif per_outlet_ff and len(per_outlet_ff) > 1:
+        # Fallback to daily footfall for backward compatibility
         for idx, (outlet_name, ff_rows) in enumerate(per_outlet_ff):
             ff_rows = list(ff_rows or [])
             n_ft = len(ff_rows) + 4
@@ -1092,6 +1323,7 @@ def generate_sheet_style_report_sections(
             outlet_slug = _section_key_slug(outlet_name, default=f"outlet_{idx}")
             out[f"footfall__{outlet_slug}_{idx}"] = _save_fig(fig)
     else:
+        # Single-outlet daily footfall (legacy)
         n_ft = len(mf) + 4
         fig, ax = _fig_for_section(n_ft, min_rows=5, cap_h=33.0, w=fig_w)
         _section_footfall(ax, mf, location_name)
@@ -1110,6 +1342,11 @@ def generate_sheet_style_report_image(
     per_outlet_category: Optional[List[Tuple[str, Dict[str, float]]]] = None,
     per_outlet_service: Optional[List[Tuple[str, Dict[str, float]]]] = None,
     per_outlet_footfall: Optional[List[Tuple[str, List[Dict[str, Any]]]]] = None,
+    footfall_metrics_monthly: Optional[List[Dict]] = None,
+    footfall_metrics_weekly: Optional[List[Dict]] = None,
+    per_outlet_footfall_metrics: Optional[
+        List[Tuple[str, List[Dict], List[Dict]]]
+    ] = None,
 ) -> BytesIO:
     """
     Composite PNG from generated sections stacked vertically.
@@ -1126,6 +1363,9 @@ def generate_sheet_style_report_image(
         per_outlet_category,
         per_outlet_service,
         per_outlet_footfall,
+        footfall_metrics_monthly,
+        footfall_metrics_weekly,
+        per_outlet_footfall_metrics,
     )
 
     # Stack generated sections into one tall image using matplotlib

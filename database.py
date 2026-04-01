@@ -1027,6 +1027,41 @@ def get_monthly_footfall_multi(
     return [dict(row) for row in rows]
 
 
+def get_weekly_footfall_multi(
+    location_ids: List[int], start_date: str, end_date: str
+) -> List[Dict[str, Any]]:
+    """Aggregate covers by ISO week across locations for a date range.
+
+    Returns list of dicts: [{"week": "YYYY-W##", "covers": int, "total_days": int}, ...]
+    Sorted by week ascending.
+    """
+    if not location_ids:
+        return []
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        placeholders = ",".join("?" * len(location_ids))
+        cursor.execute(
+            f"""
+            SELECT
+                week,
+                SUM(covers) AS covers,
+                CAST(COUNT(DISTINCT date) AS INTEGER) AS total_days
+            FROM (
+                SELECT STRFTIME('%Y-W%W', date) AS week, covers, date
+                FROM daily_summaries
+                WHERE location_id IN ({placeholders})
+                  AND date >= ?
+                  AND date <= ?
+            ) w
+            GROUP BY week
+            ORDER BY week
+            """,
+            (*location_ids, start_date, end_date),
+        )
+        rows = cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
 def get_category_mtd_totals_multi(
     location_ids: List[int], year: int, month: int
 ) -> Dict[str, float]:
