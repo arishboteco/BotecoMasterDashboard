@@ -22,6 +22,19 @@ from tabs import TabContext
 logger = logging.getLogger("boteco")
 
 
+def _prepare_merged_for_save(
+    merged: Dict[str, Any],
+    location_id: int,
+    cr_lookup: Dict[Any, Any],
+) -> Dict[str, Any]:
+    """Keep parser covers by default; override with customer report when available."""
+    out = dict(merged)
+    out.setdefault("covers", 0)
+    out.setdefault("lunch_covers", None)
+    out.setdefault("dinner_covers", None)
+    return customer_report_parser.apply_covers_overlay(out, location_id, cr_lookup)
+
+
 def render(ctx: TabContext) -> None:
     """Render the Upload tab UI and handle import logic."""
     st.header("Upload POS Data")
@@ -213,12 +226,10 @@ def render(ctx: TabContext) -> None:
                             )
                             continue
 
-                        merged = dict(day.merged)
-                        merged["covers"] = 0
-                        merged["lunch_covers"] = None
-                        merged["dinner_covers"] = None
-                        merged = customer_report_parser.apply_covers_overlay(
-                            merged, ctx.import_loc_id, cr_lookup
+                        merged = _prepare_merged_for_save(
+                            day.merged,
+                            ctx.import_loc_id,
+                            cr_lookup,
                         )
                         merged["target"] = daily_tgt
                         if sc_setting:
@@ -324,10 +335,12 @@ def render(ctx: TabContext) -> None:
             notes2.extend(n2)
         updated = 0
         for (lid, d), ent in cr_lookup2.items():
+            covers_raw = ent.get("covers")
+            covers = int(covers_raw) if covers_raw is not None else 0
             ok2 = database.update_daily_summary_covers_only(
                 lid,
                 d,
-                int(ent.get("covers") or 0),
+                covers,
                 ent.get("lunch_covers"),
                 ent.get("dinner_covers"),
             )
@@ -359,7 +372,7 @@ def render(ctx: TabContext) -> None:
         with del_col2:
             delete_target_date = st.date_input(
                 "Date to remove",
-                value=datetime.now(),
+                value=datetime.now().date(),
                 key="delete_day_date_pick",
             )
         with del_col3:
@@ -367,10 +380,13 @@ def render(ctx: TabContext) -> None:
             st.write("")
             del_date_str = delete_target_date.strftime("%Y-%m-%d")
             if st.button("Delete this day's data", key="delete_day_btn"):
-                st.session_state["_pending_delete"] = (
-                    int(delete_target_loc),
-                    del_date_str,
-                )
+                if delete_target_loc is None:
+                    st.error("Select an outlet before deleting data.")
+                else:
+                    st.session_state["_pending_delete"] = (
+                        int(delete_target_loc),
+                        del_date_str,
+                    )
         pend = st.session_state.get("_pending_delete")
         if pend:
             ploc, pdate = pend
