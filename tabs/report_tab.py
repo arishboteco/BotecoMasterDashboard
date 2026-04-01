@@ -448,6 +448,21 @@ def render(ctx: TabContext) -> None:
                 type="secondary",
             )
 
+            # Combined share button for first 5 PNG sections
+            _first_five = _sec_meta[:5]
+            if _first_five:
+                _share_files = [
+                    (f"boteco_{key}_{date_str}.png", section_bufs[key].getvalue())
+                    for key, _ in _first_five
+                ]
+                clipboard_ui.render_share_images_button(
+                    _share_files,
+                    "📱 WhatsApp (5 PNGs)",
+                    f"share_5_pngs_{date_str}",
+                    height=44,
+                    primary=True,
+                )
+
             rows = max(1, (len(_sec_meta) + 1) // 2)
             _cells = [st.columns(2) for _ in range(rows)]
             for idx, (key, title) in enumerate(_sec_meta):
@@ -466,10 +481,12 @@ def render(ctx: TabContext) -> None:
                             primary=False,
                         )
                     with cb2:
-                        # WhatsApp share button
+                        # WhatsApp share button - unique label per section to avoid duplicate widget issues
                         whatsapp_url = f"https://wa.me/?text={quote_plus('Check out the Boteco Bangalore EOD Report for {date_str}!')}"
                         st.link_button(
-                            "📱 WhatsApp", whatsapp_url, use_container_width=True
+                            f"📱 WhatsApp ({title})",
+                            whatsapp_url,
+                            use_container_width=True,
                         )
                     with cb3:
                         st.download_button(
