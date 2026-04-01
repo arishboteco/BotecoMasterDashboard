@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 import streamlit as st
+from urllib.parse import quote_plus
 
 import clipboard_ui
 import config
@@ -455,7 +456,7 @@ def render(ctx: TabContext) -> None:
                 with _cells[row_idx][col_idx]:
                     st.caption(title)
                     st.image(BytesIO(sec_bytes), use_container_width=True)
-                    cb1, cb2 = st.columns(2)
+                    cb1, cb2, cb3 = st.columns(3)
                     with cb1:
                         clipboard_ui.render_copy_image_button(
                             sec_bytes,
@@ -465,6 +466,12 @@ def render(ctx: TabContext) -> None:
                             primary=False,
                         )
                     with cb2:
+                        # WhatsApp share button
+                        whatsapp_url = f"https://wa.me/?text={quote_plus('Check out the Boteco Bangalore EOD Report for {date_str}!')}"
+                        st.link_button(
+                            "📱 WhatsApp", whatsapp_url, use_container_width=True
+                        )
+                    with cb3:
                         st.download_button(
                             "PNG",
                             sec_bytes,
