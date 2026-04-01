@@ -307,12 +307,10 @@ def render(ctx: TabContext) -> None:
 
         st.markdown("---")
 
-        # Sheet-style report + clipboard (matches Google Sheet EOD layout)
-        st.markdown("### 📱 WhatsApp / sheet-style report")
+        # Individual PNG sections
         per_outlet_sheet = (
             [(n, d) for _i, n, d in outlets_bundle] if multi_outlet else None
         )
-
         y_m = [int(x) for x in date_str.split("-")[:2]]
         if len(ctx.report_loc_ids) > 1:
             mtd_cat = database.get_category_mtd_totals_multi(
@@ -335,15 +333,6 @@ def render(ctx: TabContext) -> None:
                 ctx.report_loc_ids[0], y_m[0], y_m[1]
             )
 
-        img_buffer = reports.generate_sheet_style_report_image(
-            summary,
-            ctx.report_display_name,
-            mtd_category=mtd_cat,
-            mtd_service=mtd_svc,
-            month_footfall_rows=foot_rows,
-            per_outlet_summaries=per_outlet_sheet,
-        )
-        png_bytes = img_buffer.getvalue()
         section_bufs = reports.generate_sheet_style_report_sections(
             summary,
             ctx.report_display_name,
@@ -352,86 +341,14 @@ def render(ctx: TabContext) -> None:
             month_footfall_rows=foot_rows,
             per_outlet_summaries=per_outlet_sheet,
         )
-        whatsapp_text = reports.generate_whatsapp_text(
-            summary,
-            ctx.report_display_name,
-            per_outlet=per_outlet_sheet,
-        )
 
-        st.image(BytesIO(png_bytes), use_container_width=True)
         if multi_outlet:
             st.caption(
-                "Lower sections of the image (category, service, footfall) use **combined** "
+                "Category, service, and footfall sections use **combined** "
                 "MTD for all outlets in scope."
             )
 
-        st.caption(
-            "**Next step:** Use **Copy report image** and paste into WhatsApp, "
-            "or **Download PNG**. **Copy report text** for a plain-text version."
-        )
-
-        if len(ctx.report_loc_ids) > 1:
-            with st.expander("Per-outlet reports (same date)", expanded=False):
-                for lid in ctx.report_loc_ids:
-                    sub = database.get_daily_summary(lid, date_str)
-                    if not sub:
-                        st.caption(f"Location id {lid}: no data for this date")
-                        continue
-                    loc_st = database.get_location_settings(lid)
-                    sub_name = loc_st["name"] if loc_st else str(lid)
-                    m_tgt = (
-                        float(loc_st["target_monthly_sales"])
-                        if loc_st
-                        else config.MONTHLY_TARGET
-                    )
-                    sub = scope.enrich_summary_for_display(sub, [lid], m_tgt, date_str)
-                    sm_cat = database.get_category_mtd_totals(lid, y_m[0], y_m[1])
-                    sm_svc = database.get_service_mtd_totals(lid, y_m[0], y_m[1])
-                    sm_foot = database.get_summaries_for_month(lid, y_m[0], y_m[1])
-                    buf = reports.generate_sheet_style_report_image(
-                        sub,
-                        sub_name,
-                        mtd_category=sm_cat,
-                        mtd_service=sm_svc,
-                        month_footfall_rows=sm_foot,
-                    )
-                    st.caption(sub_name)
-                    st.image(BytesIO(buf.getvalue()), use_container_width=True)
-
-        b1, b2, b3, b4 = st.columns(4)
-        with b1:
-            clipboard_ui.render_copy_image_button(
-                png_bytes,
-                "Copy report image",
-                f"clip_img_{date_str}",
-            )
-        with b2:
-            clipboard_ui.render_copy_text_button(
-                whatsapp_text,
-                "Copy report text",
-                f"clip_txt_{date_str}",
-                primary=False,
-            )
-        with b3:
-            st.download_button(
-                "Download PNG",
-                png_bytes,
-                file_name=f"boteco_sheet_{date_str}.png",
-                mime="image/png",
-                key=f"dl_png_{date_str}",
-                type="secondary",
-            )
-        with b4:
-            st.download_button(
-                "Download text",
-                whatsapp_text,
-                file_name=f"boteco_report_{date_str}.txt",
-                mime="text/plain",
-                key=f"dl_txt_{date_str}",
-                type="secondary",
-            )
-
-        with st.expander("Individual PNG sections", expanded=False):
+        with st.expander("Individual PNG sections", expanded=True):
             st.markdown("#### Individual sections")
             _sec_meta = [
                 ("sales_summary", "Sales summary"),
@@ -483,14 +400,6 @@ def render(ctx: TabContext) -> None:
                             key=f"dl_sec_{key}_{date_str}",
                             type="secondary",
                         )
-
-        with st.expander("Plain text preview"):
-            st.text_area(
-                "Report text",
-                whatsapp_text,
-                height=280,
-                key=f"whatsapp_text_{date_str}",
-            )
     else:
         st.info(
             f"No saved data for **{selected_date.strftime('%d %b %Y')}**. "
