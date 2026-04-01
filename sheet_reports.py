@@ -87,7 +87,7 @@ def _save_fig(fig) -> BytesIO:
         format="png",
         dpi=DPI,
         bbox_inches="tight",
-        pad_inches=0.18,
+        pad_inches=0.27,
         facecolor=fig.get_facecolor(),
     )
     plt.close(fig)
@@ -115,7 +115,7 @@ def _card(ax, x, y, w, h, radius=0.012, color=C_CARD, border=C_BORDER, lw=0.8):
     ax.add_patch(patch)
 
 
-def _hbar(ax, x, y, w, h=0.006, color=C_BRAND):
+def _hbar(ax, x, y, w, h=0.009, color=C_BRAND):
     """Draw a solid horizontal rule / accent bar."""
     patch = mpatches.Rectangle(
         (x, y),
@@ -135,7 +135,7 @@ def _label(
     x,
     y,
     text,
-    size=7.5,
+    size=11.0,
     color=C_SLATE,
     weight="normal",
     ha="left",
@@ -175,17 +175,19 @@ def _divider(ax, x, y, w, color=C_BORDER, lw=0.5):
 def _kpi_tile(ax, x, y, w, h, label, value, sub=None, accent_color=C_BRAND):
     """A single KPI card: accent top bar → label → big value → optional sub."""
     _card(ax, x, y, w, h)
-    _hbar(ax, x, y + h - 0.006, w, color=accent_color)
-    _label(ax, x + 0.012, y + h - 0.024, label, size=6.8, color=C_MUTED)
-    _label(ax, x + 0.012, y + h - 0.058, value, size=12.5, color=C_SLATE, weight="bold")
+    _hbar(ax, x, y + h - 0.009, w, color=accent_color)
+    _label(ax, x + 0.012, y + h - 0.036, label, size=10.2, color=C_MUTED)
+    _label(
+        ax, x + 0.012, y + h - 0.087, value, size=18.75, color=C_SLATE, weight="bold"
+    )
     if sub:
-        _label(ax, x + 0.012, y + 0.018, sub, size=6.5, color=C_MUTED)
+        _label(ax, x + 0.012, y + 0.027, sub, size=9.5, color=C_MUTED)
 
 
 # ── Table row helpers ─────────────────────────────────────────────────────────
 
 
-def _table_header_row(ax, x, y, cols, widths, row_h=0.032, bg=C_NAVY):
+def _table_header_row(ax, x, y, cols, widths, row_h=0.048, bg=C_NAVY):
     """Dark header row for a data table."""
     total_w = sum(widths)
     patch = mpatches.Rectangle(
@@ -202,13 +204,13 @@ def _table_header_row(ax, x, y, cols, widths, row_h=0.032, bg=C_NAVY):
     cx = x
     for i, (col, cw) in enumerate(zip(cols, widths)):
         ha = "left" if i == 0 else "right"
-        px = cx + 0.008 if ha == "left" else cx + cw - 0.008
+        px = cx + 0.012 if ha == "left" else cx + cw - 0.012
         _label(
             ax,
             px,
-            y + row_h - 0.008,
+            y + row_h - 0.012,
             col,
-            size=6.8,
+            size=10.0,
             color=C_WHITE,
             weight="bold",
             ha=ha,
@@ -222,7 +224,7 @@ def _table_data_row(
     y,
     cells,
     widths,
-    row_h=0.028,
+    row_h=0.042,
     bg=C_CARD,
     alt_bg=C_BAND,
     is_alt=False,
@@ -247,14 +249,14 @@ def _table_data_row(
     cx = x
     for i, (cell, cw) in enumerate(zip(cells, widths)):
         ha = "left" if i == 0 else "right"
-        px = cx + 0.008 if ha == "left" else cx + cw - 0.008
+        px = cx + 0.012 if ha == "left" else cx + cw - 0.012
         rc = right_color if (i > 0 and right_color) else text_color
         _label(
             ax,
             px,
-            y + row_h - 0.009,
+            y + row_h - 0.0135,
             str(cell),
-            size=7.2,
+            size=10.5,
             color=rc,
             weight="bold" if bold else "normal",
             ha=ha,
@@ -262,7 +264,7 @@ def _table_data_row(
         cx += cw
 
 
-def _table_section_label(ax, x, y, text, w, row_h=0.026, color=C_BRAND):
+def _table_section_label(ax, x, y, text, w, row_h=0.039, color=C_BRAND):
     """A full-width accent-coloured section label inside a table."""
     patch = mpatches.Rectangle(
         (x, y),
@@ -275,8 +277,10 @@ def _table_section_label(ax, x, y, text, w, row_h=0.026, color=C_BRAND):
         zorder=2,
     )
     ax.add_patch(patch)
-    _hbar(ax, x, y, 0.004, row_h, color=color)
-    _label(ax, x + 0.012, y + row_h - 0.009, text, size=6.8, color=color, weight="bold")
+    _hbar(ax, x, y, 0.006, row_h, color=color)
+    _label(
+        ax, x + 0.012, y + row_h - 0.0135, text, size=10.0, color=color, weight="bold"
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -299,35 +303,35 @@ def _section_sales_summary(
     ach_color = _achievement_color(pct_tgt)
 
     # ── Header banner ────────────────────────────────────────────────────
-    banner_h = 0.092
-    banner_y = 0.91
+    banner_h = 0.138
+    banner_y = 0.87
     _card(ax, 0, banner_y, 1.0, banner_h, color=C_NAVY, border=C_NAVY)
-    _hbar(ax, 0, banner_y, 1.0, h=0.005, color=C_BRAND)
+    _hbar(ax, 0, banner_y, 1.0, h=0.0075, color=C_BRAND)
     _label(
         ax,
         0.016,
-        banner_y + banner_h - 0.018,
+        banner_y + banner_h - 0.027,
         location_name.upper(),
-        size=9.5,
+        size=14.0,
         color=C_WHITE,
         weight="bold",
     )
     _label(
         ax,
         0.016,
-        banner_y + banner_h - 0.048,
+        banner_y + banner_h - 0.072,
         "END OF DAY REPORT",
-        size=7.0,
+        size=10.5,
         color=C_BRAND,
     )
-    _label(ax, 0.016, banner_y + banner_h - 0.072, day_lbl, size=7.2, color="#94a3b8")
+    _label(ax, 0.016, banner_y + banner_h - 0.108, day_lbl, size=10.5, color="#94a3b8")
     # Achievement pill on the right
     _label(
         ax,
         0.984,
-        banner_y + banner_h - 0.030,
+        banner_y + banner_h - 0.045,
         f"{pct_tgt:.1f}% of target",
-        size=8.5,
+        size=12.5,
         color=ach_color,
         weight="bold",
         ha="right",
@@ -335,17 +339,17 @@ def _section_sales_summary(
     _label(
         ax,
         0.984,
-        banner_y + banner_h - 0.058,
+        banner_y + banner_h - 0.087,
         _r(r.get("net_total", 0)) + " net",
-        size=7.5,
+        size=11.0,
         color=C_WHITE,
         ha="right",
     )
 
     # ── 4 KPI tiles ──────────────────────────────────────────────────────
-    kpi_y = 0.78
-    kpi_h = 0.10
-    tile_gap = 0.010
+    kpi_y = 0.67
+    kpi_h = 0.15
+    tile_gap = 0.015
     tile_w = (1.0 - 3 * tile_gap) / 4
     kpis = [
         (
@@ -368,28 +372,28 @@ def _section_sales_summary(
         _kpi_tile(ax, tx, kpi_y, tile_w, kpi_h, lbl, val, sub, accent_color=accent)
 
     # ── Per-outlet mini-row (multi-outlet only) ───────────────────────────
-    table_top = kpi_y - 0.018
+    table_top = kpi_y - 0.027
     if per_outlet and len(per_outlet) >= 2:
-        row_h = 0.028
-        _hbar(ax, 0, table_top - 0.002, 1.0, h=0.001, color=C_BORDER)
+        row_h = 0.042
+        _hbar(ax, 0, table_top - 0.003, 1.0, h=0.0015, color=C_BORDER)
         ox = 0.0
         col_w_each = 1.0 / len(per_outlet)
         for nm, od in per_outlet:
             _label(
                 ax,
-                ox + 0.010,
-                table_top - 0.004,
+                ox + 0.015,
+                table_top - 0.006,
                 _short_outlet_name(nm),
-                size=6.5,
+                size=9.5,
                 color=C_MUTED,
                 weight="bold",
             )
             _label(
                 ax,
-                ox + 0.010,
-                table_top - 0.022,
+                ox + 0.015,
+                table_top - 0.033,
                 f"{_r(od.get('net_total', 0))}  ·  {int(od.get('covers') or 0):,} cvr",
-                size=7.0,
+                size=10.5,
                 color=C_SLATE,
             )
             ox += col_w_each
@@ -399,7 +403,7 @@ def _section_sales_summary(
     tbl_x = 0.0
     tbl_w = 1.0
     col_w = [0.55, 0.45]
-    row_h = 0.028
+    row_h = 0.042
 
     pay_rows = [
         ("Cash", r.get("cash_sales", 0)),
@@ -470,19 +474,19 @@ def _section_sales_summary(
     ax.add_patch(patch)
     _label(
         ax,
-        tbl_x + 0.010,
-        net_y + row_h * 1.1 - 0.012,
+        tbl_x + 0.015,
+        net_y + row_h * 1.1 - 0.018,
         "EOD Net Total",
-        size=7.8,
+        size=11.5,
         color=C_WHITE,
         weight="bold",
     )
     _label(
         ax,
-        tbl_x + tbl_w - 0.010,
-        net_y + row_h * 1.1 - 0.012,
+        tbl_x + tbl_w - 0.015,
+        net_y + row_h * 1.1 - 0.018,
         _r(r.get("net_total", 0)),
-        size=7.8,
+        size=11.5,
         color=C_BRAND,
         weight="bold",
         ha="right",
@@ -490,7 +494,7 @@ def _section_sales_summary(
     cur_y = net_y
 
     # ── MTD block ────────────────────────────────────────────────────────
-    mtd_y = cur_y - 0.032
+    mtd_y = cur_y - 0.048
     mtd_cov = int(r.get("mtd_total_covers") or 0)
     mtd_net = float(r.get("mtd_net_sales") or 0)
     mtd_avg = float(r.get("mtd_avg_daily") or 0)
@@ -527,7 +531,7 @@ def _section_sales_summary(
             right_color=rc,
         )
 
-    ax.set_ylim(cur_y - 0.04, 1.0)
+    ax.set_ylim(cur_y - 0.06, 1.0)
 
 
 def _section_category(
@@ -555,26 +559,26 @@ def _section_category(
     if not cat_order:
         cat_order = []
 
-    row_h = 0.038
+    row_h = 0.057
     col_w = [0.50, 0.22, 0.22, 0.06]
     tbl_x = 0.0
     tbl_w = 1.0
 
     # Header
-    _card(ax, 0, 0.92, 1.0, 0.07, color=C_NAVY, border=C_NAVY)
-    _hbar(ax, 0, 0.985, 1.0, h=0.005, color=C_BRAND)
+    _card(ax, 0, 0.88, 1.0, 0.105, color=C_NAVY, border=C_NAVY)
+    _hbar(ax, 0, 0.978, 1.0, h=0.0075, color=C_BRAND)
     _label(
         ax,
         0.012,
-        0.974,
+        0.961,
         f"Category Sales — {location_name[:28]}",
-        size=8.0,
+        size=12.0,
         color=C_WHITE,
         weight="bold",
     )
-    _label(ax, 0.012, 0.946, day_lbl, size=6.8, color="#94a3b8")
+    _label(ax, 0.012, 0.919, day_lbl, size=10.0, color="#94a3b8")
 
-    cur_y = 0.90
+    cur_y = 0.85
     _table_header_row(
         ax, tbl_x, cur_y - row_h, ["Category", "Daily", "MTD", "%"], col_w, row_h
     )
@@ -615,7 +619,7 @@ def _section_category(
         text_color=C_WHITE,
     )
 
-    ax.set_ylim(cur_y - 0.04, 1.0)
+    ax.set_ylim(cur_y - 0.06, 1.0)
 
 
 def _section_service(
@@ -641,24 +645,24 @@ def _section_service(
         if k not in svc_order:
             svc_order.append(k)
 
-    row_h = 0.040
+    row_h = 0.060
     col_w = [0.50, 0.22, 0.22, 0.06]
     tbl_x = 0.0
 
-    _card(ax, 0, 0.92, 1.0, 0.07, color=C_NAVY, border=C_NAVY)
-    _hbar(ax, 0, 0.985, 1.0, h=0.005, color=C_BRAND)
+    _card(ax, 0, 0.88, 1.0, 0.105, color=C_NAVY, border=C_NAVY)
+    _hbar(ax, 0, 0.978, 1.0, h=0.0075, color=C_BRAND)
     _label(
         ax,
         0.012,
-        0.974,
+        0.961,
         f"Service Sales — {location_name[:28]}",
-        size=8.0,
+        size=12.0,
         color=C_WHITE,
         weight="bold",
     )
-    _label(ax, 0.012, 0.946, day_lbl, size=6.8, color="#94a3b8")
+    _label(ax, 0.012, 0.919, day_lbl, size=10.0, color="#94a3b8")
 
-    cur_y = 0.90
+    cur_y = 0.85
     _table_header_row(
         ax, tbl_x, cur_y - row_h, ["Service", "Daily", "MTD", "%"], col_w, row_h
     )
@@ -689,13 +693,13 @@ def _section_service(
         _label(
             ax,
             0.5,
-            0.82,
+            0.73,
             "No service data for this date",
-            size=8.0,
+            size=12.0,
             color=C_MUTED,
             ha="center",
         )
-        ax.set_ylim(0.76, 1.0)
+        ax.set_ylim(0.65, 1.0)
         return
 
     cur_y -= row_h
@@ -710,7 +714,7 @@ def _section_service(
         bold=True,
         text_color=C_WHITE,
     )
-    ax.set_ylim(cur_y - 0.04, 1.0)
+    ax.set_ylim(cur_y - 0.06, 1.0)
 
 
 def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -> None:
@@ -719,37 +723,37 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
 
     rows = list(month_footfall_rows or [])
 
-    _card(ax, 0, 0.92, 1.0, 0.07, color=C_NAVY, border=C_NAVY)
-    _hbar(ax, 0, 0.985, 1.0, h=0.005, color=C_BRAND)
+    _card(ax, 0, 0.88, 1.0, 0.105, color=C_NAVY, border=C_NAVY)
+    _hbar(ax, 0, 0.978, 1.0, h=0.0075, color=C_BRAND)
     _label(
         ax,
         0.012,
-        0.974,
+        0.961,
         "Daily Footfall — Month to Date",
-        size=8.0,
+        size=12.0,
         color=C_WHITE,
         weight="bold",
     )
-    _label(ax, 0.012, 0.946, location_name[:32], size=6.8, color="#94a3b8")
+    _label(ax, 0.012, 0.919, location_name[:32], size=10.0, color="#94a3b8")
 
     if not rows:
         _label(
             ax,
             0.5,
-            0.82,
+            0.73,
             "No footfall data for this month",
-            size=8.5,
+            size=12.5,
             color=C_MUTED,
             ha="center",
         )
-        ax.set_ylim(0.74, 1.0)
+        ax.set_ylim(0.65, 1.0)
         return
 
     col_w = [0.44, 0.18, 0.18, 0.20]
-    row_h = 0.032
+    row_h = 0.048
     tbl_x = 0.0
 
-    cur_y = 0.90
+    cur_y = 0.85
     _table_header_row(
         ax, tbl_x, cur_y - row_h, ["Date", "Dinner", "Lunch", "Total"], col_w, row_h
     )
@@ -824,7 +828,7 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
             text_color=C_MUTED,
         )
 
-    ax.set_ylim(cur_y - 0.04, 1.0)
+    ax.set_ylim(cur_y - 0.06, 1.0)
 
 
 # ── Short outlet name helper ──────────────────────────────────────────────────
@@ -843,7 +847,7 @@ def _short_outlet_name(name: str, max_len: int = 18) -> str:
 def _fig_for_section(
     n_rows: int, min_rows: int = 4, cap_h: float = 20.0, w: float = 8.5
 ) -> Tuple[plt.Figure, plt.Axes]:
-    h = min(cap_h, 2.2 + 0.32 * max(n_rows, min_rows))
+    h = min(cap_h, 2.8 + 0.48 * max(n_rows, min_rows))
     fig, ax = plt.subplots(figsize=(w, h), dpi=DPI)
     fig.patch.set_facecolor(C_PAGE)
     ax.set_facecolor(C_PAGE)
@@ -891,25 +895,25 @@ def generate_sheet_style_report_sections(
         ]
     )
     est_rows = 10 + n_pay + n_tax + (2 if per_outlet else 0)
-    fig, ax = _fig_for_section(est_rows, min_rows=12, cap_h=24.0, w=8.5)
+    fig, ax = _fig_for_section(est_rows, min_rows=12, cap_h=36.0, w=8.5)
     _section_sales_summary(ax, r, location_name, per_outlet)
     out["sales_summary"] = _save_fig(fig)
 
     # Category
     n_cat = len(mc) or 3
-    fig, ax = _fig_for_section(n_cat + 4, min_rows=6, cap_h=14.0, w=8.5)
+    fig, ax = _fig_for_section(n_cat + 4, min_rows=6, cap_h=21.0, w=8.5)
     _section_category(ax, r, location_name, mc, day_lbl)
     out["category"] = _save_fig(fig)
 
     # Service
     n_svc = len(ms) or 3
-    fig, ax = _fig_for_section(n_svc + 4, min_rows=5, cap_h=12.0, w=8.5)
+    fig, ax = _fig_for_section(n_svc + 4, min_rows=5, cap_h=18.0, w=8.5)
     _section_service(ax, r, location_name, ms, day_lbl)
     out["service"] = _save_fig(fig)
 
     # Footfall
     n_ft = len(mf) + 4
-    fig, ax = _fig_for_section(n_ft, min_rows=5, cap_h=22.0, w=8.5)
+    fig, ax = _fig_for_section(n_ft, min_rows=5, cap_h=33.0, w=8.5)
     _section_footfall(ax, mf, location_name)
     out["footfall"] = _save_fig(fig)
 
