@@ -1,4 +1,4 @@
-"""Report tab — Daily sales report, KPIs, PNG/WhatsApp generation."""
+"""Report tab — Daily sales report, KPIs, and PNG report generation."""
 
 from __future__ import annotations
 
@@ -400,6 +400,70 @@ def render(ctx: TabContext) -> None:
                             key=f"dl_sec_{key}_{date_str}",
                             type="secondary",
                         )
+
+        # ── Monthly Footfall Summary ─────────────────────────────
+        st.markdown("---")
+        st.markdown("### Monthly Footfall Summary")
+        st.caption("Last 12 months of covers data.")
+
+        from datetime import date as _date
+        import calendar as _cal
+
+        _today = _date.today()
+        _start = _date(_today.year, _today.month, 1)
+        # Go back 11 months to get 12 months total
+        for _ in range(11):
+            _m = _start.month - 1
+            if _m == 0:
+                _m = 12
+                _start = _start.replace(year=_start.year - 1, month=_m)
+            else:
+                _start = _start.replace(month=_m)
+
+        _start_str = _start.strftime("%Y-%m-%d")
+        _end_str = _today.strftime("%Y-%m-%d")
+
+        _monthly_rows = database.get_monthly_footfall_multi(
+            ctx.report_loc_ids, _start_str, _end_str
+        )
+
+        if _monthly_rows:
+            _df_m = pd.DataFrame(_monthly_rows)
+            _df_m["month_label"] = _df_m["month"].apply(
+                lambda x: _cal.month_abbr[int(x.split("-")[1])] + "-" + x.split("-")[0]
+            )
+            _df_m["footfall"] = _df_m["covers"].astype(int)
+            _df_m["daily_avg"] = (
+                (_df_m["footfall"] / _df_m["total_days"]).round(0).astype(int)
+            )
+
+            # Month-over-month % change
+            _df_m["pct_footfall"] = _df_m["footfall"].pct_change()
+            _df_m["pct_avg"] = _df_m["daily_avg"].pct_change()
+
+            # Format for display
+            _display = pd.DataFrame(
+                {
+                    "Month": _df_m["month_label"],
+                    "Footfall": _df_m["footfall"].apply(lambda x: f"{x:,}"),
+                    "% Change": _df_m["pct_footfall"].apply(
+                        lambda x: f"{x * 100:.2f}%" if pd.notna(x) and x != 0 else ""
+                    ),
+                    "Total Days": _df_m["total_days"].astype(int),
+                    "Daily Avg.": _df_m["daily_avg"].apply(lambda x: f"{x:,}"),
+                    "Avg % Change": _df_m["pct_avg"].apply(
+                        lambda x: f"{x * 100:.2f}%" if pd.notna(x) and x != 0 else ""
+                    ),
+                }
+            )
+
+            st.dataframe(
+                _display,
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.caption("No monthly footfall data available.")
     else:
         st.info(
             f"No saved data for **{selected_date.strftime('%d %b %Y')}**. "
