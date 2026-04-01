@@ -962,7 +962,7 @@ def get_summaries_for_date_range_multi(
 
 def get_monthly_footfall_multi(
     location_ids: List[int], start_date: str, end_date: str
-) -> List[Dict]:
+) -> List[Dict[str, Any]]:
     """Aggregate covers by month across locations for a date range.
 
     Returns list of dicts: [{"month": "YYYY-MM", "covers": int, "total_days": int}, ...]
@@ -970,26 +970,37 @@ def get_monthly_footfall_multi(
     """
     if not location_ids:
         return []
-    conn = get_connection()
-    cursor = conn.cursor()
-    placeholders = ",".join("?" * len(location_ids))
-    cursor.execute(
-        f"""
-        SELECT
-            SUBSTR(date, 1, 7) AS month,
-            SUM(covers) AS covers,
-            COUNT(DISTINCT date) AS total_days
-        FROM daily_summaries
-        WHERE location_id IN ({placeholders})
-          AND date >= ?
-          AND date <= ?
-        GROUP BY SUBSTR(date, 1, 7)
-        ORDER BY month
-        """,
-        (*location_ids, start_date, end_date),
-    )
-    rows = cursor.fetchall()
-    conn.close()
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        placeholders = ",".join("?" * len(location_ids))
+        cursor.execute(
+            f"""
+            SELECT
+                month,
+                SUM(covers) AS covers,
+                CAST(
+                    STRFTIME(
+                        '%d',
+                        CASE
+                            WHEN month = SUBSTR(?, 1, 7)
+                                THEN ?
+                            ELSE DATE(month || '-01', 'start of month', '+1 month', '-1 day')
+                        END
+                    ) AS INTEGER
+                ) AS total_days
+            FROM (
+                SELECT SUBSTR(date, 1, 7) AS month, covers
+                FROM daily_summaries
+                WHERE location_id IN ({placeholders})
+                  AND date >= ?
+                  AND date <= ?
+            ) m
+            GROUP BY month
+            ORDER BY month
+            """,
+            (end_date, end_date, *location_ids, start_date, end_date),
+        )
+        rows = cursor.fetchall()
     return [dict(row) for row in rows]
 
 

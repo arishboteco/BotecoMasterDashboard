@@ -406,11 +406,8 @@ def render(ctx: TabContext) -> None:
         st.markdown("### Monthly Footfall Summary")
         st.caption("Last 12 months of covers data.")
 
-        from datetime import date as _date
-        import calendar as _cal
-
-        _today = _date.today()
-        _start = _date(_today.year, _today.month, 1)
+        _today = datetime.now().date()
+        _start = _today.replace(day=1)
         # Go back 11 months to get 12 months total
         for _ in range(11):
             _m = _start.month - 1
@@ -421,7 +418,8 @@ def render(ctx: TabContext) -> None:
                 _start = _start.replace(month=_m)
 
         _start_str = _start.strftime("%Y-%m-%d")
-        _end_str = _today.strftime("%Y-%m-%d")
+        _as_of = _today - timedelta(days=1)
+        _end_str = _as_of.strftime("%Y-%m-%d")
 
         _monthly_rows = database.get_monthly_footfall_multi(
             ctx.report_loc_ids, _start_str, _end_str
@@ -430,16 +428,28 @@ def render(ctx: TabContext) -> None:
         if _monthly_rows:
             _df_m = pd.DataFrame(_monthly_rows)
             _df_m["month_label"] = _df_m["month"].apply(
-                lambda x: _cal.month_abbr[int(x.split("-")[1])] + "-" + x.split("-")[0]
+                lambda x: datetime.strptime(f"{x}-01", "%Y-%m-%d").strftime("%b-%Y")
             )
             _df_m["footfall"] = _df_m["covers"].astype(int)
+            _df_m["total_days"] = _df_m["total_days"].astype(int)
             _df_m["daily_avg"] = (
-                (_df_m["footfall"] / _df_m["total_days"]).round(0).astype(int)
+                (_df_m["footfall"] / _df_m["total_days"].replace(0, pd.NA))
+                .round(0)
+                .fillna(0)
+                .astype(int)
             )
 
             # Month-over-month % change
-            _df_m["pct_footfall"] = _df_m["footfall"].pct_change()
-            _df_m["pct_avg"] = _df_m["daily_avg"].pct_change()
+            _df_m["pct_footfall"] = (
+                _df_m["footfall"]
+                .pct_change()
+                .replace([float("inf"), float("-inf")], pd.NA)
+            )
+            _df_m["pct_avg"] = (
+                _df_m["daily_avg"]
+                .pct_change()
+                .replace([float("inf"), float("-inf")], pd.NA)
+            )
 
             # Format for display
             _display = pd.DataFrame(
@@ -447,12 +457,12 @@ def render(ctx: TabContext) -> None:
                     "Month": _df_m["month_label"],
                     "Footfall": _df_m["footfall"].apply(lambda x: f"{x:,}"),
                     "% Change": _df_m["pct_footfall"].apply(
-                        lambda x: f"{x * 100:.2f}%" if pd.notna(x) and x != 0 else ""
+                        lambda x: f"{x * 100:.2f}%" if pd.notna(x) else ""
                     ),
                     "Total Days": _df_m["total_days"].astype(int),
                     "Daily Avg.": _df_m["daily_avg"].apply(lambda x: f"{x:,}"),
                     "Avg % Change": _df_m["pct_avg"].apply(
-                        lambda x: f"{x * 100:.2f}%" if pd.notna(x) and x != 0 else ""
+                        lambda x: f"{x * 100:.2f}%" if pd.notna(x) else ""
                     ),
                 }
             )
