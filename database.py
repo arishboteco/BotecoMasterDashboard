@@ -1,7 +1,6 @@
 import sqlite3
 import hashlib
 import os
-import logging
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple, Generator
@@ -16,7 +15,7 @@ from logger import get_logger
 logger = get_logger(__name__)
 
 DB_DIR = os.path.dirname(os.path.abspath(__file__))
-DATABASE_PATH = os.path.join(DB_DIR, config.DATABASE_PATH.lstrip("./\\"))
+DATABASE_PATH = os.path.join(DB_DIR, config.DATABASE_PATH)
 
 os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
 

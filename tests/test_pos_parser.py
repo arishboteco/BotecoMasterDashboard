@@ -34,6 +34,20 @@ class TestF:
         assert _f("₹1,500") == 1500.0
 
 
+class TestI:
+    def test_float_to_int(self):
+        assert _i(3.7) == 4
+
+    def test_string_number(self):
+        assert _i("42") == 42
+
+    def test_none(self):
+        assert _i(None) == 0
+
+    def test_string_with_commas(self):
+        assert _i("1,234") == 1234
+
+
 class TestNormHeader:
     def test_normalizes_whitespace(self):
         assert _norm_header("  Sub   Total  ") == "sub total"

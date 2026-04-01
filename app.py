@@ -9,6 +9,10 @@ import base64
 import zipfile
 
 import config
+import logger as boteco_logger
+
+boteco_logger.setup_logging()
+
 import customer_report_parser
 import database
 import file_detector
