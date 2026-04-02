@@ -10,6 +10,27 @@ import streamlit.components.v1 as components
 import ui_theme
 from typing import List, Tuple, Optional
 
+# WhatsApp SVG icon (24x24, brand-colored)
+WHATSAPP_ICON_SVG = (
+    '<svg class="whatsapp-icon" viewBox="0 0 24 24" fill="currentColor" '
+    'xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
+    '<path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.151'
+    "-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475"
+    "-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52"
+    ".149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207"
+    "-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297"
+    "-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487"
+    ".709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413"
+    ".248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 "
+    "9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51"
+    "-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 "
+    "0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 "
+    "0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305"
+    "-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 "
+    '11.821 0 00-3.48-8.413z"/>'
+    "</svg>"
+)
+
 
 def _html(html: str, height: int, component_key: str) -> None:
     """Call components.html with key only if this Streamlit build supports it."""
@@ -25,18 +46,25 @@ def _safe_id(key: str) -> str:
 
 
 def _btn_style(*, primary: bool = True) -> str:
+    """Generate inline button styles with proper overflow handling."""
     c = ui_theme.BRAND_PRIMARY
     if primary:
         return (
-            f"padding:0.45rem 1rem;cursor:pointer;border-radius:10px;border:none;"
-            f"background:{c};color:#FFF8F0;font-weight:600;font-size:0.9rem;"
+            f"padding:0.5rem 1rem;cursor:pointer;border-radius:8px;border:none;"
+            f"background:{c};color:#FFF8F0;font-weight:600;font-size:0.85rem;"
             f"font-family:'DM Sans',sans-serif;"
-            f"box-shadow:0 1px 2px rgba(60,40,20,0.08);"
+            f"box-shadow:0 1px 3px rgba(60,40,20,0.08);"
+            f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+            f"display:inline-flex;align-items:center;gap:0.4rem;"
+            f"min-height:40px;line-height:1.3;transition:all 0.15s ease;"
         )
     return (
-        "padding:0.45rem 1rem;cursor:pointer;border-radius:10px;border:1px solid #E0D5C8;"
-        "background:#FFF8F0;color:#3D2B1F;font-weight:500;font-size:0.9rem;"
+        "padding:0.5rem 1rem;cursor:pointer;border-radius:8px;border:1px solid #E0D5C8;"
+        "background:#FFF8F0;color:#3D2B1F;font-weight:500;font-size:0.85rem;"
         "font-family:'DM Sans',sans-serif;"
+        "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+        "display:inline-flex;align-items:center;gap:0.4rem;"
+        "min-height:40px;line-height:1.3;transition:all 0.15s ease;"
     )
 
 
@@ -44,7 +72,7 @@ def render_copy_text_button(
     text: str,
     label: str,
     component_key: str,
-    height: int = 52,
+    height: int = 56,
     *,
     primary: bool = True,
 ) -> None:
@@ -52,9 +80,9 @@ def render_copy_text_button(
     uid = _safe_id(component_key + "t")
     stl = _btn_style(primary=primary)
     html = f"""
-<div>
+<div class="whatsapp-btn-container">
   <button id="{uid}_btn" type="button" style="{stl}">{label}</button>
-  <span id="{uid}_msg" style="margin-left:10px;font-size:0.9rem;color:#5B7F4A;"></span>
+  <span id="{uid}_msg" class="whatsapp-msg"></span>
 </div>
 <script>
 (function() {{
@@ -81,7 +109,7 @@ def render_copy_image_button(
     png_bytes: bytes,
     label: str,
     component_key: str,
-    height: int = 52,
+    height: int = 56,
     *,
     primary: bool = True,
 ) -> None:
@@ -89,9 +117,9 @@ def render_copy_image_button(
     uid = _safe_id(component_key + "i")
     stl = _btn_style(primary=primary)
     html = f"""
-<div>
+<div class="whatsapp-btn-container">
   <button id="{uid}_btn" type="button" style="{stl}">{label}</button>
-  <span id="{uid}_msg" style="margin-left:10px;font-size:0.9rem;color:#5B7F4A;"></span>
+  <span id="{uid}_msg" class="whatsapp-msg"></span>
 </div>
 <script>
 (function() {{
@@ -115,7 +143,7 @@ def render_share_images_button(
     files: List[Tuple[str, bytes]],
     label: str,
     component_key: str,
-    height: int = 52,
+    height: int = 56,
     *,
     primary: bool = True,
     share_text: str = "Boteco EOD Report",
@@ -142,10 +170,9 @@ def render_share_images_button(
     )
     fallback_url_json = json.dumps(fallback_url)
 
-    # Use str.format to avoid f-string issues with JS braces
-    html = """<div>
-  <button id="{uid}_btn" type="button" style="{stl}">{label}</button>
-  <span id="{uid}_msg" style="margin-left:10px;font-size:0.9rem;"></span>
+    html = """<div class="whatsapp-btn-container">
+  <button id="{uid}_btn" type="button" style="{stl}">{whatsapp_icon}<span>{label}</span></button>
+  <span id="{uid}_msg" class="whatsapp-msg"></span>
 </div>
 <script>
 (function() {{
@@ -155,7 +182,6 @@ def render_share_images_button(
   const msgEl = document.getElementById("{uid}_msg");
   const btnEl = document.getElementById("{uid}_btn");
 
-  // Helper: convert base64 to Blob
   async function b64ToBlob(b64, mime) {{
     const bin = atob(b64);
     const u8 = new Uint8Array(bin.length);
@@ -163,7 +189,6 @@ def render_share_images_button(
     return new Blob([u8], {{type: mime}});
   }}
 
-  // Check if Web Share API supports files
   async function canShareFiles() {{
     if (!navigator.canShare) return false;
     try {{
@@ -176,7 +201,6 @@ def render_share_images_button(
 
   btnEl.onclick = async function() {{
     try {{
-      // Build File objects
       const fileObjs = await Promise.all(
         filesData.map(async (f) => {{
           const blob = await b64ToBlob(f.b64, "image/png");
@@ -193,15 +217,14 @@ def render_share_images_button(
         msgEl.textContent = "Shared!";
         msgEl.style.color = "#5B7F4A";
       }} else {{
-        // Fallback for desktop browsers
         if (fallbackUrl) {{
           try {{
             const blob = await b64ToBlob(filesData[0].b64, "image/png");
             await navigator.clipboard.write([new ClipboardItem({{"image/png": blob}})]);
-            msgEl.textContent = "Image copied \u2014 paste in WhatsApp";
+            msgEl.textContent = "Image copied — paste in WhatsApp";
             msgEl.style.color = "#5B7F4A";
           }} catch (clipErr) {{
-            msgEl.textContent = "Open WhatsApp \u2014 attach image manually";
+            msgEl.textContent = "Open WhatsApp — attach image manually";
             msgEl.style.color = "#C28B2D";
           }}
           window.open(fallbackUrl, "_blank");
@@ -213,19 +236,17 @@ def render_share_images_button(
     }} catch (e) {{
       console.error("Share error:", e);
       if (e.name === "AbortError") {{
-        // User cancelled - no message needed
         return;
       }}
-      // Check if it's the "not supported" error
       if (e.message && e.message.includes("not supported")) {{
         if (fallbackUrl) {{
           try {{
             const blob = await b64ToBlob(filesData[0].b64, "image/png");
             await navigator.clipboard.write([new ClipboardItem({{"image/png": blob}})]);
-            msgEl.textContent = "Image copied \u2014 paste in WhatsApp";
+            msgEl.textContent = "Image copied — paste in WhatsApp";
             msgEl.style.color = "#5B7F4A";
           }} catch (clipErr) {{
-            msgEl.textContent = "Open WhatsApp \u2014 attach image manually";
+            msgEl.textContent = "Open WhatsApp — attach image manually";
             msgEl.style.color = "#C28B2D";
           }}
           window.open(fallbackUrl, "_blank");
@@ -245,6 +266,7 @@ def render_share_images_button(
         uid=uid,
         stl=stl,
         label=label,
+        whatsapp_icon=WHATSAPP_ICON_SVG,
         files_json=files_json,
         share_text_json=json.dumps(share_text),
         fallback_url_json=fallback_url_json,

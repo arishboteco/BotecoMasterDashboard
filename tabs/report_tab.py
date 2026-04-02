@@ -37,28 +37,34 @@ def render(ctx: TabContext) -> None:
         else:
             st.session_state["report_date"] = datetime.now().date()
 
-    nav_col1, nav_col2, nav_col3 = st.columns([1, 3, 1])
+    selected_date = st.session_state["report_date"]
+    date_display = selected_date.strftime("%a, %d %b %Y")
+
+    nav_col1, nav_col2, nav_col3 = st.columns([1, 4, 1])
     with nav_col1:
-        st.write("")
         if st.button("← Prev", key="report_prev_day", use_container_width=True):
             st.session_state["report_date"] -= timedelta(days=1)
             st.rerun()
     with nav_col2:
+        st.markdown(
+            f'<div class="date-display" style="text-align:center;">{date_display}</div>',
+            unsafe_allow_html=True,
+        )
+        # Hidden date picker for calendar access
         picked = st.date_input(
             "Select Date",
-            value=st.session_state["report_date"],
-            key="report_date_picker",
+            value=selected_date,
+            key=f"report_date_picker_{selected_date.isoformat()}",
+            label_visibility="collapsed",
         )
-        if picked != st.session_state["report_date"]:
+        if picked != selected_date:
             st.session_state["report_date"] = picked
             st.rerun()
     with nav_col3:
-        st.write("")
         if st.button("Next →", key="report_next_day", use_container_width=True):
             st.session_state["report_date"] += timedelta(days=1)
             st.rerun()
 
-    selected_date = st.session_state["report_date"]
     date_str = selected_date.strftime("%Y-%m-%d")
     outlets_bundle, summary = scope.get_daily_report_bundle(
         ctx.report_loc_ids, date_str
@@ -204,7 +210,7 @@ def render(ctx: TabContext) -> None:
                         help="Net sales for the day vs daily sales target.",
                     )
 
-        st.markdown("---")
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
         col_det1, col_det2 = st.columns(2)
 
@@ -324,7 +330,7 @@ def render(ctx: TabContext) -> None:
                     },
                 )
 
-        st.markdown("---")
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
         # Individual PNG sections
         per_outlet_sheet = (
@@ -469,9 +475,9 @@ def render(ctx: TabContext) -> None:
                 ]
                 clipboard_ui.render_share_images_button(
                     _share_files,
-                    "📱 WhatsApp (5 PNGs)",
+                    "WhatsApp (5 PNGs)",
                     f"share_5_pngs_{date_str}",
-                    height=44,
+                    height=56,
                     primary=True,
                 )
 
@@ -489,16 +495,16 @@ def render(ctx: TabContext) -> None:
                             sec_bytes,
                             "Copy",
                             f"clip_sec_{key}_{date_str}",
-                            height=44,
+                            height=56,
                             primary=False,
                         )
                     with cb2:
                         _wa_text = f"Boteco Bangalore EOD Report – {date_str} ({title})"
                         clipboard_ui.render_share_images_button(
                             [(f"boteco_{key}_{date_str}.png", sec_bytes)],
-                            f"📱 WhatsApp ({title})",
+                            f"WhatsApp ({title})",
                             f"share_sec_{key}_{date_str}",
-                            height=44,
+                            height=56,
                             primary=False,
                             fallback_url=f"https://wa.me/?text={quote_plus(_wa_text)}",
                         )
@@ -513,7 +519,7 @@ def render(ctx: TabContext) -> None:
                         )
 
         # ── Monthly Footfall Summary ─────────────────────────────
-        st.markdown("---")
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
         st.markdown("### Monthly Footfall Summary")
         st.caption("Last 12 months of covers data.")
 

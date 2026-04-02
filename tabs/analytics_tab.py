@@ -78,9 +78,12 @@ def render(ctx: TabContext) -> None:
             prior_start, prior_end = None, None
 
         with col_per2:
-            st.write(
-                f"**From:** {start_date.strftime('%d %b')} "
-                f"to {end_date.strftime('%d %b %Y')}"
+            st.markdown(
+                f'<div style="padding:0.5rem 0;font-size:0.95rem;color:var(--text-secondary);">'
+                f"<strong>From:</strong> {start_date.strftime('%d %b')} "
+                f"<strong>to</strong> {end_date.strftime('%d %b %Y')}"
+                f"</div>",
+                unsafe_allow_html=True,
             )
 
     start_str = start_date.strftime("%Y-%m-%d")
@@ -173,7 +176,7 @@ def render(ctx: TabContext) -> None:
                         help="Based on current run rate extrapolated to end of month.",
                     )
 
-        st.markdown("---")
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
         # ── Sales & Covers charts ────────────────────────────────
         col_chart1, col_chart2 = st.columns(2)
@@ -257,7 +260,7 @@ def render(ctx: TabContext) -> None:
         else:
             st.caption("No APC data for this period.")
 
-        st.markdown("---")
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
         # ── Payment Mode Distribution ────────────────────────────
         st.markdown("### Payment Mode Distribution")
@@ -297,7 +300,7 @@ def render(ctx: TabContext) -> None:
         )
         st.plotly_chart(fig_pay, use_container_width=True)
 
-        st.markdown("---")
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
         # ── Category Sales ───────────────────────────────────────
         st.markdown("### Category Mix")
@@ -342,7 +345,7 @@ def render(ctx: TabContext) -> None:
         else:
             st.caption("No category data for this period.")
 
-        st.markdown("---")
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
         # ── Top Selling Items ────────────────────────────────────
         st.markdown("### Top Selling Items")
@@ -397,7 +400,7 @@ def render(ctx: TabContext) -> None:
                 "Re-import your Item Reports to populate top sellers."
             )
 
-        st.markdown("---")
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
         # ── Meal Period (Service) Charts ─────────────────────────
         st.markdown("### Meal Period Breakdown")
@@ -455,7 +458,7 @@ def render(ctx: TabContext) -> None:
         else:
             st.caption("No meal-period data for this period.")
 
-        st.markdown("---")
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
         # ── Weekday Analysis ─────────────────────────────────────
         st.markdown("### Weekday Analysis")
@@ -520,7 +523,7 @@ def render(ctx: TabContext) -> None:
         else:
             st.caption("Need at least 3 days of data for weekday analysis.")
 
-        st.markdown("---")
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
         # ── Target Achievement ───────────────────────────────────
         st.markdown("### Target Achievement")
