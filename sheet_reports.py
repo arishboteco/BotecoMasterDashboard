@@ -1,16 +1,18 @@
 """
 Boteco EOD Report — PNG image generator and WhatsApp text formatter.
 
-Design language (warm editorial):
-  - Terracotta accent   (#C2703E)
-  - Espresso header     (#2C1810)
-  - Deep walnut text    (#3D2B1F)
-  - Warm gray muted     (#8C7B6B)
-  - Warm ivory page bg  (#FAF6F1)
-  - Cream card bg       (#FFF8F0)
-  - Warm border         (#E0D5C8)
-  - Sage green positive (#5B7F4A)
-  - Antique gold warn   (#C28B2D)
+Design language (Slate & Coral):
+  - Coral accent          (#E8734A)
+  - Deep coral hover      (#D4612E)
+  - Slate header          (#1E293B)
+  - Slate text            (#1E293B)
+  - Slate muted           (#94A3B8)
+  - White page bg         (#FFFFFF)
+  - White card bg         (#FFFFFF)
+  - Slate border          (#E2E8F0)
+  - Teal positive         (#0D9488)
+  - Amber warning         (#D97706)
+  - Red error             (#EF4444)
 
 The composite PNG is built with matplotlib drawing primitives
 (patches + text), not tables, so every element can be positioned
@@ -29,22 +31,22 @@ from matplotlib.patches import FancyBboxPatch
 
 import config
 
-# ── Palette (warm editorial) ─────────────────────────────────────────────────
-C_PAGE = "#FAF6F1"
-C_CARD = "#FFF8F0"
-C_BRAND = "#C2703E"  # Boteco terracotta
-C_BRAND_DARK = "#A45A2E"
-C_NAVY = "#2C1810"   # Espresso (header bars)
-C_SLATE = "#3D2B1F"  # Deep walnut (body text)
-C_MUTED = "#8C7B6B"  # Warm gray
-C_BORDER = "#E0D5C8"
-C_BAND = "#F0E8DD"   # Parchment (alternating rows)
-C_GREEN = "#5B7F4A"  # Sage green
-C_AMBER = "#C28B2D"  # Antique gold
-C_RED = "#B84233"    # Warm red
-C_WHITE = "#FFF8F0"  # Cream
+# -- Palette (Slate & Coral) --------------------------------------------------------
+C_PAGE = "#FFFFFF"  # Main background — white
+C_CARD = "#FFFFFF"  # Card background — white
+C_BRAND = "#E8734A"  # Coral — primary actions, accent bars
+C_BRAND_DARK = "#D4612E"  # Deep coral — hover/pressed
+C_NAVY = "#1E293B"  # Slate 800 (header bars)
+C_SLATE = "#1E293B"  # Slate 800 (body text)
+C_MUTED = "#94A3B8"  # Slate 400 (muted text)
+C_BORDER = "#E2E8F0"  # Slate 200 (card borders)
+C_BAND = "#F8F9FB"  # Very light cool gray (alternating rows)
+C_GREEN = "#0D9488"  # Teal — positive/achievement
+C_AMBER = "#D97706"  # Amber — warning
+C_RED = "#EF4444"  # Red — negative/discount
+C_WHITE = "#FFFFFF"  # White
 
-FONT = "DejaVu Sans"
+FONT = "DM Sans"
 DPI = 150
 
 
