@@ -37,6 +37,10 @@ st.markdown(
     [data-testid="stExpander"] * {
         font-family: system-ui, -apple-system, sans-serif !important;
     }
+    [data-testid="stExpander"][data-testid="stExpander"] summary,
+    section[data-testid="stExpander"] summary {
+        font-family: system-ui, -apple-system, sans-serif !important;
+    }
 
     :root {
         --brand: #2563EB;

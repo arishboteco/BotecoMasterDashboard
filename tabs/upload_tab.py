@@ -58,7 +58,7 @@ def render(ctx: TabContext) -> None:
             f"**{nc}** note(s)."
         )
 
-    with st.expander("How it works", expanded=False):
+    with st.expander("How it works", expanded=False, key="how_it_works_expander"):
         st.markdown(
             "**Just drop all your Petpooja downloads at once.** The system will:\n\n"
             "1. **Auto-detect** each file type from its content (not filename)\n"
