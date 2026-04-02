@@ -111,6 +111,102 @@ def _icon_btn_style(*, primary: bool = True) -> str:
     )
 
 
+def render_image_action_row(
+    png_bytes: bytes,
+    filename: str,
+    component_key: str,
+    share_text: str = "Boteco EOD Report",
+    fallback_url: Optional[str] = None,
+) -> None:
+    """Render a unified row of 3 icon buttons: Copy, WhatsApp, Download."""
+    b64 = base64.b64encode(png_bytes).decode("ascii")
+    uid = _safe_id(component_key)
+    fallback_url_json = json.dumps(fallback_url)
+    share_text_json = json.dumps(share_text)
+
+    html = f"""
+<div class="action-btn-row" id="{uid}_row">
+  <button class="action-btn" id="{uid}_copy" title="Copy to clipboard" type="button">
+    {COPY_ICON_SVG}
+  </button>
+  <button class="action-btn" id="{uid}_wa" title="Share via WhatsApp" type="button">
+    {WHATSAPP_ICON_SVG}
+  </button>
+  <button class="action-btn" id="{uid}_dl" title="Download" type="button">
+    {DOWNLOAD_ICON_SVG}
+  </button>
+</div>
+<span id="{uid}_msg" style="font-size:0.75rem;margin-left:0.5rem;color:var(--success-text, #166534);"></span>
+<script>
+(function() {{
+  const b64 = "{b64}";
+  const shareText = {share_text_json};
+  const fallbackUrl = {fallback_url_json};
+  const msgEl = document.getElementById("{uid}_msg");
+
+  // Copy button
+  document.getElementById("{uid}_copy").onclick = async function() {{
+    try {{
+      const dataUrl = "data:image/png;base64," + b64;
+      const blob = await (await fetch(dataUrl)).blob();
+      await navigator.clipboard.write([new ClipboardItem({{"image/png": blob}})]);
+      msgEl.textContent = "Copied";
+      setTimeout(() => {{ msgEl.textContent = ""; }}, 2000);
+    }} catch (e) {{
+      alert("Copy failed. Try Chrome/Edge over HTTPS.");
+    }}
+  }};
+
+  // WhatsApp button
+  document.getElementById("{uid}_wa").onclick = async function() {{
+    try {{
+      const dataUrl = "data:image/png;base64," + b64;
+      const blob = await (await fetch(dataUrl)).blob();
+      const file = new File([blob], "{filename}", {{type: "image/png"}});
+      if (navigator.canShare && navigator.canShare({{files: [file]}})) {{
+        await navigator.share({{files: [file], text: shareText}});
+        msgEl.textContent = "Shared!";
+      }} else {{
+        await navigator.clipboard.write([new ClipboardItem({{"image/png": blob}})]);
+        msgEl.textContent = "Copied - paste in WhatsApp";
+        if (fallbackUrl) {{ window.open(fallbackUrl, "_blank"); }}
+      }}
+      setTimeout(() => {{ msgEl.textContent = ""; }}, 3000);
+    }} catch (e) {{
+      if (e.name !== "AbortError") {{
+        msgEl.textContent = "Share failed";
+        setTimeout(() => {{ msgEl.textContent = ""; }}, 2000);
+      }}
+    }}
+  }};
+
+  // Download button
+  document.getElementById("{uid}_dl").onclick = function() {{
+    try {{
+      const bin = atob(b64);
+      const u8 = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      const blob = new Blob([u8], {{type: "image/png"}});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "{filename}";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      msgEl.textContent = "Saved";
+      setTimeout(() => {{ msgEl.textContent = ""; }}, 2000);
+    }} catch (e) {{
+      alert("Download failed.");
+    }}
+  }};
+}})();
+</script>
+"""
+    _html(html, 48, component_key)
+
+
 def render_icon_button(
     icon_svg: str,
     tooltip: str,

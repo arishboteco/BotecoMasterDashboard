@@ -387,46 +387,39 @@ st.markdown(
     }
 
     /* ── Icon-only action buttons ──────────────────────────── */
-    .action-btn-container {
-        display: flex;
+    .action-btn-row {
+        display: inline-flex;
         align-items: center;
-        gap: 0.5rem;
-        min-height: var(--btn-height-md);
+        gap: 0;
+        background: var(--surface-elevated);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-sm);
+        padding: 4px;
     }
-    .action-btn {
+    .action-btn-row .action-btn {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: var(--btn-height-md);
-        height: var(--btn-height-md);
+        width: 36px;
+        height: 36px;
         padding: 0;
-        border-radius: var(--radius-sm);
+        border-radius: 4px;
         cursor: pointer;
         transition: all 0.15s ease;
         border: none;
+        background: transparent;
+        color: var(--text-secondary);
     }
-    .action-btn-primary {
-        background: var(--brand);
-        color: var(--surface-elevated);
-        box-shadow: var(--shadow-sm);
-    }
-    .action-btn-primary:hover {
-        background: var(--brand-dark);
-        box-shadow: var(--shadow-md);
-    }
-    .action-btn-secondary {
-        background: var(--surface-elevated);
-        color: var(--text);
-        border: 1px solid var(--border-subtle);
-    }
-    .action-btn-secondary:hover {
+    .action-btn-row .action-btn:hover {
         background: var(--brand-soft);
-        border-color: var(--brand);
-        color: var(--brand-dark);
+        color: var(--brand);
     }
-    .action-btn svg {
-        width: var(--icon-size);
-        height: var(--icon-size);
+    .action-btn-row .action-btn + .action-btn {
+        border-left: 1px solid var(--border-subtle);
+    }
+    .action-btn-row .action-btn svg {
+        width: 18px;
+        height: 18px;
     }
 
     /* ── Upload zone styling ───────────────────────────────── */

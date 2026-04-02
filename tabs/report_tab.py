@@ -458,14 +458,16 @@ def render(ctx: TabContext) -> None:
                         b,
                     )
             zip_buf.seek(0)
-            st.download_button(
-                "Download all sections (ZIP)",
-                zip_buf.getvalue(),
-                file_name=f"boteco_sections_{date_str}.zip",
-                mime="application/zip",
-                key=f"dl_zip_sections_{date_str}",
-                type="secondary",
-            )
+            dl_col, wa_col = st.columns([1, 1])
+            with dl_col:
+                st.download_button(
+                    "Download ZIP",
+                    zip_buf.getvalue(),
+                    file_name=f"boteco_sections_{date_str}.zip",
+                    mime="application/zip",
+                    key=f"dl_zip_sections_{date_str}",
+                    type="secondary",
+                )
 
             # Combined share button for first 5 PNG sections
             _first_five = _sec_meta[:5]
@@ -490,31 +492,14 @@ def render(ctx: TabContext) -> None:
                 with _cells[row_idx][col_idx]:
                     st.caption(title)
                     st.image(BytesIO(sec_bytes), use_container_width=True)
-                    cb1, cb2, cb3 = st.columns([1, 1, 1])
-                    with cb1:
-                        clipboard_ui.render_copy_icon_button(
-                            sec_bytes,
-                            f"clip_sec_{key}_{date_str}",
-                            primary=False,
-                        )
-                    with cb2:
-                        _wa_text = f"Boteco Bangalore EOD Report – {date_str} ({title})"
-                        clipboard_ui.render_share_images_button(
-                            [(f"boteco_{key}_{date_str}.png", sec_bytes)],
-                            "WhatsApp",
-                            f"share_sec_{key}_{date_str}",
-                            height=48,
-                            primary=False,
-                            fallback_url=f"https://wa.me/?text={quote_plus(_wa_text)}",
-                        )
-                    with cb3:
-                        clipboard_ui.render_download_button(
-                            sec_bytes,
-                            f"boteco_{key}_{date_str}.png",
-                            "image/png",
-                            f"dl_sec_{key}_{date_str}",
-                            primary=False,
-                        )
+                    _wa_text = f"Boteco Bangalore EOD Report – {date_str} ({title})"
+                    clipboard_ui.render_image_action_row(
+                        sec_bytes,
+                        f"boteco_{key}_{date_str}.png",
+                        f"action_row_{key}_{date_str}",
+                        share_text=_wa_text,
+                        fallback_url=f"https://wa.me/?text={quote_plus(_wa_text)}",
+                    )
 
         # ── Monthly Footfall Summary ─────────────────────────────
         st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
