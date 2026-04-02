@@ -408,11 +408,12 @@ st.markdown(
         transition: all 0.15s ease;
         border: none;
         background: transparent;
-        color: var(--text-secondary);
+        color: #475569;
+        font-size: 0;
     }
     .action-btn-row .action-btn:hover {
         background: var(--brand-soft);
-        color: var(--brand);
+        color: #2563EB;
     }
     .action-btn-row .action-btn + .action-btn {
         border-left: 1px solid var(--border-subtle);
@@ -420,6 +421,7 @@ st.markdown(
     .action-btn-row .action-btn svg {
         width: 18px;
         height: 18px;
+        display: block;
     }
 
     /* ── Upload zone styling ───────────────────────────────── */
