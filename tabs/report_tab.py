@@ -42,7 +42,6 @@ def render(ctx: TabContext) -> None:
 
     nav_col1, nav_col2, nav_col3 = st.columns([1, 4, 1])
     with nav_col1:
-        st.write("")
         if st.button("← Prev", key="report_prev_day", use_container_width=True):
             st.session_state["report_date"] -= timedelta(days=1)
             st.rerun()
@@ -62,7 +61,6 @@ def render(ctx: TabContext) -> None:
             st.session_state["report_date"] = picked
             st.rerun()
     with nav_col3:
-        st.write("")
         if st.button("Next →", key="report_next_day", use_container_width=True):
             st.session_state["report_date"] += timedelta(days=1)
             st.rerun()
@@ -212,7 +210,7 @@ def render(ctx: TabContext) -> None:
                         help="Net sales for the day vs daily sales target.",
                     )
 
-        st.markdown("---")
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
         col_det1, col_det2 = st.columns(2)
 
@@ -332,7 +330,7 @@ def render(ctx: TabContext) -> None:
                     },
                 )
 
-        st.markdown("---")
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
         # Individual PNG sections
         per_outlet_sheet = (
@@ -477,9 +475,9 @@ def render(ctx: TabContext) -> None:
                 ]
                 clipboard_ui.render_share_images_button(
                     _share_files,
-                    "📱 WhatsApp (5 PNGs)",
+                    "WhatsApp (5 PNGs)",
                     f"share_5_pngs_{date_str}",
-                    height=44,
+                    height=56,
                     primary=True,
                 )
 
@@ -497,16 +495,16 @@ def render(ctx: TabContext) -> None:
                             sec_bytes,
                             "Copy",
                             f"clip_sec_{key}_{date_str}",
-                            height=44,
+                            height=56,
                             primary=False,
                         )
                     with cb2:
                         _wa_text = f"Boteco Bangalore EOD Report – {date_str} ({title})"
                         clipboard_ui.render_share_images_button(
                             [(f"boteco_{key}_{date_str}.png", sec_bytes)],
-                            f"📱 WhatsApp ({title})",
+                            f"WhatsApp ({title})",
                             f"share_sec_{key}_{date_str}",
-                            height=44,
+                            height=56,
                             primary=False,
                             fallback_url=f"https://wa.me/?text={quote_plus(_wa_text)}",
                         )
@@ -521,7 +519,7 @@ def render(ctx: TabContext) -> None:
                         )
 
         # ── Monthly Footfall Summary ─────────────────────────────
-        st.markdown("---")
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
         st.markdown("### Monthly Footfall Summary")
         st.caption("Last 12 months of covers data.")
 
