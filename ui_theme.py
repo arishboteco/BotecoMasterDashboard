@@ -53,7 +53,7 @@ def apply_plotly_theme() -> None:
     pio.templates["boteco"] = go.layout.Template(
         layout=dict(
             font=dict(
-                family="Inter, DM Sans, sans-serif",
+                family="Inter, sans-serif",
                 size=13,
                 color=TEXT_PRIMARY,
             ),
@@ -62,7 +62,7 @@ def apply_plotly_theme() -> None:
                 bgcolor=SURFACE_RAISED,
                 font_size=12,
                 bordercolor=BORDER_SUBTLE,
-                font_family="Inter, DM Sans, sans-serif",
+                font_family="Inter, sans-serif",
             ),
             margin=CHART_MARGIN,
             title=dict(font=dict(size=15, color=TEXT_PRIMARY), x=0.02, xanchor="left"),

@@ -31,7 +31,7 @@ st.set_page_config(
 st.markdown(
     """
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
     :root {
         --brand: #2563EB;
@@ -55,8 +55,8 @@ st.markdown(
         --info-bg: #EFF6FF;
         --info-text: #1E40AF;
         --info-border: #BFDBFE;
-        --font-display: 'DM Serif Display', serif;
-        --font-body: 'DM Sans', sans-serif;
+        --font-display: 'Inter', sans-serif;
+        --font-body: 'Inter', sans-serif;
         --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
         --shadow-md: 0 4px 6px rgba(0,0,0,0.07);
         --shadow-lg: 0 10px 15px rgba(0,0,0,0.1);
