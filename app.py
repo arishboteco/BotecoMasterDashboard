@@ -34,12 +34,16 @@ st.markdown(
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
     /* Force system fonts for Streamlit expander icons */
-    [data-testid="stExpander"] * {
-        font-family: system-ui, -apple-system, sans-serif !important;
+    section[data-testid="stExpander"] * {
+        font-family: inherit !important;
     }
-    [data-testid="stExpander"][data-testid="stExpander"] summary,
-    section[data-testid="stExpander"] summary {
-        font-family: system-ui, -apple-system, sans-serif !important;
+    [data-testid="stExpander"] summary,
+    [data-testid="stExpander"] button {
+        font-family: inherit !important;
+    }
+    /* Target all expandable summary elements */
+    summary {
+        font-family: inherit !important;
     }
 
     :root {
