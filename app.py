@@ -33,6 +33,11 @@ st.markdown(
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
+    /* Force system fonts for Streamlit expander icons */
+    [data-testid="stExpander"] * {
+        font-family: system-ui, -apple-system, sans-serif !important;
+    }
+
     :root {
         --brand: #2563EB;
         --brand-dark: #1D4ED8;
@@ -72,13 +77,14 @@ st.markdown(
     }
 
     /* ── Base typography ────────────────────────────────────── */
-    html, body, [class*="st-"], .stMarkdown, p, li, span, label,
-    [data-testid="stText"], input, textarea, select {
+    .stMarkdown p, .stMarkdown li, .stMarkdown span, .stMarkdown label,
+    [data-testid="stText"] p, [data-testid="stText"] li, [data-testid="stText"] span,
+    .stTextInput input, .stTextArea textarea, .stSelectbox select,
+    .stNumberInput input {
         font-family: var(--font-body) !important;
     }
-    h1, h2, h3, h4, h5, h6,
-    .main-header,
-    [data-testid="stHeadingWithActionElements"] {
+    .main-header h1, .main-header h2, .main-header h3,
+    h1.stMarkdown, h2.stMarkdown, h3.stMarkdown {
         font-family: var(--font-display) !important;
         color: var(--text) !important;
         letter-spacing: -0.01em;
