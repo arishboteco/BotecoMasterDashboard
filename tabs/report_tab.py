@@ -37,19 +37,28 @@ def render(ctx: TabContext) -> None:
         else:
             st.session_state["report_date"] = datetime.now().date()
 
-    nav_col1, nav_col2, nav_col3 = st.columns([1, 3, 1])
+    selected_date = st.session_state["report_date"]
+    date_display = selected_date.strftime("%a, %d %b %Y")
+
+    nav_col1, nav_col2, nav_col3 = st.columns([1, 4, 1])
     with nav_col1:
         st.write("")
         if st.button("← Prev", key="report_prev_day", use_container_width=True):
             st.session_state["report_date"] -= timedelta(days=1)
             st.rerun()
     with nav_col2:
+        st.markdown(
+            f'<div class="date-display" style="text-align:center;">{date_display}</div>',
+            unsafe_allow_html=True,
+        )
+        # Hidden date picker for calendar access
         picked = st.date_input(
             "Select Date",
-            value=st.session_state["report_date"],
-            key="report_date_picker",
+            value=selected_date,
+            key=f"report_date_picker_{selected_date.isoformat()}",
+            label_visibility="collapsed",
         )
-        if picked != st.session_state["report_date"]:
+        if picked != selected_date:
             st.session_state["report_date"] = picked
             st.rerun()
     with nav_col3:
@@ -58,7 +67,6 @@ def render(ctx: TabContext) -> None:
             st.session_state["report_date"] += timedelta(days=1)
             st.rerun()
 
-    selected_date = st.session_state["report_date"]
     date_str = selected_date.strftime("%Y-%m-%d")
     outlets_bundle, summary = scope.get_daily_report_bundle(
         ctx.report_loc_ids, date_str
