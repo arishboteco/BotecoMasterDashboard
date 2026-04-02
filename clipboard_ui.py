@@ -48,6 +48,7 @@ def _safe_id(key: str) -> str:
 def _btn_style(*, primary: bool = True) -> str:
     """Generate inline button styles with proper overflow handling."""
     c = ui_theme.BRAND_PRIMARY
+    focus_style = "outline:2px solid #2563EB;outline-offset:2px;"
     if primary:
         return (
             f"padding:0.5rem 1rem;cursor:pointer;border-radius:6px;border:none;"
@@ -56,13 +57,14 @@ def _btn_style(*, primary: bool = True) -> str:
             f"box-shadow:0 1px 2px rgba(0,0,0,0.05);"
             f"display:inline-flex;align-items:center;gap:0.4rem;"
             f"min-height:40px;line-height:1.3;transition:all 0.15s ease;"
+            f"{focus_style}"
         )
     return (
         "padding:0.5rem 1rem;cursor:pointer;border-radius:6px;border:1px solid #E2E8F0;"
         "background:#FFFFFF;color:#0F172A;font-weight:500;font-size:0.85rem;"
         "font-family:'DM Sans',sans-serif;"
         "display:inline-flex;align-items:center;gap:0.4rem;"
-        "min-height:40px;line-height:1.3;transition:all 0.15s ease;"
+        "min-height:40px;line-height:1.3;transition:all 0.15s ease;" + focus_style
     )
 
 

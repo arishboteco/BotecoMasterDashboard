@@ -13,7 +13,7 @@ DATABASE_PATH = "data/boteco.db"
 
 # App Settings
 APP_NAME = "Boteco Dashboard"
-APP_ICON = "🥂"
+APP_ICON = None
 
 # Report Settings
 CURRENCY_SYMBOL = "₹"
@@ -22,34 +22,34 @@ CURRENCY_FORMAT = "₹{:,.0f}"
 
 # WhatsApp Report Settings
 WHATSAPP_TEMPLATE = """
-🥂 {location_name}
-📅 End of Day Report
-📆 {date}
+{location_name}
+End of Day Report
+{date}
 
-💰 SALES SUMMARY
-• Gross Total: {gross_total}
-• Net Total: {net_total}
-• Covers: {covers} | Turns: {turns}
-• APC: {apc}
+SALES SUMMARY
+* Gross Total: {gross_total}
+* Net Total: {net_total}
+* Covers: {covers} | Turns: {turns}
+* APC: {apc}
 
-💳 PAYMENT BREAKDOWN
-• Cash: {cash_sales}
-• GPay: {gpay_sales}
-• Zomato: {zomato_sales}
-• Card: {card_sales}
+PAYMENT BREAKDOWN
+* Cash: {cash_sales}
+* GPay: {gpay_sales}
+* Zomato: {zomato_sales}
+* Card: {card_sales}
 
-📊 VS TARGET
-• Target: {target}
-• Achievement: {pct_target}%
-{status_emoji} Status: {status_text}
+VS TARGET
+* Target: {target}
+* Achievement: {pct_target}%
+Status: {status_text}
 
-🍽️ CATEGORY MIX
+CATEGORY MIX
 {category_breakdown}
 
-👥 MTD SUMMARY
-• Total Covers: {mtd_covers}
-• Net Sales: {mtd_sales}
-• Avg Daily: {avg_daily}
+MTD SUMMARY
+* Total Covers: {mtd_covers}
+* Net Sales: {mtd_sales}
+* Avg Daily: {avg_daily}
 """
 
 # File Upload Settings

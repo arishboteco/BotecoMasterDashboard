@@ -50,16 +50,17 @@ def render(ctx: TabContext) -> None:
             f'<div class="date-display" style="text-align:center;">{date_display}</div>',
             unsafe_allow_html=True,
         )
-        # Hidden date picker for calendar access
-        picked = st.date_input(
-            "Select Date",
-            value=selected_date,
-            key=f"report_date_picker_{selected_date.isoformat()}",
-            label_visibility="collapsed",
-        )
-        if picked != selected_date:
-            st.session_state["report_date"] = picked
-            st.rerun()
+
+    # Date picker below navigation for clearer access
+    picked = st.date_input(
+        "Select a date",
+        value=selected_date,
+        key="report_date_picker",
+        help="Choose a date to view that day's report",
+    )
+    if picked != selected_date:
+        st.session_state["report_date"] = picked
+        st.rerun()
     with nav_col3:
         if st.button("Next →", key="report_next_day", use_container_width=True):
             st.session_state["report_date"] += timedelta(days=1)
@@ -230,7 +231,7 @@ def render(ctx: TabContext) -> None:
         ]
 
         with col_det1:
-            st.markdown("### 💰 Sales & Tax Breakdown")
+            st.markdown("### Sales & Tax Breakdown")
             if multi_outlet:
                 sd = {
                     "Line item": [x[0] for x in _pay_fields],
@@ -271,7 +272,7 @@ def render(ctx: TabContext) -> None:
                 )
 
         with col_det2:
-            st.markdown("### 📊 MTD Summary")
+            st.markdown("### MTD Summary")
             _mtd_rows = [
                 ("Net Sales", "mtd_net_sales", "cur"),
                 ("Total Covers", "mtd_total_covers", "int"),

@@ -23,7 +23,6 @@ database.bootstrap()
 # Page configuration
 st.set_page_config(
     page_title="Boteco Dashboard",
-    page_icon="🥂",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -51,7 +50,7 @@ st.markdown(
         --success-text: #166534;
         --success-border: #BBF7D0;
         --error-bg: #FEF2F2;
-        --error-text: #991B1B;
+        --error-text: #7F1D1D;
         --error-border: #FECACA;
         --info-bg: #EFF6FF;
         --info-text: #1E40AF;
@@ -152,6 +151,10 @@ st.markdown(
         background-color: var(--error-bg) !important;
         border-color: var(--error-text) !important;
     }
+    .stButton > button.destructive:disabled {
+        opacity: 0.5 !important;
+        cursor: not-allowed !important;
+    }
 
     /* ── KPI metric values ──────────────────────────────────── */
     div[data-testid="stMetricValue"] {
@@ -175,11 +178,10 @@ st.markdown(
         border-radius: var(--radius-md);
         border-left: 4px solid var(--brand);
         box-shadow: var(--shadow-sm);
-        transition: box-shadow 0.15s ease, transform 0.15s ease;
+        transition: box-shadow 0.15s ease;
     }
     .metric-card:hover {
         box-shadow: var(--shadow-md);
-        transform: translateY(-2px);
     }
     [data-testid="stVerticalBlockBorderWrapper"] {
         background: var(--surface) !important;
@@ -193,11 +195,10 @@ st.markdown(
         box-shadow: var(--shadow-sm);
         border: 1px solid var(--border-subtle);
         padding: 0.75rem;
-        transition: box-shadow 0.15s ease, transform 0.15s ease;
+        transition: box-shadow 0.15s ease;
     }
     [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMetric"]:hover {
         box-shadow: var(--shadow-md);
-        transform: translateY(-1px);
     }
 
     /* ── Alert / status boxes ───────────────────────────────── */

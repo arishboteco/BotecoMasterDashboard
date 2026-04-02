@@ -415,7 +415,7 @@ def render(ctx: TabContext) -> None:
 
     # ── Wipe All Data (DEV ONLY) ──────────────────────────────────
     with st.container(border=True):
-        st.markdown("### ⚠️ Wipe All Data (Development Only)")
+        st.markdown("### Wipe All Data (Development Only)")
         st.caption(
             "Permanently deletes ALL daily summaries, categories, services, items, and upload history. "
             "Outlets and users are preserved. This action cannot be undone."
@@ -425,14 +425,14 @@ def render(ctx: TabContext) -> None:
             key="wipe_all_confirm",
         )
         if st.button(
-            "🗑️ Wipe All Data",
-            type="primary",
+            "Wipe All Data",
+            type="secondary",
             disabled=not wipe_confirm,
             key="wipe_all_btn",
         ):
             counts = database.wipe_all_data()
             total = sum(counts.values())
-            st.success(f"✅ Wiped **{total:,}** records across {len(counts)} tables:")
+            st.success(f"Wiped **{total:,}** records across {len(counts)} tables:")
             for table, count in counts.items():
                 if count > 0:
                     st.write(f"- `{table}`: {count:,} records deleted")

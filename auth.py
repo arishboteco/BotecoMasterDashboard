@@ -60,7 +60,7 @@ def show_login_form():
         unsafe_allow_html=True,
     )
 
-    st.title("🥂 Boteco Dashboard")
+    st.title("Boteco Dashboard")
     st.markdown("### Restaurant Sales Management")
     st.caption("Internal use — your session is protected by login.")
 
@@ -85,9 +85,7 @@ def show_login_form():
                     if user.get("role") == "admin":
                         st.session_state.view_scope = "all"
                     else:
-                        st.session_state.view_scope = str(
-                            st.session_state.location_id
-                        )
+                        st.session_state.view_scope = str(st.session_state.location_id)
                     st.rerun()
                 else:
                     st.error("Invalid username or password")
@@ -97,7 +95,7 @@ def show_login_form():
 
 def show_setup_form():
     """Show initial setup form for first-time users."""
-    st.title("🥂 Boteco Dashboard - Setup")
+    st.title("Boteco Dashboard - Setup")
     st.markdown("### Create Admin Account")
     st.caption("One-time setup — create the first admin and default location.")
 
@@ -212,7 +210,9 @@ def render_auth_sidebar():
         st.caption("Daily Report and Analytics use this scope.")
         locs = database.get_all_locations()
         if is_admin() and len(locs) > 1:
-            options = ["all"] + [str(l["id"]) for l in sorted(locs, key=lambda x: x["name"])]
+            options = ["all"] + [
+                str(l["id"]) for l in sorted(locs, key=lambda x: x["name"])
+            ]
 
             def _scope_label(k: str) -> str:
                 if k == "all":
