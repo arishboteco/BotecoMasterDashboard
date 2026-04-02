@@ -9,10 +9,11 @@ _COOKIE_NAME = "boteco_session"
 _COOKIE_EXPIRY_DAYS = 30
 
 
-@st.cache_resource
 def _get_cookie_manager():
-    """Return a single CookieController instance shared across reruns."""
-    return CookieController(key="boteco_cookie_manager")
+    """Return a CookieController instance, stored in session_state to avoid duplicate keys."""
+    if "_cookie_manager" not in st.session_state:
+        st.session_state._cookie_manager = CookieController(key="boteco_cookie_manager")
+    return st.session_state._cookie_manager
 
 
 def _apply_user_to_session(user: dict, token: str) -> None:
