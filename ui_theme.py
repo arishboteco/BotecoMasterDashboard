@@ -3,46 +3,46 @@
 import plotly.graph_objects as go
 import plotly.io as pio
 
-# ── Brand palette (blue accent) ───────────────────────────────────────────────
-BRAND_PRIMARY = "#2563EB"  # Blue — primary actions, links
-BRAND_DARK = "#1D4ED8"  # Darker blue — hover/pressed
-BRAND_LIGHT = "#3B82F6"  # Lighter blue — gradients
-BRAND_SOFT = "#DBEAFE"  # Soft blue tint — backgrounds
-BRAND_SUCCESS = "#16A34A"  # Green — positive deltas
+# -- Brand palette (Slate & Coral) --------------------------------------------
+BRAND_PRIMARY = "#E8734A"  # Coral — primary actions, links
+BRAND_DARK = "#D4612E"  # Deep coral — hover/pressed
+BRAND_LIGHT = "#F0936E"  # Light coral — gradients
+BRAND_SOFT = "#FEF0EB"  # Soft coral tint — backgrounds
+BRAND_SUCCESS = "#0D9488"  # Teal — positive deltas
 BRAND_WARN = "#D97706"  # Amber — warning
-BRAND_ERROR = "#DC2626"  # Red — negative deltas, destructive
-BRAND_INFO = "#2563EB"  # Blue — info (same as brand)
+BRAND_ERROR = "#EF4444"  # Red — negative deltas, destructive
+BRAND_INFO = "#6366F1"  # Indigo — info
 
-# ── Surface & neutral palette ─────────────────────────────────────────────────
-SURFACE_BASE = "#FFFFFF"  # Main background — pure white
-SURFACE_ELEVATED = "#F8FAFC"  # Cards — very light blue-gray
+# -- Surface & neutral palette -------------------------------------------------
+SURFACE_BASE = "#FFFFFF"  # Main background — white
+SURFACE_ELEVATED = "#F8F9FB"  # Cards — very light cool gray
 SURFACE_RAISED = "#FFFFFF"  # Modals, tooltips
-TEXT_PRIMARY = "#0F172A"  # Primary text — near-black slate
-TEXT_SECONDARY = "#475569"  # Secondary text
-TEXT_MUTED = "#94A3B8"  # Muted text
-BORDER_SUBTLE = "#E2E8F0"  # Light borders
-BORDER_MEDIUM = "#CBD5E1"  # Medium borders
+TEXT_PRIMARY = "#1E293B"  # Primary text — slate 800
+TEXT_SECONDARY = "#475569"  # Secondary text — slate 600
+TEXT_MUTED = "#94A3B8"  # Muted text — slate 400
+BORDER_SUBTLE = "#E2E8F0"  # Light borders — slate 200
+BORDER_MEDIUM = "#CBD5E1"  # Medium borders — slate 300
 
-# ── Shadow system ─────────────────────────────────────────────────────────────
+# -- Shadow system -------------------------------------------------------------
 SHADOW_SM = "0 1px 2px rgba(0,0,0,0.05)"
 SHADOW_MD = "0 4px 6px rgba(0,0,0,0.07)"
 SHADOW_LG = "0 10px 15px rgba(0,0,0,0.1)"
 
-# ── Border radius system ──────────────────────────────────────────────────────
+# -- Border radius system ------------------------------------------------------
 RADIUS_SM = "6px"
 RADIUS_MD = "8px"
 RADIUS_LG = "12px"
 
-# ── Chart colorway — blue-forward, colorblind-friendly ────────────────────────
+# -- Chart colorway — coral-forward, colorblind-friendly ----------------------
 CHART_COLORWAY = [
-    "#2563EB",  # blue (primary)
-    "#16A34A",  # green
+    "#E8734A",  # coral (primary)
+    "#0D9488",  # teal
     "#D97706",  # amber
-    "#7C3AED",  # violet
-    "#0891B2",  # cyan
-    "#DC2626",  # red
-    "#DB2777",  # pink
-    "#475569",  # slate
+    "#6366F1",  # indigo
+    "#EC4899",  # pink
+    "#334155",  # slate
+    "#8B5CF6",  # violet
+    "#059669",  # emerald
 ]
 
 CHART_HEIGHT = 380
@@ -53,7 +53,7 @@ def apply_plotly_theme() -> None:
     pio.templates["boteco"] = go.layout.Template(
         layout=dict(
             font=dict(
-                family="Inter, sans-serif",
+                family="DM Sans, sans-serif",
                 size=13,
                 color=TEXT_PRIMARY,
             ),
@@ -62,7 +62,7 @@ def apply_plotly_theme() -> None:
                 bgcolor=SURFACE_RAISED,
                 font_size=12,
                 bordercolor=BORDER_SUBTLE,
-                font_family="Inter, sans-serif",
+                font_family="DM Sans, sans-serif",
             ),
             margin=CHART_MARGIN,
             title=dict(font=dict(size=15, color=TEXT_PRIMARY), x=0.02, xanchor="left"),

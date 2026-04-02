@@ -26,12 +26,16 @@ def show_login_form():
     st.markdown(
         """
         <style>
+        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=DM+Sans:wght@400;500;600&display=swap');
         :root {
-            --brand: #C2703E;
-            --brand-dark: #A45A2E;
-            --login-surface: #FFF8F0;
-            --login-border: #E0D5C8;
-            --text: #3D2B1F;
+            --brand: #E8734A;
+            --brand-dark: #D4612E;
+            --login-surface: #FFFFFF;
+            --login-border: #E2E8F0;
+            --text: #1E293B;
+        }
+        .stApp {
+            background: #FFFFFF !important;
         }
         .login-container {
             max-width: 400px;
@@ -40,20 +44,37 @@ def show_login_form():
             background: var(--login-surface);
             border-radius: 14px;
             border: 1px solid var(--login-border);
-            box-shadow: 0 4px 16px rgba(60, 40, 20, 0.10);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
         }
         .stButton > button {
             width: 100%;
             background-color: var(--brand);
-            color: #FFF8F0;
+            color: #FFFFFF;
             border: none;
             padding: 0.75rem;
             border-radius: 10px;
-            font-weight: bold;
+            font-weight: 600;
             font-family: 'DM Sans', sans-serif;
+            transition: all 0.2s ease;
         }
         .stButton > button:hover {
             background-color: var(--brand-dark);
+            box-shadow: 0 4px 6px rgba(232, 115, 74, 0.2);
+        }
+        .stTextInput input:focus {
+            border-color: var(--brand) !important;
+            box-shadow: 0 0 0 3px rgba(232, 115, 74, 0.15) !important;
+        }
+        h1 {
+            font-family: 'Sora', sans-serif !important;
+            color: var(--brand) !important;
+        }
+        h3 {
+            font-family: 'DM Sans', sans-serif !important;
+            color: #475569 !important;
+            font-weight: 500 !important;
+            border-left: none !important;
+            padding-left: 0 !important;
         }
         </style>
     """,

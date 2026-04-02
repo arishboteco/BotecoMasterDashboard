@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(ls C:/Github/BotecoMasterDashboard/venv/Scripts/streamlit*)",
+      "Bash(venv/Scripts/pip.exe install:*)",
+      "Bash(venv/Scripts/python.exe -c \"from tabs.report_tab import render\")",
+      "Bash(venv/Scripts/python.exe -c \":*)",
+      "Bash(GIT_EDITOR=true git rebase --continue)",
+      "Bash(gh pr:*)",
+      "Bash(python -c \"import database; database.bootstrap\\(\\); conn = database.get_connection\\(\\); rows = conn.execute\\(''SELECT username FROM users''\\).fetchall\\(\\); print\\([r[''username''] for r in rows]\\); conn.close\\(\\)\")",
+      "Bash(python -c \":*)"
+    ]
+  }
+}
