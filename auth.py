@@ -142,7 +142,7 @@ def show_login_form():
                     cookie_mgr.set(
                         _COOKIE_NAME,
                         token,
-                        expires=_COOKIE_EXPIRY_DAYS * 24 * 3600,
+                        expires=datetime.now() + timedelta(days=_COOKIE_EXPIRY_DAYS),
                     )
                     _apply_user_to_session(user, token)
                     st.rerun()
