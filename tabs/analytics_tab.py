@@ -124,174 +124,175 @@ def render(ctx: TabContext) -> None:
         prior_covers = int(prior_df["covers"].sum()) if not prior_df.empty else None
         prior_avg = float(prior_df["net_total"].mean()) if not prior_df.empty else None
 
-        # ── Period Summary KPIs ──────────────────────────────────
-        st.markdown("### Period Summary")
-        with st.container(border=True):
-            # How many columns: 4 base + 1 projection when "This Month"
-            show_projection = analysis_period == "This Month"
-            _ncols = 5 if show_projection else 4
-            kpi_cols = st.columns(_ncols)
+        # ── Section 1: Overview ───────────────────────────────────
+        with st.expander("📊 Overview", expanded=True):
+            st.markdown("### Period Summary")
+            with st.container(border=True):
+                # How many columns: 4 base + 1 projection when "This Month"
+                show_projection = analysis_period == "This Month"
+                _ncols = 5 if show_projection else 4
+                kpi_cols = st.columns(_ncols)
 
-            def _delta_str(current, prior):
-                if prior is None or prior == 0:
-                    return None
-                g = utils.calculate_growth(current, prior)
-                return utils.format_delta(current, prior)
+                def _delta_str(current, prior):
+                    if prior is None or prior == 0:
+                        return None
+                    g = utils.calculate_growth(current, prior)
+                    return utils.format_delta(current, prior)
 
-            with kpi_cols[0]:
-                st.metric(
-                    "Total Sales",
-                    utils.format_currency(total_sales),
-                    delta=_delta_str(total_sales, prior_total),
-                )
-            with kpi_cols[1]:
-                cov_delta = None
-                if prior_covers is not None and prior_covers > 0:
-                    g = utils.calculate_growth(total_covers, prior_covers)
-                    sign = "+" if g["change"] >= 0 else ""
-                    cov_delta = f"{sign}{int(g['change']):,} ({sign}{utils.format_percent(g['percentage'])})"
-                st.metric(
-                    "Total Covers",
-                    f"{total_covers:,}",
-                    delta=cov_delta,
-                )
-            with kpi_cols[2]:
-                st.metric(
-                    "Avg Daily Sales",
-                    utils.format_currency(avg_daily),
-                    delta=_delta_str(avg_daily, prior_avg),
-                )
-            with kpi_cols[3]:
-                st.metric("Days with Data", days_with_data)
-
-            if show_projection:
-                days_in_mo = utils.get_days_in_month(start_date.year, start_date.month)
-                projected = utils.calculate_projected_sales(
-                    total_sales, days_with_data, days_in_mo
-                )
-                with kpi_cols[4]:
+                with kpi_cols[0]:
                     st.metric(
-                        "Projected Month-End",
-                        utils.format_currency(projected),
-                        help="Based on current run rate extrapolated to end of month.",
+                        "Total Sales",
+                        utils.format_currency(total_sales),
+                        delta=_delta_str(total_sales, prior_total),
                     )
+                with kpi_cols[1]:
+                    cov_delta = None
+                    if prior_covers is not None and prior_covers > 0:
+                        g = utils.calculate_growth(total_covers, prior_covers)
+                        sign = "+" if g["change"] >= 0 else ""
+                        cov_delta = f"{sign}{int(g['change']):,} ({sign}{utils.format_percent(g['percentage'])})"
+                    st.metric(
+                        "Total Covers",
+                        f"{total_covers:,}",
+                        delta=cov_delta,
+                    )
+                with kpi_cols[2]:
+                    st.metric(
+                        "Avg Daily Sales",
+                        utils.format_currency(avg_daily),
+                        delta=_delta_str(avg_daily, prior_avg),
+                    )
+                with kpi_cols[3]:
+                    st.metric("Days with Data", days_with_data)
 
-        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+                if show_projection:
+                    days_in_mo = utils.get_days_in_month(
+                        start_date.year, start_date.month
+                    )
+                    projected = utils.calculate_projected_sales(
+                        total_sales, days_with_data, days_in_mo
+                    )
+                    with kpi_cols[4]:
+                        st.metric(
+                            "Projected Month-End",
+                            utils.format_currency(projected),
+                            help="Based on current run rate extrapolated to end of month.",
+                        )
 
-        # ── Sales & Covers charts ────────────────────────────────
-        col_chart1, col_chart2 = st.columns(2)
+        # ── Section 2: Sales Performance ─────────────────────────
+        with st.expander("💰 Sales Performance", expanded=True):
+            col_chart1, col_chart2 = st.columns(2)
 
-        with col_chart1:
-            st.markdown("### Daily Sales Trend")
-            if multi_analytics and not df_raw.empty:
-                fig_line = px.line(
-                    df_raw,
+            with col_chart1:
+                st.markdown("### Daily Sales Trend")
+                if multi_analytics and not df_raw.empty:
+                    fig_line = px.line(
+                        df_raw,
+                        x="date",
+                        y="net_total",
+                        color="Outlet",
+                        markers=True,
+                        title="Net sales by outlet",
+                    )
+                else:
+                    fig_line = px.line(
+                        df,
+                        x="date",
+                        y="net_total",
+                        markers=True,
+                        title="Net Sales Over Time",
+                    )
+                    fig_line.update_traces(line_color=ui_theme.BRAND_PRIMARY)
+                fig_line.update_layout(
+                    xaxis_title="Date",
+                    yaxis_title="Net Sales (₹)",
+                    hovermode="x unified",
+                    height=ui_theme.CHART_HEIGHT,
+                )
+                st.plotly_chart(fig_line, use_container_width=True)
+
+            with col_chart2:
+                st.markdown("### Covers Trend")
+                if multi_analytics and not df_raw.empty:
+                    fig_bar = px.bar(
+                        df_raw,
+                        x="date",
+                        y="covers",
+                        color="Outlet",
+                        barmode="group",
+                        title="Daily covers by outlet",
+                    )
+                else:
+                    fig_bar = px.bar(df, x="date", y="covers", title="Daily Covers")
+                    fig_bar.update_traces(marker_color=ui_theme.BRAND_SUCCESS)
+                fig_bar.update_layout(
+                    xaxis_title="Date",
+                    yaxis_title="Covers",
+                    height=ui_theme.CHART_HEIGHT,
+                )
+                st.plotly_chart(fig_bar, use_container_width=True)
+
+            # ── APC Trend ────────────────────────────────────────────
+            st.markdown("### Average Per Cover (APC) Trend")
+            apc_df = df[df["apc"] > 0].copy() if "apc" in df.columns else pd.DataFrame()
+            if not apc_df.empty:
+                fig_apc = px.line(
+                    apc_df,
                     x="date",
-                    y="net_total",
-                    color="Outlet",
+                    y="apc",
                     markers=True,
-                    title="Net sales by outlet",
+                    title="APC over time",
                 )
+                fig_apc.update_traces(line_color=ui_theme.BRAND_PRIMARY)
+                avg_apc = float(apc_df["apc"].mean())
+                fig_apc.add_hline(
+                    y=avg_apc,
+                    line_dash="dash",
+                    line_color="gray",
+                    annotation_text=f"Avg {utils.format_currency(avg_apc)}",
+                    annotation_position="top right",
+                )
+                fig_apc.update_layout(
+                    xaxis_title="Date",
+                    yaxis_title="APC (₹)",
+                    hovermode="x unified",
+                    height=ui_theme.CHART_HEIGHT,
+                )
+                st.plotly_chart(fig_apc, use_container_width=True)
             else:
-                fig_line = px.line(
-                    df,
-                    x="date",
-                    y="net_total",
-                    markers=True,
-                    title="Net Sales Over Time",
-                )
-                fig_line.update_traces(line_color=ui_theme.BRAND_PRIMARY)
-            fig_line.update_layout(
-                xaxis_title="Date",
-                yaxis_title="Net Sales (₹)",
-                hovermode="x unified",
-                height=ui_theme.CHART_HEIGHT,
-            )
-            st.plotly_chart(fig_line, use_container_width=True)
+                st.caption("No APC data for this period.")
 
-        with col_chart2:
-            st.markdown("### Covers Trend")
-            if multi_analytics and not df_raw.empty:
-                fig_bar = px.bar(
-                    df_raw,
-                    x="date",
-                    y="covers",
-                    color="Outlet",
-                    barmode="group",
-                    title="Daily covers by outlet",
-                )
-            else:
-                fig_bar = px.bar(df, x="date", y="covers", title="Daily Covers")
-                fig_bar.update_traces(marker_color=ui_theme.BRAND_SUCCESS)
-            fig_bar.update_layout(
-                xaxis_title="Date",
-                yaxis_title="Covers",
-                height=ui_theme.CHART_HEIGHT,
-            )
-            st.plotly_chart(fig_bar, use_container_width=True)
-
-        # ── APC Trend ────────────────────────────────────────────
-        st.markdown("### Average Per Cover (APC) Trend")
-        apc_df = df[df["apc"] > 0].copy() if "apc" in df.columns else pd.DataFrame()
-        if not apc_df.empty:
-            fig_apc = px.line(
-                apc_df,
-                x="date",
-                y="apc",
-                markers=True,
-                title="APC over time",
-            )
-            fig_apc.update_traces(line_color=ui_theme.BRAND_PRIMARY)
-            avg_apc = float(apc_df["apc"].mean())
-            fig_apc.add_hline(
-                y=avg_apc,
-                line_dash="dash",
-                line_color="gray",
-                annotation_text=f"Avg {utils.format_currency(avg_apc)}",
-                annotation_position="top right",
-            )
-            fig_apc.update_layout(
-                xaxis_title="Date",
-                yaxis_title="APC (₹)",
-                hovermode="x unified",
-                height=ui_theme.CHART_HEIGHT,
-            )
-            st.plotly_chart(fig_apc, use_container_width=True)
-        else:
-            st.caption("No APC data for this period.")
-
-        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-
-        # ── Payment Mode Distribution ────────────────────────────
-        st.markdown("### Payment Mode Distribution")
-        payment_totals = {
-            "Cash": float(df["cash_sales"].sum()),
-            "GPay": float(df["gpay_sales"].sum()),
-            "Zomato": float(df["zomato_sales"].sum()),
-            "Card": float(df["card_sales"].sum()),
-            "Other": float(df["other_sales"].sum()),
-        }
-        pay_df = pd.DataFrame(
-            {
-                "Mode": list(payment_totals.keys()),
-                "Amount": list(payment_totals.values()),
+        # ── Section 3: Revenue Breakdown ───────────────────────────
+        with st.expander("📈 Revenue Breakdown", expanded=True):
+            st.markdown("### Payment Mode Distribution")
+            payment_totals = {
+                "Cash": float(df["cash_sales"].sum()),
+                "GPay": float(df["gpay_sales"].sum()),
+                "Zomato": float(df["zomato_sales"].sum()),
+                "Card": float(df["card_sales"].sum()),
+                "Other": float(df["other_sales"].sum()),
             }
-        ).sort_values("Amount", ascending=True)
-        fig_pay = px.bar(
-            pay_df,
-            x="Amount",
-            y="Mode",
-            orientation="h",
-            title="Payment mode split (₹)",
-            color="Mode",
-            color_discrete_map={
-                "Cash": ui_theme.BRAND_PRIMARY,
-                "GPay": "#0369a1",
-                "Zomato": "#be185d",
-                "Card": "#7c3aed",
-                "Other": "#475569",
-            },
-        )
+            pay_df = pd.DataFrame(
+                {
+                    "Mode": list(payment_totals.keys()),
+                    "Amount": list(payment_totals.values()),
+                }
+            ).sort_values("Amount", ascending=True)
+            fig_pay = px.bar(
+                pay_df,
+                x="Amount",
+                y="Mode",
+                orientation="h",
+                title="Payment mode split (₹)",
+                color="Mode",
+                color_discrete_map={
+                    "Cash": ui_theme.BRAND_PRIMARY,
+                    "GPay": "#0369a1",
+                    "Zomato": "#be185d",
+                    "Card": "#7c3aed",
+                    "Other": "#475569",
+                },
+            )
         fig_pay.update_layout(
             xaxis_title="Amount (₹)",
             yaxis_title="",
@@ -299,8 +300,6 @@ def render(ctx: TabContext) -> None:
             showlegend=False,
         )
         st.plotly_chart(fig_pay, use_container_width=True)
-
-        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
         # ── Category Sales ───────────────────────────────────────
         st.markdown("### Category Mix")
@@ -344,8 +343,6 @@ def render(ctx: TabContext) -> None:
                 st.plotly_chart(fig_cat_pie, use_container_width=True)
         else:
             st.caption("No category data for this period.")
-
-        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
         # ── Top Selling Items ────────────────────────────────────
         st.markdown("### Top Selling Items")
@@ -399,8 +396,6 @@ def render(ctx: TabContext) -> None:
                 "No item-level data for this period. "
                 "Re-import your Item Reports to populate top sellers."
             )
-
-        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
         # ── Meal Period (Service) Charts ─────────────────────────
         st.markdown("### Meal Period Breakdown")
@@ -457,8 +452,6 @@ def render(ctx: TabContext) -> None:
                 st.plotly_chart(fig_svc_tot, use_container_width=True)
         else:
             st.caption("No meal-period data for this period.")
-
-        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
         # ── Weekday Analysis ─────────────────────────────────────
         st.markdown("### Weekday Analysis")
@@ -522,8 +515,6 @@ def render(ctx: TabContext) -> None:
             st.plotly_chart(fig_wd, use_container_width=True)
         else:
             st.caption("Need at least 3 days of data for weekday analysis.")
-
-        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
         # ── Target Achievement ───────────────────────────────────
         st.markdown("### Target Achievement")
@@ -591,31 +582,33 @@ def render(ctx: TabContext) -> None:
             fig_target.update_layout(height=ui_theme.CHART_HEIGHT, showlegend=True)
             st.plotly_chart(fig_target, use_container_width=True)
 
-        # ── Daily Data Table ─────────────────────────────────────
-        st.markdown("### Daily Data")
-        if multi_analytics and not df_raw.empty:
-            dv = (
-                df_raw[
-                    [
-                        "date",
-                        "Outlet",
-                        "covers",
-                        "net_total",
-                        "target",
-                        "pct_target",
+            # ── Daily Data Table ─────────────────────────────────────
+            st.markdown("### Daily Data")
+            if multi_analytics and not df_raw.empty:
+                dv = (
+                    df_raw[
+                        [
+                            "date",
+                            "Outlet",
+                            "covers",
+                            "net_total",
+                            "target",
+                            "pct_target",
+                        ]
                     ]
+                    .sort_values(["date", "Outlet"])
+                    .copy()
+                )
+                dv["covers"] = [f"{int(x or 0):,}" for x in dv["covers"]]
+                dv["net_total"] = [
+                    utils.format_currency(float(x or 0)) for x in dv["net_total"]
                 ]
-                .sort_values(["date", "Outlet"])
-                .copy()
-            )
-            dv["covers"] = [f"{int(x or 0):,}" for x in dv["covers"]]
-            dv["net_total"] = [
-                utils.format_currency(float(x or 0)) for x in dv["net_total"]
-            ]
-            dv["target"] = [utils.format_currency(float(x or 0)) for x in dv["target"]]
-            dv["pct_target"] = [
-                utils.format_percent(float(x or 0)) for x in dv["pct_target"]
-            ]
+                dv["target"] = [
+                    utils.format_currency(float(x or 0)) for x in dv["target"]
+                ]
+                dv["pct_target"] = [
+                    utils.format_percent(float(x or 0)) for x in dv["pct_target"]
+                ]
             st.dataframe(
                 dv,
                 use_container_width=True,
