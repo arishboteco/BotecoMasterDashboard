@@ -151,7 +151,7 @@ def render(ctx: TabContext) -> None:
                 format_func=lambda i: del_loc_opts[i],
                 key="del_loc_select",
             )
-            if st.button("Delete outlet", key="del_loc_btn", type="primary"):
+            if st.button("Delete outlet", key="del_loc_btn", type="secondary"):
                 st.session_state["_pending_loc_delete"] = del_loc_id
             pld = st.session_state.get("_pending_loc_delete")
             if pld:
@@ -313,7 +313,7 @@ def render(ctx: TabContext) -> None:
                 format_func=lambda i: du_opts[i],
                 key="del_user_select",
             )
-            if st.button("Delete user", key="del_user_btn", type="primary"):
+            if st.button("Delete user", key="del_user_btn", type="secondary"):
                 st.session_state["_pending_user_delete"] = du_id
             pud = st.session_state.get("_pending_user_delete")
             if pud:

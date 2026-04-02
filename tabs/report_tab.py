@@ -68,7 +68,7 @@ def render(ctx: TabContext) -> None:
         y_m = [int(x) for x in date_str.split("-")[:2]]
         multi_outlet = len(outlets_bundle) > 1
 
-        def _col_head(nm: str, max_len: int = 14) -> str:
+        def _col_head(nm: str, max_len: int = 20) -> str:
             nm = str(nm).strip()
             return nm if len(nm) <= max_len else nm[: max_len - 1] + "…"
 
@@ -89,6 +89,7 @@ def render(ctx: TabContext) -> None:
                         "Combined",
                         utils.format_currency(summary.get("net_total", 0)),
                         delta=f"vs {utils.format_currency(summary.get('target', 0))} target",
+                        delta_color="off",
                     )
                 st.markdown("##### Covers")
                 cr = st.columns(ncols)
@@ -98,6 +99,7 @@ def render(ctx: TabContext) -> None:
                             _col_head(_on),
                             f"{int(s.get('covers') or 0):,}",
                             delta=f"Turns {float(s.get('turns') or 0):.0f}",
+                            delta_color="off",
                         )
                 with cr[-1]:
                     lc, dc = (
@@ -113,6 +115,7 @@ def render(ctx: TabContext) -> None:
                         "Combined",
                         f"{int(summary.get('covers') or 0):,}",
                         delta=foot or f"Turns: {float(summary.get('turns') or 0):.0f}",
+                        delta_color="off",
                     )
                 st.markdown("##### APC")
                 cr = st.columns(ncols)
@@ -136,15 +139,15 @@ def render(ctx: TabContext) -> None:
                         st.metric(
                             _col_head(_on),
                             utils.format_percent(p),
-                            delta_color="normal" if p >= 100 else "inverse",
                         )
                 with cr[-1]:
                     pct = float(summary.get("pct_target") or 0)
+                    pct_delta = pct - 100
                     st.metric(
                         "Combined",
                         utils.format_percent(pct),
-                        delta=f"vs {pct:.0f}%",
-                        delta_color="normal" if pct >= 100 else "inverse",
+                        delta=f"{pct_delta:+.0f}% vs target",
+                        delta_color="normal",
                         help="Net sales for the day vs daily sales target.",
                     )
             else:
@@ -157,6 +160,7 @@ def render(ctx: TabContext) -> None:
                         "Net Sales",
                         utils.format_currency(s_one.get("net_total", 0)),
                         delta=f"vs {utils.format_currency(s_one.get('target', 0))} target",
+                        delta_color="off",
                     )
                 with col_kpi2:
                     lc = s_one.get("lunch_covers")
@@ -170,6 +174,7 @@ def render(ctx: TabContext) -> None:
                         "Covers",
                         f"{int(s_one.get('covers') or 0):,}",
                         delta=foot or f"Turns: {float(s_one.get('turns') or 0):.0f}",
+                        delta_color="off",
                     )
                 with col_kpi3:
                     st.metric(
@@ -186,10 +191,12 @@ def render(ctx: TabContext) -> None:
                     )
                 with col_kpi5:
                     pct = float(s_one.get("pct_target") or 0)
+                    pct_delta = pct - 100
                     st.metric(
                         "Target Achievement",
                         utils.format_percent(pct),
-                        delta_color="normal" if pct >= 100 else "inverse",
+                        delta=f"{pct_delta:+.0f}% vs target",
+                        delta_color="normal",
                         help="Net sales for the day vs daily sales target.",
                     )
 

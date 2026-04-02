@@ -413,7 +413,7 @@ def render(ctx: TabContext) -> None:
                     color_discrete_map={
                         "Lunch": ui_theme.BRAND_SUCCESS,
                         "Dinner": ui_theme.BRAND_PRIMARY,
-                        "Breakfast": "#C4A55A",
+                        "Breakfast": ui_theme.BRAND_WARN,
                     },
                 )
                 fig_svc_stack.update_layout(
@@ -433,7 +433,7 @@ def render(ctx: TabContext) -> None:
                     color_discrete_map={
                         "Lunch": ui_theme.BRAND_SUCCESS,
                         "Dinner": ui_theme.BRAND_PRIMARY,
-                        "Breakfast": "#C4A55A",
+                        "Breakfast": ui_theme.BRAND_WARN,
                     },
                 )
                 fig_svc_tot.update_layout(
@@ -480,11 +480,11 @@ def render(ctx: TabContext) -> None:
                 else 0
             )
             wd_colors = [
-                "#5B7F4A"
+                ui_theme.BRAND_SUCCESS
                 if v >= _daily_tgt
-                else "#C28B2D"
+                else ui_theme.BRAND_WARN
                 if v >= _daily_tgt * 0.8
-                else "#B84233"
+                else ui_theme.BRAND_ERROR
                 for v in wd_agg["avg_sales"]
             ]
             fig_wd = px.bar(
@@ -531,7 +531,7 @@ def render(ctx: TabContext) -> None:
                 df["net_total"] / daily_target * 100 if daily_target > 0 else 0
             )
             colors = [
-                "#5B7F4A" if x >= 100 else "#C28B2D" if x >= 80 else "#B84233"
+                ui_theme.BRAND_SUCCESS if x >= 100 else ui_theme.BRAND_WARN if x >= 80 else ui_theme.BRAND_ERROR
                 for x in df["achievement"]
             ]
             fig_target.add_trace(

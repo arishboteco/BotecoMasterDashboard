@@ -76,6 +76,17 @@ st.markdown(
         font-weight: bold;
         color: var(--brand) !important;
     }
+    .stCaption, [data-testid="stCaption"] {
+        color: var(--text-muted);
+    }
+
+    /* ── KPI metric values — high-contrast dark text ─────────── */
+    div[data-testid="stMetricValue"] {
+        color: var(--text);
+        font-weight: 700;
+    }
+
+    /* ── Metric cards inside bordered containers ──────────────── */
     .metric-card {
         background: var(--surface);
         padding: 1rem;
@@ -93,6 +104,8 @@ st.markdown(
         box-shadow: 0 1px 4px rgba(60,40,20,0.06);
         border: 1px solid var(--border-subtle);
     }
+
+    /* ── Alert / status boxes ─────────────────────────────────── */
     .success-box {
         background: var(--success-bg);
         color: var(--success-text);
@@ -107,6 +120,8 @@ st.markdown(
         border-radius: 8px;
         border: 1px solid var(--error-border);
     }
+
+    /* ── Upload zone ──────────────────────────────────────────── */
     .upload-zone {
         border: 2px dashed var(--brand);
         border-radius: 14px;
@@ -124,15 +139,28 @@ st.markdown(
         border: 1px dashed var(--border-subtle);
         margin-top: 0.5rem;
     }
+
+    /* ── Sidebar ──────────────────────────────────────────────── */
     [data-testid="stSidebar"] hr {
         margin: 0.75rem 0;
     }
-    div[data-testid="stMetricValue"] {
-        color: var(--brand);
-        font-weight: bold;
+
+    /* ── Expander labels — prevent arrow/text overlap ─────────── */
+    [data-testid="stExpander"] summary {
+        gap: 0.5rem;
+        align-items: center;
     }
-    .stCaption, [data-testid="stCaption"] {
-        color: var(--text-muted);
+    [data-testid="stExpander"] summary p {
+        margin: 0;
+        overflow: visible;
+    }
+
+    /* ── Consistent dataframe table headers ───────────────────── */
+    [data-testid="stDataFrame"] th {
+        font-weight: 600 !important;
+        color: var(--text) !important;
+        background-color: var(--surface) !important;
+        border-bottom: 2px solid var(--border-subtle) !important;
     }
 
     /* ── Buttons ────────────────────────────────────────────── */

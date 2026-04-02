@@ -3,17 +3,25 @@
 import plotly.graph_objects as go
 import plotly.io as pio
 
-BRAND_PRIMARY = "#C2703E"
-BRAND_SUCCESS = "#5B7F4A"
-BRAND_WARN = "#C28B2D"
+# ── Brand palette ─────────────────────────────────────────────────────────────
+BRAND_PRIMARY = "#C2703E"   # Warm terracotta — restaurant editorial
+BRAND_DARK    = "#A45A2E"   # Hover / pressed state
+BRAND_SUCCESS = "#5B7F4A"   # Semantic green — positive deltas, good status
+BRAND_WARN    = "#C28B2D"   # Semantic amber — caution / warning
+BRAND_ERROR   = "#B84233"   # Semantic red  — negative deltas, destructive
+
+# ── Chart colorway — 8 distinct, colorblind-friendly hues ────────────────────
 CHART_COLORWAY = [
-    BRAND_PRIMARY,
-    BRAND_SUCCESS,
-    "#8B6343",
-    "#C4A55A",
-    "#B07D8A",
-    "#5E7E8A",
+    "#C2703E",  # terracotta  (primary)
+    "#0369a1",  # steel blue
+    "#5B7F4A",  # forest green
+    "#7c3aed",  # violet
+    "#0891b2",  # cyan / teal
+    "#C28B2D",  # warm gold
+    "#be185d",  # magenta
+    "#475569",  # slate
 ]
+
 CHART_HEIGHT = 380
 CHART_MARGIN = dict(l=48, r=28, t=56, b=48)
 
