@@ -1,8 +1,9 @@
 import sqlite3
 import hashlib
 import os
+import secrets
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, Tuple, Generator
 
 try:
@@ -101,6 +102,21 @@ def init_database():
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (location_id) REFERENCES locations(id)
         )
+    """)
+
+    # User sessions for persistent login (cookie-based)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_sessions (
+            token      TEXT PRIMARY KEY,
+            user_id    INTEGER NOT NULL,
+            expires_at DATETIME NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_user_sessions_expires
+        ON user_sessions(expires_at)
     """)
 
     # Daily summaries: composite UNIQUE(location_id, date) so each outlet has its own row per day
@@ -1364,11 +1380,60 @@ def get_daily_service_sales_for_date_range(
     return [dict(row) for row in rows]
 
 
+def create_user_session(user_id: int, days: int = 30) -> str:
+    """Generate and persist a secure session token. Returns the token string."""
+    token = secrets.token_hex(32)
+    expires_at = (datetime.utcnow() + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    with db_connection() as conn:
+        conn.execute(
+            "INSERT INTO user_sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
+            (token, user_id, expires_at),
+        )
+        conn.commit()
+    return token
+
+
+def validate_session_token(token: str) -> Optional[Dict]:
+    """Return user dict for a valid non-expired token, or None."""
+    if not token:
+        return None
+    with db_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT u.*, l.name AS location_name
+            FROM user_sessions s
+            JOIN users u ON u.id = s.user_id
+            LEFT JOIN locations l ON l.id = u.location_id
+            WHERE s.token = ?
+              AND s.expires_at > datetime('now')
+            """,
+            (token,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def delete_session_token(token: str) -> None:
+    """Remove a session token on logout."""
+    if not token:
+        return
+    with db_connection() as conn:
+        conn.execute("DELETE FROM user_sessions WHERE token = ?", (token,))
+        conn.commit()
+
+
+def purge_expired_sessions() -> None:
+    """Delete all expired sessions. Called at bootstrap."""
+    with db_connection() as conn:
+        conn.execute("DELETE FROM user_sessions WHERE expires_at <= datetime('now')")
+        conn.commit()
+
+
 def bootstrap():
     """Initialize database and ensure default locations exist. Call explicitly from app.py."""
     logger.info("Bootstrapping database")
     init_database()
     ensure_default_locations()
+    purge_expired_sessions()
 
 
 def wipe_all_data() -> Dict[str, int]:

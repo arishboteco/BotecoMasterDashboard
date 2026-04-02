@@ -20,3 +20,6 @@ Pillow>=10.0.0
 
 # Security
 bcrypt>=4.0.0
+
+# Persistent sessions
+streamlit-cookies-controller>=0.0.4
