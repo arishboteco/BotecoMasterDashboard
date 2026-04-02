@@ -80,6 +80,7 @@ def render(ctx: TabContext) -> None:
             "Flash Reports — anything from Petpooja. The system figures out what each file is."
         ),
         key="smart_upload_files",
+        label_visibility="collapsed",
     )
 
     if not uploaded_files:

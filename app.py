@@ -63,6 +63,12 @@ st.markdown(
         --radius-sm: 6px;
         --radius-md: 8px;
         --radius-lg: 12px;
+        --btn-height-sm: 32px;
+        --btn-height-md: 40px;
+        --btn-height-lg: 48px;
+        --btn-padding-x: 1rem;
+        --btn-padding-y: 0.5rem;
+        --icon-size: 18px;
     }
 
     /* ── Base typography ────────────────────────────────────── */
@@ -117,9 +123,9 @@ st.markdown(
         border-radius: var(--radius-sm) !important;
         font-weight: 500 !important;
         transition: all 0.15s ease-in-out !important;
-        min-height: 38px !important;
+        min-height: var(--btn-height-md) !important;
         line-height: 1.4 !important;
-        padding: 0.5rem 1rem !important;
+        padding: var(--btn-padding-y) var(--btn-padding-x) !important;
     }
     .stButton > button[kind="primary"] {
         background-color: var(--brand) !important;
@@ -130,7 +136,6 @@ st.markdown(
     .stButton > button[kind="primary"]:hover {
         background-color: var(--brand-dark) !important;
         box-shadow: var(--shadow-md) !important;
-        transform: translateY(-1px) !important;
     }
     .stButton > button[kind="secondary"] {
         background-color: var(--surface-elevated) !important;
@@ -334,23 +339,21 @@ st.markdown(
         display: flex;
         align-items: center;
         gap: 0.5rem;
-        min-height: 48px;
+        min-height: var(--btn-height-md);
     }
     .whatsapp-btn {
         display: inline-flex;
         align-items: center;
         gap: 0.4rem;
-        padding: 0.5rem 1rem;
+        padding: var(--btn-padding-y) var(--btn-padding-x);
         border-radius: var(--radius-sm);
         font-weight: 600;
         font-size: 0.85rem;
         cursor: pointer;
         transition: all 0.15s ease;
         white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
         line-height: 1.3;
-        min-height: 40px;
+        min-height: var(--btn-height-md);
     }
     .whatsapp-btn-primary {
         background: var(--brand);
@@ -373,15 +376,80 @@ st.markdown(
         color: var(--brand-dark);
     }
     .whatsapp-icon {
-        width: 18px;
-        height: 18px;
+        width: var(--icon-size);
+        height: var(--icon-size);
         flex-shrink: 0;
-        vertical-align: middle;
     }
     .whatsapp-msg {
         font-size: 0.8rem;
         color: var(--success-text);
         margin-left: 0.5rem;
+    }
+
+    /* ── Icon-only action buttons ──────────────────────────── */
+    .action-btn-container {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-height: var(--btn-height-md);
+    }
+    .action-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: var(--btn-height-md);
+        height: var(--btn-height-md);
+        padding: 0;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        transition: all 0.15s ease;
+        border: none;
+    }
+    .action-btn-primary {
+        background: var(--brand);
+        color: var(--surface-elevated);
+        box-shadow: var(--shadow-sm);
+    }
+    .action-btn-primary:hover {
+        background: var(--brand-dark);
+        box-shadow: var(--shadow-md);
+    }
+    .action-btn-secondary {
+        background: var(--surface-elevated);
+        color: var(--text);
+        border: 1px solid var(--border-subtle);
+    }
+    .action-btn-secondary:hover {
+        background: var(--brand-soft);
+        border-color: var(--brand);
+        color: var(--brand-dark);
+    }
+    .action-btn svg {
+        width: var(--icon-size);
+        height: var(--icon-size);
+    }
+
+    /* ── Upload zone styling ───────────────────────────────── */
+    .upload-zone-container {
+        position: relative;
+    }
+    .upload-zone-container .stFileUploader > div:first-child {
+        padding: 0 !important;
+    }
+    .upload-zone-container [data-testid="stFileUploaderDropzone"] {
+        min-height: 120px;
+        border: 2px dashed var(--brand) !important;
+        border-radius: var(--radius-lg) !important;
+        background: var(--brand-soft) !important;
+        transition: all 0.15s ease;
+    }
+    .upload-zone-container [data-testid="stFileUploaderDropzone"]:hover {
+        border-color: var(--brand-dark) !important;
+        background: #EFF6FF !important;
+    }
+    .upload-zone-container [data-testid="stFileUploaderDropzone"] label {
+        color: var(--text-secondary) !important;
+        font-size: 0.95rem !important;
     }
 
     /* ── Section dividers ───────────────────────────────────── */

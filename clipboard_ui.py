@@ -10,10 +10,8 @@ import streamlit.components.v1 as components
 import ui_theme
 from typing import List, Tuple, Optional
 
-# WhatsApp SVG icon (24x24, brand-colored)
 WHATSAPP_ICON_SVG = (
-    '<svg class="whatsapp-icon" viewBox="0 0 24 24" fill="currentColor" '
-    'xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
+    '<svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
     '<path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.151'
     "-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475"
     "-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52"
@@ -28,6 +26,31 @@ WHATSAPP_ICON_SVG = (
     "0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305"
     "-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 "
     '11.821 0 00-3.48-8.413z"/>'
+    "</svg>"
+)
+
+CLIPBOARD_ICON_SVG = (
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    '<rect x="9" y="2" width="6" height="4" rx="1"/>'
+    '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>'
+    "</svg>"
+)
+
+DOWNLOAD_ICON_SVG = (
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>'
+    '<polyline points="7 10 12 15 17 10"/>'
+    '<line x1="12" y1="15" x2="12" y2="3"/>'
+    "</svg>"
+)
+
+COPY_ICON_SVG = (
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>'
+    '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'
     "</svg>"
 )
 
@@ -66,6 +89,156 @@ def _btn_style(*, primary: bool = True) -> str:
         "display:inline-flex;align-items:center;gap:0.4rem;"
         "min-height:40px;line-height:1.3;transition:all 0.15s ease;" + focus_style
     )
+
+
+def _icon_btn_style(*, primary: bool = True) -> str:
+    """Generate square icon button styles (40x40px)."""
+    c = ui_theme.BRAND_PRIMARY
+    focus_style = "outline:2px solid #2563EB;outline-offset:2px;"
+    if primary:
+        return (
+            f"display:inline-flex;align-items:center;justify-content:center;"
+            f"width:40px;height:40px;padding:0;border-radius:6px;border:none;"
+            f"background:{c};color:#FFFFFF;cursor:pointer;"
+            f"box-shadow:0 1px 2px rgba(0,0,0,0.05);"
+            f"transition:all 0.15s ease;{focus_style}"
+        )
+    return (
+        f"display:inline-flex;align-items:center;justify-content:center;"
+        f"width:40px;height:40px;padding:0;border-radius:6px;"
+        f"border:1px solid #E2E8F0;background:#FFFFFF;color:#0F172A;cursor:pointer;"
+        f"transition:all 0.15s ease;{focus_style}"
+    )
+
+
+def render_icon_button(
+    icon_svg: str,
+    tooltip: str,
+    on_click_js: str,
+    component_key: str,
+    *,
+    primary: bool = True,
+) -> None:
+    """Render a square icon-only button with clipboard/image action."""
+    uid = _safe_id(component_key)
+    stl = _icon_btn_style(primary=primary)
+    html = f"""
+<div class="action-btn-container">
+  <button class="action-btn {"action-btn-primary" if primary else "action-btn-secondary"}"
+          id="{uid}_btn" type="button" style="{stl}" title="{tooltip}">
+    {icon_svg}
+  </button>
+  <span id="{uid}_msg" class="whatsapp-msg"></span>
+</div>
+<script>
+(function() {{
+  document.getElementById("{uid}_btn").onclick = async function() {{
+    {on_click_js}
+  }};
+}})();
+</script>
+"""
+    _html(html, 48, component_key)
+
+
+def render_copy_icon_button(
+    png_bytes: bytes,
+    component_key: str,
+    *,
+    primary: bool = True,
+    label: str = "Copy",
+) -> None:
+    """Render a square icon button that copies PNG to clipboard."""
+    b64 = base64.b64encode(png_bytes).decode("ascii")
+    uid = _safe_id(component_key + "ci")
+    stl = _icon_btn_style(primary=primary)
+    js = f"""
+    try {{
+      const dataUrl = "data:image/png;base64,{b64}";
+      const blob = await (await fetch(dataUrl)).blob();
+      await navigator.clipboard.write([new ClipboardItem({{"image/png": blob}})]);
+      document.getElementById("{uid}_msg").textContent = "Copied";
+      setTimeout(() => {{
+        if (document.getElementById("{uid}_msg").textContent === "Copied") {{
+          document.getElementById("{uid}_msg").textContent = "";
+        }}
+      }}, 2000);
+    }} catch (e) {{
+      alert("Copy failed. Try Chrome/Edge over HTTPS.");
+    }}
+    """
+    html = f"""
+<div class="action-btn-container">
+  <button class="action-btn {"action-btn-primary" if primary else "action-btn-secondary"}"
+          id="{uid}_btn" type="button" style="{stl}" title="{label}">
+    {COPY_ICON_SVG}
+  </button>
+  <span id="{uid}_msg" class="whatsapp-msg"></span>
+</div>
+<script>
+(function() {{
+  document.getElementById("{uid}_btn").onclick = async function() {{
+    {js}
+  }};
+}})();
+</script>
+"""
+    _html(html, 48, component_key)
+
+
+def render_download_button(
+    data: bytes,
+    filename: str,
+    mime_type: str,
+    component_key: str,
+    *,
+    primary: bool = True,
+) -> None:
+    """Render a square icon button that downloads a file."""
+    b64 = base64.b64encode(data).decode("ascii")
+    uid = _safe_id(component_key + "dl")
+    stl = _icon_btn_style(primary=primary)
+    js = f"""
+    try {{
+      const bin = atob("{b64}");
+      const u8 = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      const blob = new Blob([u8], {{type: "{mime_type}"}});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "{filename}";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      document.getElementById("{uid}_msg").textContent = "Saved";
+      setTimeout(() => {{
+        if (document.getElementById("{uid}_msg").textContent === "Saved") {{
+          document.getElementById("{uid}_msg").textContent = "";
+        }}
+      }}, 2000);
+    }} catch (e) {{
+      alert("Download failed.");
+    }}
+    """
+    html = f"""
+<div class="action-btn-container">
+  <button class="action-btn {"action-btn-primary" if primary else "action-btn-secondary"}"
+          id="{uid}_btn" type="button" style="{stl}" title="Download {filename}">
+    {DOWNLOAD_ICON_SVG}
+  </button>
+  <span id="{uid}_msg" class="whatsapp-msg"></span>
+</div>
+<script>
+(function() {{
+  document.getElementById("{uid}_btn").onclick = async function() {{
+    {js}
+  }};
+}})();
+</script>
+"""
+    _html(html, 48, component_key)
 
 
 def render_copy_text_button(

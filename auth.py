@@ -238,7 +238,7 @@ def render_auth_sidebar():
         else:
             st.session_state.view_scope = str(st.session_state.location_id)
         st.divider()
-        if st.button("🚪 Logout"):
+        if st.button("Logout"):
             logout()
 
 

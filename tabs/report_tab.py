@@ -476,9 +476,9 @@ def render(ctx: TabContext) -> None:
                 ]
                 clipboard_ui.render_share_images_button(
                     _share_files,
-                    "WhatsApp (5 PNGs)",
+                    "WhatsApp",
                     f"share_5_pngs_{date_str}",
-                    height=56,
+                    height=48,
                     primary=True,
                 )
 
@@ -490,33 +490,30 @@ def render(ctx: TabContext) -> None:
                 with _cells[row_idx][col_idx]:
                     st.caption(title)
                     st.image(BytesIO(sec_bytes), use_container_width=True)
-                    cb1, cb2, cb3 = st.columns(3)
+                    cb1, cb2, cb3 = st.columns([1, 1, 1])
                     with cb1:
-                        clipboard_ui.render_copy_image_button(
+                        clipboard_ui.render_copy_icon_button(
                             sec_bytes,
-                            "Copy",
                             f"clip_sec_{key}_{date_str}",
-                            height=56,
                             primary=False,
                         )
                     with cb2:
                         _wa_text = f"Boteco Bangalore EOD Report – {date_str} ({title})"
                         clipboard_ui.render_share_images_button(
                             [(f"boteco_{key}_{date_str}.png", sec_bytes)],
-                            f"WhatsApp ({title})",
+                            "WhatsApp",
                             f"share_sec_{key}_{date_str}",
-                            height=56,
+                            height=48,
                             primary=False,
                             fallback_url=f"https://wa.me/?text={quote_plus(_wa_text)}",
                         )
                     with cb3:
-                        st.download_button(
-                            "PNG",
+                        clipboard_ui.render_download_button(
                             sec_bytes,
-                            file_name=f"boteco_{key}_{date_str}.png",
-                            mime="image/png",
-                            key=f"dl_sec_{key}_{date_str}",
-                            type="secondary",
+                            f"boteco_{key}_{date_str}.png",
+                            "image/png",
+                            f"dl_sec_{key}_{date_str}",
+                            primary=False,
                         )
 
         # ── Monthly Footfall Summary ─────────────────────────────
