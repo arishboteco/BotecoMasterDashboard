@@ -28,42 +28,42 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS (warm editorial theme — tokens align with .streamlit/config.toml)
+# Custom CSS (clean white theme with blue accent — tokens align with .streamlit/config.toml)
 st.markdown(
     """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&display=swap');
 
     :root {
-        --brand: #C2703E;
-        --brand-dark: #A45A2E;
-        --brand-light: #D4895A;
-        --brand-soft: #F5EAE0;
-        --surface: #FAF6F1;
-        --surface-elevated: #FFF8F0;
+        --brand: #2563EB;
+        --brand-dark: #1D4ED8;
+        --brand-light: #3B82F6;
+        --brand-soft: #DBEAFE;
+        --surface: #FFFFFF;
+        --surface-elevated: #F8FAFC;
         --surface-raised: #FFFFFF;
-        --text: #3D2B1F;
-        --text-secondary: #6B5B4E;
-        --text-muted: #8C7B6B;
-        --border-subtle: #E0D5C8;
-        --border-medium: #C8B9A8;
-        --success-bg: #EDF2E8;
-        --success-text: #3D5A2E;
-        --success-border: #D4DFC9;
-        --error-bg: #F5E8E6;
-        --error-text: #7A2E22;
-        --error-border: #E8CFCB;
+        --text: #0F172A;
+        --text-secondary: #475569;
+        --text-muted: #94A3B8;
+        --border-subtle: #E2E8F0;
+        --border-medium: #CBD5E1;
+        --success-bg: #F0FDF4;
+        --success-text: #166534;
+        --success-border: #BBF7D0;
+        --error-bg: #FEF2F2;
+        --error-text: #991B1B;
+        --error-border: #FECACA;
         --info-bg: #EFF6FF;
         --info-text: #1E40AF;
         --info-border: #BFDBFE;
         --font-display: 'DM Serif Display', serif;
         --font-body: 'DM Sans', sans-serif;
-        --shadow-sm: 0 1px 3px rgba(60,40,20,0.06);
-        --shadow-md: 0 4px 12px rgba(60,40,20,0.08);
-        --shadow-lg: 0 8px 24px rgba(60,40,20,0.12);
-        --radius-sm: 8px;
-        --radius-md: 12px;
-        --radius-lg: 16px;
+        --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+        --shadow-md: 0 4px 6px rgba(0,0,0,0.07);
+        --shadow-lg: 0 10px 15px rgba(0,0,0,0.1);
+        --radius-sm: 6px;
+        --radius-md: 8px;
+        --radius-lg: 12px;
     }
 
     /* ── Base typography ────────────────────────────────────── */
@@ -118,11 +118,9 @@ st.markdown(
         border-radius: var(--radius-sm) !important;
         font-weight: 500 !important;
         transition: all 0.15s ease-in-out !important;
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
         min-height: 38px !important;
         line-height: 1.4 !important;
+        padding: 0.5rem 1rem !important;
     }
     .stButton > button[kind="primary"] {
         background-color: var(--brand) !important;
@@ -237,7 +235,7 @@ st.markdown(
     }
     .upload-zone:hover {
         border-color: var(--brand-dark);
-        background: #F0DDD0;
+        background: #EFF6FF;
     }
     .empty-upload-hint {
         color: var(--text-muted);

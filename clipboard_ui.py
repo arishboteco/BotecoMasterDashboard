@@ -50,19 +50,17 @@ def _btn_style(*, primary: bool = True) -> str:
     c = ui_theme.BRAND_PRIMARY
     if primary:
         return (
-            f"padding:0.5rem 1rem;cursor:pointer;border-radius:8px;border:none;"
-            f"background:{c};color:#FFF8F0;font-weight:600;font-size:0.85rem;"
+            f"padding:0.5rem 1rem;cursor:pointer;border-radius:6px;border:none;"
+            f"background:{c};color:#FFFFFF;font-weight:600;font-size:0.85rem;"
             f"font-family:'DM Sans',sans-serif;"
-            f"box-shadow:0 1px 3px rgba(60,40,20,0.08);"
-            f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+            f"box-shadow:0 1px 2px rgba(0,0,0,0.05);"
             f"display:inline-flex;align-items:center;gap:0.4rem;"
             f"min-height:40px;line-height:1.3;transition:all 0.15s ease;"
         )
     return (
-        "padding:0.5rem 1rem;cursor:pointer;border-radius:8px;border:1px solid #E0D5C8;"
-        "background:#FFF8F0;color:#3D2B1F;font-weight:500;font-size:0.85rem;"
+        "padding:0.5rem 1rem;cursor:pointer;border-radius:6px;border:1px solid #E2E8F0;"
+        "background:#FFFFFF;color:#0F172A;font-weight:500;font-size:0.85rem;"
         "font-family:'DM Sans',sans-serif;"
-        "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
         "display:inline-flex;align-items:center;gap:0.4rem;"
         "min-height:40px;line-height:1.3;transition:all 0.15s ease;"
     )

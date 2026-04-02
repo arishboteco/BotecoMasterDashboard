@@ -3,45 +3,45 @@
 import plotly.graph_objects as go
 import plotly.io as pio
 
-# ── Brand palette ─────────────────────────────────────────────────────────────
-BRAND_PRIMARY = "#C2703E"  # Warm terracotta — restaurant editorial
-BRAND_DARK = "#A45A2E"  # Hover / pressed state
-BRAND_LIGHT = "#D4895A"  # Lighter variant for gradients
-BRAND_SOFT = "#F5EAE0"  # Soft background tint
-BRAND_SUCCESS = "#5B7F4A"  # Semantic green — positive deltas, good status
-BRAND_WARN = "#C28B2D"  # Semantic amber — caution / warning
-BRAND_ERROR = "#B84233"  # Semantic red  — negative deltas, destructive
-BRAND_INFO = "#3B82F6"  # Semantic blue — info, links
+# ── Brand palette (blue accent) ───────────────────────────────────────────────
+BRAND_PRIMARY = "#2563EB"  # Blue — primary actions, links
+BRAND_DARK = "#1D4ED8"  # Darker blue — hover/pressed
+BRAND_LIGHT = "#3B82F6"  # Lighter blue — gradients
+BRAND_SOFT = "#DBEAFE"  # Soft blue tint — backgrounds
+BRAND_SUCCESS = "#16A34A"  # Green — positive deltas
+BRAND_WARN = "#D97706"  # Amber — warning
+BRAND_ERROR = "#DC2626"  # Red — negative deltas, destructive
+BRAND_INFO = "#2563EB"  # Blue — info (same as brand)
 
 # ── Surface & neutral palette ─────────────────────────────────────────────────
-SURFACE_BASE = "#FAF6F1"  # Main background
-SURFACE_ELEVATED = "#FFF8F0"  # Cards, elevated surfaces
+SURFACE_BASE = "#FFFFFF"  # Main background — pure white
+SURFACE_ELEVATED = "#F8FAFC"  # Cards — very light blue-gray
 SURFACE_RAISED = "#FFFFFF"  # Modals, tooltips
-TEXT_PRIMARY = "#3D2B1F"  # Primary text
-TEXT_SECONDARY = "#6B5B4E"  # Secondary text (captions, hints)
-TEXT_MUTED = "#8C7B6B"  # Muted text
-BORDER_SUBTLE = "#E0D5C8"  # Light borders
-BORDER_MEDIUM = "#C8B9A8"  # Medium borders
+TEXT_PRIMARY = "#0F172A"  # Primary text — near-black slate
+TEXT_SECONDARY = "#475569"  # Secondary text
+TEXT_MUTED = "#94A3B8"  # Muted text
+BORDER_SUBTLE = "#E2E8F0"  # Light borders
+BORDER_MEDIUM = "#CBD5E1"  # Medium borders
 
 # ── Shadow system ─────────────────────────────────────────────────────────────
-SHADOW_SM = "0 1px 3px rgba(60,40,20,0.06)"
-SHADOW_MD = "0 4px 12px rgba(60,40,20,0.08)"
-SHADOW_LG = "0 8px 24px rgba(60,40,20,0.12)"
+SHADOW_SM = "0 1px 2px rgba(0,0,0,0.05)"
+SHADOW_MD = "0 4px 6px rgba(0,0,0,0.07)"
+SHADOW_LG = "0 10px 15px rgba(0,0,0,0.1)"
 
 # ── Border radius system ──────────────────────────────────────────────────────
-RADIUS_SM = "8px"
-RADIUS_MD = "12px"
-RADIUS_LG = "16px"
+RADIUS_SM = "6px"
+RADIUS_MD = "8px"
+RADIUS_LG = "12px"
 
-# ── Chart colorway — 8 distinct, colorblind-friendly hues ────────────────────
+# ── Chart colorway — blue-forward, colorblind-friendly ────────────────────────
 CHART_COLORWAY = [
-    "#C2703E",  # terracotta  (primary)
-    "#0369a1",  # steel blue
-    "#5B7F4A",  # forest green
-    "#7c3aed",  # violet
-    "#0891b2",  # cyan / teal
-    "#C28B2D",  # warm gold
-    "#be185d",  # magenta
+    "#2563EB",  # blue (primary)
+    "#16A34A",  # green
+    "#D97706",  # amber
+    "#7C3AED",  # violet
+    "#0891B2",  # cyan
+    "#DC2626",  # red
+    "#DB2777",  # pink
     "#475569",  # slate
 ]
 
@@ -53,30 +53,34 @@ def apply_plotly_theme() -> None:
     pio.templates["boteco"] = go.layout.Template(
         layout=dict(
             font=dict(
-                family="DM Sans, sans-serif",
+                family="Inter, DM Sans, sans-serif",
                 size=13,
                 color=TEXT_PRIMARY,
             ),
             colorway=CHART_COLORWAY,
             hoverlabel=dict(
-                bgcolor=SURFACE_ELEVATED,
-                font_size=13,
+                bgcolor=SURFACE_RAISED,
+                font_size=12,
                 bordercolor=BORDER_SUBTLE,
-                font_family="DM Sans, sans-serif",
+                font_family="Inter, DM Sans, sans-serif",
             ),
             margin=CHART_MARGIN,
-            title=dict(font=dict(size=16), x=0.02, xanchor="left"),
+            title=dict(font=dict(size=15, color=TEXT_PRIMARY), x=0.02, xanchor="left"),
             plot_bgcolor=SURFACE_BASE,
-            paper_bgcolor=SURFACE_ELEVATED,
+            paper_bgcolor=SURFACE_BASE,
             xaxis=dict(
                 gridcolor=BORDER_SUBTLE,
-                gridwidth=0.5,
+                gridwidth=1,
                 zerolinecolor=BORDER_MEDIUM,
+                title_font=dict(size=12, color=TEXT_SECONDARY),
+                tickfont=dict(size=11, color=TEXT_MUTED),
             ),
             yaxis=dict(
                 gridcolor=BORDER_SUBTLE,
-                gridwidth=0.5,
+                gridwidth=1,
                 zerolinecolor=BORDER_MEDIUM,
+                title_font=dict(size=12, color=TEXT_SECONDARY),
+                tickfont=dict(size=11, color=TEXT_MUTED),
             ),
         )
     )
