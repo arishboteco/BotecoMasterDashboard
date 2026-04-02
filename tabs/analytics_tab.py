@@ -133,8 +133,7 @@ def render(ctx: TabContext) -> None:
                 if prior is None or prior == 0:
                     return None
                 g = utils.calculate_growth(current, prior)
-                sign = "+" if g["change"] >= 0 else ""
-                return f"{sign}{utils.format_currency(g['change'])} ({sign}{utils.format_percent(g['percentage'])})"
+                return utils.format_delta(current, prior)
 
             with kpi_cols[0]:
                 st.metric(
@@ -281,6 +280,14 @@ def render(ctx: TabContext) -> None:
             y="Mode",
             orientation="h",
             title="Payment mode split (₹)",
+            color="Mode",
+            color_discrete_map={
+                "Cash": ui_theme.BRAND_PRIMARY,
+                "GPay": "#0369a1",
+                "Zomato": "#be185d",
+                "Card": "#7c3aed",
+                "Other": "#475569",
+            },
         )
         fig_pay.update_layout(
             xaxis_title="Amount (₹)",
@@ -327,6 +334,8 @@ def render(ctx: TabContext) -> None:
                     values="amount",
                     title="Category revenue mix",
                     hole=0.4,
+                    color="category",
+                    color_discrete_sequence=ui_theme.CHART_COLORWAY,
                 )
                 fig_cat_pie.update_layout(height=ui_theme.CHART_HEIGHT)
                 st.plotly_chart(fig_cat_pie, use_container_width=True)
@@ -531,7 +540,11 @@ def render(ctx: TabContext) -> None:
                 df["net_total"] / daily_target * 100 if daily_target > 0 else 0
             )
             colors = [
-                ui_theme.BRAND_SUCCESS if x >= 100 else ui_theme.BRAND_WARN if x >= 80 else ui_theme.BRAND_ERROR
+                ui_theme.BRAND_SUCCESS
+                if x >= 100
+                else ui_theme.BRAND_WARN
+                if x >= 80
+                else ui_theme.BRAND_ERROR
                 for x in df["achievement"]
             ]
             fig_target.add_trace(

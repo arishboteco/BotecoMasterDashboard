@@ -70,6 +70,10 @@ def render(ctx: TabContext) -> None:
 
         def _col_head(nm: str, max_len: int = 20) -> str:
             nm = str(nm).strip()
+            for prefix in ("Boteco - ", "Boteco-", "Boteco "):
+                if nm.lower().startswith(prefix.lower()):
+                    nm = nm[len(prefix) :].strip()
+                    break
             return nm if len(nm) <= max_len else nm[: max_len - 1] + "…"
 
         with st.container(border=True):

@@ -147,12 +147,29 @@ st.markdown(
 
     /* ── Expander labels — prevent arrow/text overlap ─────────── */
     [data-testid="stExpander"] summary {
-        gap: 0.5rem;
+        gap: 0.65rem;
         align-items: center;
+        padding-left: 0.25rem;
     }
     [data-testid="stExpander"] summary p {
         margin: 0;
         overflow: visible;
+        line-height: 1.5;
+    }
+    [data-testid="stExpander"] svg {
+        flex-shrink: 0;
+        margin-right: 0.25rem;
+    }
+
+    /* ── Destructive buttons — red outline style ─────────────── */
+    .stButton > button.destructive {
+        background-color: transparent !important;
+        color: var(--error-text) !important;
+        border: 1.5px solid var(--error-border) !important;
+    }
+    .stButton > button.destructive:hover {
+        background-color: var(--error-bg) !important;
+        border-color: var(--error) !important;
     }
 
     /* ── Consistent dataframe table headers ───────────────────── */

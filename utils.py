@@ -20,6 +20,35 @@ def format_percent(value: Optional[float]) -> str:
     return f"{float(value or 0):.0f}%"
 
 
+def format_delta(
+    current: float, prior: float, is_currency: bool = True, is_percent: bool = False
+) -> Optional[str]:
+    """Format a delta string with explicit ▲/▼ symbols for accessibility.
+
+    Returns None if prior is None or zero (no comparison possible).
+    Always includes sign at start of string so Streamlit parses coloring correctly.
+    """
+    if prior is None or prior == 0:
+        return None
+    g = calculate_growth(current, prior)
+    change = g["change"]
+    pct = g["percentage"]
+    if change >= 0:
+        arrow = "▲"
+        sign = "+"
+    else:
+        arrow = "▼"
+        sign = "-"
+        change = abs(change)
+        pct = abs(pct)
+    if is_currency:
+        return f"{arrow} {sign}{format_currency(change)} ({sign}{format_percent(pct)})"
+    elif is_percent:
+        return f"{arrow} {sign}{format_percent(change)}pp"
+    else:
+        return f"{arrow} {sign}{change:,.0f} ({sign}{format_percent(pct)})"
+
+
 def format_date(date_str: Optional[str], output_format: Optional[str] = None) -> str:
     """Format date string."""
     if not date_str:
