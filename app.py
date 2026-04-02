@@ -31,28 +31,7 @@ st.set_page_config(
 st.markdown(
     """
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..24,400,0,0&display=swap');
-
-    .material-symbols-outlined {
-        font-variation-settings:
-        'FILL' 0,
-        'wght' 400,
-        'GRAD' 0,
-        'opsz' 24;
-        font-size: 20px;
-        display: inline-block;
-        line-height: 1;
-    }
-
-    /* Protect Streamlit native UI from Material Symbols font */
-    [data-testid="stExpander"] button,
-    [data-testid="stExpander"] summary,
-    [data-testid="stExpander"] svg {
-        font-family: var(--font-body) !important;
-    }
-    [data-testid="stExpander"] button[data-testid="stExpanderToggle"] {
-        font-family: inherit !important;
-    }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
     :root {
         --brand: #2563EB;
