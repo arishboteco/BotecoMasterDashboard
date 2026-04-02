@@ -1,38 +1,25 @@
 from typing import List
 from datetime import datetime, timedelta
-import streamlit.components.v1 as components
 
 import streamlit as st
 import database
+from streamlit_cookies_controller import CookieController
 
 _COOKIE_NAME = "boteco_session"
 _COOKIE_EXPIRY_DAYS = 30
 
 
-def _set_cookie(name: str, value: str, max_age_days: int = 30):
-    """Set a browser cookie via injected JS."""
-    max_age = max_age_days * 24 * 3600
-    components.html(
-        f"""<script>
-        document.cookie = "{name}={value}; path=/; max-age={max_age}; SameSite=Lax";
-        </script>""",
-        height=0,
-    )
+def _get_cookie_manager() -> CookieController:
+    """Return the CookieController for the current render.
 
-
-def _delete_cookie(name: str):
-    """Delete a browser cookie via injected JS."""
-    components.html(
-        f"""<script>
-        document.cookie = "{name}=; path=/; max-age=0; SameSite=Lax";
-        </script>""",
-        height=0,
-    )
-
-
-def _read_cookie(name: str):
-    """Read a cookie from the HTTP request headers (synchronous)."""
-    return st.context.cookies.get(name)
+    A fresh instance is created once per render inside init_auth_state() and
+    stored in st.session_state so that subsequent calls within the same render
+    reuse it (avoiding duplicate-component-key errors).
+    """
+    if "_cm" not in st.session_state:
+        # Fallback: shouldn't normally be needed if init_auth_state() runs first
+        st.session_state._cm = CookieController(key="boteco_cookie_manager")
+    return st.session_state._cm
 
 
 def _apply_user_to_session(user: dict, token: str) -> None:
@@ -50,7 +37,13 @@ def _apply_user_to_session(user: dict, token: str) -> None:
 
 
 def init_auth_state():
-    """Initialize authentication state, restoring from cookie if available."""
+    """Initialize authentication state, restoring from cookie when possible.
+
+    Called once per render from app.py.  Creates a fresh CookieController at
+    the top of every render so its __cookies dict is always current (avoids
+    the stale-cached-instance bug).
+    """
+    # Set defaults
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
     if "username" not in st.session_state:
@@ -66,17 +59,25 @@ def init_auth_state():
     if "session_token" not in st.session_state:
         st.session_state.session_token = None
 
-    if st.session_state.authenticated:
-        return  # already restored this server session
+    # Always create a fresh CookieController at the START of each render so
+    # that its internal __cookies dict reflects the latest component state.
+    # Storing it in session_state lets other functions reuse it within this
+    # render without creating a duplicate component call.
+    st.session_state._cm = CookieController(key="boteco_cookie_manager")
 
-    # Read cookie synchronously from HTTP request headers
-    token = _read_cookie(_COOKIE_NAME)
+    if st.session_state.authenticated:
+        return  # already logged in this server-side session
+
+    # Attempt cookie-based session restoration.
+    # Returns None on the very first render (JS not yet run); the component
+    # automatically triggers a rerun once it has sent the cookie data.
+    token = st.session_state._cm.get(_COOKIE_NAME)
     if token:
         user = database.validate_session_token(token)
         if user:
             _apply_user_to_session(user, token)
         else:
-            _delete_cookie(_COOKIE_NAME)  # stale/expired cookie
+            st.session_state._cm.remove(_COOKIE_NAME)  # stale / expired
 
 
 def show_login_form():
@@ -157,7 +158,11 @@ def show_login_form():
                     token = database.create_user_session(
                         user["id"], days=_COOKIE_EXPIRY_DAYS
                     )
-                    _set_cookie(_COOKIE_NAME, token, _COOKIE_EXPIRY_DAYS)
+                    _get_cookie_manager().set(
+                        _COOKIE_NAME,
+                        token,
+                        expires=datetime.now() + timedelta(days=_COOKIE_EXPIRY_DAYS),
+                    )
                     _apply_user_to_session(user, token)
                     st.rerun()
                 else:
@@ -258,7 +263,7 @@ def logout():
     token = st.session_state.get("session_token")
     if token:
         database.delete_session_token(token)
-    _delete_cookie(_COOKIE_NAME)
+    _get_cookie_manager().remove(_COOKIE_NAME)
 
     st.session_state.authenticated = False
     st.session_state.username = None

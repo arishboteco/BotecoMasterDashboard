@@ -1,5 +1,5 @@
 # Streamlit and core dependencies
-streamlit>=1.37.0
+streamlit>=1.33.0
 streamlit-authenticator>=0.2.0
 
 # Database
@@ -20,3 +20,7 @@ Pillow>=10.0.0
 
 # Security
 bcrypt>=4.0.0
+
+# Persistent sessions
+streamlit-cookies-controller>=0.0.4
+
