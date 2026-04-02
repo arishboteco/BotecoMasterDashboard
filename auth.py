@@ -1,19 +1,38 @@
 from typing import List
 from datetime import datetime, timedelta
+import streamlit.components.v1 as components
 
 import streamlit as st
 import database
-from streamlit_cookies_controller import CookieController
 
 _COOKIE_NAME = "boteco_session"
 _COOKIE_EXPIRY_DAYS = 30
 
 
-def _get_cookie_manager():
-    """Return a CookieController instance, stored in session_state to avoid duplicate keys."""
-    if "_cookie_manager" not in st.session_state:
-        st.session_state._cookie_manager = CookieController(key="boteco_cookie_manager")
-    return st.session_state._cookie_manager
+def _set_cookie(name: str, value: str, max_age_days: int = 30):
+    """Set a browser cookie via injected JS."""
+    max_age = max_age_days * 24 * 3600
+    components.html(
+        f"""<script>
+        document.cookie = "{name}={value}; path=/; max-age={max_age}; SameSite=Lax";
+        </script>""",
+        height=0,
+    )
+
+
+def _delete_cookie(name: str):
+    """Delete a browser cookie via injected JS."""
+    components.html(
+        f"""<script>
+        document.cookie = "{name}=; path=/; max-age=0; SameSite=Lax";
+        </script>""",
+        height=0,
+    )
+
+
+def _read_cookie(name: str):
+    """Read a cookie from the HTTP request headers (synchronous)."""
+    return st.context.cookies.get(name)
 
 
 def _apply_user_to_session(user: dict, token: str) -> None:
@@ -50,14 +69,14 @@ def init_auth_state():
     if st.session_state.authenticated:
         return  # already restored this server session
 
-    cookie_mgr = _get_cookie_manager()
-    token = cookie_mgr.get(_COOKIE_NAME)  # None on first render (JS not yet run)
+    # Read cookie synchronously from HTTP request headers
+    token = _read_cookie(_COOKIE_NAME)
     if token:
         user = database.validate_session_token(token)
         if user:
             _apply_user_to_session(user, token)
         else:
-            cookie_mgr.remove(_COOKIE_NAME)  # stale/expired cookie
+            _delete_cookie(_COOKIE_NAME)  # stale/expired cookie
 
 
 def show_login_form():
@@ -138,12 +157,7 @@ def show_login_form():
                     token = database.create_user_session(
                         user["id"], days=_COOKIE_EXPIRY_DAYS
                     )
-                    cookie_mgr = _get_cookie_manager()
-                    cookie_mgr.set(
-                        _COOKIE_NAME,
-                        token,
-                        expires=datetime.now() + timedelta(days=_COOKIE_EXPIRY_DAYS),
-                    )
+                    _set_cookie(_COOKIE_NAME, token, _COOKIE_EXPIRY_DAYS)
                     _apply_user_to_session(user, token)
                     st.rerun()
                 else:
@@ -244,7 +258,7 @@ def logout():
     token = st.session_state.get("session_token")
     if token:
         database.delete_session_token(token)
-    _get_cookie_manager().remove(_COOKIE_NAME)
+    _delete_cookie(_COOKIE_NAME)
 
     st.session_state.authenticated = False
     st.session_state.username = None
