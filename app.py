@@ -37,119 +37,247 @@ st.markdown(
     :root {
         --brand: #C2703E;
         --brand-dark: #A45A2E;
+        --brand-light: #D4895A;
         --brand-soft: #F5EAE0;
         --surface: #FAF6F1;
         --surface-elevated: #FFF8F0;
+        --surface-raised: #FFFFFF;
         --text: #3D2B1F;
+        --text-secondary: #6B5B4E;
         --text-muted: #8C7B6B;
         --border-subtle: #E0D5C8;
+        --border-medium: #C8B9A8;
         --success-bg: #EDF2E8;
         --success-text: #3D5A2E;
         --success-border: #D4DFC9;
         --error-bg: #F5E8E6;
         --error-text: #7A2E22;
         --error-border: #E8CFCB;
+        --info-bg: #EFF6FF;
+        --info-text: #1E40AF;
+        --info-border: #BFDBFE;
         --font-display: 'DM Serif Display', serif;
         --font-body: 'DM Sans', sans-serif;
+        --shadow-sm: 0 1px 3px rgba(60,40,20,0.06);
+        --shadow-md: 0 4px 12px rgba(60,40,20,0.08);
+        --shadow-lg: 0 8px 24px rgba(60,40,20,0.12);
+        --radius-sm: 8px;
+        --radius-md: 12px;
+        --radius-lg: 16px;
     }
 
-    /* ── Typography ─────────────────────────────────────────── */
+    /* ── Base typography ────────────────────────────────────── */
     html, body, [class*="st-"], .stMarkdown, p, li, span, label,
     [data-testid="stText"], input, textarea, select {
         font-family: var(--font-body) !important;
     }
-    h1, h2, h3, .main-header,
+    h1, h2, h3, h4, h5, h6,
+    .main-header,
     [data-testid="stHeadingWithActionElements"] {
         font-family: var(--font-display) !important;
         color: var(--text) !important;
         letter-spacing: -0.01em;
+        margin-bottom: 0.5em !important;
     }
+    h1 { font-size: 2rem !important; }
+    h2 { font-size: 1.5rem !important; }
+    h3 { font-size: 1.25rem !important; }
+    h4 { font-size: 1.1rem !important; }
     button[data-baseweb="tab"] {
         font-family: var(--font-display) !important;
         font-size: 1.05rem !important;
         letter-spacing: 0.01em;
     }
+    .stCaption, [data-testid="stCaption"], caption {
+        color: var(--text-muted) !important;
+        font-size: 0.85rem !important;
+    }
 
-    /* ── Components ─────────────────────────────────────────── */
+    /* ── Header ─────────────────────────────────────────────── */
     .main-header {
         font-size: 2rem;
         font-weight: bold;
         color: var(--brand) !important;
+        position: relative;
+        padding-bottom: 0.5rem;
     }
-    .stCaption, [data-testid="stCaption"] {
-        color: var(--text-muted);
+    .main-header::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 60px;
+        height: 3px;
+        background: var(--brand);
+        border-radius: 2px;
     }
 
-    /* ── KPI metric values — high-contrast dark text ─────────── */
+    /* ── Button system ──────────────────────────────────────── */
+    .stButton > button {
+        font-family: var(--font-body) !important;
+        border-radius: var(--radius-sm) !important;
+        font-weight: 500 !important;
+        transition: all 0.15s ease-in-out !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        min-height: 38px !important;
+        line-height: 1.4 !important;
+    }
+    .stButton > button[kind="primary"] {
+        background-color: var(--brand) !important;
+        color: var(--surface-elevated) !important;
+        border: none !important;
+        box-shadow: var(--shadow-sm) !important;
+    }
+    .stButton > button[kind="primary"]:hover {
+        background-color: var(--brand-dark) !important;
+        box-shadow: var(--shadow-md) !important;
+        transform: translateY(-1px) !important;
+    }
+    .stButton > button[kind="secondary"] {
+        background-color: var(--surface-elevated) !important;
+        color: var(--text) !important;
+        border: 1px solid var(--border-subtle) !important;
+    }
+    .stButton > button[kind="secondary"]:hover {
+        background-color: var(--brand-soft) !important;
+        border-color: var(--brand) !important;
+        color: var(--brand-dark) !important;
+    }
+    .stButton > button.destructive {
+        background-color: transparent !important;
+        color: var(--error-text) !important;
+        border: 1.5px solid var(--error-border) !important;
+    }
+    .stButton > button.destructive:hover {
+        background-color: var(--error-bg) !important;
+        border-color: var(--error-text) !important;
+    }
+
+    /* ── KPI metric values ──────────────────────────────────── */
     div[data-testid="stMetricValue"] {
-        color: var(--text);
-        font-weight: 700;
+        color: var(--text) !important;
+        font-weight: 700 !important;
+        word-break: break-word !important;
+        overflow-wrap: anywhere !important;
+    }
+    div[data-testid="stMetricLabel"] {
+        color: var(--text-secondary) !important;
+        font-weight: 500 !important;
+    }
+    div[data-testid="stMetricDelta"] {
+        font-weight: 600 !important;
     }
 
-    /* ── Metric cards inside bordered containers ──────────────── */
+    /* ── Metric cards & containers ──────────────────────────── */
     .metric-card {
-        background: var(--surface);
+        background: var(--surface-elevated);
         padding: 1rem;
-        border-radius: 14px;
+        border-radius: var(--radius-md);
         border-left: 4px solid var(--brand);
+        box-shadow: var(--shadow-sm);
+        transition: box-shadow 0.15s ease, transform 0.15s ease;
+    }
+    .metric-card:hover {
+        box-shadow: var(--shadow-md);
+        transform: translateY(-2px);
     }
     [data-testid="stVerticalBlockBorderWrapper"] {
         background: var(--surface) !important;
         border-color: var(--border-subtle) !important;
-        border-radius: 14px !important;
+        border-radius: var(--radius-lg) !important;
+        box-shadow: var(--shadow-sm) !important;
     }
     [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMetric"] {
         background: var(--surface-elevated);
-        border-radius: 10px;
-        box-shadow: 0 1px 4px rgba(60,40,20,0.06);
+        border-radius: var(--radius-sm);
+        box-shadow: var(--shadow-sm);
         border: 1px solid var(--border-subtle);
+        padding: 0.75rem;
+        transition: box-shadow 0.15s ease, transform 0.15s ease;
+    }
+    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMetric"]:hover {
+        box-shadow: var(--shadow-md);
+        transform: translateY(-1px);
     }
 
-    /* ── Alert / status boxes ─────────────────────────────────── */
+    /* ── Alert / status boxes ───────────────────────────────── */
     .success-box {
         background: var(--success-bg);
         color: var(--success-text);
         padding: 1rem;
-        border-radius: 8px;
+        border-radius: var(--radius-sm);
         border: 1px solid var(--success-border);
     }
     .error-box {
         background: var(--error-bg);
         color: var(--error-text);
         padding: 1rem;
-        border-radius: 8px;
+        border-radius: var(--radius-sm);
         border: 1px solid var(--error-border);
     }
+    .info-box {
+        background: var(--info-bg);
+        color: var(--info-text);
+        padding: 1rem;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--info-border);
+    }
 
-    /* ── Upload zone ──────────────────────────────────────────── */
+    /* ── Upload zone ────────────────────────────────────────── */
     .upload-zone {
         border: 2px dashed var(--brand);
-        border-radius: 14px;
+        border-radius: var(--radius-lg);
         padding: 1rem 1.25rem;
         text-align: left;
         background: var(--brand-soft);
         margin-bottom: 0.75rem;
+        transition: border-color 0.15s ease, background-color 0.15s ease;
+    }
+    .upload-zone:hover {
+        border-color: var(--brand-dark);
+        background: #F0DDD0;
     }
     .empty-upload-hint {
         color: var(--text-muted);
         font-size: 0.95rem;
         padding: 0.75rem 1rem;
         background: var(--surface);
-        border-radius: 10px;
+        border-radius: var(--radius-sm);
         border: 1px dashed var(--border-subtle);
         margin-top: 0.5rem;
     }
 
-    /* ── Sidebar ──────────────────────────────────────────────── */
-    [data-testid="stSidebar"] hr {
-        margin: 0.75rem 0;
+    /* ── Data tables ────────────────────────────────────────── */
+    [data-testid="stDataFrame"] th {
+        font-weight: 600 !important;
+        color: var(--text) !important;
+        background-color: var(--surface) !important;
+        border-bottom: 2px solid var(--border-subtle) !important;
+    }
+    [data-testid="stDataFrame"] {
+        border-radius: var(--radius-sm) !important;
+        overflow: hidden !important;
+        border: 1px solid var(--border-subtle) !important;
+    }
+    [data-testid="stDataFrame"] tr:nth-child(even) {
+        background-color: var(--brand-soft) !important;
+    }
+    [data-testid="stDataFrame"] tr:hover {
+        background-color: var(--surface) !important;
     }
 
-    /* ── Expander labels — prevent arrow/text overlap ─────────── */
+    /* ── Expander labels ────────────────────────────────────── */
     [data-testid="stExpander"] summary {
         gap: 0.65rem;
         align-items: center;
         padding-left: 0.25rem;
+        border-radius: var(--radius-sm);
+        transition: background-color 0.15s ease;
+    }
+    [data-testid="stExpander"] summary:hover {
+        background-color: var(--brand-soft);
     }
     [data-testid="stExpander"] summary p {
         margin: 0;
@@ -159,38 +287,134 @@ st.markdown(
     [data-testid="stExpander"] svg {
         flex-shrink: 0;
         margin-right: 0.25rem;
+        transition: transform 0.2s ease;
+    }
+    [data-testid="stExpander"][open] summary svg {
+        transform: rotate(90deg);
     }
 
-    /* ── Destructive buttons — red outline style ─────────────── */
-    .stButton > button.destructive {
-        background-color: transparent !important;
-        color: var(--error-text) !important;
-        border: 1.5px solid var(--error-border) !important;
+    /* ── Sidebar ────────────────────────────────────────────── */
+    [data-testid="stSidebar"] hr {
+        margin: 0.75rem 0;
+        border-color: var(--border-subtle);
     }
-    .stButton > button.destructive:hover {
-        background-color: var(--error-bg) !important;
-        border-color: var(--error) !important;
-    }
-
-    /* ── Consistent dataframe table headers ───────────────────── */
-    [data-testid="stDataFrame"] th {
-        font-weight: 600 !important;
-        color: var(--text) !important;
+    [data-testid="stSidebar"] {
         background-color: var(--surface) !important;
-        border-bottom: 2px solid var(--border-subtle) !important;
     }
 
-    /* ── Buttons ────────────────────────────────────────────── */
-    .stButton > button {
-        font-family: var(--font-body) !important;
-        border-radius: 10px !important;
+    /* ── Date navigation ────────────────────────────────────── */
+    .date-nav-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+        padding: 0.75rem 0;
     }
-    .stButton > button[kind="primary"] {
-        background-color: var(--brand) !important;
-        color: #FFF8F0 !important;
+    .date-nav-btn {
+        min-width: 90px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
     }
-    .stButton > button[kind="primary"]:hover {
-        background-color: var(--brand-dark) !important;
+    .date-display {
+        font-family: var(--font-display), serif;
+        font-size: 1.25rem;
+        color: var(--text);
+        text-align: center;
+        min-width: 200px;
+        padding: 0.5rem 1rem;
+        background: var(--surface-elevated);
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border-subtle);
+        box-shadow: var(--shadow-sm);
+    }
+
+    /* ── WhatsApp share buttons ─────────────────────────────── */
+    .whatsapp-btn-container {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-height: 48px;
+    }
+    .whatsapp-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.5rem 1rem;
+        border-radius: var(--radius-sm);
+        font-weight: 600;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        line-height: 1.3;
+        min-height: 40px;
+    }
+    .whatsapp-btn-primary {
+        background: var(--brand);
+        color: var(--surface-elevated);
+        border: none;
+        box-shadow: var(--shadow-sm);
+    }
+    .whatsapp-btn-primary:hover {
+        background: var(--brand-dark);
+        box-shadow: var(--shadow-md);
+    }
+    .whatsapp-btn-secondary {
+        background: var(--surface-elevated);
+        color: var(--text);
+        border: 1px solid var(--border-subtle);
+    }
+    .whatsapp-btn-secondary:hover {
+        background: var(--brand-soft);
+        border-color: var(--brand);
+        color: var(--brand-dark);
+    }
+    .whatsapp-icon {
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+        vertical-align: middle;
+    }
+    .whatsapp-msg {
+        font-size: 0.8rem;
+        color: var(--success-text);
+        margin-left: 0.5rem;
+    }
+
+    /* ── Section dividers ───────────────────────────────────── */
+    .section-divider {
+        border: none;
+        height: 1px;
+        background: linear-gradient(to right, transparent, var(--border-subtle), transparent);
+        margin: 1.5rem 0;
+    }
+
+    /* ── Smooth transitions ─────────────────────────────────── */
+    [data-testid="stVerticalBlock"],
+    [data-testid="stHorizontalBlock"],
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        transition: all 0.15s ease;
+    }
+
+    /* ── Scrollbar styling ──────────────────────────────────── */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+        background: var(--surface);
+        border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: var(--border-medium);
+        border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: var(--text-muted);
     }
 </style>
 """,
