@@ -1,12 +1,36 @@
 from typing import List
+from datetime import datetime, timedelta
 
 import streamlit as st
 import database
-from datetime import datetime
+from streamlit_cookies_controller import CookieController
+
+_COOKIE_NAME = "boteco_session"
+_COOKIE_EXPIRY_DAYS = 30
+
+
+@st.cache_resource
+def _get_cookie_manager():
+    """Return a single CookieController instance shared across reruns."""
+    return CookieController(key="boteco_cookie_manager")
+
+
+def _apply_user_to_session(user: dict, token: str) -> None:
+    """Populate session state from a verified user dict and token."""
+    st.session_state.authenticated = True
+    st.session_state.username = user["username"]
+    st.session_state.user_role = user["role"]
+    st.session_state.location_id = user.get("location_id") or 1
+    st.session_state.location_name = user.get("location_name") or "Boteco"
+    st.session_state.session_token = token
+    if user.get("role") == "admin":
+        st.session_state.view_scope = "all"
+    else:
+        st.session_state.view_scope = str(st.session_state.location_id)
 
 
 def init_auth_state():
-    """Initialize authentication state variables."""
+    """Initialize authentication state, restoring from cookie if available."""
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
     if "username" not in st.session_state:
@@ -19,6 +43,20 @@ def init_auth_state():
         st.session_state.location_name = None
     if "view_scope" not in st.session_state:
         st.session_state.view_scope = None
+    if "session_token" not in st.session_state:
+        st.session_state.session_token = None
+
+    if st.session_state.authenticated:
+        return  # already restored this server session
+
+    cookie_mgr = _get_cookie_manager()
+    token = cookie_mgr.get(_COOKIE_NAME)  # None on first render (JS not yet run)
+    if token:
+        user = database.validate_session_token(token)
+        if user:
+            _apply_user_to_session(user, token)
+        else:
+            cookie_mgr.remove(_COOKIE_NAME)  # stale/expired cookie
 
 
 def show_login_form():
@@ -96,17 +134,16 @@ def show_login_form():
             if username and password:
                 user = database.verify_user(username, password)
                 if user:
-                    st.session_state.authenticated = True
-                    st.session_state.username = user["username"]
-                    st.session_state.user_role = user["role"]
-                    st.session_state.location_id = user.get("location_id") or 1
-                    st.session_state.location_name = (
-                        user.get("location_name") or "Boteco"
+                    token = database.create_user_session(
+                        user["id"], days=_COOKIE_EXPIRY_DAYS
                     )
-                    if user.get("role") == "admin":
-                        st.session_state.view_scope = "all"
-                    else:
-                        st.session_state.view_scope = str(st.session_state.location_id)
+                    cookie_mgr = _get_cookie_manager()
+                    cookie_mgr.set(
+                        _COOKIE_NAME,
+                        token,
+                        expires=_COOKIE_EXPIRY_DAYS * 24 * 3600,
+                    )
+                    _apply_user_to_session(user, token)
                     st.rerun()
                 else:
                     st.error("Invalid username or password")
@@ -202,13 +239,19 @@ def check_authentication():
 
 
 def logout():
-    """Log out user."""
+    """Log out user: delete server-side session, clear cookie, reset state."""
+    token = st.session_state.get("session_token")
+    if token:
+        database.delete_session_token(token)
+    _get_cookie_manager().remove(_COOKIE_NAME)
+
     st.session_state.authenticated = False
     st.session_state.username = None
     st.session_state.user_role = None
     st.session_state.location_id = None
     st.session_state.location_name = None
     st.session_state.view_scope = None
+    st.session_state.session_token = None
     st.rerun()
 
 

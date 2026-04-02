@@ -610,6 +610,9 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# Mount cookie component on every render (must precede conditional branches)
+auth._get_cookie_manager()
+
 # Initialize authentication
 auth.init_auth_state()
 
