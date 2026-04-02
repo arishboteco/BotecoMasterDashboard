@@ -44,6 +44,16 @@ st.markdown(
         line-height: 1;
     }
 
+    /* Protect Streamlit native UI from Material Symbols font */
+    [data-testid="stExpander"] button,
+    [data-testid="stExpander"] summary,
+    [data-testid="stExpander"] svg {
+        font-family: var(--font-body) !important;
+    }
+    [data-testid="stExpander"] button[data-testid="stExpanderToggle"] {
+        font-family: inherit !important;
+    }
+
     :root {
         --brand: #2563EB;
         --brand-dark: #1D4ED8;
