@@ -11,7 +11,7 @@ import ui_theme
 from typing import List, Tuple, Optional
 
 WHATSAPP_ICON_SVG = (
-    '<svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
+    '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
     '<path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.151'
     "-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475"
     "-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52"
@@ -169,7 +169,7 @@ def render_image_action_row(
 </style>
 <div class="action-btn-row" id="{uid}_row">
   <button class="action-btn" id="{uid}_copy" title="Copy to clipboard" type="button">&#xe14d;</button>
-  <button class="action-btn" id="{uid}_wa" title="Share via WhatsApp" type="button">&#xe0c9;</button>
+  <button class="action-btn" id="{uid}_wa" title="Share via WhatsApp" type="button">{WHATSAPP_ICON_SVG}</button>
   <button class="action-btn" id="{uid}_dl" title="Download" type="button">&#xe2c4;</button>
 </div>
 <span id="{uid}_msg" style="font-size:0.75rem;margin-left:0.5rem;color:#166534;"></span>
