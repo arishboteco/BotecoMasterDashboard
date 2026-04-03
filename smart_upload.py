@@ -24,6 +24,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
+import customer_report_parser
+import database
 import dynamic_report_parser
 import file_detector
 import pos_parser
@@ -392,14 +394,28 @@ def process_smart_upload(
         else:
             classified[kind].append((fname, content))
 
-    # Step 2 — stash customer report bytes for covers overlay (handled in app.py)
+    # Step 2 — parse customer report for covers overlay
     customer_files = classified.pop("customer_report", [])
+    cr_lookup: Dict[Tuple[int, str], Dict[str, Any]] = {}
     if customer_files:
         customer_content = customer_files[0][1]
         if len(customer_files) > 1:
             global_notes.append(
                 f"{len(customer_files)} customer report(s) uploaded; using the first one for covers."
             )
+        try:
+            locations = database.get_all_locations()
+            cr_lookup, cr_notes = customer_report_parser.build_covers_lookup(
+                customer_content, locations
+            )
+            for n in cr_notes:
+                global_notes.append(n)
+            if cr_lookup:
+                global_notes.append(
+                    f"Customer report: found covers for {len(cr_lookup)} date(s)."
+                )
+        except Exception as ex:
+            global_notes.append(f"Error parsing customer report: {ex}")
 
     # Step 3 — collect timing report services (date may be None; matched later)
     timing_services: List[Dict[str, Any]] = []
@@ -590,6 +606,12 @@ def process_smart_upload(
         if not merged.get("gross_total") and merged.get("net_total"):
             merged["gross_total"] = float(merged["net_total"])
 
+        # Apply customer report covers overlay (supersedes dynamic report)
+        if cr_lookup:
+            merged = customer_report_parser.apply_covers_overlay(
+                merged, location_id, cr_lookup
+            )
+
         ok, verr = pos_parser.validate_data(merged)
         day_results.append(
             DayResult(date=d, merged=merged, errors=(verr if not ok else []))
@@ -636,7 +658,7 @@ def save_smart_upload_results(
 
         merged = dict(day.merged)
 
-        # Covers are zeroed here — app.py applies the customer report overlay separately
+        # Covers already applied in process_smart_upload from customer report
         merged.setdefault("covers", 0)
         merged.setdefault("lunch_covers", None)
         merged.setdefault("dinner_covers", None)

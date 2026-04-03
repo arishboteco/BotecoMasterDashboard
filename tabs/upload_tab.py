@@ -28,12 +28,12 @@ def _prepare_merged_for_save(
     location_id: int,
     cr_lookup: Dict[Any, Any],
 ) -> Dict[str, Any]:
-    """Keep parser covers by default; override with customer report when available."""
+    """Covers already applied by smart_upload; just ensure defaults."""
     out = dict(merged)
     out.setdefault("covers", 0)
     out.setdefault("lunch_covers", None)
     out.setdefault("dinner_covers", None)
-    return customer_report_parser.apply_covers_overlay(out, location_id, cr_lookup)
+    return out
 
 
 def render(ctx: TabContext) -> None:
