@@ -1000,7 +1000,7 @@ def _section_footfall_metrics(
         cur_y -= row_h * 0.3
         # Section label above table
         _label(ax, 0.012, cur_y, "Monthly", size=10.0, color=C_SLATE, weight="bold")
-        cur_y -= row_h * 0.9
+        cur_y -= row_h * 1.5
 
         # Header - compact column widths
         col_w = [0.16, 0.144, 0.144, 0.144, 0.144, 0.144]
@@ -1071,7 +1071,7 @@ def _section_footfall_metrics(
         cur_y -= row_h * 0.3
         # Section label above table
         _label(ax, 0.012, cur_y, "Weekly", size=10.0, color=C_SLATE, weight="bold")
-        cur_y -= row_h * 0.9
+        cur_y -= row_h * 1.5
 
         # Header - compact column widths
         col_w = [0.16, 0.144, 0.144, 0.144, 0.144, 0.144]
@@ -1089,7 +1089,7 @@ def _section_footfall_metrics(
         # Sort by week descending (most recent first)
         sorted_weekly = sorted(weekly, key=lambda x: x.get("week", ""), reverse=True)
 
-        for idx, row in enumerate(sorted_weekly[:5]):  # Show last 5 weeks
+        for idx, row in enumerate(sorted_weekly[:4]):  # Show last 4 weeks
             week = str(row.get("week", ""))
             covers = int(row.get("covers") or 0)
             total_days = int(row.get("total_days") or 0)
