@@ -14,7 +14,6 @@ import database
 import utils
 from auth import is_admin
 from tabs import TabContext
-from components import kpi_row, KpiMetric, data_table, confirm_dialog, section, divider
 
 
 def render(ctx: TabContext) -> None:
@@ -28,11 +27,11 @@ def render(ctx: TabContext) -> None:
         st.markdown("### Your Account")
         ac1, ac2, ac3 = st.columns(3)
         with ac1:
-            st.metric("Username", st.session_state.username)
+            st.markdown(f"**Username:** {st.session_state.username}")
         with ac2:
-            st.metric("Role", st.session_state.user_role.title())
+            st.markdown(f"**Role:** {st.session_state.user_role.title()}")
         with ac3:
-            st.metric("Home location", st.session_state.location_name)
+            st.markdown(f"**Home location:** {st.session_state.location_name}")
 
     if not is_admin():
         st.info(
@@ -266,16 +265,16 @@ def render(ctx: TabContext) -> None:
                             loc["id"]: loc["name"] for loc in (ctx.all_locs or [])
                         }
                         eu_loc_opts[0] = "— none —"
+                        eu_loc_ids = [0] + [loc["id"] for loc in (ctx.all_locs or [])]
                         cur_loc = eu.get("location_id") or 0
+                        try:
+                            cur_idx = eu_loc_ids.index(cur_loc)
+                        except ValueError:
+                            cur_idx = 0
                         eu_loc = st.selectbox(
                             "Home location",
-                            options=[0] + [loc["id"] for loc in (ctx.all_locs or [])],
-                            index=(
-                                [0] + [loc["id"] for loc in (ctx.all_locs or [])]
-                            ).index(cur_loc)
-                            if cur_loc
-                            in ([0] + [loc["id"] for loc in (ctx.all_locs or [])])
-                            else 0,
+                            options=eu_loc_ids,
+                            index=cur_idx,
                             format_func=lambda i: eu_loc_opts.get(i, str(i)),
                         )
                         eu_email = st.text_input("Email", value=eu.get("email") or "")
@@ -334,7 +333,7 @@ def render(ctx: TabContext) -> None:
                             st.error(msg)
                         st.rerun()
                 with duc2:
-                    if st.button("Cancel##user", key="del_user_no"):
+                    if st.button("Cancel", key="del_user_no"):
                         st.session_state.pop("_pending_user_delete", None)
                         st.rerun()
 
@@ -431,12 +430,16 @@ def render(ctx: TabContext) -> None:
             disabled=not wipe_confirm,
             key="wipe_all_btn",
         ):
-            counts = database.wipe_all_data()
+            counts, errors = database.wipe_all_data()
             total = sum(counts.values())
             st.success(f"Wiped **{total:,}** records across {len(counts)} tables:")
             for table, count in counts.items():
                 if count > 0:
                     st.write(f"- `{table}`: {count:,} records deleted")
+            if errors:
+                st.warning("Some tables had errors:")
+                for err in errors:
+                    st.write(f"- {err}")
             st.rerun()
 
     st.markdown("---")

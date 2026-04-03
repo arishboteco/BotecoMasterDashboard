@@ -36,5 +36,5 @@ def empty_state(
     if hint:
         st.caption(hint)
     if action_label and action_callback:
-        if st.button(action_label, key=f"empty_state_action_{message[:20]}"):
+        if st.button(action_label, key=f"empty_state_action_{hash(message)}"):
             action_callback()

@@ -60,20 +60,7 @@ MAX_FILE_SIZE_MB = 10
 DEFAULT_RESTAURANT_FILTER = "Boteco"
 
 # Customer report (covers). Override with env CUSTOMER_REPORT_XLSX_PATH or Streamlit secrets.
-_CUSTOMER_REPORT_DEFAULT = os.path.normpath(
-    os.path.join(
-        os.environ.get("USERPROFILE", ""),
-        "OneDrive",
-        "Boteco Restaurants",
-        "Technology",
-        "Data Exports",
-        "Dashboard test",
-        "customer_report.xlsx",
-    )
-)
-CUSTOMER_REPORT_XLSX_PATH = os.environ.get(
-    "CUSTOMER_REPORT_XLSX_PATH", _CUSTOMER_REPORT_DEFAULT
-)
+CUSTOMER_REPORT_XLSX_PATH = os.environ.get("CUSTOMER_REPORT_XLSX_PATH", "")
 
 
 def resolve_customer_report_path() -> str:

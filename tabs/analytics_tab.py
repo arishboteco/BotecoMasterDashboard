@@ -294,13 +294,13 @@ def render(ctx: TabContext) -> None:
                     "Other": ui_theme.BRAND_DARK,  # #174A82 — dark blue
                 },
             )
-        fig_pay.update_layout(
-            xaxis_title="Amount (₹)",
-            yaxis_title="",
-            height=ui_theme.CHART_HEIGHT,
-            showlegend=False,
-        )
-        st.plotly_chart(fig_pay, use_container_width=True)
+            fig_pay.update_layout(
+                xaxis_title="Amount (₹)",
+                yaxis_title="",
+                height=ui_theme.CHART_HEIGHT,
+                showlegend=False,
+            )
+            st.plotly_chart(fig_pay, use_container_width=True)
 
         # ── Category Sales ───────────────────────────────────────
         st.markdown("### Category Mix")
@@ -610,13 +610,38 @@ def render(ctx: TabContext) -> None:
                 dv["pct_target"] = [
                     utils.format_percent(float(x or 0)) for x in dv["pct_target"]
                 ]
+            elif multi_analytics:
+                dv = pd.DataFrame()
+            else:
+                dv = (
+                    df[
+                        [
+                            "date",
+                            "covers",
+                            "net_total",
+                            "target",
+                            "pct_target",
+                        ]
+                    ]
+                    .sort_values("date")
+                    .copy()
+                )
+                dv["covers"] = [f"{int(x or 0):,}" for x in dv["covers"]]
+                dv["net_total"] = [
+                    utils.format_currency(float(x or 0)) for x in dv["net_total"]
+                ]
+                dv["target"] = [
+                    utils.format_currency(float(x or 0)) for x in dv["target"]
+                ]
+                dv["pct_target"] = [
+                    utils.format_percent(float(x or 0)) for x in dv["pct_target"]
+                ]
             st.dataframe(
                 dv,
                 use_container_width=True,
                 hide_index=True,
                 column_config={
                     "date": st.column_config.TextColumn("Date"),
-                    "Outlet": st.column_config.TextColumn("Outlet"),
                     "covers": st.column_config.TextColumn("Covers"),
                     "net_total": st.column_config.TextColumn("Net Sales (₹)"),
                     "target": st.column_config.TextColumn("Target (₹)"),

@@ -2,7 +2,16 @@
 
 from pathlib import Path
 
-from tabs.upload_tab import _prepare_merged_for_save
+import customer_report_parser
+
+
+def _prepare_merged_for_save(merged, location_id, cr_lookup):
+    """Inline copy of the upload_tab helper to avoid streamlit import in tests."""
+    out = dict(merged)
+    out.setdefault("covers", 0)
+    out.setdefault("lunch_covers", None)
+    out.setdefault("dinner_covers", None)
+    return customer_report_parser.apply_covers_overlay(out, location_id, cr_lookup)
 
 
 class TestPrepareMergedForSave:
