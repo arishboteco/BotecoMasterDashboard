@@ -334,6 +334,10 @@ def parse_item_order_details(
         covers = int(sum(b["inv_covers"].values()))
         order_count = len(b["invoices"])
         tax_sum = b["tax"]
+        # NOTE: 50/50 CGST/SGST split assumes uniform GST rate across all items.
+        # Correct for standard 5% GST (2.5% each). Will be inaccurate if the POS
+        # export includes items with mixed tax rates. Prefer Dynamic Report which
+        # has explicit CGST/SGST columns.
         half = tax_sum / 2.0
         categories = [
             {"category": k, "qty": int(v["qty"]), "amount": v["amount"]}

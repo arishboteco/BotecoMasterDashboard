@@ -3,7 +3,7 @@ import hashlib
 import os
 import secrets
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any, Tuple, Generator
 
 try:
@@ -59,7 +59,7 @@ def _verify_password(password: str, password_hash: str) -> bool:
 
 def get_connection():
     """Get database connection with row factory."""
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -392,69 +392,16 @@ def get_all_locations() -> List[Dict]:
 
 
 def save_daily_summary(location_id: int, data: Dict) -> int:
-    """Save or update daily summary."""
+    """Save or update daily summary using INSERT OR REPLACE for atomic upsert."""
     logger.info(
         "Saving daily summary for location_id=%s date=%s", location_id, data.get("date")
     )
-    conn = get_connection()
-    cursor = conn.cursor()
+    with db_connection() as conn:
+        cursor = conn.cursor()
 
-    cursor.execute(
-        "SELECT id FROM daily_summaries WHERE location_id = ? AND date = ?",
-        (location_id, data["date"]),
-    )
-    existing = cursor.fetchone()
-
-    if existing:
-        summary_id = existing["id"]
-        # Update existing record
         cursor.execute(
             """
-            UPDATE daily_summaries SET
-                covers = ?, turns = ?, gross_total = ?, net_total = ?,
-                cash_sales = ?, card_sales = ?, gpay_sales = ?, zomato_sales = ?,
-                other_sales = ?, service_charge = ?, cgst = ?, sgst = ?,
-                discount = ?, complimentary = ?, apc = ?, target = ?,
-                pct_target = ?, mtd_total_covers = ?, mtd_net_sales = ?,
-                mtd_discount = ?, mtd_avg_daily = ?, mtd_target = ?, mtd_pct_target = ?,
-                lunch_covers = ?, dinner_covers = ?, order_count = ?
-            WHERE id = ?
-        """,
-            (
-                data.get("covers", 0),
-                data.get("turns", 0),
-                data.get("gross_total", 0),
-                data.get("net_total", 0),
-                data.get("cash_sales", 0),
-                data.get("card_sales", 0),
-                data.get("gpay_sales", 0),
-                data.get("zomato_sales", 0),
-                data.get("other_sales", 0),
-                data.get("service_charge", 0),
-                data.get("cgst", 0),
-                data.get("sgst", 0),
-                data.get("discount", 0),
-                data.get("complimentary", 0),
-                data.get("apc", 0),
-                data.get("target", 0),
-                data.get("pct_target", 0),
-                data.get("mtd_total_covers", 0),
-                data.get("mtd_net_sales", 0),
-                data.get("mtd_discount", 0),
-                data.get("mtd_avg_daily", 0),
-                data.get("mtd_target", 0),
-                data.get("mtd_pct_target", 0),
-                data.get("lunch_covers"),
-                data.get("dinner_covers"),
-                data.get("order_count"),
-                summary_id,
-            ),
-        )
-    else:
-        # Insert new record
-        cursor.execute(
-            """
-            INSERT INTO daily_summaries (
+            INSERT OR REPLACE INTO daily_summaries (
                 location_id, date, covers, turns, gross_total, net_total,
                 cash_sales, card_sales, gpay_sales, zomato_sales, other_sales,
                 service_charge, cgst, sgst, discount, complimentary, apc,
@@ -494,53 +441,64 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
                 data.get("order_count"),
             ),
         )
-        cursor.execute("SELECT last_insert_rowid()")
-        summary_id = cursor.fetchone()[0]
 
-    # Save category sales
-    if "categories" in data:
-        cursor.execute("DELETE FROM category_sales WHERE summary_id = ?", (summary_id,))
-        for cat in data["categories"]:
+        cursor.execute(
+            "SELECT id FROM daily_summaries WHERE location_id = ? AND date = ?",
+            (location_id, data["date"]),
+        )
+        summary_id = cursor.fetchone()["id"]
+
+        # Save category sales
+        if "categories" in data:
             cursor.execute(
-                """
-                INSERT INTO category_sales (summary_id, category, qty, amount)
-                VALUES (?, ?, ?, ?)
-            """,
-                (summary_id, cat["category"], cat.get("qty", 0), cat.get("amount", 0)),
+                "DELETE FROM category_sales WHERE summary_id = ?", (summary_id,)
             )
-
-    # Save service sales
-    if "services" in data:
-        cursor.execute("DELETE FROM service_sales WHERE summary_id = ?", (summary_id,))
-        for svc in data["services"]:
-            cursor.execute(
-                """
-                INSERT INTO service_sales (summary_id, service_type, amount)
-                VALUES (?, ?, ?)
-            """,
-                (summary_id, svc["type"], svc.get("amount", 0)),
-            )
-
-    # Save item sales (top sellers)
-    if "top_items" in data and data["top_items"]:
-        cursor.execute("DELETE FROM item_sales WHERE summary_id = ?", (summary_id,))
-        for item in data["top_items"]:
-            cursor.execute(
-                """
-                INSERT INTO item_sales (summary_id, item_name, qty, amount)
-                VALUES (?, ?, ?, ?)
+            for cat in data["categories"]:
+                cursor.execute(
+                    """
+                    INSERT INTO category_sales (summary_id, category, qty, amount)
+                    VALUES (?, ?, ?, ?)
                 """,
-                (
-                    summary_id,
-                    item.get("item_name", ""),
-                    item.get("qty", 0),
-                    item.get("amount", 0),
-                ),
-            )
+                    (
+                        summary_id,
+                        cat["category"],
+                        cat.get("qty", 0),
+                        cat.get("amount", 0),
+                    ),
+                )
 
-    conn.commit()
-    conn.close()
-    return summary_id
+        # Save service sales
+        if "services" in data:
+            cursor.execute(
+                "DELETE FROM service_sales WHERE summary_id = ?", (summary_id,)
+            )
+            for svc in data["services"]:
+                cursor.execute(
+                    """
+                    INSERT INTO service_sales (summary_id, service_type, amount)
+                    VALUES (?, ?, ?)
+                """,
+                    (summary_id, svc["type"], svc.get("amount", 0)),
+                )
+
+        # Save item sales (top sellers)
+        if "top_items" in data and data["top_items"]:
+            cursor.execute("DELETE FROM item_sales WHERE summary_id = ?", (summary_id,))
+            for item in data["top_items"]:
+                cursor.execute(
+                    """
+                    INSERT INTO item_sales (summary_id, item_name, qty, amount)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        item.get("item_name", ""),
+                        item.get("qty", 0),
+                        item.get("amount", 0),
+                    ),
+                )
+
+        conn.commit()
+        return summary_id
 
 
 def peek_daily_net_sales(location_id: int, date: str) -> Optional[float]:
@@ -1193,6 +1151,7 @@ def get_location_settings(location_id: int) -> Optional[Dict]:
 
 def update_location_settings(location_id: int, settings: Dict):
     """Update location settings."""
+    ALLOWED_COLS = {"name", "target_monthly_sales", "target_daily_sales", "seat_count"}
     conn = get_connection()
     cursor = conn.cursor()
     updates = []
@@ -1212,6 +1171,10 @@ def update_location_settings(location_id: int, settings: Dict):
         updates.append("seat_count = ?")
         vals.append(settings["seat_count"])
     if updates:
+        for col in updates:
+            col_name = col.split(" = ")[0]
+            if col_name not in ALLOWED_COLS:
+                raise ValueError(f"Invalid column name: {col_name}")
         vals.append(location_id)
         cursor.execute(
             f"UPDATE locations SET {', '.join(updates)} WHERE id = ?",
@@ -1383,7 +1346,9 @@ def get_daily_service_sales_for_date_range(
 def create_user_session(user_id: int, days: int = 30) -> str:
     """Generate and persist a secure session token. Returns the token string."""
     token = secrets.token_hex(32)
-    expires_at = (datetime.utcnow() + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    expires_at = (datetime.now(timezone.utc) + timedelta(days=days)).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
     with db_connection() as conn:
         conn.execute(
             "INSERT INTO user_sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
@@ -1436,11 +1401,11 @@ def bootstrap():
     purge_expired_sessions()
 
 
-def wipe_all_data() -> Dict[str, int]:
+def wipe_all_data() -> Tuple[Dict[str, int], List[str]]:
     """Delete ALL operational data (summaries, categories, services, uploads, items).
 
     Preserves: locations, users, location_settings tables.
-    Returns dict of {table_name: deleted_count} for confirmation.
+    Returns tuple of ({table_name: deleted_count}, [error_messages]).
 
     WARNING: This is irreversible. Only call from admin UI with explicit confirmation.
     """
@@ -1448,6 +1413,7 @@ def wipe_all_data() -> Dict[str, int]:
     cursor = conn.cursor()
 
     counts = {}
+    errors = []
 
     # Delete in foreign-key dependency order (children first)
     for table in [
@@ -1462,12 +1428,15 @@ def wipe_all_data() -> Dict[str, int]:
             count = cursor.fetchone()[0]
             cursor.execute(f"DELETE FROM {table}")
             counts[table] = count
-        except Exception:
+        except Exception as e:
             counts[table] = 0
+            errors.append(f"{table}: {e}")
 
     conn.commit()
     conn.close()
 
     total = sum(counts.values())
     logger.info(f"Wiped all data: {total} records deleted across {len(counts)} tables")
-    return counts
+    if errors:
+        logger.warning(f"Errors during wipe: {errors}")
+    return counts, errors

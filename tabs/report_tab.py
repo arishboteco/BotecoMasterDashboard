@@ -79,7 +79,6 @@ def render(ctx: TabContext) -> None:
         per_outlet_sheet = (
             [(n, d) for _i, n, d in outlets_bundle] if multi_outlet else None
         )
-        y_m = [int(x) for x in date_str.split("-")[:2]]
         per_outlet_cat = None
         per_outlet_svc = None
         if len(ctx.report_loc_ids) > 1:

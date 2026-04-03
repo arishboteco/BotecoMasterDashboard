@@ -178,20 +178,13 @@ def show_setup_form():
             cursor.execute("SELECT id FROM locations ORDER BY id LIMIT 1")
             loc_row = cursor.fetchone()
             if loc_row:
-                cursor.execute(
-                    """
-                    UPDATE locations
-                    SET name = ?, target_monthly_sales = ?, target_daily_sales = ?
-                    WHERE id = ?
-                    """,
-                    (
-                        st.session_state.setup_location,
-                        st.session_state.setup_target,
-                        st.session_state.setup_target / 30,
-                        loc_row["id"],
-                    ),
+                database.update_location_settings(
+                    loc_row["id"],
+                    {
+                        "name": st.session_state.setup_location,
+                        "target_monthly_sales": st.session_state.setup_target,
+                    },
                 )
-            conn.commit()
             conn.close()
 
             st.success("Account created successfully! Please login.")

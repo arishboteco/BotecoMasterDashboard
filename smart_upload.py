@@ -495,7 +495,7 @@ def process_smart_upload(
         f["date"] for f in fragments if f.get("file_type") == "item_order_details"
     }
 
-    # 4b. Order Summary CSV (backup — only for dates not covered by Item Report)
+    # 4c. Order Summary CSV (backup — only for dates not covered by Item Report)
     for fname, content in classified.get("order_summary_csv", []):
         fr_match = next((f for f in file_results if f.filename == fname), None)
         try:
