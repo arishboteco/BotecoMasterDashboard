@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import zipfile
 from datetime import datetime, timedelta
 from io import BytesIO
 from typing import List, Tuple
@@ -185,32 +184,12 @@ def render(ctx: TabContext) -> None:
             )
 
         with st.expander("Individual PNG sections", expanded=True):
-            st.markdown("#### Individual sections")
             _sec_meta = [
                 ("sales_summary", "Sales summary"),
                 ("category", "Category sales"),
                 ("service", "Service sales"),
             ]
             _sec_meta.extend(_footfall_sections())
-            zip_buf = BytesIO()
-            with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-                for key, title in _sec_meta:
-                    b = section_bufs[key].getvalue()
-                    zf.writestr(
-                        f"boteco_{key}_{date_str}.png",
-                        b,
-                    )
-            zip_buf.seek(0)
-            dl_col, wa_col = st.columns([1, 1])
-            with dl_col:
-                st.download_button(
-                    "Download ZIP",
-                    zip_buf.getvalue(),
-                    file_name=f"boteco_sections_{date_str}.zip",
-                    mime="application/zip",
-                    key=f"dl_zip_sections_{date_str}",
-                    type="secondary",
-                )
 
             # Combined share button for first 5 PNG sections
             _first_five = _sec_meta[:5]
