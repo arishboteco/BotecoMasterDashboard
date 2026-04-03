@@ -123,6 +123,53 @@ def render(ctx: TabContext) -> None:
                 files_payload, ctx.import_loc_id
             )
 
+            # ── Customer-report-only path: update existing covers ──
+            if (
+                len(upload_result.days) == 0
+                and upload_result.customer_content is not None
+            ):
+                locs_for_cr = database.get_all_locations()
+                cr_lookup, cr_notes = customer_report_parser.build_covers_lookup(
+                    upload_result.customer_content, locs_for_cr
+                )
+                for note in cr_notes:
+                    st.caption(note)
+
+                if cr_lookup:
+                    updated_count = 0
+                    skipped_count = 0
+                    for (lid, date_str), entry in cr_lookup.items():
+                        if lid != ctx.import_loc_id:
+                            continue
+                        covers = int(entry.get("covers") or 0)
+                        if covers <= 0:
+                            skipped_count += 1
+                            continue
+                        lunch = entry.get("lunch_covers")
+                        dinner = entry.get("dinner_covers")
+                        ok = database.update_daily_summary_covers_only(
+                            ctx.import_loc_id, date_str, covers, lunch, dinner
+                        )
+                        if ok:
+                            updated_count += 1
+                            st.success(
+                                f"Updated covers for {date_str}: {covers} covers"
+                            )
+                        else:
+                            skipped_count += 1
+                            st.caption(
+                                f"{date_str}: no existing sales data found — upload sales data first."
+                            )
+
+                    st.info(
+                        f"**Covers sync complete:** {updated_count} day(s) updated, "
+                        f"{skipped_count} day(s) skipped."
+                    )
+                    st.rerun()
+                else:
+                    st.error("No cover data found in customer report.")
+                return
+
             overlap_rows: list = []
             for day in upload_result.days:
                 if day.errors:
