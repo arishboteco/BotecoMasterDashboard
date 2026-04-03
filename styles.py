@@ -259,21 +259,45 @@ def get_css() -> str:
     }
 
     /* ── Compact KPIs for Report tab ───────────────────────── */
-    .compact-kpis div[data-testid="stMetric"] {
-        padding: 0.4rem 0.6rem !important;
+    .kpi-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 0.35rem 0.5rem;
+        border-radius: var(--radius-sm);
+        background: var(--surface);
+        border: 1px solid var(--border-subtle);
+        text-align: center;
+        gap: 0.1rem;
+        min-height: 2.8rem;
     }
-    .compact-kpis div[data-testid="stMetricValue"] {
-        font-size: 1.1rem !important;
+    .kpi-item.kpi-combined {
+        border-left: 3px solid var(--accent-coral);
     }
-    .compact-kpis div[data-testid="stMetricLabel"] {
-        font-size: 0.6rem !important;
-        letter-spacing: 0.02em;
+    .kpi-label {
+        font-family: var(--font-body) !important;
+        color: var(--text-secondary) !important;
+        font-weight: 500 !important;
+        text-transform: uppercase;
+        font-size: 0.55rem !important;
+        letter-spacing: 0.04em;
+        line-height: 1;
     }
-    .compact-kpis div[data-testid="stMetricDelta"] {
-        font-size: 0.65rem !important;
+    .kpi-value {
+        font-family: var(--font-display) !important;
+        color: var(--text) !important;
+        font-weight: 700 !important;
+        font-size: 0.85rem !important;
+        line-height: 1.1;
+        word-break: break-word;
     }
-    .compact-kpis [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMetric"] {
-        padding: 0.4rem 0.6rem !important;
+    .kpi-delta {
+        font-family: var(--font-body) !important;
+        color: var(--text-secondary) !important;
+        font-size: 0.55rem !important;
+        font-weight: 500 !important;
+        line-height: 1;
     }
 
     /* ── Metric accent classes (replaces fragile nth-child) ── */

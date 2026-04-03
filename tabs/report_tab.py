@@ -5,21 +5,19 @@ from __future__ import annotations
 import zipfile
 from datetime import datetime, timedelta
 from io import BytesIO
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Tuple
 from urllib.parse import quote_plus
 
-import pandas as pd
 import streamlit as st
 
 
 import clipboard_ui
-import config
 import database
 import scope
 import sheet_reports as reports
 import utils
 from tabs import TabContext
-from components import kpi_row, KpiMetric, data_table, divider
+from components import divider
 
 
 def render(ctx: TabContext) -> None:
@@ -84,35 +82,47 @@ def render(ctx: TabContext) -> None:
                     break
             return nm if len(nm) <= max_len else nm[: max_len - 1] + "…"
 
+        # ── Compact KPI bar ──────────────────────────────────────
         with st.container(border=True):
-            st.markdown('<div class="compact-kpis">', unsafe_allow_html=True)
             if multi_outlet:
                 ncols = len(outlets_bundle) + 1
                 st.caption("Each outlet vs **Combined** (same date).")
-                st.markdown("##### Net sales")
+
+                def _metric(label, value, delta=None, extra_class=""):
+                    delta_html = (
+                        f'<span class="kpi-delta">{delta}</span>' if delta else ""
+                    )
+                    st.markdown(
+                        f'<div class="kpi-item {extra_class}">'
+                        f'<span class="kpi-label">{label}</span>'
+                        f'<span class="kpi-value">{value}</span>'
+                        f"{delta_html}"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+
                 cr = st.columns(ncols)
                 for i, (_, oname, s) in enumerate(outlets_bundle):
                     with cr[i]:
-                        st.metric(
-                            _col_head(oname),
+                        _metric(
+                            "Net sales",
                             utils.format_currency(s.get("net_total", 0)),
                         )
                 with cr[-1]:
-                    st.metric(
-                        "Combined",
+                    _metric(
+                        "Net sales",
                         utils.format_currency(summary.get("net_total", 0)),
-                        delta=f"vs {utils.format_currency(summary.get('target', 0))} target",
-                        delta_color="off",
+                        f"vs {utils.format_currency(summary.get('target', 0))} target",
+                        "kpi-combined",
                     )
-                st.markdown("##### Covers")
+
                 cr = st.columns(ncols)
                 for i, (_, _on, s) in enumerate(outlets_bundle):
                     with cr[i]:
-                        st.metric(
-                            _col_head(_on),
+                        _metric(
+                            "Covers",
                             f"{int(s.get('covers') or 0):,}",
-                            delta=f"Turns {float(s.get('turns') or 0):.0f}",
-                            delta_color="off",
+                            f"Turns {float(s.get('turns') or 0):.0f}",
                         )
                 with cr[-1]:
                     lc, dc = (
@@ -124,46 +134,97 @@ def render(ctx: TabContext) -> None:
                         if lc is not None and dc is not None
                         else None
                     )
-                    st.metric(
-                        "Combined",
+                    _metric(
+                        "Covers",
                         f"{int(summary.get('covers') or 0):,}",
-                        delta=foot or f"Turns: {float(summary.get('turns') or 0):.0f}",
-                        delta_color="off",
+                        foot or f"Turns: {float(summary.get('turns') or 0):.0f}",
+                        "kpi-combined",
                     )
-                st.markdown("##### APC")
+
                 cr = st.columns(ncols)
                 for i, (_, _on, s) in enumerate(outlets_bundle):
                     with cr[i]:
-                        st.metric(
-                            _col_head(_on),
+                        _metric(
+                            "APC",
                             utils.format_currency(s.get("apc", 0)),
                         )
                 with cr[-1]:
-                    st.metric(
-                        "Combined",
+                    _metric(
+                        "APC",
                         utils.format_currency(summary.get("apc", 0)),
-                        help="Average per cover: net sales ÷ covers.",
+                        extra_class="kpi-combined",
                     )
-                st.markdown("##### Target achievement (day)")
+
                 cr = st.columns(ncols)
                 for i, (_, _on, s) in enumerate(outlets_bundle):
                     p = float(s.get("pct_target") or 0)
                     with cr[i]:
-                        st.metric(
-                            _col_head(_on),
+                        _metric(
+                            "Target %",
                             utils.format_percent(p),
                         )
                 with cr[-1]:
                     pct = float(summary.get("pct_target") or 0)
                     pct_delta = pct - 100
-                    st.metric(
-                        "Combined",
+                    _metric(
+                        "Target %",
                         utils.format_percent(pct),
-                        delta=f"{pct_delta:+.0f}% vs target",
-                        delta_color="normal",
-                        help="Net sales for the day vs daily sales target.",
+                        f"{pct_delta:+.0f}% vs target",
+                        "kpi-combined",
                     )
-            st.markdown("</div>", unsafe_allow_html=True)
+            else:
+                _, _single_name, s_one = outlets_bundle[0]
+                _oc = int(s_one.get("order_count") or 0)
+                _aov = float(s_one.get("net_total") or 0) / _oc if _oc > 0 else 0.0
+
+                def _metric(label, value, delta=None, extra_class=""):
+                    delta_html = (
+                        f'<span class="kpi-delta">{delta}</span>' if delta else ""
+                    )
+                    st.markdown(
+                        f'<div class="kpi-item {extra_class}">'
+                        f'<span class="kpi-label">{label}</span>'
+                        f'<span class="kpi-value">{value}</span>'
+                        f"{delta_html}"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                kpis = st.columns(5)
+                with kpis[0]:
+                    _metric(
+                        "Net Sales",
+                        utils.format_currency(s_one.get("net_total", 0)),
+                        f"vs {utils.format_currency(s_one.get('target', 0))} target",
+                    )
+                with kpis[1]:
+                    _metric(
+                        "Covers",
+                        f"{int(s_one.get('covers') or 0):,}",
+                        (
+                            f"Lunch {s_one.get('lunch_covers'):,} · Dinner {s_one.get('dinner_covers'):,}"
+                            if s_one.get("lunch_covers") is not None
+                            and s_one.get("dinner_covers") is not None
+                            else f"Turns: {float(s_one.get('turns') or 0):.0f}"
+                        ),
+                    )
+                with kpis[2]:
+                    _metric(
+                        "APC",
+                        utils.format_currency(s_one.get("apc", 0)),
+                    )
+                with kpis[3]:
+                    _metric(
+                        "Orders / AOV",
+                        f"{_oc:,}",
+                        utils.format_currency(_aov) + " avg" if _oc > 0 else None,
+                    )
+                with kpis[4]:
+                    _metric(
+                        "Target %",
+                        utils.format_percent(float(s_one.get("pct_target") or 0)),
+                        f"{float(s_one.get('pct_target') or 0) - 100:+.0f}% vs target",
+                    )
 
         divider()
 
@@ -336,80 +397,6 @@ def render(ctx: TabContext) -> None:
                         share_text=_wa_text,
                         fallback_url=f"https://wa.me/?text={quote_plus(_wa_text)}",
                     )
-
-        # ── Monthly Footfall Summary ─────────────────────────────
-        divider()
-        st.markdown("### Monthly Footfall Summary")
-        st.caption("Last 12 months of covers data.")
-
-        _today = datetime.now().date()
-        _start = _today.replace(day=1)
-        # Go back 11 months to get 12 months total
-        for _ in range(11):
-            _m = _start.month - 1
-            if _m == 0:
-                _m = 12
-                _start = _start.replace(year=_start.year - 1, month=_m)
-            else:
-                _start = _start.replace(month=_m)
-
-        _start_str = _start.strftime("%Y-%m-%d")
-        _as_of = _today - timedelta(days=1)
-        _end_str = _as_of.strftime("%Y-%m-%d")
-
-        _monthly_rows = database.get_monthly_footfall_multi(
-            ctx.report_loc_ids, _start_str, _end_str
-        )
-
-        if _monthly_rows:
-            _df_m = pd.DataFrame(_monthly_rows)
-            _df_m["month_label"] = _df_m["month"].apply(
-                lambda x: datetime.strptime(f"{x}-01", "%Y-%m-%d").strftime("%b-%Y")
-            )
-            _df_m["footfall"] = _df_m["covers"].astype(int)
-            _df_m["total_days"] = _df_m["total_days"].astype(int)
-            _df_m["daily_avg"] = (
-                (_df_m["footfall"] / _df_m["total_days"].replace(0, pd.NA))
-                .round(0)
-                .fillna(0)
-                .astype(int)
-            )
-
-            # Month-over-month % change
-            _df_m["pct_footfall"] = (
-                _df_m["footfall"]
-                .pct_change()
-                .replace([float("inf"), float("-inf")], pd.NA)
-            )
-            _df_m["pct_avg"] = (
-                _df_m["daily_avg"]
-                .pct_change()
-                .replace([float("inf"), float("-inf")], pd.NA)
-            )
-
-            # Format for display
-            _display = pd.DataFrame(
-                {
-                    "Month": _df_m["month_label"],
-                    "Footfall": _df_m["footfall"].apply(lambda x: f"{x:,}"),
-                    "% Change": _df_m["pct_footfall"].apply(
-                        lambda x: utils.format_percent(x * 100) if pd.notna(x) else ""
-                    ),
-                    "Total Days": _df_m["total_days"].astype(int),
-                    "Daily Avg.": _df_m["daily_avg"].apply(lambda x: f"{x:,}"),
-                    "Avg % Change": _df_m["pct_avg"].apply(
-                        lambda x: utils.format_percent(x * 100) if pd.notna(x) else ""
-                    ),
-                }
-            )
-
-            st.dataframe(
-                _display,
-                use_container_width=True,
-                hide_index=True,
-            )
-        else:
-            st.caption("No monthly footfall data available.")
     else:
         st.info(
             f"No saved data for **{selected_date.strftime('%d %b %Y')}**. "

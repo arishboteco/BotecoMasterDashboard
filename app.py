@@ -101,14 +101,18 @@ else:
         )
 
         # Branded header
-        st.markdown(
-            '<div class="boteco-header">'
-            '<span class="boteco-header-name">Boteco</span>'
-            '<span class="boteco-header-dot">&middot;</span>'
-            '<span class="boteco-header-sub">Dashboard</span>'
-            "</div>",
-            unsafe_allow_html=True,
-        )
+        logo_col, text_col = st.columns([0.15, 0.85])
+        with logo_col:
+            st.image("logo.png", width=48)
+        with text_col:
+            st.markdown(
+                '<div class="boteco-header">'
+                '<span class="boteco-header-name">Boteco</span>'
+                '<span class="boteco-header-dot">&middot;</span>'
+                '<span class="boteco-header-sub">Dashboard</span>'
+                "</div>",
+                unsafe_allow_html=True,
+            )
 
         # Tabs
         tab1, tab2, tab3, tab4 = st.tabs(["Upload", "Report", "Analytics", "Settings"])
