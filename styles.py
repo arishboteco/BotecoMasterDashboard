@@ -258,6 +258,24 @@ def get_css() -> str:
         font-weight: 600 !important;
     }
 
+    /* ── Compact KPIs for Report tab ───────────────────────── */
+    .compact-kpis div[data-testid="stMetric"] {
+        padding: 0.4rem 0.6rem !important;
+    }
+    .compact-kpis div[data-testid="stMetricValue"] {
+        font-size: 1.1rem !important;
+    }
+    .compact-kpis div[data-testid="stMetricLabel"] {
+        font-size: 0.6rem !important;
+        letter-spacing: 0.02em;
+    }
+    .compact-kpis div[data-testid="stMetricDelta"] {
+        font-size: 0.65rem !important;
+    }
+    .compact-kpis [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMetric"] {
+        padding: 0.4rem 0.6rem !important;
+    }
+
     /* ── Metric accent classes (replaces fragile nth-child) ── */
     .metric-accent-coral .stMetric,
     [data-testid="stVerticalBlockBorderWrapper"] .metric-accent-coral [data-testid="stMetric"] {
