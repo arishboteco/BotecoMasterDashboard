@@ -7,7 +7,7 @@ def get_css() -> str:
     """Return the complete CSS stylesheet for the dashboard."""
     return """
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap');
 
     /* Force system fonts for Streamlit expander icons */
     section[data-testid="stExpander"] * {
@@ -39,7 +39,7 @@ def get_css() -> str:
         /* Text palette */
         --text: #1E293B;
         --text-secondary: #475569;
-        --text-muted: #94A3B8;
+        --text-muted: #64748B;
 
         /* Border palette */
         --border-subtle: #E2E8F0;
@@ -64,7 +64,7 @@ def get_css() -> str:
         --info-border: #C7D2FE;
 
         /* Typography */
-        --font-display: 'Playfair Display', sans-serif;
+        --font-display: 'Plus Jakarta Sans', sans-serif;
         --font-body: 'Inter', sans-serif;
         --font-size-xs: 12px;
         --font-size-sm: 14px;
@@ -720,7 +720,7 @@ def get_login_css() -> str:
     """Return CSS specific to the login/setup pages. Reuses token system."""
     return """
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap');
     :root {
         --brand: #1F5FA8;
         --brand-dark: #174A82;
@@ -760,7 +760,7 @@ def get_login_css() -> str:
         box-shadow: 0 0 0 3px rgba(63, 167, 163, 0.25) !important;
     }
     h1 {
-        font-family: 'Playfair Display', sans-serif !important;
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
         color: var(--brand) !important;
     }
     h3 {
