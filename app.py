@@ -47,6 +47,8 @@ else:
     if not auth.check_authentication():
         auth.show_login_form()
     else:
+        # Sidebar branding
+        st.sidebar.image("logo.png", width=180)
         # Render sidebar
         auth.render_auth_sidebar()
         st.sidebar.divider()
@@ -99,20 +101,6 @@ else:
             location_settings=database.get_location_settings(location_id),
             import_location_settings=import_location_settings,
         )
-
-        # Branded header
-        logo_col, text_col = st.columns([0.15, 0.85])
-        with logo_col:
-            st.image("logo.png", width=48)
-        with text_col:
-            st.markdown(
-                '<div class="boteco-header">'
-                '<span class="boteco-header-name">Boteco</span>'
-                '<span class="boteco-header-dot">&middot;</span>'
-                '<span class="boteco-header-sub">Dashboard</span>'
-                "</div>",
-                unsafe_allow_html=True,
-            )
 
         # Tabs
         tab1, tab2, tab3, tab4 = st.tabs(["Upload", "Report", "Analytics", "Settings"])
