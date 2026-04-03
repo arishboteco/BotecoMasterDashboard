@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 
 import streamlit as st
 import database
+import styles
 from streamlit_cookies_controller import CookieController
 
 _COOKIE_NAME = "boteco_session"
@@ -82,63 +83,7 @@ def init_auth_state():
 
 def show_login_form():
     """Show login form."""
-    st.markdown(
-        """
-        <style>
-        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=DM+Sans:wght@400;500;600&display=swap');
-        :root {
-            --brand: #E8734A;
-            --brand-dark: #D4612E;
-            --login-surface: #FFFFFF;
-            --login-border: #E2E8F0;
-            --text: #1E293B;
-        }
-        .stApp {
-            background: #FFFFFF !important;
-        }
-        .login-container {
-            max-width: 400px;
-            margin: 100px auto;
-            padding: 2.5rem;
-            background: var(--login-surface);
-            border-radius: 14px;
-            border: 1px solid var(--login-border);
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-        }
-        .stButton > button {
-            width: 100%;
-            background-color: var(--brand);
-            color: #FFFFFF;
-            border: none;
-            padding: 0.75rem;
-            border-radius: 10px;
-            font-weight: 600;
-            font-family: 'DM Sans', sans-serif;
-            transition: all 0.2s ease;
-        }
-        .stButton > button:hover {
-            background-color: var(--brand-dark);
-            box-shadow: 0 4px 6px rgba(232, 115, 74, 0.2);
-        }
-        .stTextInput input:focus {
-            border-color: var(--brand) !important;
-            box-shadow: 0 0 0 3px rgba(232, 115, 74, 0.15) !important;
-        }
-        h1 {
-            font-family: 'Sora', sans-serif !important;
-            color: var(--brand) !important;
-        }
-        h3 {
-            font-family: 'DM Sans', sans-serif !important;
-            color: #475569 !important;
-            font-weight: 500 !important;
-            border-left: none !important;
-            padding-left: 0 !important;
-        }
-        </style>
-    """,
-        unsafe_allow_html=True,
-    )
+    st.markdown(styles.get_login_css(), unsafe_allow_html=True)
 
     st.title("Boteco Dashboard")
     st.markdown("### Restaurant Sales Management")

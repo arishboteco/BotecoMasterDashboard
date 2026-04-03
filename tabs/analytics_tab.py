@@ -17,6 +17,7 @@ import scope
 import ui_theme
 import utils
 from tabs import TabContext
+from components import kpi_row, KpiMetric, data_table
 
 
 def render(ctx: TabContext) -> None:

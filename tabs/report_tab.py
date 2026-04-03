@@ -19,6 +19,7 @@ import scope
 import sheet_reports as reports
 import utils
 from tabs import TabContext
+from components import kpi_row, KpiMetric, data_table, divider
 
 
 def render(ctx: TabContext) -> None:
@@ -165,53 +166,52 @@ def render(ctx: TabContext) -> None:
                 _, _single_name, s_one = outlets_bundle[0]
                 _oc = int(s_one.get("order_count") or 0)
                 _aov = float(s_one.get("net_total") or 0) / _oc if _oc > 0 else 0.0
-                col_kpi1, col_kpi2, col_kpi3, col_kpi4, col_kpi5 = st.columns(5)
-                with col_kpi1:
-                    st.metric(
-                        "Net Sales",
-                        utils.format_currency(s_one.get("net_total", 0)),
-                        delta=f"vs {utils.format_currency(s_one.get('target', 0))} target",
-                        delta_color="off",
-                    )
-                with col_kpi2:
-                    lc = s_one.get("lunch_covers")
-                    dc = s_one.get("dinner_covers")
-                    foot = (
-                        f"Lunch {lc:,} · Dinner {dc:,}"
-                        if lc is not None and dc is not None
-                        else None
-                    )
-                    st.metric(
-                        "Covers",
-                        f"{int(s_one.get('covers') or 0):,}",
-                        delta=foot or f"Turns: {float(s_one.get('turns') or 0):.0f}",
-                        delta_color="off",
-                    )
-                with col_kpi3:
-                    st.metric(
-                        "APC",
-                        utils.format_currency(s_one.get("apc", 0)),
-                        help="Average per cover: net sales ÷ covers.",
-                    )
-                with col_kpi4:
-                    st.metric(
-                        "Orders / AOV",
-                        f"{_oc:,}",
-                        delta=utils.format_currency(_aov) + " avg" if _oc > 0 else None,
-                        help="Unique orders (invoices) and Average Order Value.",
-                    )
-                with col_kpi5:
-                    pct = float(s_one.get("pct_target") or 0)
-                    pct_delta = pct - 100
-                    st.metric(
-                        "Target Achievement",
-                        utils.format_percent(pct),
-                        delta=f"{pct_delta:+.0f}% vs target",
-                        delta_color="normal",
-                        help="Net sales for the day vs daily sales target.",
-                    )
 
-        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+                kpi_row(
+                    [
+                        KpiMetric(
+                            label="Net Sales",
+                            value=utils.format_currency(s_one.get("net_total", 0)),
+                            delta=f"vs {utils.format_currency(s_one.get('target', 0))} target",
+                            delta_color="off",
+                        ),
+                        KpiMetric(
+                            label="Covers",
+                            value=f"{int(s_one.get('covers') or 0):,}",
+                            delta=(
+                                f"Lunch {s_one.get('lunch_covers'):,} · Dinner {s_one.get('dinner_covers'):,}"
+                                if s_one.get("lunch_covers") is not None
+                                and s_one.get("dinner_covers") is not None
+                                else f"Turns: {float(s_one.get('turns') or 0):.0f}"
+                            ),
+                            delta_color="off",
+                        ),
+                        KpiMetric(
+                            label="APC",
+                            value=utils.format_currency(s_one.get("apc", 0)),
+                            help="Average per cover: net sales ÷ covers.",
+                        ),
+                        KpiMetric(
+                            label="Orders / AOV",
+                            value=f"{_oc:,}",
+                            delta=utils.format_currency(_aov) + " avg"
+                            if _oc > 0
+                            else None,
+                            help="Unique orders (invoices) and Average Order Value.",
+                        ),
+                        KpiMetric(
+                            label="Target Achievement",
+                            value=utils.format_percent(
+                                float(s_one.get("pct_target") or 0)
+                            ),
+                            delta=f"{float(s_one.get('pct_target') or 0) - 100:+.0f}% vs target",
+                            delta_color="normal",
+                            help="Net sales for the day vs daily sales target.",
+                        ),
+                    ]
+                )
+
+        divider()
 
         col_det1, col_det2 = st.columns(2)
 
@@ -331,7 +331,7 @@ def render(ctx: TabContext) -> None:
                     },
                 )
 
-        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+        divider()
 
         # Individual PNG sections
         per_outlet_sheet = (
@@ -502,7 +502,7 @@ def render(ctx: TabContext) -> None:
                     )
 
         # ── Monthly Footfall Summary ─────────────────────────────
-        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+        divider()
         st.markdown("### Monthly Footfall Summary")
         st.caption("Last 12 months of covers data.")
 
