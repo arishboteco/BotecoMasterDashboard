@@ -123,6 +123,12 @@ def render(ctx: TabContext) -> None:
                 files_payload, ctx.import_loc_id
             )
 
+            st.info(
+                f"Debug: days={len(upload_result.days)}, "
+                f"customer_content={'yes' if upload_result.customer_content else 'no'}, "
+                f"files={[f.kind for f in upload_result.files]}"
+            )
+
             # ── Customer-report-only path: update existing covers ──
             if (
                 len(upload_result.days) == 0
