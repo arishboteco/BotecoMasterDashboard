@@ -1,18 +1,19 @@
 """
 Boteco EOD Report — PNG image generator and WhatsApp text formatter.
 
-Design language (Slate & Coral):
-  - Coral accent          (#E8734A)
-  - Deep coral hover      (#D4612E)
-  - Slate header          (#1E293B)
-  - Slate text            (#1E293B)
-  - Slate muted           (#94A3B8)
-  - White page bg         (#FFFFFF)
-  - White card bg         (#FFFFFF)
-  - Slate border          (#E2E8F0)
-  - Teal positive         (#0D9488)
-  - Amber warning         (#D97706)
-  - Red error             (#EF4444)
+Design language (Boteco Mango):
+  - Brand blue           (#1F5FA8)
+  - Brand dark           (#174A82)
+  - Banner dark          (#1A3A5C)
+  - Table header         (#EEF2F7)
+  - Body text            (#1E293B)
+  - Muted text           (#94A3B8)
+  - Page bg              (#F7FAFC)
+  - Card bg              (#FFFFFF)
+  - Border               (#E2E8F0)
+  - Leaf green           (#6DBE45)
+  - Golden mustard       (#F4B400)
+  - Red error            (#EF4444)
 
 The composite PNG is built with matplotlib drawing primitives
 (patches + text), not tables, so every element can be positioned
@@ -31,22 +32,24 @@ from matplotlib.patches import FancyBboxPatch
 
 import config
 
-# -- Palette (Slate & Coral) --------------------------------------------------------
-C_PAGE = "#FFFFFF"  # Main background — white
+# -- Palette (Boteco Mango) ---------------------------------------------------
+C_PAGE = "#F7FAFC"  # Main background — soft off-white
 C_CARD = "#FFFFFF"  # Card background — white
-C_BRAND = "#E8734A"  # Coral — primary actions, accent bars
-C_BRAND_DARK = "#D4612E"  # Deep coral — hover/pressed
-C_NAVY = "#1E293B"  # Slate 800 (header bars)
+C_BRAND = "#1F5FA8"  # Deep Royal Blue — primary actions, accent bars
+C_BRAND_DARK = "#174A82"  # Dark blue — hover/pressed
+C_BANNER = "#1A3A5C"  # Dark navy blue — section banners & totals rows
+C_HEADER = "#EEF2F7"  # Light grey — table header row backgrounds
 C_SLATE = "#1E293B"  # Slate 800 (body text)
+C_DATE_LABEL = "#8BA3BD"  # Muted blue-grey — date/location labels in banners
 C_MUTED = "#94A3B8"  # Slate 400 (muted text)
 C_BORDER = "#E2E8F0"  # Slate 200 (card borders)
-C_BAND = "#F8F9FB"  # Very light cool gray (alternating rows)
-C_GREEN = "#0D9488"  # Teal — positive/achievement
-C_AMBER = "#D97706"  # Amber — warning
+C_BAND = "#F7FAFC"  # Soft off-white (alternating rows, matches page)
+C_GREEN = "#6DBE45"  # Leaf green — positive/achievement
+C_AMBER = "#F4B400"  # Golden mustard — warning
 C_RED = "#EF4444"  # Red — negative/discount
 C_WHITE = "#FFFFFF"  # White
 
-FONT = "DM Sans"
+FONT = "Inter"
 DPI = 150
 
 
@@ -187,8 +190,8 @@ def _kpi_tile(ax, x, y, w, h, label, value, sub=None, accent_color=C_BRAND):
 # ── Table row helpers ─────────────────────────────────────────────────────────
 
 
-def _table_header_row(ax, x, y, cols, widths, row_h=0.048, bg=C_NAVY, font_size=None):
-    """Dark header row for a data table."""
+def _table_header_row(ax, x, y, cols, widths, row_h=0.048, bg=C_HEADER, font_size=None):
+    """Light header row for a data table."""
     total_w = sum(widths)
     patch = mpatches.Rectangle(
         (x, y),
@@ -213,7 +216,7 @@ def _table_header_row(ax, x, y, cols, widths, row_h=0.048, bg=C_NAVY, font_size=
             y + row_h - 0.010,
             col,
             size=fs,
-            color=C_WHITE,
+            color=C_BRAND,
             weight="bold",
             ha=ha,
         )
@@ -315,7 +318,7 @@ def _section_sales_summary(
     # ── Header banner (slim) ─────────────────────────────────────────────
     banner_h = 0.08
     banner_y = 0.93
-    _card(ax, 0, banner_y, 1.0, banner_h, color=C_NAVY, border=C_NAVY)
+    _card(ax, 0, banner_y, 1.0, banner_h, color=C_BANNER, border=C_BANNER)
     _hbar(ax, 0, banner_y + banner_h, 1.0, h=0.005, color=C_BRAND)
     _label(
         ax,
@@ -332,7 +335,7 @@ def _section_sales_summary(
         banner_y + banner_h - 0.048,
         day_lbl,
         size=9.5,
-        color="#8C7B6B",
+        color=C_DATE_LABEL,
     )
     _label(
         ax,
@@ -479,7 +482,7 @@ def _section_sales_summary(
         "EOD Net Total",
         "net_total",
         bold=True,
-        bg=C_NAVY,
+        bg=C_BANNER,
         text_color=C_WHITE,
         right_color=C_BRAND,
     )
@@ -578,7 +581,7 @@ def _section_category(
     banner_h = 0.065
     banner_top = 0.995
     banner_y = banner_top - banner_h
-    _card(ax, 0, banner_y, 1.0, banner_h, color=C_NAVY, border=C_NAVY)
+    _card(ax, 0, banner_y, 1.0, banner_h, color=C_BANNER, border=C_BANNER)
     _hbar(ax, 0, banner_top, 1.0, h=0.005, color=C_BRAND)
     _label(
         ax,
@@ -589,7 +592,7 @@ def _section_category(
         color=C_WHITE,
         weight="bold",
     )
-    _label(ax, 0.012, banner_top - 0.045, day_lbl, size=9.0, color="#8C7B6B")
+    _label(ax, 0.012, banner_top - 0.045, day_lbl, size=9.0, color="#8BA3BD")
 
     cur_y = banner_y - 0.01
 
@@ -656,7 +659,7 @@ def _section_category(
         tot_cells,
         col_w,
         row_h=row_h,
-        bg=C_NAVY,
+        bg=C_BANNER,
         bold=True,
         text_color=C_WHITE,
     )
@@ -719,7 +722,7 @@ def _section_service(
     banner_h = 0.065
     banner_top = 0.995
     banner_y = banner_top - banner_h
-    _card(ax, 0, banner_y, 1.0, banner_h, color=C_NAVY, border=C_NAVY)
+    _card(ax, 0, banner_y, 1.0, banner_h, color=C_BANNER, border=C_BANNER)
     _hbar(ax, 0, banner_top, 1.0, h=0.005, color=C_BRAND)
     _label(
         ax,
@@ -730,7 +733,7 @@ def _section_service(
         color=C_WHITE,
         weight="bold",
     )
-    _label(ax, 0.012, banner_top - 0.045, day_lbl, size=9.0, color="#8C7B6B")
+    _label(ax, 0.012, banner_top - 0.045, day_lbl, size=9.0, color="#8BA3BD")
 
     cur_y = banner_y - 0.01
 
@@ -809,7 +812,7 @@ def _section_service(
         tot_cells,
         col_w,
         row_h=row_h,
-        bg=C_NAVY,
+        bg=C_BANNER,
         bold=True,
         text_color=C_WHITE,
     )
@@ -827,7 +830,7 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
     banner_h = 0.065
     banner_top = 0.995
     banner_y = banner_top - banner_h
-    _card(ax, 0, banner_y, 1.0, banner_h, color=C_NAVY, border=C_NAVY)
+    _card(ax, 0, banner_y, 1.0, banner_h, color=C_BANNER, border=C_BANNER)
     _hbar(ax, 0, banner_top, 1.0, h=0.005, color=C_BRAND)
     _label(
         ax,
@@ -838,7 +841,7 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
         color=C_WHITE,
         weight="bold",
     )
-    _label(ax, 0.012, banner_top - 0.045, location_name[:32], size=9.0, color="#8C7B6B")
+    _label(ax, 0.012, banner_top - 0.045, location_name[:32], size=9.0, color="#8BA3BD")
 
     if not rows:
         _label(
@@ -910,7 +913,7 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
         ["TOTAL", str(tot_din), str(tot_lun), str(tot_cov)],
         col_w,
         row_h=row_h,
-        bg=C_NAVY,
+        bg=C_BANNER,
         bold=True,
         text_color=C_WHITE,
     )
@@ -958,7 +961,7 @@ def _section_footfall_metrics(
     banner_h = 0.065
     banner_top = 0.995
     banner_y = banner_top - banner_h
-    _card(ax, 0, banner_y, 1.0, banner_h, color=C_NAVY, border=C_NAVY)
+    _card(ax, 0, banner_y, 1.0, banner_h, color=C_BANNER, border=C_BANNER)
     _hbar(ax, 0, banner_top, 1.0, h=0.005, color=C_BRAND)
     _label(
         ax,
@@ -969,7 +972,7 @@ def _section_footfall_metrics(
         color=C_WHITE,
         weight="bold",
     )
-    _label(ax, 0.012, banner_top - 0.045, location_name[:32], size=9.0, color="#8C7B6B")
+    _label(ax, 0.012, banner_top - 0.045, location_name[:32], size=9.0, color="#8BA3BD")
 
     cur_y = banner_y - 0.015
     row_h = 0.042
@@ -1404,7 +1407,7 @@ def generate_sheet_style_report_image(
 
     total_h = sum(im.height for im in imgs)
     max_w = max(im.width for im in imgs)
-    composite = PILImage.new("RGB", (max_w, total_h), color=(248, 250, 252))
+    composite = PILImage.new("RGB", (max_w, total_h), color=(247, 250, 252))
     y_off = 0
     for im in imgs:
         # centre narrower images

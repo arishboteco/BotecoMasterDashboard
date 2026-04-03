@@ -287,11 +287,11 @@ def render(ctx: TabContext) -> None:
                 title="Payment mode split (₹)",
                 color="Mode",
                 color_discrete_map={
-                    "Cash": ui_theme.BRAND_PRIMARY,
-                    "GPay": "#0369a1",
-                    "Zomato": "#be185d",
-                    "Card": "#7c3aed",
-                    "Other": "#475569",
+                    "Cash": ui_theme.BRAND_PRIMARY,  # #1F5FA8 — deep royal blue
+                    "GPay": ui_theme.BRAND_SECONDARY,  # #3FA7A3 — teal blue
+                    "Zomato": ui_theme.BRAND_GREEN,  # #6DBE45 — leaf green
+                    "Card": ui_theme.BRAND_WARN,  # #F4B400 — golden mustard
+                    "Other": ui_theme.BRAND_DARK,  # #174A82 — dark blue
                 },
             )
         fig_pay.update_layout(
@@ -419,9 +419,9 @@ def render(ctx: TabContext) -> None:
                     barmode="stack",
                     title="Lunch vs Dinner revenue per day",
                     color_discrete_map={
-                        "Lunch": ui_theme.BRAND_SUCCESS,
-                        "Dinner": ui_theme.BRAND_PRIMARY,
-                        "Breakfast": ui_theme.BRAND_WARN,
+                        "Lunch": ui_theme.BRAND_SECONDARY,  # #3FA7A3 — teal
+                        "Dinner": ui_theme.BRAND_PRIMARY,  # #1F5FA8 — deep blue
+                        "Breakfast": ui_theme.BRAND_WARN,  # #F4B400 — golden mustard
                     },
                 )
                 fig_svc_stack.update_layout(
@@ -439,9 +439,9 @@ def render(ctx: TabContext) -> None:
                     title="Total revenue by meal period",
                     color="service_type",
                     color_discrete_map={
-                        "Lunch": ui_theme.BRAND_SUCCESS,
-                        "Dinner": ui_theme.BRAND_PRIMARY,
-                        "Breakfast": ui_theme.BRAND_WARN,
+                        "Lunch": ui_theme.BRAND_SECONDARY,  # #3FA7A3 — teal
+                        "Dinner": ui_theme.BRAND_PRIMARY,  # #1F5FA8 — deep blue
+                        "Breakfast": ui_theme.BRAND_WARN,  # #F4B400 — golden mustard
                     },
                 )
                 fig_svc_tot.update_layout(

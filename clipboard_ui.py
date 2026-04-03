@@ -71,12 +71,12 @@ def _safe_id(key: str) -> str:
 def _btn_style(*, primary: bool = True) -> str:
     """Generate inline button styles with proper overflow handling."""
     c = ui_theme.BRAND_PRIMARY
-    focus_style = "outline:2px solid #2563EB;outline-offset:2px;"
+    focus_style = f"outline:2px solid {ui_theme.BRAND_SECONDARY};outline-offset:2px;"
     if primary:
         return (
             f"padding:0.5rem 1rem;cursor:pointer;border-radius:6px;border:none;"
             f"background:{c};color:#FFFFFF;font-weight:600;font-size:0.85rem;"
-            f"font-family:'DM Sans',sans-serif;"
+            f"font-family:'Inter',sans-serif;"
             f"box-shadow:0 1px 2px rgba(0,0,0,0.05);"
             f"display:inline-flex;align-items:center;gap:0.4rem;"
             f"min-height:40px;line-height:1.3;transition:all 0.15s ease;"
@@ -85,7 +85,7 @@ def _btn_style(*, primary: bool = True) -> str:
     return (
         "padding:0.5rem 1rem;cursor:pointer;border-radius:6px;border:1px solid #E2E8F0;"
         "background:#FFFFFF;color:#0F172A;font-weight:500;font-size:0.85rem;"
-        "font-family:'DM Sans',sans-serif;"
+        "font-family:'Inter',sans-serif;"
         "display:inline-flex;align-items:center;gap:0.4rem;"
         "min-height:40px;line-height:1.3;transition:all 0.15s ease;" + focus_style
     )
@@ -94,7 +94,7 @@ def _btn_style(*, primary: bool = True) -> str:
 def _icon_btn_style(*, primary: bool = True) -> str:
     """Generate square icon button styles (40x40px)."""
     c = ui_theme.BRAND_PRIMARY
-    focus_style = "outline:2px solid #2563EB;outline-offset:2px;"
+    focus_style = f"outline:2px solid {ui_theme.BRAND_SECONDARY};outline-offset:2px;"
     if primary:
         return (
             f"display:inline-flex;align-items:center;justify-content:center;"
@@ -137,7 +137,7 @@ def render_image_action_row(
   display: inline-flex;
   align-items: center;
   gap: 0;
-  background: #F8FAFC;
+  background: #F7FAFC;
   border: 1px solid #E2E8F0;
   border-radius: 6px;
   padding: 4px;
@@ -160,8 +160,8 @@ def render_image_action_row(
   line-height: 1;
 }}
 .action-btn-row .action-btn:hover {{
-  background: #DBEAFE;
-  color: #2563EB;
+  background: #E6F4F3;
+  color: #1F5FA8;
 }}
 .action-btn-row .action-btn + .action-btn {{
   border-left: 1px solid #E2E8F0;
@@ -172,7 +172,7 @@ def render_image_action_row(
   <button class="action-btn" id="{uid}_wa" title="Share via WhatsApp" type="button">{WHATSAPP_ICON_SVG}</button>
   <button class="action-btn" id="{uid}_dl" title="Download" type="button">&#xe2c4;</button>
 </div>
-<span id="{uid}_msg" style="font-size:0.75rem;margin-left:0.5rem;color:#166534;"></span>
+<span id="{uid}_msg" style="font-size:0.75rem;margin-left:0.5rem;color:#6DBE45;"></span>
 <script>
 (function() {{
   const b64 = "{b64}";
@@ -520,22 +520,22 @@ def render_share_images_button(
           text: shareText
         }});
         msgEl.textContent = "Shared!";
-        msgEl.style.color = "#5B7F4A";
+        msgEl.style.color = "#6DBE45";
       }} else {{
         if (fallbackUrl) {{
           try {{
             const blob = await b64ToBlob(filesData[0].b64, "image/png");
             await navigator.clipboard.write([new ClipboardItem({{"image/png": blob}})]);
             msgEl.textContent = "Image copied — paste in WhatsApp";
-            msgEl.style.color = "#5B7F4A";
+            msgEl.style.color = "#6DBE45";
           }} catch (clipErr) {{
             msgEl.textContent = "Open WhatsApp — attach image manually";
-            msgEl.style.color = "#C28B2D";
+            msgEl.style.color = "#F4B400";
           }}
           window.open(fallbackUrl, "_blank");
         }} else {{
           msgEl.textContent = "Use download (ZIP/PNG)";
-          msgEl.style.color = "#C28B2D";
+          msgEl.style.color = "#F4B400";
         }}
       }}
     }} catch (e) {{
@@ -549,19 +549,19 @@ def render_share_images_button(
             const blob = await b64ToBlob(filesData[0].b64, "image/png");
             await navigator.clipboard.write([new ClipboardItem({{"image/png": blob}})]);
             msgEl.textContent = "Image copied — paste in WhatsApp";
-            msgEl.style.color = "#5B7F4A";
+            msgEl.style.color = "#6DBE45";
           }} catch (clipErr) {{
             msgEl.textContent = "Open WhatsApp — attach image manually";
-            msgEl.style.color = "#C28B2D";
+            msgEl.style.color = "#F4B400";
           }}
           window.open(fallbackUrl, "_blank");
         }} else {{
           msgEl.textContent = "Use download (ZIP/PNG)";
-          msgEl.style.color = "#C28B2D";
+          msgEl.style.color = "#F4B400";
         }}
       }} else {{
         msgEl.textContent = "Share failed";
-        msgEl.style.color = "#B84233";
+        msgEl.style.color = "#EF4444";
       }}
     }}
   }};

@@ -7,7 +7,7 @@ def get_css() -> str:
     """Return the complete CSS stylesheet for the dashboard."""
     return """
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=DM+Sans:wght@400;500;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
 
     /* Force system fonts for Streamlit expander icons */
     section[data-testid="stExpander"] * {
@@ -24,17 +24,17 @@ def get_css() -> str:
     /* ── Token system ─────────────────────────────────────────── */
     :root {
         /* Brand palette */
-        --brand: #E8734A;
-        --brand-dark: #D4612E;
-        --brand-light: #F0936E;
-        --brand-soft: #FEF0EB;
+        --brand: #1F5FA8;
+        --brand-dark: #174A82;
+        --brand-light: #2A6BB3;
+        --brand-soft: #E6F4F3;
 
         /* Surface palette */
-        --surface: #FFFFFF;
-        --surface-elevated: #F8F9FB;
+        --surface: #F7FAFC;
+        --surface-elevated: #FFFFFF;
         --surface-raised: #FFFFFF;
-        --sidebar-bg: #F1F3F7;
-        --sidebar-border: #E2E8F0;
+        --sidebar-bg: #1F5FA8;
+        --sidebar-border: #2A6BB3;
 
         /* Text palette */
         --text: #1E293B;
@@ -46,11 +46,11 @@ def get_css() -> str:
         --border-medium: #CBD5E1;
 
         /* Accent colors */
-        --accent-coral: #E8734A;
-        --accent-teal: #0D9488;
-        --accent-amber: #D97706;
-        --accent-indigo: #6366F1;
-        --accent-slate: #334155;
+        --accent-coral: #1F5FA8;
+        --accent-teal: #3FA7A3;
+        --accent-amber: #F4B400;
+        --accent-indigo: #6DBE45;
+        --accent-slate: #1F5FA8;
 
         /* Semantic colors */
         --success-bg: #F0FDF4;
@@ -64,8 +64,8 @@ def get_css() -> str:
         --info-border: #C7D2FE;
 
         /* Typography */
-        --font-display: 'Sora', sans-serif;
-        --font-body: 'DM Sans', sans-serif;
+        --font-display: 'Playfair Display', sans-serif;
+        --font-body: 'Inter', sans-serif;
         --font-size-xs: 12px;
         --font-size-sm: 14px;
         --font-size-base: 16px;
@@ -326,7 +326,7 @@ def get_css() -> str:
     .metric-card {
         background: var(--surface);
         padding: 1rem;
-        border-radius: var(--radius-md);
+        border-radius: var(--radius-lg);
         border-left: 4px solid var(--brand);
         box-shadow: var(--shadow-sm);
         transition: transform var(--transition-normal) ease, box-shadow var(--transition-normal) ease;
@@ -395,7 +395,7 @@ def get_css() -> str:
     .upload-zone:hover {
         border-color: var(--brand-dark);
         background: var(--brand-soft);
-        box-shadow: 0 0 0 4px rgba(232,115,74,0.1);
+        box-shadow: 0 0 0 4px rgba(31,95,168,0.1);
         transform: translateY(-1px);
     }
     .empty-upload-hint {
@@ -415,8 +415,8 @@ def get_css() -> str:
         font-size: 0.8rem !important;
         text-transform: uppercase !important;
         letter-spacing: 0.04em !important;
-        color: #FFFFFF !important;
-        background-color: #334155 !important;
+        color: #1F5FA8 !important;
+        background-color: #EEF2F7 !important;
         border-bottom: none !important;
     }
     [data-testid="stDataFrame"] {
@@ -624,7 +624,7 @@ def get_css() -> str:
     .upload-zone-container [data-testid="stFileUploaderDropzone"]:hover {
         border-color: var(--brand-dark) !important;
         background: var(--brand-soft) !important;
-        box-shadow: 0 0 0 4px rgba(232,115,74,0.1) !important;
+        box-shadow: 0 0 0 4px rgba(31,95,168,0.1) !important;
         transform: translateY(-1px);
     }
     .upload-zone-container [data-testid="stFileUploaderDropzone"] label {
@@ -669,7 +669,7 @@ def get_css() -> str:
     .stTextArea textarea:focus,
     .stSelectbox [data-baseweb="select"]:focus-within {
         border-color: var(--brand) !important;
-        box-shadow: 0 0 0 3px rgba(232,115,74,0.15) !important;
+        box-shadow: 0 0 0 3px rgba(63,167,163,0.25) !important;
     }
 
     /* ── Responsive breakpoints ────────────────────────────── */
@@ -720,10 +720,10 @@ def get_login_css() -> str:
     """Return CSS specific to the login/setup pages. Reuses token system."""
     return """
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=DM+Sans:wght@400;500;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
     :root {
-        --brand: #E8734A;
-        --brand-dark: #D4612E;
+        --brand: #1F5FA8;
+        --brand-dark: #174A82;
         --login-surface: #FFFFFF;
         --login-border: #E2E8F0;
         --text: #1E293B;
@@ -748,23 +748,23 @@ def get_login_css() -> str:
         padding: 0.75rem;
         border-radius: 10px;
         font-weight: 600;
-        font-family: 'DM Sans', sans-serif;
+        font-family: 'Inter', sans-serif;
         transition: all 0.2s ease;
     }
     .stButton > button:hover {
         background-color: var(--brand-dark);
-        box-shadow: 0 4px 6px rgba(232, 115, 74, 0.2);
+        box-shadow: 0 4px 6px rgba(31, 95, 168, 0.2);
     }
     .stTextInput input:focus {
         border-color: var(--brand) !important;
-        box-shadow: 0 0 0 3px rgba(232, 115, 74, 0.15) !important;
+        box-shadow: 0 0 0 3px rgba(63, 167, 163, 0.25) !important;
     }
     h1 {
-        font-family: 'Sora', sans-serif !important;
+        font-family: 'Playfair Display', sans-serif !important;
         color: var(--brand) !important;
     }
     h3 {
-        font-family: 'DM Sans', sans-serif !important;
+        font-family: 'Inter', sans-serif !important;
         color: #475569 !important;
         font-weight: 500 !important;
         border-left: none !important;

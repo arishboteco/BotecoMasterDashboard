@@ -3,19 +3,24 @@
 import plotly.graph_objects as go
 import plotly.io as pio
 
-# -- Brand palette (Slate & Coral) --------------------------------------------
-BRAND_PRIMARY = "#E8734A"  # Coral — primary actions, links
-BRAND_DARK = "#D4612E"  # Deep coral — hover/pressed
-BRAND_LIGHT = "#F0936E"  # Light coral — gradients
-BRAND_SOFT = "#FEF0EB"  # Soft coral tint — backgrounds
-BRAND_SUCCESS = "#0D9488"  # Teal — positive deltas
-BRAND_WARN = "#D97706"  # Amber — warning
+# -- Brand palette (Boteco Mango) -----------------------------------------------
+BRAND_PRIMARY = "#1F5FA8"  # Deep Royal Blue — primary actions, links
+BRAND_DARK = "#174A82"  # Dark blue — hover/pressed
+BRAND_LIGHT = "#2A6BB3"  # Lighter blue — gradients
+BRAND_SOFT = (
+    "#E6F4F3"  # Soft teal tint — backgrounds (teal, not blue, for tropical feel)
+)
+BRAND_SECONDARY = "#3FA7A3"  # Teal Blue — secondary actions
+BRAND_SECONDARY_DARK = "#2F8C89"  # Dark teal — secondary hover
+BRAND_SUCCESS = "#3FA7A3"  # Teal — positive deltas (same as BRAND_SECONDARY — distinct semantic roles)
+BRAND_WARN = "#F4B400"  # Golden Mustard — warning
+BRAND_GREEN = "#6DBE45"  # Leaf Green — freshness, Zomato charts
 BRAND_ERROR = "#EF4444"  # Red — negative deltas, destructive
 BRAND_INFO = "#6366F1"  # Indigo — info
 
 # -- Surface & neutral palette -------------------------------------------------
-SURFACE_BASE = "#FFFFFF"  # Main background — white
-SURFACE_ELEVATED = "#F8F9FB"  # Cards — very light cool gray
+SURFACE_BASE = "#F7FAFC"  # Main background — soft off-white
+SURFACE_ELEVATED = "#FFFFFF"  # Cards — white
 SURFACE_RAISED = "#FFFFFF"  # Modals, tooltips
 TEXT_PRIMARY = "#1E293B"  # Primary text — slate 800
 TEXT_SECONDARY = "#475569"  # Secondary text — slate 600
@@ -33,16 +38,13 @@ RADIUS_SM = "6px"
 RADIUS_MD = "8px"
 RADIUS_LG = "12px"
 
-# -- Chart colorway — coral-forward, colorblind-friendly ----------------------
+# -- Chart colorway — Boteco Mango brand, 5-color palette ---------------------
 CHART_COLORWAY = [
-    "#E8734A",  # coral (primary)
-    "#0D9488",  # teal
-    "#D97706",  # amber
-    "#6366F1",  # indigo
-    "#EC4899",  # pink
-    "#334155",  # slate
-    "#8B5CF6",  # violet
-    "#059669",  # emerald
+    "#1F5FA8",  # deep royal blue (primary)
+    "#3FA7A3",  # teal blue
+    "#6DBE45",  # leaf green
+    "#F4B400",  # golden mustard
+    "#174A82",  # dark blue
 ]
 
 CHART_HEIGHT = 380
@@ -53,7 +55,7 @@ def apply_plotly_theme() -> None:
     pio.templates["boteco"] = go.layout.Template(
         layout=dict(
             font=dict(
-                family="DM Sans, sans-serif",
+                family="Inter, sans-serif",
                 size=13,
                 color=TEXT_PRIMARY,
             ),
@@ -62,7 +64,7 @@ def apply_plotly_theme() -> None:
                 bgcolor=SURFACE_RAISED,
                 font_size=12,
                 bordercolor=BORDER_SUBTLE,
-                font_family="DM Sans, sans-serif",
+                font_family="Inter, sans-serif",
             ),
             margin=CHART_MARGIN,
             title=dict(font=dict(size=15, color=TEXT_PRIMARY), x=0.02, xanchor="left"),
