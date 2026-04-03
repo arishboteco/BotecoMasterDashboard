@@ -74,16 +74,6 @@ def render(ctx: TabContext) -> None:
         y_m = [int(x) for x in date_str.split("-")[:2]]
         multi_outlet = len(outlets_bundle) > 1
 
-        def _col_head(nm: str, max_len: int = 20) -> str:
-            nm = str(nm).strip()
-            for prefix in ("Boteco - ", "Boteco-", "Boteco "):
-                if nm.lower().startswith(prefix.lower()):
-                    nm = nm[len(prefix) :].strip()
-                    break
-            return nm if len(nm) <= max_len else nm[: max_len - 1] + "…"
-
-        divider()
-
         divider()
 
         # Individual PNG sections
