@@ -24,7 +24,7 @@ SURFACE_ELEVATED = "#FFFFFF"  # Cards — white
 SURFACE_RAISED = "#FFFFFF"  # Modals, tooltips
 TEXT_PRIMARY = "#1E293B"  # Primary text — slate 800
 TEXT_SECONDARY = "#475569"  # Secondary text — slate 600
-TEXT_MUTED = "#94A3B8"  # Muted text — slate 400
+TEXT_MUTED = "#64748B"  # Muted text — slate 500 (WCAG AA compliant)
 BORDER_SUBTLE = "#E2E8F0"  # Light borders — slate 200
 BORDER_MEDIUM = "#CBD5E1"  # Medium borders — slate 300
 
