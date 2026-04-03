@@ -91,7 +91,7 @@ def _header_row_and_map(df: pd.DataFrame) -> Optional[Tuple[int, Dict[str, int]]
     for i in range(min(60, len(df))):
         parts = [_norm_header(x) for x in df.iloc[i].values if _norm_header(x)]
         joined = " ".join(parts)
-        if "date" not in joined and "booking" not in joined:
+        if not any(x in joined for x in ("date", "booking", "booked", "day")):
             continue
         if not any(
             x in joined
@@ -125,18 +125,18 @@ def _find_date_column(colmap: Dict[str, int]) -> Optional[int]:
 
     Priority:
     1. 'booking start time' — full datetime of the actual visit
-    2. 'booked for date' — explicit visit date
+    2. 'booked for day' / 'booked for date' — explicit visit date
     3. 'booking created on date' — when booking was made (fallback)
-    4. Any column containing 'date'
+    4. Any column containing 'date' or 'day'
     """
     # 1. booking start time (full datetime = actual visit)
     for key, idx in colmap.items():
         if "booking start time" in key:
             return idx
 
-    # 2. booked for date (explicit visit date)
+    # 2. booked for day / booked for date (explicit visit date)
     for key, idx in colmap.items():
-        if "booked for" in key and "date" in key:
+        if "booked for" in key and ("day" in key or "date" in key):
             return idx
 
     # 3. booking created on date (fallback — when booking was made)
@@ -144,8 +144,11 @@ def _find_date_column(colmap: Dict[str, int]) -> Optional[int]:
         if "booking created" in key and "date" in key:
             return idx
 
-    # 4. generic 'date' column
-    return _col_idx(colmap, "date")
+    # 4. generic 'date' or 'day' column
+    result = _col_idx(colmap, "date")
+    if result is not None:
+        return result
+    return _col_idx(colmap, "day")
 
 
 def _parse_sheet(
