@@ -471,10 +471,6 @@ def get_css() -> str:
         background-color: var(--sidebar-bg) !important;
         border-right: 1px solid var(--sidebar-border) !important;
     }
-    [data-testid="stSidebar"] hr {
-        margin: 1rem 0;
-        border-color: var(--border-subtle);
-    }
     [data-testid="stSidebar"]::before {
         content: '';
         display: block;
@@ -485,6 +481,59 @@ def get_css() -> str:
         left: 0;
         right: 0;
         z-index: 1;
+    }
+
+    /* Logo — white card so dark logo is visible on dark blue sidebar */
+    [data-testid="stSidebar"] img {
+        background-color: #FFFFFF;
+        border-radius: var(--radius-md);
+        padding: 8px;
+        display: block;
+    }
+
+    /* Sidebar text — white/light on dark blue */
+    [data-testid="stSidebar"] p,
+    [data-testid="stSidebar"] .stMarkdown p,
+    [data-testid="stSidebar"] span {
+        color: rgba(255, 255, 255, 0.9) !important;
+    }
+    [data-testid="stSidebar"] strong {
+        color: #FFFFFF !important;
+    }
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3,
+    [data-testid="stSidebar"] h4,
+    [data-testid="stSidebar"] h5,
+    [data-testid="stSidebar"] h6 {
+        color: #FFFFFF !important;
+        border-left: none !important;
+        padding-left: 0 !important;
+    }
+    [data-testid="stSidebar"] .stCaption,
+    [data-testid="stSidebar"] [data-testid="stCaptionContainer"],
+    [data-testid="stSidebar"] small {
+        color: rgba(255, 255, 255, 0.7) !important;
+    }
+    [data-testid="stSidebar"] label {
+        color: rgba(255, 255, 255, 0.85) !important;
+    }
+
+    /* Sidebar dividers — subtle white line */
+    [data-testid="stSidebar"] hr {
+        margin: 1rem 0;
+        border-color: rgba(255, 255, 255, 0.2) !important;
+    }
+
+    /* Sidebar logout button — outlined white style */
+    [data-testid="stSidebar"] .stButton > button {
+        background: rgba(255, 255, 255, 0.12) !important;
+        color: #FFFFFF !important;
+        border: 1px solid rgba(255, 255, 255, 0.35) !important;
+    }
+    [data-testid="stSidebar"] .stButton > button:hover {
+        background: rgba(255, 255, 255, 0.22) !important;
+        border-color: rgba(255, 255, 255, 0.55) !important;
     }
 
     /* ── Date navigation ────────────────────────────────────── */
