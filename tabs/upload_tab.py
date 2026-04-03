@@ -165,7 +165,6 @@ def render(ctx: TabContext) -> None:
                         f"**Covers sync complete:** {updated_count} day(s) updated, "
                         f"{skipped_count} day(s) skipped."
                     )
-                    st.rerun()
                 else:
                     st.error("No cover data found in customer report.")
                 return
