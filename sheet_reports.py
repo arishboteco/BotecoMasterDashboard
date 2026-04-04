@@ -23,7 +23,7 @@ and styled independently.
 import math
 import re
 from io import BytesIO
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
@@ -73,6 +73,44 @@ def _sheet_date_label(iso_date: str) -> str:
     except ValueError:
         return iso_date
     return f"{dt.strftime('%a')}, {dt.day} {dt.strftime('%b %Y')}"
+
+
+def _format_week_label(week_str: str) -> str:
+    """Format week string into 'Mon DD - Sun DD' label.
+
+    Handles formats: 'YYYY-W##' (from SQLite STRFTIME) or 'YYYY-MM-DD' (ISO date).
+    For 'YYYY-W##', calculates the Monday and Sunday of that week.
+    """
+    week_str = str(week_str or "").strip()
+    if not week_str:
+        return "—"
+
+    # Handle 'YYYY-W##' format
+    match = re.match(r"^(\d{4})-W(\d{2})$", week_str)
+    if match:
+        year, week_num = int(match.group(1)), int(match.group(2))
+        # Find Monday of that week
+        jan_1 = datetime(year, 1, 1)
+        # ISO week: Monday is day 0
+        days_to_first_monday = (7 - jan_1.weekday()) % 7
+        first_monday = jan_1 + timedelta(days=days_to_first_monday)
+        # Adjust: if Jan 1 is Monday, first_monday is Jan 1
+        if jan_1.weekday() == 0:
+            first_monday = jan_1
+        monday = first_monday + timedelta(weeks=week_num - 1)
+        sunday = monday + timedelta(days=6)
+        return f"{monday.strftime('%b %d')} - {sunday.strftime('%b %d')}"
+
+    # Handle 'YYYY-MM-DD' format (single date)
+    try:
+        dt = datetime.strptime(week_str[:10], "%Y-%m-%d")
+        monday = dt - timedelta(days=dt.weekday())
+        sunday = monday + timedelta(days=6)
+        return f"{monday.strftime('%b %d')} - {sunday.strftime('%b %d')}"
+    except ValueError:
+        pass
+
+    return week_str
 
 
 def _achievement_color(pct: float) -> str:
@@ -1108,7 +1146,7 @@ def _section_footfall_metrics(
                 )
 
             cells = [
-                week,
+                _format_week_label(week),
                 f"{covers:,}",
                 foot_pct,
                 str(total_days),

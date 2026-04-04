@@ -89,7 +89,7 @@ def render(ctx: TabContext) -> None:
                 ctx.report_loc_ids, y_m[0], y_m[1]
             )
             # Get per-outlet footfall metrics (monthly + weekly aggregated data)
-            # Calculate date range: last 9 months for monthly, last 5 weeks for weekly
+            # Calculate date range: last 9 months for monthly, current week + 3 previous weeks for weekly
             _today = datetime.now().date()
             _end = _today.strftime("%Y-%m-%d")
             # 9 months back
@@ -102,8 +102,10 @@ def render(ctx: TabContext) -> None:
                 else:
                     _start_mo = _start_mo.replace(month=_m)
             _start_mo_str = _start_mo.replace(day=1).strftime("%Y-%m-%d")
-            # 5 weeks back
-            _start_wk = (_today - timedelta(weeks=5)).strftime("%Y-%m-%d")
+            # 4 weeks: current week (Mon-Sun) + previous 3 weeks
+            _days_since_monday = _today.weekday()
+            _current_week_monday = _today - timedelta(days=_days_since_monday)
+            _start_wk = (_current_week_monday - timedelta(weeks=3)).strftime("%Y-%m-%d")
 
             per_outlet_footfall_metrics = [
                 (
