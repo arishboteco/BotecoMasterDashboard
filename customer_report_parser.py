@@ -26,17 +26,14 @@ def _col_idx(colmap: Dict[str, int], *needles: str) -> Optional[int]:
     if not needles:
         return None
 
-    # First try: all needles must be present in key
     for key, idx in colmap.items():
         if all(n in key for n in needles):
             return idx
 
-    # Second try: any needle matches (substring search)
     for key, idx in colmap.items():
         if any(n in key for n in needles):
             return idx
 
-    # Third try: check for common variations
     variations = {
         "cover": [
             "covers",
@@ -124,27 +121,23 @@ def _find_date_column(colmap: Dict[str, int]) -> Optional[int]:
     """Find the best date column for the visit/booking date.
 
     Priority:
-    1. 'booking start time' — full datetime of the actual visit
-    2. 'booked for day' / 'booked for date' — explicit visit date
-    3. 'booking created on date' — when booking was made (fallback)
+    1. 'booked for day' / 'booked for date' — explicit visit date (highest priority)
+    2. 'booking created on date' — when booking was made
+    3. 'booking start time' — full datetime of the actual visit
     4. Any column containing 'date' or 'day'
     """
-    # 1. booking start time (full datetime = actual visit)
-    for key, idx in colmap.items():
-        if "booking start time" in key:
-            return idx
-
-    # 2. booked for day / booked for date (explicit visit date)
     for key, idx in colmap.items():
         if "booked for" in key and ("day" in key or "date" in key):
             return idx
 
-    # 3. booking created on date (fallback — when booking was made)
     for key, idx in colmap.items():
         if "booking created" in key and "date" in key:
             return idx
 
-    # 4. generic 'date' or 'day' column
+    for key, idx in colmap.items():
+        if "booking start time" in key:
+            return idx
+
     result = _col_idx(colmap, "date")
     if result is not None:
         return result
@@ -162,7 +155,6 @@ def _parse_sheet(
         return out
     header_idx, colmap = hm
 
-    # Use the improved date finder
     idx_date = _find_date_column(colmap)
     idx_outlet = _col_idx(colmap, "outlet", "branch", "location", "store", "restaurant")
     idx_covers = _col_idx(colmap, "cover")
@@ -173,7 +165,6 @@ def _parse_sheet(
     idx_lunch = _col_idx(colmap, "lunch")
     idx_dinner = _col_idx(colmap, "dinner")
 
-    # Age-group columns (Dineout/EazyDiner style)
     idx_seniors = _col_idx(colmap, "senior")
     idx_adults = _col_idx(colmap, "adult")
     idx_youth = _col_idx(colmap, "youth")
@@ -192,7 +183,6 @@ def _parse_sheet(
 
     hint_id = _match_location_id(sheet_name_hint, locations)
 
-    # Accumulator: (location_id, date) -> {covers, lunch_covers, dinner_covers}
     accum: Dict[Tuple[int, str], Dict[str, Any]] = {}
 
     for ri in range(header_idx + 1, len(df)):
@@ -216,7 +206,6 @@ def _parse_sheet(
 
         key = (lid, day)
 
-        # Get covers from primary column (PAX Count)
         row_covers: Optional[int] = None
         if idx_covers is not None and pd.notna(row.iloc[idx_covers]):
             try:
@@ -224,7 +213,6 @@ def _parse_sheet(
             except ValueError:
                 row_covers = None
 
-        # If PAX Count is missing/0, sum age-group columns
         if row_covers is None or row_covers == 0:
             age_sum = 0
             for age_idx in (idx_seniors, idx_adults, idx_youth, idx_children):
@@ -239,13 +227,11 @@ def _parse_sheet(
         if row_covers is None or row_covers == 0:
             continue
 
-        # Accumulate covers for this (location, date)
         if key not in accum:
             accum[key] = {"covers": 0, "lunch_covers": None, "dinner_covers": None}
 
         accum[key]["covers"] += row_covers
 
-        # Lunch/dinner split (if available)
         lunch_v: Optional[int] = None
         dinner_v: Optional[int] = None
         if idx_lunch is not None and pd.notna(row.iloc[idx_lunch]):
@@ -268,7 +254,6 @@ def _parse_sheet(
                 accum[key]["dinner_covers"] = 0
             accum[key]["dinner_covers"] += dinner_v
 
-    # Convert accumulator to output format
     for key, vals in accum.items():
         out[key] = {
             "covers": vals["covers"],
@@ -280,7 +265,7 @@ def _parse_sheet(
 
 
 def build_covers_lookup(
-    content: bytes, locations: List[Dict[str, Any]], debug: bool = False
+    content: bytes, locations: List[Dict[str, Any]]
 ) -> Tuple[LookupMap, List[str]]:
     """Parse workbook; returns (location_id, date) -> cover fields and notes."""
     notes: List[str] = []
@@ -297,7 +282,6 @@ def build_covers_lookup(
             return {}, notes
 
     combined: LookupMap = {}
-    total_rows_found = 0
 
     for sheet_name in xl.sheet_names:
         try:
@@ -315,53 +299,13 @@ def build_covers_lookup(
         if df is None or df.empty:
             continue
 
-        # Debug: Show first few rows to help diagnose issues
-        if debug:
-            notes.append(f"Sheet '{sheet_name}': {len(df)} rows, first 3 rows preview:")
-            for i in range(min(3, len(df))):
-                row_vals = [
-                    str(v) if pd.notna(v) else "" for v in df.iloc[i].values[:5]
-                ]
-                notes.append(f"  Row {i}: {row_vals}")
-
         part = _parse_sheet(df, locations, sheet_name)
-
-        if debug and not part:
-            # Debug: Try to detect what went wrong
-            hm = _header_row_and_map(df)
-            if not hm:
-                notes.append(
-                    f"Sheet '{sheet_name}': No header row found (need 'date' + 'cover/footfall/pax/lunch/dinner')"
-                )
-            else:
-                header_idx, colmap = hm
-                notes.append(
-                    f"Sheet '{sheet_name}': Header at row {header_idx}, columns: {list(colmap.keys())[:10]}..."
-                )
-                idx_date = _find_date_column(colmap)
-                idx_covers = (
-                    _col_idx(colmap, "cover")
-                    or _col_idx(colmap, "footfall")
-                    or _col_idx(colmap, "pax")
-                )
-                idx_lunch = _col_idx(colmap, "lunch")
-                idx_dinner = _col_idx(colmap, "dinner")
-                notes.append(
-                    f"  Detected: date={idx_date}, covers={idx_covers}, lunch={idx_lunch}, dinner={idx_dinner}"
-                )
-        elif part:
-            total_rows_found += len(part)
-            if debug:
-                notes.append(f"Sheet '{sheet_name}': Found {len(part)} cover entries")
-
         combined.update(part)
 
     if not combined:
         notes.append(
             "No cover rows found — expected columns like Date and Covers (or Lunch/Dinner)."
         )
-    elif debug:
-        notes.append(f"Total: Found {total_rows_found} cover entries across all sheets")
 
     return combined, notes
 
@@ -386,12 +330,12 @@ def apply_covers_overlay(
 
 
 def load_lookup_from_path(
-    path: str, locations: List[Dict[str, Any]], debug: bool = False
+    path: str, locations: List[Dict[str, Any]]
 ) -> Tuple[LookupMap, List[str]]:
     if not path or not path.strip():
         return {}, ["Customer report path is not set."]
     try:
         with open(path, "rb") as f:
-            return build_covers_lookup(f.read(), locations, debug=debug)
+            return build_covers_lookup(f.read(), locations)
     except OSError as ex:
         return {}, [f"Cannot read customer report file: {ex}"]
