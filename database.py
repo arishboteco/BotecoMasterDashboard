@@ -1007,7 +1007,7 @@ def get_weekly_footfall_multi(
     """Aggregate covers by ISO week across locations for a date range.
 
     Returns list of dicts: [{"week": "YYYY-W##", "covers": int, "total_days": int}, ...]
-    Sorted by week ascending.
+    Sorted by week ascending. Uses ISO 8601 week numbering (Monday-start).
     """
     if not location_ids:
         return []
@@ -1016,17 +1016,22 @@ def get_weekly_footfall_multi(
         placeholders = ",".join("?" * len(location_ids))
         cursor.execute(
             f"""
-            SELECT
-                week,
-                SUM(covers) AS covers,
-                CAST(COUNT(DISTINCT date) AS INTEGER) AS total_days
-            FROM (
-                SELECT STRFTIME('%Y-W%W', date) AS week, covers, date
+            WITH week_data AS (
+                SELECT
+                    date,
+                    covers,
+                    date(date, '-' || ((strftime('%%w', date) + 6) %% 7) || ' days') AS iso_monday
                 FROM daily_summaries
                 WHERE location_id IN ({placeholders})
                   AND date >= ?
                   AND date <= ?
-            ) w
+            )
+            SELECT
+                CAST(strftime('%%Y', date(iso_monday, '+3 days')) AS TEXT) || '-W' ||
+                printf('%%02d', CAST(strftime('%%W', date(iso_monday, '+3 days')) AS INTEGER) + 1) AS week,
+                SUM(covers) AS covers,
+                CAST(COUNT(DISTINCT date) AS INTEGER) AS total_days
+            FROM week_data
             GROUP BY week
             ORDER BY week
             """,
