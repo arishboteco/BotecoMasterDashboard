@@ -1,4 +1,4 @@
-"""Upload tab — POS file upload, detection, import, covers sync, and data management."""
+"""Upload tab — POS file upload, detection, import, and data management."""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ import pandas as pd
 import streamlit as st
 
 import config
-import customer_report_parser
 import database
 import file_detector
 import pos_parser as parser
@@ -18,17 +17,14 @@ import smart_upload
 import utils
 from auth import is_admin
 from tabs import TabContext
-from components import empty_state, confirm_dialog
 
 logger = logging.getLogger("boteco")
 
 
 def _prepare_merged_for_save(
     merged: Dict[str, Any],
-    location_id: int,
-    cr_lookup: Dict[Any, Any],
 ) -> Dict[str, Any]:
-    """Covers already applied by smart_upload; just ensure defaults."""
+    """Ensure covers defaults are set."""
     out = dict(merged)
     out.setdefault("covers", 0)
     out.setdefault("lunch_covers", None)
@@ -63,21 +59,19 @@ def render(ctx: TabContext) -> None:
         st.markdown(
             "**Just drop all your Petpooja downloads at once.** The system will:\n\n"
             "1. **Auto-detect** each file type from its content (not filename)\n"
-            "2. **Import** Dynamic Report CSV (primary data), Item Reports (fallback), "
-            "Customer Reports (covers), and Timing Reports (meal breakdown)\n"
+            "2. **Import** Dynamic Report CSV (primary data) and Item Reports (fallback)\n"
             "3. **Skip** redundant files (Group Wise, All Restaurant, Comparison)\n"
             "4. **Merge** data for the same date from multiple files\n\n"
             "Saving for the same **location + date** overwrites that day's data."
         )
 
-    # ── Single upload zone for ALL file types ──
     st.markdown("### Drop your files")
     uploaded_files = st.file_uploader(
         "Petpooja exports (XLSX, XLS, CSV — any report type)",
         type=["xlsx", "xls", "csv"],
         accept_multiple_files=True,
         help=(
-            "Drop Item Reports, Customer Reports, Timing Reports, Order Summaries, "
+            "Drop Item Reports, Dynamic Reports, Timing Reports, Order Summaries, "
             "Flash Reports — anything from Petpooja. The system figures out what each file is."
         ),
         key="smart_upload_files",
@@ -94,7 +88,6 @@ def render(ctx: TabContext) -> None:
         )
 
     if uploaded_files:
-        # ── Phase 1: Detect and display what we found ──
         st.markdown("#### Detected files")
         files_payload = [(f.name, f.getvalue()) for f in uploaded_files]
 
@@ -114,60 +107,13 @@ def render(ctx: TabContext) -> None:
         if importable_count == 0:
             st.error(
                 "No importable files detected. Make sure you include a "
-                "**Dynamic Report CSV** or **Item Report With Customer/Order Details** — one of these is required as the primary data source."
+                "**Dynamic Report CSV** or **Item Report With Customer/Order Details**."
             )
 
-        # ── Phase 2: Pre-parse to find dates and check overlaps ──
         if importable_count > 0:
             upload_result = smart_upload.process_smart_upload(
                 files_payload, ctx.import_loc_id
             )
-
-            # ── Customer-report-only path: update existing covers ──
-            if (
-                len(upload_result.days) == 0
-                and upload_result.customer_content is not None
-            ):
-                locs_for_cr = database.get_all_locations()
-                cr_lookup, cr_notes = customer_report_parser.build_covers_lookup(
-                    upload_result.customer_content, locs_for_cr
-                )
-                for note in cr_notes:
-                    st.caption(note)
-
-                if cr_lookup:
-                    updated_count = 0
-                    skipped_count = 0
-                    for (lid, date_str), entry in cr_lookup.items():
-                        if lid != ctx.import_loc_id:
-                            continue
-                        covers = int(entry.get("covers") or 0)
-                        if covers <= 0:
-                            skipped_count += 1
-                            continue
-                        lunch = entry.get("lunch_covers")
-                        dinner = entry.get("dinner_covers")
-                        ok = database.update_daily_summary_covers_only(
-                            ctx.import_loc_id, date_str, covers, lunch, dinner
-                        )
-                        if ok:
-                            updated_count += 1
-                            st.success(
-                                f"Updated covers for {date_str}: {covers} covers"
-                            )
-                        else:
-                            skipped_count += 1
-                            st.caption(
-                                f"{date_str}: no existing sales data found — upload sales data first."
-                            )
-
-                    st.info(
-                        f"**Covers sync complete:** {updated_count} day(s) updated, "
-                        f"{skipped_count} day(s) skipped."
-                    )
-                else:
-                    st.error("No cover data found in customer report.")
-                return
 
             overlap_rows: list = []
             for day in upload_result.days:
@@ -198,7 +144,6 @@ def render(ctx: TabContext) -> None:
 
             import_blocked = must_confirm_replace and not confirm_replace
 
-            # ── Phase 3: Import button ──
             if st.button(
                 f"Import {importable_count} file(s) \u2192 save to database",
                 type="primary",
@@ -215,29 +160,6 @@ def render(ctx: TabContext) -> None:
                             st.caption(note)
                         if fr.error:
                             st.error(f"**{fr.filename}**: {fr.error}")
-
-                    # Build covers lookup
-                    locs_for_cr = database.get_all_locations()
-                    cr_path = config.resolve_customer_report_path()
-                    cr_lookup: dict = {}
-                    cr_notes: list = []
-                    if cr_path:
-                        cr_lookup, cr_notes = (
-                            customer_report_parser.load_lookup_from_path(
-                                cr_path, locs_for_cr
-                            )
-                        )
-                    # Customer report detected in the upload batch
-                    if upload_result.customer_content is not None:
-                        up_lookup, up_notes = (
-                            customer_report_parser.build_covers_lookup(
-                                upload_result.customer_content, locs_for_cr
-                            )
-                        )
-                        cr_lookup = {**cr_lookup, **up_lookup}
-                        cr_notes.extend(up_notes)
-                    for note in cr_notes:
-                        st.caption(note)
 
                     monthly_tgt = (
                         ctx.import_location_settings.get(
@@ -274,11 +196,7 @@ def render(ctx: TabContext) -> None:
                             )
                             continue
 
-                        merged = _prepare_merged_for_save(
-                            day.merged,
-                            ctx.import_loc_id,
-                            cr_lookup,
-                        )
+                        merged = _prepare_merged_for_save(day.merged)
                         merged["target"] = daily_tgt
                         if sc_setting:
                             merged["seat_count"] = int(sc_setting)
@@ -295,7 +213,6 @@ def render(ctx: TabContext) -> None:
                         merged.update(mtd)
                         database.save_daily_summary(ctx.import_loc_id, merged)
 
-                        # Determine primary file type for this day's data
                         primary_kind = "dynamic_report"
                         for fr in upload_result.files:
                             if fr.importable and fr.kind in (
@@ -308,7 +225,12 @@ def render(ctx: TabContext) -> None:
                         fnames = ", ".join(
                             fr.filename
                             for fr in upload_result.files
-                            if fr.importable and fr.kind != "customer_report"
+                            if fr.importable
+                            and fr.kind
+                            not in (
+                                "customer_report",
+                                "timing_report",
+                            )
                         )
                         if len(fnames) > 180:
                             fnames = fnames[:177] + "..."
@@ -347,7 +269,6 @@ def render(ctx: TabContext) -> None:
                         )
                         st.rerun()
 
-    # ── Remove incorrect data ──
     st.markdown("---")
     st.markdown("### Remove incorrect data")
     st.caption(
@@ -413,7 +334,6 @@ def render(ctx: TabContext) -> None:
     else:
         st.caption("Contact an admin to remove a mistaken import.")
 
-    # ── Recent uploads ──
     st.markdown("---")
     st.markdown("### Recent Entries")
     history = database.get_upload_history(ctx.import_loc_id, 10)
