@@ -231,6 +231,38 @@ def init_database():
 
     _migrate_daily_summaries_composite_unique(cursor)
 
+    # Query-performance indexes for reporting and analytics workloads.
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_daily_summaries_location_date
+        ON daily_summaries(location_id, date)
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_upload_history_location_uploaded_at
+        ON upload_history(location_id, uploaded_at)
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_category_sales_summary_id
+        ON category_sales(summary_id)
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_service_sales_summary_id
+        ON service_sales(summary_id)
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_item_sales_summary_id
+        ON item_sales(summary_id)
+        """
+    )
+
     conn.commit()
     conn.close()
 
@@ -491,6 +523,7 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
                     VALUES (?, ?, ?, ?)
                     """,
                     (
+                        summary_id,
                         item.get("item_name", ""),
                         item.get("qty", 0),
                         item.get("amount", 0),

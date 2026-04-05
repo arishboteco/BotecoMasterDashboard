@@ -5,7 +5,6 @@ route to the right parser, merge data by date, and return save-ready records.
 Supports:
   dynamic_report       - Dynamic Report CSV (per-bill order-level)        [PRIMARY]
   item_order_details   - Item Report With Customer/Order Details (.xlsx)  [FALLBACK]
-  customer_report      - Customer/Booking report (.xlsx)                  [COVERS]
   timing_report        - Restaurant Timing Report (.xlsx)                 [SERVICE BREAKDOWN]
   order_summary_csv    - Order Summary Report (.csv)                      [BACKUP]
   flash_report         - POS Collection / Flash Report (.xlsx)            [CROSS-CHECK]
@@ -34,6 +33,21 @@ from logger import get_logger
 logger = get_logger(__name__)
 
 
+_FILE_TYPE_PREFERENCE = (
+    "dynamic_report",
+    "item_order_details",
+    "order_summary_csv",
+    "flash_report",
+)
+
+
+def _primary_file_type(source_kinds: List[str]) -> str:
+    for kind in _FILE_TYPE_PREFERENCE:
+        if kind in source_kinds:
+            return kind
+    return "item_order_details"
+
+
 # ---------------------------------------------------------------------------
 # Result types
 # ---------------------------------------------------------------------------
@@ -57,6 +71,7 @@ class DayResult:
 
     date: str
     merged: Dict[str, Any]
+    source_kinds: List[str] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
 
 
@@ -372,10 +387,9 @@ def process_smart_upload(
 
     Returns:
         SmartUploadResult with per-file results, per-day results, and
-        the raw bytes of the customer report if one was uploaded.
+        parse/save notes for the upload batch.
     """
     file_results: List[FileResult] = []
-    customer_content: Optional[bytes] = None
     global_notes: List[str] = []
 
     # Step 1 — classify every file
@@ -560,6 +574,14 @@ def process_smart_upload(
     for d in sorted(by_date.keys()):
         frags = by_date[d]
         frags.sort(key=lambda f: _KIND_PRIORITY.get(f.get("file_type", ""), 100))
+        source_kinds = sorted(
+            {
+                str(f.get("file_type"))
+                for f in frags
+                if isinstance(f.get("file_type"), str) and f.get("file_type")
+            },
+            key=lambda k: _KIND_PRIORITY.get(k, 100),
+        )
         merged = pos_parser.merge_upload_fragments(frags)
 
         # Attach timing services if none already present
@@ -583,7 +605,12 @@ def process_smart_upload(
 
         ok, verr = pos_parser.validate_data(merged)
         day_results.append(
-            DayResult(date=d, merged=merged, errors=(verr if not ok else []))
+            DayResult(
+                date=d,
+                merged=merged,
+                source_kinds=source_kinds,
+                errors=(verr if not ok else []),
+            )
         )
 
     return SmartUploadResult(
@@ -626,7 +653,6 @@ def save_smart_upload_results(
 
         merged = dict(day.merged)
 
-        # Covers already applied in process_smart_upload from customer report
         merged.setdefault("covers", 0)
         merged.setdefault("lunch_covers", None)
         merged.setdefault("dinner_covers", None)
@@ -650,17 +676,21 @@ def save_smart_upload_results(
 
         database.save_daily_summary(location_id, merged)
 
-        # Build a representative filename string for the audit log
-        fnames = ", ".join(
-            fr.filename
-            for fr in result.files
-            if fr.importable and fr.kind not in ("customer_report",)
-        )
+        # Build representative filenames for this day's contributing source kinds.
+        day_fnames = [fr.filename for fr in result.files if fr.kind in day.source_kinds]
+        if not day_fnames:
+            day_fnames = [fr.filename for fr in result.files if fr.importable]
+        fnames = ", ".join(day_fnames)
         if len(fnames) > 180:
             fnames = fnames[:177] + "..."
 
+        primary_kind = _primary_file_type(day.source_kinds)
         database.save_upload_record(
-            location_id, day.date, fnames, "item_order_details", uploaded_by
+            location_id,
+            day.date,
+            fnames,
+            primary_kind,
+            uploaded_by,
         )
 
         messages.append(f"Saved {day.date}.")

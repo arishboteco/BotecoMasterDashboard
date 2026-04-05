@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List
 
 import pandas as pd
 import streamlit as st
@@ -12,24 +11,12 @@ import streamlit as st
 import config
 import database
 import file_detector
-import pos_parser as parser
 import smart_upload
 import utils
 from auth import is_admin
 from tabs import TabContext
 
 logger = logging.getLogger("boteco")
-
-
-def _prepare_merged_for_save(
-    merged: Dict[str, Any],
-) -> Dict[str, Any]:
-    """Ensure covers defaults are set."""
-    out = dict(merged)
-    out.setdefault("covers", 0)
-    out.setdefault("lunch_covers", None)
-    out.setdefault("dinner_covers", None)
-    return out
 
 
 def render(ctx: TabContext) -> None:
@@ -98,9 +85,7 @@ def render(ctx: TabContext) -> None:
                 st.success(f"\u2705 **{fname}** \u2192 {label}")
                 importable_count += 1
             elif file_detector.is_skippable(kind):
-                st.caption(
-                    f"\u23ed **{fname}** \u2192 {label} (will skip \u2014 redundant)"
-                )
+                st.caption(f"\u23ed **{fname}** \u2192 {label} (will skip)")
             else:
                 st.warning(f"\u2753 **{fname}** \u2192 {label}")
 
@@ -181,69 +166,22 @@ def render(ctx: TabContext) -> None:
                         else None
                     )
                     uploaded_by = st.session_state.get("username") or "user"
-                    saved_any = False
-                    saved_days = 0
-                    skipped_validation = 0
-
-                    for day in upload_result.days:
-                        if day.errors:
-                            skipped_validation += 1
-                            st.error(
-                                f"{day.date}: "
-                                + " \u00b7 ".join(day.errors)
-                                + " \u2014 check that this date has Success rows with "
-                                "Sub Total / Final Total in your Item Report."
-                            )
-                            continue
-
-                        merged = _prepare_merged_for_save(day.merged)
-                        merged["target"] = daily_tgt
-                        if sc_setting:
-                            merged["seat_count"] = int(sc_setting)
-                        merged = parser.calculate_derived_metrics(merged)
-                        merged.pop("seat_count", None)
-                        y_m = [int(x) for x in day.date.split("-")[:2]]
-                        mtd = parser.calculate_mtd_metrics(
+                    saved_days, skipped_validation, save_messages = (
+                        smart_upload.save_smart_upload_results(
+                            upload_result,
                             ctx.import_loc_id,
-                            monthly_tgt,
-                            year=y_m[0],
-                            month=y_m[1],
-                            as_of_date=day.date,
-                        )
-                        merged.update(mtd)
-                        database.save_daily_summary(ctx.import_loc_id, merged)
-
-                        primary_kind = "dynamic_report"
-                        for fr in upload_result.files:
-                            if fr.importable and fr.kind in (
-                                "dynamic_report",
-                                "item_order_details",
-                            ):
-                                primary_kind = fr.kind
-                                break
-
-                        fnames = ", ".join(
-                            fr.filename
-                            for fr in upload_result.files
-                            if fr.importable
-                            and fr.kind
-                            not in (
-                                "customer_report",
-                                "timing_report",
-                            )
-                        )
-                        if len(fnames) > 180:
-                            fnames = fnames[:177] + "..."
-                        database.save_upload_record(
-                            ctx.import_loc_id,
-                            day.date,
-                            fnames,
-                            primary_kind,
                             uploaded_by,
+                            monthly_target=float(monthly_tgt),
+                            daily_target=float(daily_tgt),
+                            seat_count=(int(sc_setting) if sc_setting else None),
                         )
-                        st.success(f"Saved data for {day.date}")
-                        saved_any = True
-                        saved_days += 1
+                    )
+
+                    for msg in save_messages:
+                        if msg.startswith("Saved "):
+                            st.success(msg)
+                        else:
+                            st.error(msg)
 
                     note_count = len(upload_result.global_notes)
                     st.info(
@@ -251,7 +189,7 @@ def render(ctx: TabContext) -> None:
                         f"{skipped_validation} day(s) skipped."
                     )
 
-                    if saved_any:
+                    if saved_days > 0:
                         most_recent_date = database.get_most_recent_date_with_data(
                             ctx.report_loc_ids
                         )

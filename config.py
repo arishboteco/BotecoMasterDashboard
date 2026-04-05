@@ -1,7 +1,5 @@
 # Boteco Dashboard Configuration
 
-import os
-
 # Default Settings
 MONTHLY_TARGET = 5_000_000
 DAILY_TARGET = MONTHLY_TARGET / 30
@@ -53,27 +51,8 @@ MTD SUMMARY
 """
 
 # File Upload Settings
-ALLOWED_EXTENSIONS = ["xlsx", "xls"]
+ALLOWED_EXTENSIONS = ["xlsx", "xls", "csv"]
 MAX_FILE_SIZE_MB = 10
 
 # Legacy: was used by All Restaurant Sales parser (removed). Kept for any future multi-outlet tooling.
 DEFAULT_RESTAURANT_FILTER = "Boteco"
-
-# Customer report (covers). Override with env CUSTOMER_REPORT_XLSX_PATH or Streamlit secrets.
-CUSTOMER_REPORT_XLSX_PATH = os.environ.get("CUSTOMER_REPORT_XLSX_PATH", "")
-
-
-def resolve_customer_report_path() -> str:
-    """Path from env, then optional Streamlit secrets."""
-    env = os.environ.get("CUSTOMER_REPORT_XLSX_PATH", "").strip()
-    if env:
-        return env
-    try:
-        import streamlit as st
-
-        p = st.secrets.get("CUSTOMER_REPORT_XLSX_PATH", "")
-        if p:
-            return str(p).strip()
-    except Exception:
-        pass
-    return (CUSTOMER_REPORT_XLSX_PATH or "").strip()

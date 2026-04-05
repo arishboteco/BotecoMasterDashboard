@@ -28,18 +28,23 @@ import pandas as pd
 IMPORT_PRIORITY = {
     "dynamic_report": 0,
     "item_order_details": 1,
-    "customer_report": 2,
-    "timing_report": 3,
-    "flash_report": 4,
-    "order_summary_csv": 5,
+    "timing_report": 2,
+    "flash_report": 3,
+    "order_summary_csv": 4,
 }
 
-SKIP_TYPES = {"group_wise", "all_restaurant", "comparison", "unknown"}
+SKIP_TYPES = {
+    "customer_report",
+    "group_wise",
+    "all_restaurant",
+    "comparison",
+    "unknown",
+}
 
 KIND_LABELS = {
     "dynamic_report": "Dynamic Report (per-bill CSV — primary data source)",
     "item_order_details": "Item Report (line-item sales — primary data source)",
-    "customer_report": "Customer Report (covers with lunch/dinner split)",
+    "customer_report": "Customer Report (detected but not imported)",
     "timing_report": "Timing Report (breakfast/lunch/dinner revenue breakdown)",
     "order_summary_csv": "Order Summary CSV (per-order totals)",
     "flash_report": "Flash Report (single-day POS summary)",

@@ -56,7 +56,6 @@ BotecoMasterDashboard/
 ├── auth.py                     # Authentication & session management
 ├── clipboard_ui.py             # HTML/JS clipboard helpers
 ├── config.py                   # Configuration constants & env resolution
-├── customer_report_parser.py   # Parses customer/booking reports for cover counts
 ├── database.py                 # SQLite database layer & schema
 ├── file_detector.py            # Auto-detects Petpooja export file types
 ├── logger.py                   # Centralized logging configuration
@@ -83,15 +82,14 @@ BotecoMasterDashboard/
 | Type | File | Usage |
 |------|------|-------|
 | Item Report With Customer/Order Details | `.xlsx` | Primary data source — sales, categories, items, payments |
-| Customer/Booking Report | `.xlsx` | Cover counts per outlet per day |
 | Restaurant Timing Report | `.xlsx` | Meal period breakdown (Breakfast, Lunch, Dinner) |
 | Order Summary Report | `.csv` | Backup data source when Item Report unavailable |
 | Flash Report / POS Collection | `.xlsx` | Supplement for service charge data |
+| Customer/Booking Report | `.xlsx` | Detected but not imported |
 | Group Wise / All Restaurant / Comparison | `.xlsx/.xls` | Skipped — redundant data |
 
 ## Environment Variables
 
 | Variable | Description |
 |----------|-------------|
-| `CUSTOMER_REPORT_XLSX_PATH` | Path to the customer report XLSX file for cover counts |
 | `BOTECO_LOG_FILE` | Optional file path for persistent logging |
