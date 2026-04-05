@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 
 import streamlit as st
 import database
+import config
 import styles
 from streamlit_cookies_controller import CookieController
 
@@ -166,26 +167,24 @@ def show_setup_form():
                 st.error("Passwords do not match")
                 return
 
-            if len(password) < 6:
-                st.error("Password must be at least 6 characters")
+            if len(password) < config.MIN_PASSWORD_LENGTH:
+                st.error(
+                    f"Password must be at least {config.MIN_PASSWORD_LENGTH} characters"
+                )
                 return
 
             # Create user and location
             database.create_admin_user(username, password)
 
-            conn = database.get_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT id FROM locations ORDER BY id LIMIT 1")
-            loc_row = cursor.fetchone()
-            if loc_row:
+            locations = database.get_all_locations()
+            if locations:
                 database.update_location_settings(
-                    loc_row["id"],
+                    int(locations[0]["id"]),
                     {
                         "name": st.session_state.setup_location,
                         "target_monthly_sales": st.session_state.setup_target,
                     },
                 )
-            conn.close()
 
             st.success("Account created successfully! Please login.")
             st.rerun()

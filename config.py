@@ -12,6 +12,7 @@ DATABASE_PATH = "data/boteco.db"
 # App Settings
 APP_NAME = "Boteco Dashboard"
 APP_ICON = None
+MIN_PASSWORD_LENGTH = 10
 
 # Report Settings
 CURRENCY_SYMBOL = "₹"

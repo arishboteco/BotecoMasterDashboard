@@ -1,6 +1,7 @@
 """Tests for database footfall queries."""
 
 import pytest
+import config
 import database
 
 
@@ -90,3 +91,66 @@ class TestSaveDailySummaryTopItems:
         assert "Craft Beer" in by_name
         assert int(by_name["Paneer Tikka"]["qty"]) == 7
         assert float(by_name["Paneer Tikka"]["amount"]) == 2800.0
+
+
+class TestSessionTokens:
+    def test_create_user_session_stores_hashed_token(self, initialized_db):
+        ok, _ = database.create_user(
+            username="session_user",
+            password="averysecurepwd",
+            role="manager",
+            location_id=1,
+        )
+        assert ok
+
+        user = database.verify_user("session_user", "averysecurepwd")
+        token = database.create_user_session(int(user["id"]), days=30)
+
+        with database.db_connection() as conn:
+            row = conn.execute(
+                "SELECT token FROM user_sessions WHERE user_id = ?",
+                (int(user["id"]),),
+            ).fetchone()
+
+        assert row is not None
+        assert row["token"] != token
+        assert len(row["token"]) == 64
+        restored = database.validate_session_token(token)
+        assert restored is not None
+        assert restored["username"] == "session_user"
+
+    def test_validate_supports_legacy_plain_token_rows(self, initialized_db):
+        ok, _ = database.create_user(
+            username="legacy_user",
+            password="averysecurepwd",
+            role="manager",
+            location_id=1,
+        )
+        assert ok
+
+        user = database.verify_user("legacy_user", "averysecurepwd")
+        legacy_token = "legacy-token-123"
+        with database.db_connection() as conn:
+            conn.execute(
+                "INSERT INTO user_sessions (token, user_id, expires_at) VALUES (?, ?, datetime('now', '+1 day'))",
+                (legacy_token, int(user["id"])),
+            )
+            conn.commit()
+
+        restored = database.validate_session_token(legacy_token)
+        assert restored is not None
+        assert restored["username"] == "legacy_user"
+
+
+class TestPasswordPolicy:
+    def test_create_user_enforces_min_password_length(self, initialized_db):
+        short = "x" * (config.MIN_PASSWORD_LENGTH - 1)
+        ok, msg = database.create_user(
+            username="short_pwd",
+            password=short,
+            role="manager",
+            location_id=1,
+        )
+
+        assert not ok
+        assert str(config.MIN_PASSWORD_LENGTH) in msg

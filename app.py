@@ -35,11 +35,10 @@ st.markdown(styles.get_css(), unsafe_allow_html=True)
 auth.init_auth_state()
 
 # Check if setup is needed
-conn = database.get_connection()
-cursor = conn.cursor()
-cursor.execute("SELECT COUNT(*) as count FROM users")
-user_count = cursor.fetchone()["count"]
-conn.close()
+with database.db_connection() as conn:
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) as count FROM users")
+    user_count = cursor.fetchone()["count"]
 
 if user_count == 0:
     auth.show_setup_form()
