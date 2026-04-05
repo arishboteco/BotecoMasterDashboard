@@ -124,7 +124,12 @@ def render(ctx: TabContext) -> None:
             prior_covers,
             prior_avg,
         )
-        render_sales_performance(df, df_raw, multi_analytics)
+        render_sales_performance(
+            df,
+            df_raw,
+            multi_analytics,
+            prior_df=prior_df,
+        )
         render_revenue_breakdown(
             ctx.report_loc_ids,
             start_str,

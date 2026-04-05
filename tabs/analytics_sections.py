@@ -15,6 +15,7 @@ import scope
 import ui_theme
 import utils
 from tabs.analytics_logic import build_daily_view_table
+from tabs.forecasting import linear_forecast, moving_average
 
 
 def _daily_table_column_config() -> dict:
@@ -95,10 +96,12 @@ def render_sales_performance(
     df: pd.DataFrame,
     df_raw: pd.DataFrame,
     multi_analytics: bool,
+    prior_df: pd.DataFrame = pd.DataFrame(),
 ) -> None:
     with st.expander("💰 Sales Performance", expanded=True):
         col_chart1, col_chart2 = st.columns(2)
 
+        # ── Daily Sales Trend ──────────────────────────────────
         with col_chart1:
             st.markdown("### Daily Sales Trend")
             if multi_analytics and not df_raw.empty:
@@ -111,14 +114,78 @@ def render_sales_performance(
                     title="Net sales by outlet",
                 )
             else:
-                fig_line = px.line(
-                    df,
-                    x="date",
-                    y="net_total",
-                    markers=True,
-                    title="Net Sales Over Time",
+                dates = pd.to_datetime(df["date"])
+                values = df["net_total"].tolist()
+                ma_values = moving_average(values, window=7)
+
+                fig_line = go.Figure()
+
+                # Actual sales line
+                fig_line.add_trace(
+                    go.Scatter(
+                        x=dates,
+                        y=values,
+                        mode="lines+markers",
+                        name="Daily Sales",
+                        line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
+                        marker=dict(size=5),
+                    )
                 )
-                fig_line.update_traces(line_color=ui_theme.BRAND_PRIMARY)
+
+                # 7-day moving average
+                ma_series = pd.Series(ma_values)
+                ma_valid = ma_series[pd.notna(ma_series)]
+                if not ma_valid.empty:
+                    fig_line.add_trace(
+                        go.Scatter(
+                            x=dates[pd.notna(ma_series)],
+                            y=ma_valid.tolist(),
+                            mode="lines",
+                            name="7-day MA",
+                            line=dict(
+                                color=ui_theme.BRAND_PRIMARY, width=1.5, dash="dot"
+                            ),
+                            opacity=0.6,
+                        )
+                    )
+
+                # Forecast
+                forecast_days = max(len(values) // 2, 3)
+                forecast = linear_forecast(dates, values, forecast_days=forecast_days)
+                if forecast:
+                    f_dates = [f["date"] for f in forecast]
+                    f_values = [f["value"] for f in forecast]
+                    f_upper = [f["upper"] for f in forecast]
+                    f_lower = [f["lower"] for f in forecast]
+
+                    # Forecast line
+                    fig_line.add_trace(
+                        go.Scatter(
+                            x=f_dates,
+                            y=f_values,
+                            mode="lines",
+                            name="Forecast",
+                            line=dict(
+                                color=ui_theme.BRAND_PRIMARY, width=2, dash="dash"
+                            ),
+                            opacity=0.6,
+                        )
+                    )
+
+                    # Forecast band
+                    fig_line.add_trace(
+                        go.Scatter(
+                            x=f_dates + f_dates[::-1],
+                            y=f_upper + f_lower[::-1],
+                            fill="toself",
+                            fillcolor="rgba(31,95,168,0.15)",
+                            line=dict(color="transparent"),
+                            name="Forecast Range",
+                            showlegend=False,
+                            hoverinfo="skip",
+                        )
+                    )
+
             fig_line.update_layout(
                 xaxis_title="Date",
                 yaxis_title="Net Sales (₹)",
@@ -127,6 +194,7 @@ def render_sales_performance(
             )
             st.plotly_chart(fig_line, use_container_width=True)
 
+        # ── Covers Trend ───────────────────────────────────────
         with col_chart2:
             st.markdown("### Covers Trend")
             if multi_analytics and not df_raw.empty:
@@ -139,8 +207,37 @@ def render_sales_performance(
                     title="Daily covers by outlet",
                 )
             else:
-                fig_bar = px.bar(df, x="date", y="covers", title="Daily Covers")
-                fig_bar.update_traces(marker_color=ui_theme.BRAND_SUCCESS)
+                dates = pd.to_datetime(df["date"])
+                covers = df["covers"].tolist()
+
+                fig_bar = go.Figure()
+
+                # Actual covers bars
+                fig_bar.add_trace(
+                    go.Bar(
+                        x=dates,
+                        y=covers,
+                        name="Covers",
+                        marker_color=ui_theme.BRAND_SUCCESS,
+                    )
+                )
+
+                # Forecast bars
+                forecast_days = max(len(covers) // 2, 3)
+                forecast = linear_forecast(dates, covers, forecast_days=forecast_days)
+                if forecast:
+                    f_dates = [f["date"] for f in forecast]
+                    f_values = [max(0, f["value"]) for f in forecast]
+                    fig_bar.add_trace(
+                        go.Bar(
+                            x=f_dates,
+                            y=f_values,
+                            name="Forecast",
+                            marker_color=ui_theme.BRAND_SUCCESS,
+                            opacity=0.4,
+                        )
+                    )
+
             fig_bar.update_layout(
                 xaxis_title="Date",
                 yaxis_title="Covers",
@@ -148,6 +245,7 @@ def render_sales_performance(
             )
             st.plotly_chart(fig_bar, use_container_width=True)
 
+        # ── APC Trend ──────────────────────────────────────────
         st.markdown("### Average Per Cover (APC) Trend")
         apc_df = df[df["apc"] > 0].copy() if "apc" in df.columns else pd.DataFrame()
         if not apc_df.empty:
@@ -185,195 +283,35 @@ def render_revenue_breakdown(
     df: pd.DataFrame,
     start_date: date,
 ) -> None:
-    with st.expander("📈 Revenue Breakdown", expanded=True):
-        st.markdown("### Payment Mode Distribution")
-        payment_totals = {
-            "Cash": float(df["cash_sales"].sum()),
-            "GPay": float(df["gpay_sales"].sum()),
-            "Zomato": float(df["zomato_sales"].sum()),
-            "Card": float(df["card_sales"].sum()),
-            "Other": float(df["other_sales"].sum()),
-        }
-        pay_df = pd.DataFrame(
-            {
-                "Mode": list(payment_totals.keys()),
-                "Amount": list(payment_totals.values()),
-            }
-        ).sort_values("Amount", ascending=True)
-        fig_pay = px.bar(
-            pay_df,
-            x="Amount",
-            y="Mode",
-            orientation="h",
-            title="Payment mode split (₹)",
-            color="Mode",
-            color_discrete_map={
-                "Cash": ui_theme.BRAND_PRIMARY,
-                "GPay": ui_theme.BRAND_SECONDARY,
-                "Zomato": ui_theme.BRAND_GREEN,
-                "Card": ui_theme.BRAND_WARN,
-                "Other": ui_theme.BRAND_DARK,
-            },
-        )
-        fig_pay.update_layout(
-            xaxis_title="Amount (₹)",
-            yaxis_title="",
-            height=ui_theme.CHART_HEIGHT,
-            showlegend=False,
-        )
-        st.plotly_chart(fig_pay, use_container_width=True)
-
+    # ── Category Mix ───────────────────────────────────────────
     st.markdown("### Category Mix")
     cat_data = database.get_category_sales_for_date_range(
         report_loc_ids, start_str, end_str
     )
     if cat_data:
         cat_df = pd.DataFrame(cat_data)
-        col_cat1, col_cat2 = st.columns(2)
-        with col_cat1:
-            fig_cat_bar = px.bar(
-                cat_df,
-                x="amount",
-                y="category",
-                orientation="h",
-                title="Revenue by category (₹)",
-                color="amount",
-                color_continuous_scale=[
-                    ui_theme.BRAND_SUCCESS,
-                    ui_theme.BRAND_PRIMARY,
-                ],
-            )
-            fig_cat_bar.update_layout(
-                xaxis_title="Amount (₹)",
-                yaxis_title="",
-                height=ui_theme.CHART_HEIGHT,
-                coloraxis_showscale=False,
-            )
-            st.plotly_chart(fig_cat_bar, use_container_width=True)
-        with col_cat2:
-            fig_cat_pie = px.pie(
-                cat_df,
-                names="category",
-                values="amount",
-                title="Category revenue mix",
-                hole=0.4,
-                color="category",
-                color_discrete_sequence=ui_theme.CHART_COLORWAY,
-            )
-            fig_cat_pie.update_layout(height=ui_theme.CHART_HEIGHT)
-            st.plotly_chart(fig_cat_pie, use_container_width=True)
+        total_cat = float(cat_df["amount"].sum())
+        fig_cat_pie = px.pie(
+            cat_df,
+            names="category",
+            values="amount",
+            title=f"Category revenue mix (Total: {utils.format_currency(total_cat)})",
+            hole=0.4,
+            color="category",
+            color_discrete_sequence=ui_theme.CHART_COLORWAY,
+        )
+        fig_cat_pie.update_traces(
+            textposition="inside",
+            textinfo="percent+label",
+        )
+        fig_cat_pie.update_layout(height=ui_theme.CHART_HEIGHT)
+        st.plotly_chart(fig_cat_pie, use_container_width=True)
     else:
         st.caption("No category data for this period.")
 
-    st.markdown("### Top Selling Items")
-    top_items_data = database.get_top_items_for_date_range(
-        report_loc_ids, start_str, end_str, limit=15
-    )
-    if top_items_data:
-        items_df = pd.DataFrame(top_items_data)
-        col_items1, col_items2 = st.columns([3, 2])
-        with col_items1:
-            fig_items = px.bar(
-                items_df,
-                x="amount",
-                y="item_name",
-                orientation="h",
-                title="Top 15 items by revenue (₹)",
-                color="amount",
-                color_continuous_scale=[
-                    ui_theme.BRAND_SUCCESS,
-                    ui_theme.BRAND_PRIMARY,
-                ],
-            )
-            fig_items.update_layout(
-                xaxis_title="Revenue (₹)",
-                yaxis_title="",
-                height=420,
-                coloraxis_showscale=False,
-                yaxis={"categoryorder": "total ascending"},
-            )
-            st.plotly_chart(fig_items, use_container_width=True)
-        with col_items2:
-            items_tbl = items_df.copy()
-            items_tbl["amount"] = [
-                utils.format_currency(float(x or 0)) for x in items_tbl["amount"]
-            ]
-            items_tbl["qty"] = [f"{int(x or 0):,}" for x in items_tbl["qty"]]
-            items_tbl = items_tbl.rename(
-                columns={
-                    "item_name": "Item",
-                    "amount": "Revenue",
-                    "qty": "Qty",
-                }
-            )
-            st.dataframe(
-                items_tbl,
-                use_container_width=True,
-                hide_index=True,
-            )
-    else:
-        st.caption(
-            "No item-level data for this period. "
-            "Re-import your Item Reports to populate top sellers."
-        )
-
-    st.markdown("### Meal Period Breakdown")
-    daily_svc = database.get_daily_service_sales_for_date_range(
-        report_loc_ids, start_str, end_str
-    )
-    period_svc = database.get_service_sales_for_date_range(
-        report_loc_ids, start_str, end_str
-    )
-    if daily_svc and period_svc:
-        svc_daily_df = pd.DataFrame(daily_svc)
-        svc_period_df = pd.DataFrame(period_svc)
-        col_svc1, col_svc2 = st.columns(2)
-        with col_svc1:
-            fig_svc_stack = px.bar(
-                svc_daily_df,
-                x="date",
-                y="amount",
-                color="service_type",
-                barmode="stack",
-                title="Lunch vs Dinner revenue per day",
-                color_discrete_map={
-                    "Lunch": ui_theme.BRAND_SECONDARY,
-                    "Dinner": ui_theme.BRAND_PRIMARY,
-                    "Breakfast": ui_theme.BRAND_WARN,
-                },
-            )
-            fig_svc_stack.update_layout(
-                xaxis_title="Date",
-                yaxis_title="Amount (₹)",
-                height=ui_theme.CHART_HEIGHT,
-                legend_title="Service",
-            )
-            st.plotly_chart(fig_svc_stack, use_container_width=True)
-        with col_svc2:
-            fig_svc_tot = px.bar(
-                svc_period_df,
-                x="service_type",
-                y="amount",
-                title="Total revenue by meal period",
-                color="service_type",
-                color_discrete_map={
-                    "Lunch": ui_theme.BRAND_SECONDARY,
-                    "Dinner": ui_theme.BRAND_PRIMARY,
-                    "Breakfast": ui_theme.BRAND_WARN,
-                },
-            )
-            fig_svc_tot.update_layout(
-                xaxis_title="",
-                yaxis_title="Amount (₹)",
-                height=ui_theme.CHART_HEIGHT,
-                showlegend=False,
-            )
-            st.plotly_chart(fig_svc_tot, use_container_width=True)
-    else:
-        st.caption("No meal-period data for this period.")
-
-    st.markdown("### Weekday Analysis")
+    # ── Weekday Analysis ───────────────────────────────────────
     if len(df) >= 3:
+        st.markdown("### Weekday Analysis")
         wd_df = df[df["net_total"] > 0].copy()
         wd_df["weekday"] = wd_df["date"].apply(utils.get_weekday_name)
         wd_agg = (
@@ -396,11 +334,8 @@ def render_revenue_breakdown(
         )
         wd_agg = wd_agg.sort_values("weekday")
         monthly_tgt = scope.sum_location_monthly_targets(report_loc_ids)
-        daily_tgt = (
-            monthly_tgt / utils.get_days_in_month(start_date.year, start_date.month)
-            if monthly_tgt > 0
-            else 0
-        )
+        days_in_mo = utils.get_days_in_month(start_date.year, start_date.month)
+        daily_tgt = monthly_tgt / days_in_mo if monthly_tgt > 0 else 0
         wd_colors = [
             ui_theme.BRAND_SUCCESS
             if v >= daily_tgt
@@ -424,6 +359,34 @@ def render_revenue_breakdown(
                 annotation_text=f"Daily target {utils.format_currency(daily_tgt)}",
                 annotation_position="top right",
             )
+
+        # Best/worst day annotations
+        if not wd_agg.empty:
+            best_idx = wd_agg["avg_sales"].idxmax()
+            worst_idx = wd_agg["avg_sales"].idxmin()
+            best_day = wd_agg.loc[best_idx, "weekday"]
+            best_val = wd_agg.loc[best_idx, "avg_sales"]
+            worst_day = wd_agg.loc[worst_idx, "weekday"]
+            worst_val = wd_agg.loc[worst_idx, "avg_sales"]
+            fig_wd.add_annotation(
+                x=best_day,
+                y=best_val,
+                text=f"Best: {best_day}",
+                showarrow=True,
+                arrowhead=2,
+                bgcolor=ui_theme.BRAND_SUCCESS,
+                font_color="white",
+            )
+            fig_wd.add_annotation(
+                x=worst_day,
+                y=worst_val,
+                text=f"Worst: {worst_day}",
+                showarrow=True,
+                arrowhead=2,
+                bgcolor=ui_theme.BRAND_ERROR,
+                font_color="white",
+            )
+
         fig_wd.update_layout(
             xaxis_title="",
             yaxis_title="Avg Net Sales (₹)",
@@ -441,9 +404,9 @@ def render_target_and_daily(
     df_raw: pd.DataFrame,
     multi_analytics: bool,
 ) -> None:
-    st.markdown("### Target Achievement")
     monthly_target = scope.sum_location_monthly_targets(report_loc_ids)
     if monthly_target > 0:
+        st.markdown("### Target Achievement")
         days_in_month = utils.get_days_in_month(start_date.year, start_date.month)
         daily_target = monthly_target / days_in_month
 
@@ -482,12 +445,24 @@ def render_target_and_daily(
         target_line = [
             monthly_target * (i / len(df_sorted)) for i in range(1, len(df_sorted) + 1)
         ]
+
+        # Determine fill color based on on-track status
+        actual_last = df_sorted["cumulative"].iloc[-1]
+        target_last = target_line[-1]
+        fill_color = (
+            "rgba(63,167,163,0.2)"
+            if actual_last >= target_last
+            else "rgba(239,68,68,0.2)"
+        )
+
         fig_target.add_trace(
             go.Scatter(
                 x=df_sorted["date"],
                 y=df_sorted["cumulative"],
                 mode="lines+markers",
                 name="Actual",
+                fill="tozeroy",
+                fillcolor=fill_color,
             ),
             row=1,
             col=2,
@@ -498,13 +473,48 @@ def render_target_and_daily(
                 y=target_line,
                 mode="lines",
                 name="Target",
-                line=dict(dash="dash"),
+                line=dict(dash="dash", color="gray"),
             ),
             row=1,
             col=2,
         )
+
+        # Projected month-end extension
+        last_date = pd.Timestamp(df_sorted["date"].iloc[-1])
+        month_end = pd.Timestamp(start_date.replace(day=days_in_month))
+        if last_date < month_end and len(df_sorted) >= 3:
+            cum_values = df_sorted["cumulative"].tolist()
+            cum_dates = pd.to_datetime(df_sorted["date"])
+            forecast = linear_forecast(cum_dates, cum_values, forecast_days=5)
+            if forecast:
+                f_dates = [f["date"] for f in forecast if f["date"] <= month_end]
+                f_values = [f["value"] for f in forecast if f["date"] <= month_end]
+                if f_dates:
+                    fig_target.add_trace(
+                        go.Scatter(
+                            x=f_dates,
+                            y=f_values,
+                            mode="lines",
+                            name="Projected",
+                            line=dict(dash="dot", color=ui_theme.BRAND_PRIMARY),
+                            opacity=0.6,
+                        ),
+                        row=1,
+                        col=2,
+                    )
+
         fig_target.update_layout(height=ui_theme.CHART_HEIGHT, showlegend=True)
         st.plotly_chart(fig_target, use_container_width=True)
+
+        # On-track / Behind badge
+        if actual_last >= target_last:
+            st.success(
+                f"✅ **On track** — {utils.format_currency(actual_last - target_last)} ahead of target pace"
+            )
+        else:
+            st.error(
+                f"⚠️ **Behind by {utils.format_currency(target_last - actual_last)}** — below target pace"
+            )
 
         st.markdown("### Daily Data")
         dv = build_daily_view_table(df, df_raw, multi_analytics)
