@@ -32,6 +32,16 @@ from logger import get_logger
 
 logger = get_logger(__name__)
 
+_PARSE_EXCEPTIONS = (
+    ValueError,
+    TypeError,
+    KeyError,
+    OSError,
+    UnicodeDecodeError,
+    pd.errors.ParserError,
+    pd.errors.EmptyDataError,
+)
+
 
 _FILE_TYPE_PREFERENCE = (
     "dynamic_report",
@@ -96,7 +106,7 @@ def _parse_order_summary_csv(
     notes: List[str] = []
     try:
         df = pd.read_csv(BytesIO(content))
-    except Exception as ex:
+    except _PARSE_EXCEPTIONS as ex:
         return None, [f"Could not read CSV: {ex}"]
 
     df.columns = [c.strip() for c in df.columns]
@@ -205,7 +215,7 @@ def _parse_flash_report(
             kw = {"engine": engine} if engine else {}
             df = pd.read_excel(bio, sheet_name=0, header=None, **kw)
             break
-        except Exception:
+        except (ValueError, ImportError, OSError, pd.errors.ParserError):
             continue
 
     if df is None or df.empty:
@@ -419,7 +429,8 @@ def process_smart_upload(
                 global_notes.append(note)
                 if fr_match:
                     fr_match.notes.append(note)
-        except Exception as ex:
+        except _PARSE_EXCEPTIONS as ex:
+            logger.exception("Failed parsing timing_report file=%s", fname)
             note = f"Error parsing Timing Report {fname}: {ex}"
             global_notes.append(note)
             if fr_match:
@@ -450,7 +461,8 @@ def process_smart_upload(
                 global_notes.append(note)
                 if fr_match:
                     fr_match.error = note
-        except Exception as ex:
+        except _PARSE_EXCEPTIONS as ex:
+            logger.exception("Failed parsing dynamic_report file=%s", fname)
             note = f"Error parsing Dynamic Report {fname}: {ex}"
             global_notes.append(note)
             if fr_match:
@@ -490,7 +502,8 @@ def process_smart_upload(
                 global_notes.append(note)
                 if fr_match:
                     fr_match.error = note
-        except Exception as ex:
+        except _PARSE_EXCEPTIONS as ex:
+            logger.exception("Failed parsing item_order_details file=%s", fname)
             note = f"Error parsing Item Report {fname}: {ex}"
             global_notes.append(note)
             if fr_match:
@@ -522,7 +535,8 @@ def process_smart_upload(
                     fr_match.notes.append(
                         f"Added {new_days} day(s) not in Item Report."
                     )
-        except Exception as ex:
+        except _PARSE_EXCEPTIONS as ex:
+            logger.exception("Failed parsing order_summary_csv file=%s", fname)
             note = f"Error parsing Order Summary {fname}: {ex}"
             global_notes.append(note)
             if fr_match:
@@ -554,7 +568,8 @@ def process_smart_upload(
                                             f"Supplemented service_charge for {p['date']} from Flash Report."
                                         )
                                     break
-        except Exception as ex:
+        except _PARSE_EXCEPTIONS as ex:
+            logger.exception("Failed parsing flash_report file=%s", fname)
             note = f"Error parsing Flash Report {fname}: {ex}"
             global_notes.append(note)
             if fr_match:

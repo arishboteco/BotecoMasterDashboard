@@ -99,3 +99,105 @@ class TestSaveSmartUploadResults:
         assert len(upload_records) == 1
         assert upload_records[0]["file_type"] == "order_summary_csv"
         assert upload_records[0]["filename"] == "orders.csv, flash.xlsx"
+
+
+class TestProcessSmartUpload:
+    def test_logs_parser_failure_with_context(self, monkeypatch):
+        logged = []
+
+        monkeypatch.setattr(
+            smart_upload.file_detector,
+            "detect_and_describe",
+            lambda content, fname: ("dynamic_report", "Dynamic Report CSV"),
+        )
+        monkeypatch.setattr(smart_upload.file_detector, "is_importable", lambda k: True)
+        monkeypatch.setattr(smart_upload.file_detector, "is_skippable", lambda k: False)
+        monkeypatch.setattr(
+            smart_upload.dynamic_report_parser,
+            "parse_dynamic_report",
+            lambda content, fname: (_ for _ in ()).throw(ValueError("boom")),
+        )
+        monkeypatch.setattr(
+            smart_upload.logger,
+            "exception",
+            lambda msg, *args: logged.append(msg % args),
+        )
+
+        result = smart_upload.process_smart_upload([("dyn.csv", b"x")], location_id=1)
+
+        assert result.files[0].error == "boom"
+        assert any("dynamic_report" in line for line in logged)
+
+    def test_order_summary_only_adds_uncovered_days(self, monkeypatch):
+        monkeypatch.setattr(
+            smart_upload.file_detector,
+            "detect_and_describe",
+            lambda content, fname: (
+                "item_order_details"
+                if fname.endswith(".xlsx")
+                else "order_summary_csv",
+                "label",
+            ),
+        )
+        monkeypatch.setattr(smart_upload.file_detector, "is_importable", lambda k: True)
+        monkeypatch.setattr(smart_upload.file_detector, "is_skippable", lambda k: False)
+        monkeypatch.setattr(
+            smart_upload.pos_parser,
+            "parse_item_order_details",
+            lambda content, fname: [
+                {
+                    "date": "2026-04-01",
+                    "file_type": "item_order_details",
+                    "net_total": 100.0,
+                    "gross_total": 100.0,
+                    "covers": 1,
+                }
+            ],
+        )
+        monkeypatch.setattr(
+            smart_upload,
+            "_parse_order_summary_csv",
+            lambda content, fname: (
+                [
+                    {
+                        "date": "2026-04-01",
+                        "file_type": "order_summary_csv",
+                        "net_total": 50.0,
+                        "gross_total": 50.0,
+                        "covers": 1,
+                    },
+                    {
+                        "date": "2026-04-02",
+                        "file_type": "order_summary_csv",
+                        "net_total": 70.0,
+                        "gross_total": 70.0,
+                        "covers": 1,
+                    },
+                ],
+                [],
+            ),
+        )
+        monkeypatch.setattr(
+            smart_upload.pos_parser,
+            "group_fragments_by_date",
+            lambda fragments: {
+                d: [f for f in fragments if f["date"] == d]
+                for d in sorted({f["date"] for f in fragments})
+            },
+        )
+        monkeypatch.setattr(
+            smart_upload.pos_parser,
+            "merge_upload_fragments",
+            lambda frags: dict(frags[0]),
+        )
+        monkeypatch.setattr(
+            smart_upload.pos_parser, "validate_data", lambda data: (True, [])
+        )
+
+        result = smart_upload.process_smart_upload(
+            [("item.xlsx", b"x"), ("orders.csv", b"x")],
+            location_id=1,
+        )
+
+        dates = [d.date for d in result.days]
+        assert dates == ["2026-04-01", "2026-04-02"]
