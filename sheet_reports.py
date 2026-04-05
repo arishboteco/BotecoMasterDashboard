@@ -94,6 +94,178 @@ def _achievement_color(pct: float) -> str:
     return C_RED
 
 
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def compute_forecast_metrics(report_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Compute month-end run-rate forecast metrics from report inputs."""
+    iso = str(report_data.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]
+    try:
+        dt = datetime.strptime(iso, "%Y-%m-%d")
+    except ValueError:
+        dt = datetime.now()
+    first_next = (dt.replace(day=28) + timedelta(days=4)).replace(day=1)
+    dim = int((first_next - timedelta(days=1)).day)
+    elapsed = int(max(1, dt.day))
+    remaining = max(dim - elapsed, 0)
+
+    mtd_net = _safe_float(report_data.get("mtd_net_sales"))
+    mtd_target = _safe_float(report_data.get("mtd_target"))
+
+    forecast = (mtd_net / elapsed) * dim if elapsed > 0 else 0.0
+    pct = (forecast / mtd_target) * 100.0 if mtd_target > 0 else None
+    gap = (forecast - mtd_target) if mtd_target > 0 else None
+    req_run_rate = (
+        (mtd_target - mtd_net) / remaining if mtd_target > 0 and remaining > 0 else None
+    )
+
+    return {
+        "days_in_month": dim,
+        "elapsed_days": elapsed,
+        "remaining_days": remaining,
+        "forecast_month_end_sales": forecast,
+        "forecast_target_pct": pct,
+        "forecast_gap_amount": gap,
+        "required_daily_run_rate": req_run_rate,
+    }
+
+
+def status_from_threshold(
+    value: Optional[float],
+    *,
+    green_min: Optional[float] = None,
+    amber_min: Optional[float] = None,
+    green_max: Optional[float] = None,
+    amber_max: Optional[float] = None,
+    higher_is_better: bool,
+) -> Dict[str, Any]:
+    """Map a metric value to red/amber/green or na status."""
+    if value is None:
+        return {"status": "na", "color": C_MUTED, "label": "N/A"}
+
+    v = float(value)
+    if higher_is_better:
+        if green_min is not None and v >= green_min:
+            return {"status": "green", "color": C_GREEN, "label": "On Track"}
+        if amber_min is not None and v >= amber_min:
+            return {"status": "amber", "color": C_AMBER, "label": "Watch"}
+        return {"status": "red", "color": C_RED, "label": "At Risk"}
+
+    if green_max is not None and v <= green_max:
+        return {"status": "green", "color": C_GREEN, "label": "Healthy"}
+    if amber_max is not None and v <= amber_max:
+        return {"status": "amber", "color": C_AMBER, "label": "Watch"}
+    return {"status": "red", "color": C_RED, "label": "At Risk"}
+
+
+def build_verbose_daily_summary(report_data: Dict[str, Any]) -> str:
+    """Build a structured day brief for PNG and WhatsApp outputs."""
+    r = dict(report_data or {})
+    forecast = compute_forecast_metrics(r)
+
+    net = _safe_float(r.get("net_total"))
+    target = _safe_float(r.get("target"))
+    pct_target = (net / target * 100.0) if target > 0 else None
+
+    prev_day = r.get("previous_day_net_total")
+    wk_ref = r.get("same_weekday_last_week_net_total")
+    gross = _safe_float(r.get("gross_total"))
+    discount = _safe_float(r.get("discount"))
+    discount_pct = (discount / gross * 100.0) if gross > 0 else None
+
+    apc = _safe_float(r.get("apc"))
+    apc_base = r.get("apc_baseline_7d")
+    apc_drop_pct = None
+    if apc_base not in (None, 0):
+        apc_drop_pct = ((float(apc_base) - apc) / float(apc_base)) * 100.0
+
+    line_1 = (
+        f"Today closed at {_r(net)} against target {_r(target)} ({pct_target:.0f}% achievement)."
+        if pct_target is not None
+        else f"Today closed at {_r(net)}; daily target is not configured."
+    )
+    line_2 = (
+        f"Forecast month-end: {_r(forecast['forecast_month_end_sales'])} "
+        f"({forecast['forecast_target_pct']:.0f}% of target)."
+        if forecast["forecast_target_pct"] is not None
+        else f"Forecast month-end: {_r(forecast['forecast_month_end_sales'])}; target comparison unavailable."
+    )
+    line_3 = (
+        "Comparison to previous day/week benchmark unavailable due to incomplete history."
+        if prev_day is None or wk_ref is None
+        else (
+            f"Vs previous day: {_r(net - float(prev_day))}; "
+            f"vs same weekday last week: {_r(net - float(wk_ref))}."
+        )
+    )
+    line_4 = (
+        "Profitability watch: discount signal unavailable (gross sales missing)."
+        if discount_pct is None
+        else f"Profitability watch: discount at {discount_pct:.1f}% of gross."
+    )
+    line_5 = (
+        "APC benchmark unavailable for anomaly check."
+        if apc_drop_pct is None
+        else f"APC is {_r(apc)} ({apc_drop_pct:.1f}% below 7-day baseline)."
+    )
+    line_6 = "Suggested action: tighten discount approvals and push high-APC combos in next shift."
+    return "\n".join([line_1, line_2, line_3, line_4, line_5, line_6])
+
+
+def compute_metric_statuses(report_data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Compute status colors for core target/profitability metrics."""
+    r = dict(report_data or {})
+    forecast = compute_forecast_metrics(r)
+
+    pct_target = _safe_float(r.get("pct_target"))
+    target_status = status_from_threshold(
+        pct_target,
+        green_min=100,
+        amber_min=85,
+        higher_is_better=True,
+    )
+
+    forecast_status = status_from_threshold(
+        forecast.get("forecast_target_pct"),
+        green_min=100,
+        amber_min=95,
+        higher_is_better=True,
+    )
+
+    gross = _safe_float(r.get("gross_total"))
+    discount = _safe_float(r.get("discount"))
+    discount_pct = (discount / gross * 100.0) if gross > 0 else None
+    discount_status = status_from_threshold(
+        discount_pct,
+        green_max=5,
+        amber_max=8,
+        higher_is_better=False,
+    )
+
+    apc = _safe_float(r.get("apc"))
+    apc_base = r.get("apc_baseline_7d")
+    apc_drop_pct = None
+    if apc_base not in (None, 0):
+        apc_drop_pct = ((float(apc_base) - apc) / float(apc_base)) * 100.0
+    apc_status = status_from_threshold(
+        apc_drop_pct,
+        green_max=5,
+        amber_max=12,
+        higher_is_better=False,
+    )
+
+    return {
+        "target": target_status,
+        "forecast": forecast_status,
+        "discount": discount_status,
+        "apc": apc_status,
+    }
+
+
 def _save_fig(fig) -> BytesIO:
     buf = BytesIO()
     fig.savefig(
@@ -324,7 +496,10 @@ def _section_sales_summary(
     iso = str(r.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]
     day_lbl = _sheet_date_label(iso)
     pct_tgt = float(r.get("pct_target") or 0)
-    ach_color = _achievement_color(pct_tgt)
+    statuses = compute_metric_statuses(r)
+    forecast = compute_forecast_metrics(r)
+    verbose_summary = build_verbose_daily_summary(r)
+    ach_color = statuses["target"]["color"]
 
     # ── Header banner (slim) ─────────────────────────────────────────────
     banner_h = 0.08
@@ -507,7 +682,7 @@ def _section_sales_summary(
     row_idx[0] = 0
 
     _row("MTD Total Covers", "mtd_total_covers", fmt="int", bold=True)
-    _row("APC (Day)", "apc", fmt="currency")
+    _row("APC (Day)", "apc", fmt="currency", right_color=statuses["apc"]["color"])
 
     def _apc_month(d):
         mtd_net = float(d.get("mtd_net_sales") or 0)
@@ -520,7 +695,12 @@ def _section_sales_summary(
     _row("MTD Complimentary", "mtd_complimentary", fmt="currency")
     _row("Daily Avg. Net Sales", "mtd_avg_daily", fmt="currency")
     _row("MTD Net Sales", "mtd_net_sales", fmt="currency", bold=True)
-    _row("MTD Discount", "mtd_discount", fmt="currency")
+    _row(
+        "MTD Discount",
+        "mtd_discount",
+        fmt="currency",
+        right_color=statuses["discount"]["color"],
+    )
 
     def _mtd_net_excl(d):
         return float(d.get("mtd_net_sales") or 0) - float(d.get("mtd_discount") or 0)
@@ -529,6 +709,33 @@ def _section_sales_summary(
 
     _row("Sales Target", "mtd_target", fmt="currency")
     _row("% of Target", "mtd_pct_target", fmt="pct", bold=True, right_color=ach_color)
+
+    _row(None, None, section_label="Forecast")
+    _row(
+        "Forecast Month-End",
+        lambda d: compute_forecast_metrics(d)["forecast_month_end_sales"],
+    )
+
+    def _forecast_target_pct(d):
+        val = compute_forecast_metrics(d)["forecast_target_pct"]
+        return _pct(val) if val is not None else "N/A"
+
+    _row(
+        "Forecast vs Target",
+        _forecast_target_pct,
+        fmt="str",
+        right_color=statuses["forecast"]["color"],
+    )
+
+    def _required_run_rate(d):
+        val = compute_forecast_metrics(d)["required_daily_run_rate"]
+        return _r(val) if val is not None else "N/A"
+
+    _row("Required Daily Run Rate", _required_run_rate, fmt="str")
+
+    _row(None, None, section_label="Daily Operations Brief")
+    for idx, line in enumerate(verbose_summary.split("\n"), start=1):
+        _row(f"Note {idx}", lambda _d, t=line: t, fmt="str")
 
     ax.set_ylim(cur_y - 0.04, 1.0)
 
@@ -1283,7 +1490,7 @@ def generate_sheet_style_report_sections(
             if float(r.get(k) or 0) != 0
         ]
     )
-    est_rows = 10 + n_pay + n_tax + 12  # MTD rows
+    est_rows = 10 + n_pay + n_tax + 24  # MTD + forecast + verbose rows
     fig, ax = _fig_for_section(est_rows, min_rows=12, cap_h=36.0, w=fig_w)
     _section_sales_summary(ax, r, location_name, per_outlet)
     out["sales_summary"] = _save_fig(fig)
@@ -1539,6 +1746,9 @@ def generate_whatsapp_text(
             for nm, d in per_outlet
         )
         report += f"\n\U0001f3ea PER OUTLET\n{po_lines}\n"
+
+    summary_text = build_verbose_daily_summary(r)
+    report += f"\n\U0001f9fe DAILY OPERATIONS BRIEF\n{summary_text}\n"
 
     report += "\u2501" * 22
     return report.strip()
