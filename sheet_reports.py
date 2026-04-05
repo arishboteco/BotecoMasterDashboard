@@ -498,7 +498,6 @@ def _section_sales_summary(
     pct_tgt = float(r.get("pct_target") or 0)
     statuses = compute_metric_statuses(r)
     forecast = compute_forecast_metrics(r)
-    verbose_summary = build_verbose_daily_summary(r)
     ach_color = statuses["target"]["color"]
 
     # ── Header banner (slim) ─────────────────────────────────────────────
@@ -732,10 +731,6 @@ def _section_sales_summary(
         return _r(val) if val is not None else "N/A"
 
     _row("Required Daily Run Rate", _required_run_rate, fmt="str")
-
-    _row(None, None, section_label="Daily Operations Brief")
-    for idx, line in enumerate(verbose_summary.split("\n"), start=1):
-        _row(f"Note {idx}", lambda _d, t=line: t, fmt="str")
 
     ax.set_ylim(cur_y - 0.04, 1.0)
 
@@ -1490,7 +1485,7 @@ def generate_sheet_style_report_sections(
             if float(r.get(k) or 0) != 0
         ]
     )
-    est_rows = 10 + n_pay + n_tax + 24  # MTD + forecast + verbose rows
+    est_rows = 10 + n_pay + n_tax + 12  # MTD + forecast rows
     fig, ax = _fig_for_section(est_rows, min_rows=12, cap_h=36.0, w=fig_w)
     _section_sales_summary(ax, r, location_name, per_outlet)
     out["sales_summary"] = _save_fig(fig)
@@ -1746,9 +1741,6 @@ def generate_whatsapp_text(
             for nm, d in per_outlet
         )
         report += f"\n\U0001f3ea PER OUTLET\n{po_lines}\n"
-
-    summary_text = build_verbose_daily_summary(r)
-    report += f"\n\U0001f9fe DAILY OPERATIONS BRIEF\n{summary_text}\n"
 
     report += "\u2501" * 22
     return report.strip()

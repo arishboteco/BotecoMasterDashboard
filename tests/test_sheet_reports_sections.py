@@ -177,10 +177,3 @@ class TestSheetReportSections:
             ],
         )
         assert image.getbuffer().nbytes > 0
-
-    def test_whatsapp_text_includes_daily_operations_brief(self) -> None:
-        txt = sheet_reports.generate_whatsapp_text(
-            _base_report_data(), "Boteco Bangalore"
-        )
-        assert "DAILY OPERATIONS BRIEF" in txt
-        assert "Forecast month-end" in txt
