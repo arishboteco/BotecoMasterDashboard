@@ -21,6 +21,30 @@ boteco_logger.setup_logging()
 ui_theme.apply_plotly_theme()
 database.bootstrap()
 
+# Hardcode admin user if none exists
+with database.db_connection() as conn:
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) as count FROM users")
+    user_count = cursor.fetchone()["count"]
+
+    if user_count == 0:
+        import bcrypt
+
+        hashed = bcrypt.hashpw("admin".encode("utf-8"), bcrypt.gensalt())
+        cursor.execute(
+            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+            ("admin", hashed.decode("utf-8"), "admin"),
+        )
+        conn.commit()
+
+        # Set session state for admin (will get location from Settings)
+        st.session_state.authenticated = True
+        st.session_state.username = "admin"
+        st.session_state.user_role = "admin"
+        st.session_state.location_id = 1
+        st.session_state.location_name = None
+        st.session_state.view_scope = "all"
+
 # Page configuration
 st.set_page_config(
     page_title="Boteco Dashboard",
@@ -34,16 +58,7 @@ st.markdown(styles.get_css(), unsafe_allow_html=True)
 # Initialize authentication
 auth.init_auth_state()
 
-# Check if setup is needed
-with database.db_connection() as conn:
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) as count FROM users")
-    user_count = cursor.fetchone()["count"]
-
-if user_count == 0:
-    auth.show_setup_form()
-else:
-    if not auth.check_authentication():
+if not auth.check_authentication():
         auth.show_login_form()
     else:
         # Sidebar branding
