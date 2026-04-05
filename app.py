@@ -7,7 +7,7 @@ from datetime import datetime
 
 import config
 import database
-import logger as boteco_logger
+import boteco_logger
 import styles
 import ui_theme
 import auth

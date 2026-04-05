@@ -28,7 +28,7 @@ import dynamic_report_parser
 import file_detector
 import pos_parser
 import timing_parser
-from logger import get_logger
+from boteco_logger import get_logger
 
 logger = get_logger(__name__)
 

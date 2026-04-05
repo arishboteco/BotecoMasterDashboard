@@ -9,7 +9,7 @@ try:
 except ImportError:
     bcrypt = None
 import config
-from logger import get_logger
+from boteco_logger import get_logger
 
 logger = get_logger(__name__)
 

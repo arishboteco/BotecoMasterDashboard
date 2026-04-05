@@ -2,7 +2,7 @@
 Centralized logging configuration for Boteco Dashboard.
 
 Usage:
-    from logger import get_logger
+    from boteco_logger import get_logger
     log = get_logger(__name__)
     log.info("Something happened")
     log.error("Something went wrong", exc_info=True)
