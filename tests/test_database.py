@@ -177,3 +177,25 @@ class TestLoginLockout:
         locked, mins = database.is_login_locked(username)
         assert not locked
         assert mins == 0
+
+
+class TestLocationSettings:
+    def test_update_location_settings_rejects_duplicate_name(self, initialized_db):
+        locations = database.get_all_locations()
+        location_id = int(locations[0]["id"])
+        ok, _ = database.create_location("Second Outlet")
+        assert ok
+
+        with pytest.raises(ValueError, match="already exists"):
+            database.update_location_settings(location_id, {"name": "Second Outlet"})
+
+    def test_update_location_settings_allows_existing_same_name(self, initialized_db):
+        locations = database.get_all_locations()
+        location_id = int(locations[0]["id"])
+        existing_name = str(locations[0]["name"])
+
+        database.update_location_settings(location_id, {"name": existing_name})
+        settings = database.get_location_settings(location_id)
+
+        assert settings is not None
+        assert settings["name"] == existing_name

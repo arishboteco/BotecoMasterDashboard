@@ -172,6 +172,7 @@ def show_setup_form():
             username = st.session_state.setup_username
             password = st.session_state.setup_password
             confirm = st.session_state.setup_confirm
+            location_name = st.session_state.setup_location
 
             if not username or not password:
                 st.error("Username and password are required")
@@ -187,18 +188,24 @@ def show_setup_form():
                 )
                 return
 
-            # Create user and location
-            database.create_admin_user(username, password)
+            if not str(location_name).strip():
+                st.error("Location name is required")
+                return
 
             locations = database.get_all_locations()
-            if locations:
-                database.update_location_settings(
-                    int(locations[0]["id"]),
-                    {
-                        "name": st.session_state.setup_location,
-                        "target_monthly_sales": st.session_state.setup_target,
-                    },
-                )
+            try:
+                if locations:
+                    database.update_location_settings(
+                        int(locations[0]["id"]),
+                        {
+                            "name": location_name,
+                            "target_monthly_sales": st.session_state.setup_target,
+                        },
+                    )
+                database.create_admin_user(username, password)
+            except ValueError as exc:
+                st.error(str(exc))
+                return
 
             st.success("Account created successfully! Please login.")
             st.rerun()

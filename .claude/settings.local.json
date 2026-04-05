@@ -12,7 +12,10 @@
       "Bash(GIT_EDITOR=true git rebase --continue)",
       "Bash(gh pr:*)",
       "Bash(python -c \"import database; database.bootstrap\\(\\); conn = database.get_connection\\(\\); rows = conn.execute\\(''SELECT username FROM users''\\).fetchall\\(\\); print\\([r[''username''] for r in rows]\\); conn.close\\(\\)\")",
-      "Bash(python -c \":*)"
+      "Bash(python -c \":*)",
+      "Skill(commit-commands:commit-push-pr)",
+      "Skill(commit-commands:commit-push-pr:*)",
+      "Bash(git checkout:*)"
     ]
   }
 }

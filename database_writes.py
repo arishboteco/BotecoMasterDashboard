@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from typing import Dict, List, Optional, Tuple
 
 import config
@@ -195,8 +196,17 @@ def update_location_settings(location_id: int, settings: Dict) -> None:
         updates = []
         vals = []
         if "name" in settings and settings["name"] is not None:
+            name = str(settings["name"]).strip()
+            if not name:
+                raise ValueError("Location name cannot be empty.")
+            cursor.execute(
+                "SELECT id FROM locations WHERE name = ? AND id != ?",
+                (name, location_id),
+            )
+            if cursor.fetchone() is not None:
+                raise ValueError(f"Location name '{name}' already exists.")
             updates.append("name = ?")
-            vals.append(settings["name"])
+            vals.append(name)
         if (
             "target_monthly_sales" in settings
             and settings["target_monthly_sales"] is not None
@@ -214,10 +224,15 @@ def update_location_settings(location_id: int, settings: Dict) -> None:
                 if col_name not in allowed_cols:
                     raise ValueError(f"Invalid column name: {col_name}")
             vals.append(location_id)
-            cursor.execute(
-                f"UPDATE locations SET {', '.join(updates)} WHERE id = ?",
-                vals,
-            )
+            try:
+                cursor.execute(
+                    f"UPDATE locations SET {', '.join(updates)} WHERE id = ?",
+                    vals,
+                )
+            except sqlite3.IntegrityError as exc:
+                if "locations.name" in str(exc):
+                    raise ValueError("Location name already exists.") from exc
+                raise
         conn.commit()
 
 
