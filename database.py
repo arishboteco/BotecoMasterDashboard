@@ -1,9 +1,7 @@
 import sqlite3
 import hashlib
 import os
-import secrets
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any, Tuple, Generator
 
 try:
@@ -356,220 +354,51 @@ def _migrate_daily_summaries_composite_unique(cursor) -> None:
 
 def ensure_default_locations():
     """Ensure Boteco - Indiqube and Boteco - Bagmane exist (adds missing rows only)."""
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        for name in ("Boteco - Indiqube", "Boteco - Bagmane"):
-            cursor.execute("SELECT id FROM locations WHERE name = ?", (name,))
-            if cursor.fetchone() is None:
-                cursor.execute(
-                    """
-                    INSERT INTO locations (name, target_monthly_sales, target_daily_sales)
-                    VALUES (?, ?, ?)
-                """,
-                    (name, config.MONTHLY_TARGET, config.DAILY_TARGET),
-                )
-        conn.commit()
+    from database_writes import ensure_default_locations as _impl
+
+    _impl()
 
 
 def create_admin_user(username: str, password: str):
     """Create admin user if not exists."""
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
-        if cursor.fetchone() is None:
-            password_hash = _hash_password(password)
-            cursor.execute(
-                """
-                INSERT INTO users (username, password_hash, role)
-                VALUES (?, ?, 'admin')
-            """,
-                (username, password_hash),
-            )
-            conn.commit()
+    from database_auth import create_admin_user as _impl
+
+    _impl(username, password)
 
 
 def verify_user(username: str, password: str) -> Optional[Dict]:
     """Verify user credentials using secure password verification."""
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT u.*, l.name as location_name
-            FROM users u
-            LEFT JOIN locations l ON u.location_id = l.id
-            WHERE u.username = ?
-        """,
-            (username,),
-        )
-        row = cursor.fetchone()
+    from database_auth import verify_user as _impl
 
-    if not row:
-        return None
-
-    # Verify password against stored hash
-    if _verify_password(password, row["password_hash"]):
-        user = dict(row)
-        user.pop("password_hash", None)
-        return user
-    return None
+    return _impl(username, password)
 
 
 def get_all_locations() -> List[Dict]:
     """Get all locations."""
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM locations ORDER BY name")
-        rows = cursor.fetchall()
-    return [dict(row) for row in rows]
+    from database_reads import get_all_locations as _impl
+
+    return _impl()
 
 
 def save_daily_summary(location_id: int, data: Dict) -> int:
     """Save or update daily summary using INSERT OR REPLACE for atomic upsert."""
-    logger.info(
-        "Saving daily summary for location_id=%s date=%s", location_id, data.get("date")
-    )
-    with db_connection() as conn:
-        cursor = conn.cursor()
+    from database_writes import save_daily_summary as _impl
 
-        cursor.execute(
-            """
-            INSERT OR REPLACE INTO daily_summaries (
-                location_id, date, covers, turns, gross_total, net_total,
-                cash_sales, card_sales, gpay_sales, zomato_sales, other_sales,
-                service_charge, cgst, sgst, discount, complimentary, apc,
-                target, pct_target, mtd_total_covers, mtd_net_sales,
-                mtd_discount, mtd_avg_daily, mtd_target, mtd_pct_target,
-                lunch_covers, dinner_covers, order_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                location_id,
-                data["date"],
-                data.get("covers", 0),
-                data.get("turns", 0),
-                data.get("gross_total", 0),
-                data.get("net_total", 0),
-                data.get("cash_sales", 0),
-                data.get("card_sales", 0),
-                data.get("gpay_sales", 0),
-                data.get("zomato_sales", 0),
-                data.get("other_sales", 0),
-                data.get("service_charge", 0),
-                data.get("cgst", 0),
-                data.get("sgst", 0),
-                data.get("discount", 0),
-                data.get("complimentary", 0),
-                data.get("apc", 0),
-                data.get("target", 0),
-                data.get("pct_target", 0),
-                data.get("mtd_total_covers", 0),
-                data.get("mtd_net_sales", 0),
-                data.get("mtd_discount", 0),
-                data.get("mtd_avg_daily", 0),
-                data.get("mtd_target", 0),
-                data.get("mtd_pct_target", 0),
-                data.get("lunch_covers"),
-                data.get("dinner_covers"),
-                data.get("order_count"),
-            ),
-        )
-
-        cursor.execute(
-            "SELECT id FROM daily_summaries WHERE location_id = ? AND date = ?",
-            (location_id, data["date"]),
-        )
-        summary_id = cursor.fetchone()["id"]
-
-        # Save category sales
-        if "categories" in data:
-            cursor.execute(
-                "DELETE FROM category_sales WHERE summary_id = ?", (summary_id,)
-            )
-            for cat in data["categories"]:
-                cursor.execute(
-                    """
-                    INSERT INTO category_sales (summary_id, category, qty, amount)
-                    VALUES (?, ?, ?, ?)
-                """,
-                    (
-                        summary_id,
-                        cat["category"],
-                        cat.get("qty", 0),
-                        cat.get("amount", 0),
-                    ),
-                )
-
-        # Save service sales
-        if "services" in data:
-            cursor.execute(
-                "DELETE FROM service_sales WHERE summary_id = ?", (summary_id,)
-            )
-            for svc in data["services"]:
-                cursor.execute(
-                    """
-                    INSERT INTO service_sales (summary_id, service_type, amount)
-                    VALUES (?, ?, ?)
-                """,
-                    (summary_id, svc["type"], svc.get("amount", 0)),
-                )
-
-        # Save item sales (top sellers)
-        if "top_items" in data and data["top_items"]:
-            cursor.execute("DELETE FROM item_sales WHERE summary_id = ?", (summary_id,))
-            for item in data["top_items"]:
-                cursor.execute(
-                    """
-                    INSERT INTO item_sales (summary_id, item_name, qty, amount)
-                    VALUES (?, ?, ?, ?)
-                    """,
-                    (
-                        summary_id,
-                        item.get("item_name", ""),
-                        item.get("qty", 0),
-                        item.get("amount", 0),
-                    ),
-                )
-
-        conn.commit()
-        return summary_id
+    return _impl(location_id, data)
 
 
 def peek_daily_net_sales(location_id: int, date: str) -> Optional[float]:
     """Return saved net_total for a day if a row exists (lightweight; no categories)."""
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT net_total FROM daily_summaries
-            WHERE location_id = ? AND date = ?
-            """,
-            (location_id, date),
-        )
-        row = cursor.fetchone()
-    if not row:
-        return None
-    return float(row["net_total"] or 0)
+    from database_reads import peek_daily_net_sales as _impl
+
+    return _impl(location_id, date)
 
 
 def delete_daily_summary_for_location_date(location_id: int, date: str) -> bool:
     """Remove one day's summary and its child rows. Leaves upload_history for audit."""
-    logger.info("Deleting daily summary for location_id=%s date=%s", location_id, date)
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id FROM daily_summaries WHERE location_id = ? AND date = ?",
-            (location_id, date),
-        )
-        row = cursor.fetchone()
-        if not row:
-            return False
-        summary_id = row["id"]
-        cursor.execute("DELETE FROM category_sales WHERE summary_id = ?", (summary_id,))
-        cursor.execute("DELETE FROM service_sales  WHERE summary_id = ?", (summary_id,))
-        cursor.execute("DELETE FROM item_sales     WHERE summary_id = ?", (summary_id,))
-        cursor.execute("DELETE FROM daily_summaries WHERE id = ?", (summary_id,))
-        conn.commit()
-        return True
+    from database_writes import delete_daily_summary_for_location_date as _impl
+
+    return _impl(location_id, date)
 
 
 # ── User management ───────────────────────────────────────────────────────────
@@ -577,19 +406,9 @@ def delete_daily_summary_for_location_date(location_id: int, date: str) -> bool:
 
 def get_all_users() -> List[Dict]:
     """Return all users (password_hash excluded)."""
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT u.id, u.username, u.email, u.role, u.location_id,
-                   u.created_at, l.name AS location_name
-            FROM users u
-            LEFT JOIN locations l ON u.location_id = l.id
-            ORDER BY u.username
-            """
-        )
-        rows = cursor.fetchall()
-    return [dict(row) for row in rows]
+    from database_auth import get_all_users as _impl
+
+    return _impl()
 
 
 def create_user(
@@ -603,28 +422,9 @@ def create_user(
     Create a new user. Returns (success, message).
     Fails if username already exists or password is too short.
     """
-    if len(password) < config.MIN_PASSWORD_LENGTH:
-        return (
-            False,
-            f"Password must be at least {config.MIN_PASSWORD_LENGTH} characters.",
-        )
-    if not username.strip():
-        return False, "Username cannot be empty."
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM users WHERE username = ?", (username.strip(),))
-        if cursor.fetchone():
-            return False, f"Username '{username}' already exists."
-        pw_hash = _hash_password(password)
-        cursor.execute(
-            """
-            INSERT INTO users (username, password_hash, email, role, location_id)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (username.strip(), pw_hash, email.strip(), role, location_id),
-        )
-        conn.commit()
-    return True, f"User '{username}' created."
+    from database_auth import create_user as _impl
+
+    return _impl(username, password, role, location_id, email)
 
 
 def update_user(
@@ -635,49 +435,16 @@ def update_user(
     new_password: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """Update role, location, email, and/or password for an existing user."""
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, username FROM users WHERE id = ?", (user_id,))
-        row = cursor.fetchone()
-        if not row:
-            return False, "User not found."
-        username = row["username"]
-        if role is not None:
-            cursor.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
-        if location_id is not None:
-            cursor.execute(
-                "UPDATE users SET location_id = ? WHERE id = ?", (location_id, user_id)
-            )
-        if email is not None:
-            cursor.execute("UPDATE users SET email = ? WHERE id = ?", (email, user_id))
-        if new_password is not None:
-            if len(new_password) < config.MIN_PASSWORD_LENGTH:
-                return (
-                    False,
-                    f"Password must be at least {config.MIN_PASSWORD_LENGTH} characters.",
-                )
-            pw_hash = _hash_password(new_password)
-            cursor.execute(
-                "UPDATE users SET password_hash = ? WHERE id = ?", (pw_hash, user_id)
-            )
-        conn.commit()
-    return True, f"User '{username}' updated."
+    from database_auth import update_user as _impl
+
+    return _impl(user_id, role, location_id, email, new_password)
 
 
 def delete_user(user_id: int, current_username: str) -> Tuple[bool, str]:
     """Delete a user. Prevents deleting yourself."""
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT username FROM users WHERE id = ?", (user_id,))
-        row = cursor.fetchone()
-        if not row:
-            return False, "User not found."
-        if row["username"] == current_username:
-            return False, "You cannot delete your own account."
-        uname = row["username"]
-        cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
-        conn.commit()
-    return True, f"User '{uname}' deleted."
+    from database_auth import delete_user as _impl
+
+    return _impl(user_id, current_username)
 
 
 # ── Location management ───────────────────────────────────────────────────────
@@ -689,50 +456,18 @@ def create_location(
     seat_count: Optional[int] = None,
 ) -> Tuple[bool, str]:
     """Add a new outlet location."""
-    if not name.strip():
-        return False, "Location name cannot be empty."
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM locations WHERE name = ?", (name.strip(),))
-        if cursor.fetchone():
-            return False, f"Location '{name}' already exists."
-        daily = monthly_target / 30.0
-        cursor.execute(
-            """
-            INSERT INTO locations (name, target_monthly_sales, target_daily_sales, seat_count)
-            VALUES (?, ?, ?, ?)
-            """,
-            (name.strip(), monthly_target, daily, seat_count),
-        )
-        conn.commit()
-    return True, f"Location '{name}' created."
+    from database_writes import create_location as _impl
+
+    return _impl(name, monthly_target, seat_count)
 
 
 def delete_location(location_id: int) -> Tuple[bool, str]:
     """
     Delete a location. Refuses if it has any saved daily summaries (data safety).
     """
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM locations WHERE id = ?", (location_id,))
-        row = cursor.fetchone()
-        if not row:
-            return False, "Location not found."
-        name = row["name"]
-        cursor.execute(
-            "SELECT COUNT(*) AS n FROM daily_summaries WHERE location_id = ?",
-            (location_id,),
-        )
-        count = cursor.fetchone()["n"]
-        if count > 0:
-            return (
-                False,
-                f"Cannot delete '{name}' — it has {count} saved day(s) of data. "
-                "Remove all data first or archive the location instead.",
-            )
-        cursor.execute("DELETE FROM locations WHERE id = ?", (location_id,))
-        conn.commit()
-    return True, f"Location '{name}' deleted."
+    from database_writes import delete_location as _impl
+
+    return _impl(location_id)
 
 
 # ── Data export ───────────────────────────────────────────────────────────────
@@ -747,223 +482,64 @@ def get_all_summaries_for_export(
     Return daily_summaries rows (with location name) for CSV/Excel export.
     Excludes internal IDs and MTD fields to keep the export clean.
     """
-    with db_connection() as conn:
-        cursor = conn.cursor()
+    from database_reads import get_all_summaries_for_export as _impl
 
-        conditions = []
-        params: List[Any] = []
-
-        if location_ids:
-            placeholders = ",".join("?" * len(location_ids))
-            conditions.append(f"ds.location_id IN ({placeholders})")
-            params.extend(location_ids)
-        if start_date:
-            conditions.append("ds.date >= ?")
-            params.append(start_date)
-        if end_date:
-            conditions.append("ds.date <= ?")
-            params.append(end_date)
-
-        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-
-        cursor.execute(
-            f"""
-            SELECT
-                l.name            AS outlet,
-                ds.date,
-                ds.covers,
-                ds.order_count,
-                ds.gross_total,
-                ds.net_total,
-                ds.cash_sales,
-                ds.card_sales,
-                ds.gpay_sales,
-                ds.zomato_sales,
-                ds.other_sales,
-                ds.discount,
-                ds.complimentary,
-                ds.service_charge,
-                ds.cgst,
-                ds.sgst,
-                ds.apc,
-                ds.turns,
-                ds.target,
-                ds.pct_target,
-                ds.lunch_covers,
-                ds.dinner_covers,
-                ds.mtd_net_sales,
-                ds.mtd_total_covers,
-                ds.mtd_avg_daily,
-                ds.mtd_target,
-                ds.mtd_pct_target
-            FROM daily_summaries ds
-            JOIN locations l ON ds.location_id = l.id
-            {where}
-            ORDER BY ds.date DESC, l.name
-            """,
-            params,
-        )
-        rows = cursor.fetchall()
-    return [dict(row) for row in rows]
+    return _impl(location_ids, start_date, end_date)
 
 
 def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
     """Get daily summary for a specific date."""
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT * FROM daily_summaries
-            WHERE location_id = ? AND date = ?
-        """,
-            (location_id, date),
-        )
-        row = cursor.fetchone()
+    from database_reads import get_daily_summary as _impl
 
-        if row:
-            summary = dict(row)
-            cursor.execute(
-                "SELECT * FROM category_sales WHERE summary_id = ?", (summary["id"],)
-            )
-            summary["categories"] = [dict(r) for r in cursor.fetchall()]
-            cursor.execute(
-                "SELECT * FROM service_sales WHERE summary_id = ?", (summary["id"],)
-            )
-            summary["services"] = [dict(r) for r in cursor.fetchall()]
-            return summary
-
-    return None
+    return _impl(location_id, date)
 
 
 def get_summaries_for_month(location_id: int, year: int, month: int) -> List[Dict]:
     """Get all summaries for a specific month."""
-    start_date = f"{year}-{month:02d}-01"
-    if month == 12:
-        end_date = f"{year + 1}-01-01"
-    else:
-        end_date = f"{year}-{month + 1:02d}-01"
+    from database_reads import get_summaries_for_month as _impl
 
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT * FROM daily_summaries
-            WHERE location_id = ? AND date >= ? AND date < ?
-            ORDER BY date
-        """,
-            (location_id, start_date, end_date),
-        )
-        rows = cursor.fetchall()
-    return [dict(row) for row in rows]
+    return _impl(location_id, year, month)
 
 
 def get_category_mtd_totals(
     location_id: int, year: int, month: int
 ) -> Dict[str, float]:
     """Sum category sales amounts for calendar month (all days in month)."""
-    start_date = f"{year}-{month:02d}-01"
-    if month == 12:
-        end_date = f"{year + 1}-01-01"
-    else:
-        end_date = f"{year}-{month + 1:02d}-01"
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT cs.category, SUM(cs.amount) AS total
-            FROM category_sales cs
-            INNER JOIN daily_summaries ds ON cs.summary_id = ds.id
-            WHERE ds.location_id = ? AND ds.date >= ? AND ds.date < ?
-            GROUP BY cs.category
-            """,
-            (location_id, start_date, end_date),
-        )
-        rows = cursor.fetchall()
-    return {row["category"]: float(row["total"] or 0) for row in rows}
+    from database_reads import get_category_mtd_totals as _impl
+
+    return _impl(location_id, year, month)
 
 
 def get_service_mtd_totals(location_id: int, year: int, month: int) -> Dict[str, float]:
     """Sum service_sales amounts for calendar month."""
-    start_date = f"{year}-{month:02d}-01"
-    if month == 12:
-        end_date = f"{year + 1}-01-01"
-    else:
-        end_date = f"{year}-{month + 1:02d}-01"
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT sv.service_type, SUM(sv.amount) AS total
-            FROM service_sales sv
-            INNER JOIN daily_summaries ds ON sv.summary_id = ds.id
-            WHERE ds.location_id = ? AND ds.date >= ? AND ds.date < ?
-            GROUP BY sv.service_type
-            """,
-            (location_id, start_date, end_date),
-        )
-        rows = cursor.fetchall()
-    return {row["service_type"]: float(row["total"] or 0) for row in rows}
+    from database_reads import get_service_mtd_totals as _impl
+
+    return _impl(location_id, year, month)
 
 
 def get_summaries_for_date_range(
     location_id: int, start_date: str, end_date: str
 ) -> List[Dict]:
     """Get summaries for a date range."""
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT * FROM daily_summaries
-            WHERE location_id = ? AND date >= ? AND date <= ?
-            ORDER BY date
-        """,
-            (location_id, start_date, end_date),
-        )
-        rows = cursor.fetchall()
-    return [dict(row) for row in rows]
+    from database_reads import get_summaries_for_date_range as _impl
+
+    return _impl(location_id, start_date, end_date)
 
 
 def get_summaries_for_date_range_multi(
     location_ids: List[int], start_date: str, end_date: str
 ) -> List[Dict]:
     """All summaries in range for multiple locations (not merged by date)."""
-    if not location_ids:
-        return []
-    placeholders = ",".join("?" * len(location_ids))
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            f"""
-            SELECT * FROM daily_summaries
-            WHERE location_id IN ({placeholders}) AND date >= ? AND date <= ?
-            ORDER BY date, location_id
-            """,
-            (*location_ids, start_date, end_date),
-        )
-        rows = cursor.fetchall()
-    return [dict(row) for row in rows]
+    from database_reads import get_summaries_for_date_range_multi as _impl
+
+    return _impl(location_ids, start_date, end_date)
 
 
 def get_most_recent_date_with_data(location_ids: List[int]) -> Optional[str]:
     """Get most recent saved summary date across one or more locations."""
-    if not location_ids:
-        return None
+    from database_reads import get_most_recent_date_with_data as _impl
 
-    placeholders = ",".join("?" * len(location_ids))
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            f"""
-            SELECT MAX(date) AS most_recent_date
-            FROM daily_summaries
-            WHERE location_id IN ({placeholders})
-            """,
-            (*location_ids,),
-        )
-        row = cursor.fetchone()
-    if row and row["most_recent_date"]:
-        return str(row["most_recent_date"])
-    return None
+    return _impl(location_ids)
 
 
 def get_monthly_footfall_multi(
@@ -1008,117 +584,39 @@ def update_daily_summary_covers_only(
     dinner_covers: Optional[int] = None,
 ) -> bool:
     """Update covers fields on an existing row; recompute apc/turns requires caller."""
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT ds.id, ds.net_total, ds.target, loc.seat_count AS seat_count
-            FROM daily_summaries ds
-            LEFT JOIN locations loc ON loc.id = ds.location_id
-            WHERE ds.location_id = ? AND ds.date = ?
-            """,
-            (location_id, date),
-        )
-        row = cursor.fetchone()
-        if not row:
-            return False
-        summary_id = row["id"]
-        net = float(row["net_total"] or 0)
-        tgt = float(row["target"] or 0)
-        apc = (net / covers) if covers > 0 and net > 0 else 0.0
-        seats = row["seat_count"]
-        if seats and int(seats) > 0:
-            turns = round(covers / float(seats), 2)
-        else:
-            turns = round(covers / 100, 1) if covers else 0.0
-        pct_target = round((net / tgt) * 100, 2) if tgt > 0 else 0.0
-        cursor.execute(
-            """
-            UPDATE daily_summaries SET
-                covers = ?, lunch_covers = ?, dinner_covers = ?,
-                apc = ?, turns = ?, pct_target = ?
-            WHERE id = ?
-            """,
-            (covers, lunch_covers, dinner_covers, apc, turns, pct_target, summary_id),
-        )
-        conn.commit()
-        return True
+    from database_writes import update_daily_summary_covers_only as _impl
+
+    return _impl(location_id, date, covers, lunch_covers, dinner_covers)
 
 
 def get_location_settings(location_id: int) -> Optional[Dict]:
     """Get location settings."""
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM locations WHERE id = ?", (location_id,))
-        row = cursor.fetchone()
-    return dict(row) if row else None
+    from database_reads import get_location_settings as _impl
+
+    return _impl(location_id)
 
 
 def update_location_settings(location_id: int, settings: Dict):
     """Update location settings."""
-    ALLOWED_COLS = {"name", "target_monthly_sales", "target_daily_sales", "seat_count"}
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        updates = []
-        vals = []
-        if "name" in settings and settings["name"] is not None:
-            updates.append("name = ?")
-            vals.append(settings["name"])
-        if (
-            "target_monthly_sales" in settings
-            and settings["target_monthly_sales"] is not None
-        ):
-            updates.append("target_monthly_sales = ?")
-            vals.append(settings["target_monthly_sales"])
-            updates.append("target_daily_sales = ?")
-            vals.append(float(settings["target_monthly_sales"]) / 30.0)
-        if "seat_count" in settings:
-            updates.append("seat_count = ?")
-            vals.append(settings["seat_count"])
-        if updates:
-            for col in updates:
-                col_name = col.split(" = ")[0]
-                if col_name not in ALLOWED_COLS:
-                    raise ValueError(f"Invalid column name: {col_name}")
-            vals.append(location_id)
-            cursor.execute(
-                f"UPDATE locations SET {', '.join(updates)} WHERE id = ?",
-                vals,
-            )
-        conn.commit()
+    from database_writes import update_location_settings as _impl
+
+    _impl(location_id, settings)
 
 
 def get_upload_history(location_id: int, limit: int = 50) -> List[Dict]:
     """Get upload history."""
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT * FROM upload_history
-            WHERE location_id = ?
-            ORDER BY uploaded_at DESC
-            LIMIT ?
-        """,
-            (location_id, limit),
-        )
-        rows = cursor.fetchall()
-    return [dict(row) for row in rows]
+    from database_reads import get_upload_history as _impl
+
+    return _impl(location_id, limit)
 
 
 def save_upload_record(
     location_id: int, date: str, filename: str, file_type: str, uploaded_by: str
 ):
     """Save upload record."""
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            INSERT INTO upload_history (location_id, date, filename, file_type, uploaded_by)
-            VALUES (?, ?, ?, ?, ?)
-        """,
-            (location_id, date, filename, file_type, uploaded_by),
-        )
-        conn.commit()
+    from database_writes import save_upload_record as _impl
+
+    _impl(location_id, date, filename, file_type, uploaded_by)
 
 
 def get_top_items_for_date_range(
@@ -1159,64 +657,30 @@ def get_daily_service_sales_for_date_range(
 
 def create_user_session(user_id: int, days: int = 30) -> str:
     """Generate and persist a secure session token. Returns the token string."""
-    token = secrets.token_hex(32)
-    token_hash = _hash_session_token(token)
-    expires_at = (datetime.now(timezone.utc) + timedelta(days=days)).strftime(
-        "%Y-%m-%d %H:%M:%S"
-    )
-    with db_connection() as conn:
-        conn.execute(
-            "INSERT INTO user_sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
-            (token_hash, user_id, expires_at),
-        )
-        conn.commit()
-    return token
+    from database_auth import create_user_session as _impl
+
+    return _impl(user_id, days)
 
 
 def validate_session_token(token: str) -> Optional[Dict]:
     """Return user dict for a valid non-expired token, or None."""
-    if not token:
-        return None
-    token_hash = _hash_session_token(token)
-    with db_connection() as conn:
-        row = conn.execute(
-            """
-            SELECT
-                u.id,
-                u.username,
-                u.email,
-                u.role,
-                u.location_id,
-                u.created_at,
-                l.name AS location_name
-            FROM user_sessions s
-            JOIN users u ON u.id = s.user_id
-            LEFT JOIN locations l ON l.id = u.location_id
-            WHERE s.token IN (?, ?)
-              AND s.expires_at > datetime('now')
-            """,
-            (token_hash, token),
-        ).fetchone()
-    return dict(row) if row else None
+    from database_auth import validate_session_token as _impl
+
+    return _impl(token)
 
 
 def delete_session_token(token: str) -> None:
     """Remove a session token on logout."""
-    if not token:
-        return
-    token_hash = _hash_session_token(token)
-    with db_connection() as conn:
-        conn.execute(
-            "DELETE FROM user_sessions WHERE token IN (?, ?)", (token_hash, token)
-        )
-        conn.commit()
+    from database_auth import delete_session_token as _impl
+
+    _impl(token)
 
 
 def purge_expired_sessions() -> None:
     """Delete all expired sessions. Called at bootstrap."""
-    with db_connection() as conn:
-        conn.execute("DELETE FROM user_sessions WHERE expires_at <= datetime('now')")
-        conn.commit()
+    from database_auth import purge_expired_sessions as _impl
+
+    _impl()
 
 
 def bootstrap():
@@ -1235,32 +699,6 @@ def wipe_all_data() -> Tuple[Dict[str, int], List[str]]:
 
     WARNING: This is irreversible. Only call from admin UI with explicit confirmation.
     """
-    counts = {}
-    errors = []
-    with db_connection() as conn:
-        cursor = conn.cursor()
+    from database_writes import wipe_all_data as _impl
 
-        # Delete in foreign-key dependency order (children first)
-        for table in [
-            "item_sales",
-            "category_sales",
-            "service_sales",
-            "daily_summaries",
-            "upload_history",
-        ]:
-            try:
-                cursor.execute(f"SELECT COUNT(*) FROM {table}")
-                count = cursor.fetchone()[0]
-                cursor.execute(f"DELETE FROM {table}")
-                counts[table] = count
-            except Exception as e:
-                counts[table] = 0
-                errors.append(f"{table}: {e}")
-
-        conn.commit()
-
-    total = sum(counts.values())
-    logger.info(f"Wiped all data: {total} records deleted across {len(counts)} tables")
-    if errors:
-        logger.warning(f"Errors during wipe: {errors}")
-    return counts, errors
+    return _impl()
