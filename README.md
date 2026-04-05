@@ -73,8 +73,17 @@ BotecoMasterDashboard/
 │   └── devcontainer.json       # VS Code dev container config
 ├── scripts/
 │   └── inspect_exports.py      # Diagnostic script for POS files
+│   └── profile_analytics_queries.py  # Synthetic benchmark for analytics SQL
 └── data/
     └── boteco.db               # SQLite database (auto-created, gitignored)
+```
+
+## Performance Profiling
+
+Run synthetic analytics benchmark (temporary DB, no production data touched):
+
+```bash
+python scripts/profile_analytics_queries.py --days 365 --locations 3
 ```
 
 ## Supported Petpooja Export Types

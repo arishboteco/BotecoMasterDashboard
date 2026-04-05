@@ -63,3 +63,12 @@ def test_database_writes_module_saves_daily_summary(initialized_db):
     assert fetched is not None
     assert fetched["net_total"] == 900.0
     assert len(fetched["categories"]) == 1
+
+
+def test_phase7_performance_indexes_exist(initialized_db):
+    with database.db_connection() as conn:
+        idx_rows = conn.execute("PRAGMA index_list('daily_summaries')").fetchall()
+        names = {r[1] for r in idx_rows}
+
+    assert "idx_daily_summaries_date" in names
+    assert "idx_daily_summaries_date_location" in names

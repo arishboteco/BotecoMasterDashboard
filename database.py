@@ -261,6 +261,18 @@ def init_database():
     )
     cursor.execute(
         """
+        CREATE INDEX IF NOT EXISTS idx_daily_summaries_date
+        ON daily_summaries(date)
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_daily_summaries_date_location
+        ON daily_summaries(date, location_id)
+        """
+    )
+    cursor.execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_upload_history_location_uploaded_at
         ON upload_history(location_id, uploaded_at)
         """

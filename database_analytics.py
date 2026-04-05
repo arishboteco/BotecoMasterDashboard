@@ -153,13 +153,17 @@ def get_top_items_for_date_range(
         cursor = conn.cursor()
         cursor.execute(
             f"""
+            WITH filtered_days AS (
+                SELECT id
+                FROM daily_summaries
+                WHERE location_id IN ({placeholders})
+                  AND date BETWEEN ? AND ?
+            )
             SELECT it.item_name,
                    SUM(it.amount) AS amount,
                    SUM(it.qty)    AS qty
             FROM item_sales it
-            JOIN daily_summaries ds ON it.summary_id = ds.id
-            WHERE ds.location_id IN ({placeholders})
-              AND ds.date BETWEEN ? AND ?
+            JOIN filtered_days ds ON it.summary_id = ds.id
             GROUP BY it.item_name
             ORDER BY amount DESC
             LIMIT ?
@@ -181,13 +185,17 @@ def get_category_sales_for_date_range(
         cursor = conn.cursor()
         cursor.execute(
             f"""
+            WITH filtered_days AS (
+                SELECT id
+                FROM daily_summaries
+                WHERE location_id IN ({placeholders})
+                  AND date BETWEEN ? AND ?
+            )
             SELECT cs.category,
                    SUM(cs.amount) AS amount,
                    SUM(cs.qty)    AS qty
             FROM category_sales cs
-            JOIN daily_summaries ds ON cs.summary_id = ds.id
-            WHERE ds.location_id IN ({placeholders})
-              AND ds.date BETWEEN ? AND ?
+            JOIN filtered_days ds ON cs.summary_id = ds.id
             GROUP BY cs.category
             ORDER BY amount DESC
             """,
@@ -208,12 +216,16 @@ def get_service_sales_for_date_range(
         cursor = conn.cursor()
         cursor.execute(
             f"""
+            WITH filtered_days AS (
+                SELECT id
+                FROM daily_summaries
+                WHERE location_id IN ({placeholders})
+                  AND date BETWEEN ? AND ?
+            )
             SELECT ss.service_type,
                    SUM(ss.amount) AS amount
             FROM service_sales ss
-            JOIN daily_summaries ds ON ss.summary_id = ds.id
-            WHERE ds.location_id IN ({placeholders})
-              AND ds.date BETWEEN ? AND ?
+            JOIN filtered_days ds ON ss.summary_id = ds.id
             GROUP BY ss.service_type
             ORDER BY amount DESC
             """,
@@ -234,13 +246,17 @@ def get_daily_service_sales_for_date_range(
         cursor = conn.cursor()
         cursor.execute(
             f"""
+            WITH filtered_days AS (
+                SELECT id, date
+                FROM daily_summaries
+                WHERE location_id IN ({placeholders})
+                  AND date BETWEEN ? AND ?
+            )
             SELECT ds.date,
                    ss.service_type,
                    SUM(ss.amount) AS amount
             FROM service_sales ss
-            JOIN daily_summaries ds ON ss.summary_id = ds.id
-            WHERE ds.location_id IN ({placeholders})
-              AND ds.date BETWEEN ? AND ?
+            JOIN filtered_days ds ON ss.summary_id = ds.id
             GROUP BY ds.date, ss.service_type
             ORDER BY ds.date, ss.service_type
             """,
