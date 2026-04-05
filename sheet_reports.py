@@ -101,8 +101,11 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
-def compute_forecast_metrics(report_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Compute month-end run-rate forecast metrics from report inputs."""
+def compute_forecast_metrics(
+    report_data: Dict[str, Any],
+    daily_sales_history: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Compute blended month-end forecast (run-rate + weekday-weighted)."""
     iso = str(report_data.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]
     try:
         dt = datetime.strptime(iso, "%Y-%m-%d")
@@ -116,7 +119,22 @@ def compute_forecast_metrics(report_data: Dict[str, Any]) -> Dict[str, Any]:
     mtd_net = _safe_float(report_data.get("mtd_net_sales"))
     mtd_target = _safe_float(report_data.get("mtd_target"))
 
-    forecast = (mtd_net / elapsed) * dim if elapsed > 0 else 0.0
+    # Pure run-rate forecast
+    forecast_run_rate = (mtd_net / elapsed) * dim if elapsed > 0 else 0.0
+
+    # Weekday-weighted forecast for remaining days
+    forecast_weekday = _weekday_weighted_forecast(
+        dt,
+        remaining,
+        daily_sales_history or [],
+    )
+
+    # Blended: 50/50 if enough history, else pure run-rate
+    if len(daily_sales_history or []) >= 7:
+        forecast = 0.5 * forecast_run_rate + 0.5 * forecast_weekday
+    else:
+        forecast = forecast_run_rate
+
     pct = (forecast / mtd_target) * 100.0 if mtd_target > 0 else None
     gap = (forecast - mtd_target) if mtd_target > 0 else None
     req_run_rate = (
@@ -128,10 +146,53 @@ def compute_forecast_metrics(report_data: Dict[str, Any]) -> Dict[str, Any]:
         "elapsed_days": elapsed,
         "remaining_days": remaining,
         "forecast_month_end_sales": forecast,
+        "forecast_run_rate": forecast_run_rate,
+        "forecast_weekday_weighted": forecast_weekday,
         "forecast_target_pct": pct,
         "forecast_gap_amount": gap,
         "required_daily_run_rate": req_run_rate,
     }
+
+
+def _weekday_weighted_forecast(
+    today: datetime,
+    remaining_days: int,
+    history: List[Dict[str, Any]],
+) -> float:
+    """Forecast remaining days using weekday averages from history."""
+    if not history or remaining_days <= 0:
+        return 0.0
+
+    # Group sales by weekday (0=Mon..6=Sun)
+    weekday_sums: Dict[int, float] = {}
+    weekday_counts: Dict[int, int] = {}
+    for row in history:
+        date_str = str(row.get("date") or row.get("report_date") or "")
+        net = _safe_float(row.get("net_total") or row.get("net_sales"))
+        if not date_str or net <= 0:
+            continue
+        try:
+            d = datetime.strptime(date_str[:10], "%Y-%m-%d")
+        except ValueError:
+            continue
+        wd = d.weekday()
+        weekday_sums[wd] = weekday_sums.get(wd, 0) + net
+        weekday_counts[wd] = weekday_counts.get(wd, 0) + 1
+
+    if not weekday_counts:
+        return 0.0
+
+    # Compute average per weekday
+    weekday_avg = {wd: weekday_sums[wd] / weekday_counts[wd] for wd in weekday_counts}
+
+    # Sum forecast for each remaining calendar day
+    forecast = 0.0
+    for i in range(1, remaining_days + 1):
+        future_date = today + timedelta(days=i)
+        wd = future_date.weekday()
+        forecast += weekday_avg.get(wd, 0.0)
+
+    return forecast
 
 
 def status_from_threshold(
@@ -216,10 +277,13 @@ def build_verbose_daily_summary(report_data: Dict[str, Any]) -> str:
     return "\n".join([line_1, line_2, line_3, line_4, line_5, line_6])
 
 
-def compute_metric_statuses(report_data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+def compute_metric_statuses(
+    report_data: Dict[str, Any],
+    daily_sales_history: Optional[List[Dict]] = None,
+) -> Dict[str, Dict[str, Any]]:
     """Compute status colors for core target/profitability metrics."""
     r = dict(report_data or {})
-    forecast = compute_forecast_metrics(r)
+    forecast = compute_forecast_metrics(r, daily_sales_history=daily_sales_history)
 
     pct_target = _safe_float(r.get("pct_target"))
     target_status = status_from_threshold(
@@ -480,7 +544,11 @@ def _table_section_label(ax, x, y, text, w, row_h=0.039, color=C_BRAND):
 
 
 def _section_sales_summary(
-    ax, r: Dict, location_name: str, per_outlet: Optional[List[Tuple[str, Dict]]] = None
+    ax,
+    r: Dict,
+    location_name: str,
+    per_outlet: Optional[List[Tuple[str, Dict]]] = None,
+    daily_sales_history: Optional[List[Dict]] = None,
 ) -> None:
     """
     Compact sales summary table — Google Sheets style.
@@ -496,8 +564,8 @@ def _section_sales_summary(
     iso = str(r.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]
     day_lbl = _sheet_date_label(iso)
     pct_tgt = float(r.get("pct_target") or 0)
-    statuses = compute_metric_statuses(r)
-    forecast = compute_forecast_metrics(r)
+    statuses = compute_metric_statuses(r, daily_sales_history=daily_sales_history)
+    forecast = compute_forecast_metrics(r, daily_sales_history=daily_sales_history)
     ach_color = statuses["target"]["color"]
 
     # ── Header banner (slim) ─────────────────────────────────────────────
@@ -1430,6 +1498,7 @@ def generate_sheet_style_report_sections(
     per_outlet_footfall_metrics: Optional[
         List[Tuple[str, List[Dict], List[Dict]]]
     ] = None,
+    daily_sales_history: Optional[List[Dict]] = None,
 ) -> Dict[str, BytesIO]:
     """Generate section PNG buffers.
 
@@ -1487,7 +1556,13 @@ def generate_sheet_style_report_sections(
     )
     est_rows = 10 + n_pay + n_tax + 12  # MTD + forecast rows
     fig, ax = _fig_for_section(est_rows, min_rows=12, cap_h=36.0, w=fig_w)
-    _section_sales_summary(ax, r, location_name, per_outlet)
+    _section_sales_summary(
+        ax,
+        r,
+        location_name,
+        per_outlet,
+        daily_sales_history=daily_sales_history,
+    )
     out["sales_summary"] = _save_fig(fig)
 
     # Category

@@ -150,6 +150,7 @@ def render(ctx: TabContext) -> None:
             per_outlet_service=per_outlet_svc,
             per_outlet_footfall=per_outlet_footfall,
             per_outlet_footfall_metrics=per_outlet_footfall_metrics,
+            daily_sales_history=foot_rows,
         )
 
         def _footfall_sections() -> List[Tuple[str, str]]:

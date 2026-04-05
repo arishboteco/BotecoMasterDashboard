@@ -25,6 +25,50 @@ class TestForecastMetrics:
         assert result["forecast_target_pct"] is None
         assert result["forecast_gap_amount"] is None
 
+    def test_blended_forecast_with_weekday_history(self):
+        history = [
+            {"date": "2026-04-01", "net_total": 15000},
+            {"date": "2026-04-02", "net_total": 14000},
+            {"date": "2026-04-03", "net_total": 16000},
+            {"date": "2026-04-04", "net_total": 22000},
+            {"date": "2026-04-05", "net_total": 21000},
+            {"date": "2026-04-06", "net_total": 13000},
+            {"date": "2026-04-07", "net_total": 15000},
+            {"date": "2026-04-08", "net_total": 14500},
+            {"date": "2026-04-09", "net_total": 16500},
+            {"date": "2026-04-10", "net_total": 23000},
+            {"date": "2026-04-11", "net_total": 22500},
+            {"date": "2026-04-12", "net_total": 13500},
+            {"date": "2026-04-13", "net_total": 15500},
+            {"date": "2026-04-14", "net_total": 17000},
+        ]
+        result = sheet_reports.compute_forecast_metrics(
+            {"date": "2026-04-15", "mtd_net_sales": 225000, "mtd_target": 450000},
+            daily_sales_history=history,
+        )
+        assert result["forecast_run_rate"] > 0
+        assert result["forecast_weekday_weighted"] > 0
+        assert result["forecast_month_end_sales"] > 0
+        assert result["forecast_month_end_sales"] != result["forecast_run_rate"]
+
+    def test_fallback_to_run_rate_with_insufficient_history(self):
+        history = [
+            {"date": "2026-04-01", "net_total": 15000},
+            {"date": "2026-04-02", "net_total": 14000},
+        ]
+        result = sheet_reports.compute_forecast_metrics(
+            {"date": "2026-04-15", "mtd_net_sales": 225000, "mtd_target": 450000},
+            daily_sales_history=history,
+        )
+        assert result["forecast_month_end_sales"] == result["forecast_run_rate"]
+
+    def test_empty_history_falls_back_to_run_rate(self):
+        result = sheet_reports.compute_forecast_metrics(
+            {"date": "2026-04-15", "mtd_net_sales": 225000, "mtd_target": 450000},
+            daily_sales_history=[],
+        )
+        assert result["forecast_month_end_sales"] == result["forecast_run_rate"]
+
 
 class TestMetricStatuses:
     def test_target_status_red_under_85(self):
