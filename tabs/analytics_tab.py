@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any, Dict, List
 
 import pandas as pd
 import plotly.express as px
@@ -11,13 +10,12 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 
-import config
 import database
 import scope
 import ui_theme
 import utils
+from tabs.analytics_logic import build_daily_view_table, resolve_period_window
 from tabs import TabContext
-from components import kpi_row, KpiMetric, data_table
 
 
 def render(ctx: TabContext) -> None:
@@ -43,6 +41,8 @@ def render(ctx: TabContext) -> None:
             key="analysis_period",
         )
 
+    custom_start = None
+    custom_end = None
     if analysis_period == "Custom":
         with col_per2:
             c1, c2 = st.columns(2)
@@ -58,26 +58,13 @@ def render(ctx: TabContext) -> None:
                     datetime.now().date(),
                     key="analytics_custom_end",
                 )
-        start_date, end_date = custom_start, custom_end
-        prior_start, prior_end = None, None
-    else:
-        period_key = analysis_period.lower().replace(" ", "_")
-        start_date, end_date = utils.get_date_range(period_key)
+    start_date, end_date, prior_start, prior_end, period_key = resolve_period_window(
+        analysis_period,
+        custom_start=custom_start,
+        custom_end=custom_end,
+    )
 
-        # Determine comparison period for period-over-period deltas
-        _prior_map = {
-            "this_week": "last_week",
-            "this_month": "last_month",
-        }
-        _days_span = (end_date - start_date).days + 1
-        if period_key in _prior_map:
-            prior_start, prior_end = utils.get_date_range(_prior_map[period_key])
-        elif period_key in ("last_7_days", "last_30_days"):
-            prior_end = start_date - timedelta(days=1)
-            prior_start = prior_end - timedelta(days=_days_span - 1)
-        else:
-            prior_start, prior_end = None, None
-
+    if analysis_period != "Custom":
         with col_per2:
             st.markdown(
                 f'<div style="padding:0.5rem 0;font-size:0.95rem;color:var(--text-secondary);">'
@@ -585,57 +572,7 @@ def render(ctx: TabContext) -> None:
 
             # ── Daily Data Table ─────────────────────────────────────
             st.markdown("### Daily Data")
-            if multi_analytics and not df_raw.empty:
-                dv = (
-                    df_raw[
-                        [
-                            "date",
-                            "Outlet",
-                            "covers",
-                            "net_total",
-                            "target",
-                            "pct_target",
-                        ]
-                    ]
-                    .sort_values(["date", "Outlet"])
-                    .copy()
-                )
-                dv["covers"] = [f"{int(x or 0):,}" for x in dv["covers"]]
-                dv["net_total"] = [
-                    utils.format_currency(float(x or 0)) for x in dv["net_total"]
-                ]
-                dv["target"] = [
-                    utils.format_currency(float(x or 0)) for x in dv["target"]
-                ]
-                dv["pct_target"] = [
-                    utils.format_percent(float(x or 0)) for x in dv["pct_target"]
-                ]
-            elif multi_analytics:
-                dv = pd.DataFrame()
-            else:
-                dv = (
-                    df[
-                        [
-                            "date",
-                            "covers",
-                            "net_total",
-                            "target",
-                            "pct_target",
-                        ]
-                    ]
-                    .sort_values("date")
-                    .copy()
-                )
-                dv["covers"] = [f"{int(x or 0):,}" for x in dv["covers"]]
-                dv["net_total"] = [
-                    utils.format_currency(float(x or 0)) for x in dv["net_total"]
-                ]
-                dv["target"] = [
-                    utils.format_currency(float(x or 0)) for x in dv["target"]
-                ]
-                dv["pct_target"] = [
-                    utils.format_percent(float(x or 0)) for x in dv["pct_target"]
-                ]
+            dv = build_daily_view_table(df, df_raw, multi_analytics)
             st.dataframe(
                 dv,
                 use_container_width=True,
@@ -649,19 +586,9 @@ def render(ctx: TabContext) -> None:
                 },
             )
         else:
-            daily_view = df[
-                ["date", "covers", "net_total", "target", "pct_target"]
-            ].copy()
-            daily_view["covers"] = [f"{int(x or 0):,}" for x in daily_view["covers"]]
-            daily_view["net_total"] = [
-                utils.format_currency(float(x or 0)) for x in daily_view["net_total"]
-            ]
-            daily_view["target"] = [
-                utils.format_currency(float(x or 0)) for x in daily_view["target"]
-            ]
-            daily_view["pct_target"] = [
-                utils.format_percent(float(x or 0)) for x in daily_view["pct_target"]
-            ]
+            daily_view = build_daily_view_table(
+                df, pd.DataFrame(), multi_analytics=False
+            )
             st.dataframe(
                 daily_view,
                 use_container_width=True,
