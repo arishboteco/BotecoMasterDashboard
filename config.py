@@ -13,6 +13,8 @@ DATABASE_PATH = "data/boteco.db"
 APP_NAME = "Boteco Dashboard"
 APP_ICON = None
 MIN_PASSWORD_LENGTH = 10
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_LOCKOUT_MINUTES = 15
 
 # Report Settings
 CURRENCY_SYMBOL = "₹"

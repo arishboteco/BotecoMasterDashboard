@@ -122,6 +122,24 @@ def init_database():
         ON user_sessions(expires_at)
     """)
 
+    # Failed login tracking for temporary lockouts
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS auth_login_attempts (
+            username TEXT PRIMARY KEY,
+            failed_count INTEGER NOT NULL DEFAULT 0,
+            locked_until DATETIME,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_auth_login_attempts_locked_until
+        ON auth_login_attempts(locked_until)
+        """
+    )
+
     # Daily summaries: composite UNIQUE(location_id, date) so each outlet has its own row per day
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS daily_summaries (
@@ -681,6 +699,27 @@ def purge_expired_sessions() -> None:
     from database_auth import purge_expired_sessions as _impl
 
     _impl()
+
+
+def is_login_locked(username: str) -> Tuple[bool, int]:
+    """Return whether username is temporarily login-locked and remaining minutes."""
+    from database_auth import is_login_locked as _impl
+
+    return _impl(username)
+
+
+def record_failed_login(username: str) -> Tuple[bool, int]:
+    """Record failed login attempt and return lock state."""
+    from database_auth import record_failed_login as _impl
+
+    return _impl(username)
+
+
+def clear_failed_login(username: str) -> None:
+    """Clear failed login tracking for username."""
+    from database_auth import clear_failed_login as _impl
+
+    _impl(username)
 
 
 def bootstrap():

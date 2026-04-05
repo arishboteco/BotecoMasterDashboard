@@ -26,6 +26,9 @@ from io import BytesIO
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.patches import FancyBboxPatch

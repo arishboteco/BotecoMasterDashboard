@@ -3,11 +3,21 @@
 from __future__ import annotations
 
 import secrets
+import math
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 
 import config
 import database
+
+
+def _norm_username(username: str) -> str:
+    return (username or "").strip().lower()
+
+
+def _utcnow_naive() -> datetime:
+    """UTC now as naive datetime for sqlite text storage/comparisons."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def create_admin_user(username: str, password: str) -> None:
@@ -214,4 +224,95 @@ def purge_expired_sessions() -> None:
     """Delete all expired sessions."""
     with database.db_connection() as conn:
         conn.execute("DELETE FROM user_sessions WHERE expires_at <= datetime('now')")
+        conn.commit()
+
+
+def is_login_locked(username: str) -> Tuple[bool, int]:
+    """Return whether username is locked and remaining lock minutes."""
+    un = _norm_username(username)
+    if not un:
+        return False, 0
+
+    with database.db_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT failed_count, locked_until
+            FROM auth_login_attempts
+            WHERE username = ?
+            """,
+            (un,),
+        ).fetchone()
+
+        if not row:
+            return False, 0
+
+        locked_until = row["locked_until"]
+        if not locked_until:
+            return False, 0
+
+        now = _utcnow_naive()
+        until = datetime.strptime(str(locked_until), "%Y-%m-%d %H:%M:%S")
+        if until <= now:
+            conn.execute(
+                """
+                UPDATE auth_login_attempts
+                SET failed_count = 0, locked_until = NULL, updated_at = CURRENT_TIMESTAMP
+                WHERE username = ?
+                """,
+                (un,),
+            )
+            conn.commit()
+            return False, 0
+
+        remaining = max(1, int(math.ceil((until - now).total_seconds() / 60.0)))
+        return True, remaining
+
+
+def record_failed_login(username: str) -> Tuple[bool, int]:
+    """Increment failed login count and lock user temporarily if threshold reached."""
+    un = _norm_username(username)
+    if not un:
+        return False, 0
+
+    locked, mins = is_login_locked(un)
+    if locked:
+        return True, mins
+
+    with database.db_connection() as conn:
+        row = conn.execute(
+            "SELECT failed_count FROM auth_login_attempts WHERE username = ?",
+            (un,),
+        ).fetchone()
+        failed = int(row["failed_count"]) if row else 0
+        failed += 1
+
+        locked_until = None
+        if failed >= int(config.MAX_LOGIN_ATTEMPTS):
+            locked_until = (
+                _utcnow_naive() + timedelta(minutes=config.LOGIN_LOCKOUT_MINUTES)
+            ).strftime("%Y-%m-%d %H:%M:%S")
+
+        conn.execute(
+            """
+            INSERT INTO auth_login_attempts (username, failed_count, locked_until, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(username) DO UPDATE SET
+                failed_count = excluded.failed_count,
+                locked_until = excluded.locked_until,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (un, failed, locked_until),
+        )
+        conn.commit()
+
+    return is_login_locked(un)
+
+
+def clear_failed_login(username: str) -> None:
+    """Clear failed login tracking for username after successful auth."""
+    un = _norm_username(username)
+    if not un:
+        return
+    with database.db_connection() as conn:
+        conn.execute("DELETE FROM auth_login_attempts WHERE username = ?", (un,))
         conn.commit()
