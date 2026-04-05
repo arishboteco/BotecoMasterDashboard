@@ -969,139 +969,35 @@ def get_most_recent_date_with_data(location_ids: List[int]) -> Optional[str]:
 def get_monthly_footfall_multi(
     location_ids: List[int], start_date: str, end_date: str
 ) -> List[Dict[str, Any]]:
-    """Aggregate covers by month across locations for a date range.
+    """Aggregate covers by month across locations for a date range."""
+    from database_analytics import get_monthly_footfall_multi as _impl
 
-    Returns list of dicts: [{"month": "YYYY-MM", "covers": int, "total_days": int}, ...]
-    Sorted by month ascending.
-    """
-    if not location_ids:
-        return []
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        placeholders = ",".join("?" * len(location_ids))
-        cursor.execute(
-            f"""
-            SELECT
-                month,
-                SUM(covers) AS covers,
-                CAST(
-                    STRFTIME(
-                        '%d',
-                        CASE
-                            WHEN month = SUBSTR(?, 1, 7)
-                                THEN ?
-                            ELSE DATE(month || '-01', 'start of month', '+1 month', '-1 day')
-                        END
-                    ) AS INTEGER
-                ) AS total_days
-            FROM (
-                SELECT SUBSTR(date, 1, 7) AS month, covers
-                FROM daily_summaries
-                WHERE location_id IN ({placeholders})
-                  AND date >= ?
-                  AND date <= ?
-            ) m
-            GROUP BY month
-            ORDER BY month
-            """,
-            (end_date, end_date, *location_ids, start_date, end_date),
-        )
-        rows = cursor.fetchall()
-    return [dict(row) for row in rows]
+    return _impl(location_ids, start_date, end_date)
 
 
 def get_weekly_footfall_multi(
     location_ids: List[int], start_date: str, end_date: str
 ) -> List[Dict[str, Any]]:
-    """Aggregate covers by ISO week across locations for a date range.
+    """Aggregate covers by ISO week across locations for a date range."""
+    from database_analytics import get_weekly_footfall_multi as _impl
 
-    Returns list of dicts: [{"week": "YYYY-W##", "covers": int, "total_days": int}, ...]
-    Sorted by week ascending. Uses ISO 8601 week numbering (Monday-start).
-    """
-    if not location_ids:
-        return []
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        placeholders = ",".join("?" * len(location_ids))
-        cursor.execute(
-            f"""
-            WITH week_data AS (
-                SELECT
-                    date,
-                    covers,
-                    date(date, '-' || ((strftime('%w', date) + 6) % 7) || ' days') AS iso_monday
-                FROM daily_summaries
-                WHERE location_id IN ({placeholders})
-                  AND date >= ?
-                  AND date <= ?
-            )
-            SELECT
-                CAST(strftime('%Y', date(iso_monday, '+3 days')) AS TEXT) || '-W' ||
-                printf('%02d', CAST(strftime('%W', date(iso_monday, '+3 days')) AS INTEGER) + 1) AS week,
-                SUM(covers) AS covers,
-                CAST(COUNT(DISTINCT date) AS INTEGER) AS total_days
-            FROM week_data
-            GROUP BY week
-            ORDER BY week
-            """,
-            (*location_ids, start_date, end_date),
-        )
-        rows = cursor.fetchall()
-    return [dict(row) for row in rows]
+    return _impl(location_ids, start_date, end_date)
 
 
 def get_category_mtd_totals_multi(
     location_ids: List[int], year: int, month: int
 ) -> Dict[str, float]:
-    if not location_ids:
-        return {}
-    start_date = f"{year}-{month:02d}-01"
-    if month == 12:
-        end_date = f"{year + 1}-01-01"
-    else:
-        end_date = f"{year}-{month + 1:02d}-01"
-    placeholders = ",".join("?" * len(location_ids))
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            f"""
-            SELECT cs.category, SUM(cs.amount) AS total
-            FROM category_sales cs
-            INNER JOIN daily_summaries ds ON cs.summary_id = ds.id
-            WHERE ds.location_id IN ({placeholders}) AND ds.date >= ? AND ds.date < ?
-            GROUP BY cs.category
-            """,
-            (*location_ids, start_date, end_date),
-        )
-        rows = cursor.fetchall()
-    return {row["category"]: float(row["total"] or 0) for row in rows}
+    from database_analytics import get_category_mtd_totals_multi as _impl
+
+    return _impl(location_ids, year, month)
 
 
 def get_service_mtd_totals_multi(
     location_ids: List[int], year: int, month: int
 ) -> Dict[str, float]:
-    if not location_ids:
-        return {}
-    start_date = f"{year}-{month:02d}-01"
-    if month == 12:
-        end_date = f"{year + 1}-01-01"
-    else:
-        end_date = f"{year}-{month + 1:02d}-01"
-    placeholders = ",".join("?" * len(location_ids))
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            f"""
-            SELECT sv.service_type, SUM(sv.amount) AS total
-            FROM service_sales sv
-            INNER JOIN daily_summaries ds ON sv.summary_id = ds.id
-            WHERE ds.location_id IN ({placeholders}) AND ds.date >= ? AND ds.date < ?
-            GROUP BY sv.service_type
-            """,
-            (*location_ids, start_date, end_date),
-        )
-        rows = cursor.fetchall()
-    return {row["service_type"]: float(row["total"] or 0) for row in rows}
+    from database_analytics import get_service_mtd_totals_multi as _impl
+
+    return _impl(location_ids, year, month)
 
 
 def update_daily_summary_covers_only(
@@ -1228,121 +1124,37 @@ def save_upload_record(
 def get_top_items_for_date_range(
     location_ids: List[int], start_date: str, end_date: str, limit: int = 20
 ) -> List[Dict]:
-    """
-    Top-selling menu items across a date range for one or more locations.
-    Returns list of {item_name, amount, qty} sorted by amount descending.
-    """
-    if not location_ids:
-        return []
-    placeholders = ",".join("?" * len(location_ids))
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            f"""
-            SELECT it.item_name,
-                   SUM(it.amount) AS amount,
-                   SUM(it.qty)    AS qty
-            FROM item_sales it
-            JOIN daily_summaries ds ON it.summary_id = ds.id
-            WHERE ds.location_id IN ({placeholders})
-              AND ds.date BETWEEN ? AND ?
-            GROUP BY it.item_name
-            ORDER BY amount DESC
-            LIMIT ?
-            """,
-            (*location_ids, start_date, end_date, limit),
-        )
-        rows = cursor.fetchall()
-    return [dict(row) for row in rows]
+    """Top-selling menu items across a date range for one or more locations."""
+    from database_analytics import get_top_items_for_date_range as _impl
+
+    return _impl(location_ids, start_date, end_date, limit)
 
 
 def get_category_sales_for_date_range(
     location_ids: List[int], start_date: str, end_date: str
 ) -> List[Dict]:
-    """
-    Aggregate category sales across a date range for one or more locations.
-    Returns list of {category, amount, qty} sorted by amount descending.
-    """
-    if not location_ids:
-        return []
-    placeholders = ",".join("?" * len(location_ids))
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            f"""
-            SELECT cs.category,
-                   SUM(cs.amount) AS amount,
-                   SUM(cs.qty)    AS qty
-            FROM category_sales cs
-            JOIN daily_summaries ds ON cs.summary_id = ds.id
-            WHERE ds.location_id IN ({placeholders})
-              AND ds.date BETWEEN ? AND ?
-            GROUP BY cs.category
-            ORDER BY amount DESC
-            """,
-            (*location_ids, start_date, end_date),
-        )
-        rows = cursor.fetchall()
-    return [dict(row) for row in rows]
+    """Aggregate category sales across a date range for one or more locations."""
+    from database_analytics import get_category_sales_for_date_range as _impl
+
+    return _impl(location_ids, start_date, end_date)
 
 
 def get_service_sales_for_date_range(
     location_ids: List[int], start_date: str, end_date: str
 ) -> List[Dict]:
-    """
-    Aggregate service/meal-period sales across a date range.
-    Returns list of {service_type, amount} (e.g. Breakfast, Lunch, Dinner).
-    """
-    if not location_ids:
-        return []
-    placeholders = ",".join("?" * len(location_ids))
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            f"""
-            SELECT ss.service_type,
-                   SUM(ss.amount) AS amount
-            FROM service_sales ss
-            JOIN daily_summaries ds ON ss.summary_id = ds.id
-            WHERE ds.location_id IN ({placeholders})
-              AND ds.date BETWEEN ? AND ?
-            GROUP BY ss.service_type
-            ORDER BY amount DESC
-            """,
-            (*location_ids, start_date, end_date),
-        )
-        rows = cursor.fetchall()
-    return [dict(row) for row in rows]
+    """Aggregate service/meal-period sales across a date range."""
+    from database_analytics import get_service_sales_for_date_range as _impl
+
+    return _impl(location_ids, start_date, end_date)
 
 
 def get_daily_service_sales_for_date_range(
     location_ids: List[int], start_date: str, end_date: str
 ) -> List[Dict]:
-    """
-    Per-day service/meal-period sales for stacked bar charts.
-    Returns list of {date, service_type, amount} ordered by date then service_type.
-    """
-    if not location_ids:
-        return []
-    placeholders = ",".join("?" * len(location_ids))
-    with db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            f"""
-            SELECT ds.date,
-                   ss.service_type,
-                   SUM(ss.amount) AS amount
-            FROM service_sales ss
-            JOIN daily_summaries ds ON ss.summary_id = ds.id
-            WHERE ds.location_id IN ({placeholders})
-              AND ds.date BETWEEN ? AND ?
-            GROUP BY ds.date, ss.service_type
-            ORDER BY ds.date, ss.service_type
-            """,
-            (*location_ids, start_date, end_date),
-        )
-        rows = cursor.fetchall()
-    return [dict(row) for row in rows]
+    """Per-day service/meal-period sales for stacked bar charts."""
+    from database_analytics import get_daily_service_sales_for_date_range as _impl
+
+    return _impl(location_ids, start_date, end_date)
 
 
 def create_user_session(user_id: int, days: int = 30) -> str:
