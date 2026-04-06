@@ -71,11 +71,41 @@ def _fmt_int_hover(values: list, name: str = "%{x|%b %d}") -> dict:
 
 
 def _rupee_yaxis() -> dict:
-    """Y-axis config: ₹50k, ₹1L, ₹2L etc."""
+    """Y-axis config with k/L shorthand labels."""
     return dict(
         tickprefix="₹",
-        tickformat=".2s",
+        ticksuffix="",
+        tickformat=",d",
     )
+
+
+def _make_rupee_ticks(min_val: float, max_val: float) -> tuple:
+    """Generate nice tick values and text for a rupee y-axis range.
+
+    Returns (tickvals, ticktext) for Plotly.
+    Examples:
+      0-200k  → [0, 50000, 100000, 150000, 200000], ['₹0', '₹50k', ...]
+      0-3L    → [0, 100000, 200000, 300000], ['₹0', '₹1L', ...]
+    """
+    range_val = max_val - min_val
+    if range_val <= 0:
+        return ([0], ["₹0"])
+
+    # Choose step size
+    if max_val <= 1_00_000:
+        step = 10_000
+        fmt_fn = lambda v: f"₹{v / 1_000:.0f}k"
+    elif max_val <= 5_00_000:
+        step = 50_000
+        fmt_fn = lambda v: f"₹{v / 1_000:.0f}k"
+    else:
+        step = 1_00_000
+        fmt_fn = lambda v: f"₹{v / 1_00_000:.1f}L"
+
+    start = 0
+    tickvals = list(range(start, int(max_val) + 1, step))
+    ticktext = [fmt_fn(v) for v in tickvals]
+    return (tickvals, ticktext)
 
 
 def _period_supports_trend_analysis(period: str, data_points: int) -> bool:
@@ -357,13 +387,24 @@ def render_sales_performance(
                             )
                         )
 
+            # Compute y-axis range for nice tick labels
+            all_vals = values[:]
+            if forecast:
+                all_vals = values + [f["value"] for f in forecast]
+            y_min, y_max = 0, max(all_vals) * 1.1 if all_vals else 200_000
+            tickvals, ticktext = _make_rupee_ticks(y_min, y_max)
+
             fig_line.update_layout(
                 xaxis_title="Date",
                 yaxis_title="Net Sales (₹)",
                 hovermode="x unified",
                 height=ui_theme.CHART_HEIGHT,
                 xaxis=dict(tickformat="%b %d"),
-                yaxis=_rupee_yaxis(),
+                yaxis=dict(
+                    tickprefix="₹",
+                    tickvals=tickvals,
+                    ticktext=ticktext,
+                ),
             )
             st.plotly_chart(fig_line, use_container_width=True)
 
