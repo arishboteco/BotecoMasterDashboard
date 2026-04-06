@@ -30,19 +30,20 @@ def _hex_to_rgba(hex_color: str, alpha: float = 0.2) -> str:
 
 
 def _fmt_rupee_short(amount: float) -> str:
-    """Format a rupee amount as a short integer label: ₹73k, ₹1L, ₹15L."""
+    """Format a rupee amount as a short label: ₹1.3k, ₹130k, ₹1.3L.
+
+    Uses 1 decimal place for clarity (e.g., ₹1.3L not ₹1.27L).
+    """
     abs_amt = abs(amount)
     sign = "-" if amount < 0 else ""
     if abs_amt >= 1_00_000:
-        # Lakhs
         lakhs = abs_amt / 1_00_000
-        return f"{sign}₹{int(round(lakhs))}L"
+        return f"{sign}₹{lakhs:.1f}L"
     elif abs_amt >= 1_000:
-        # Thousands
         k = abs_amt / 1_000
-        return f"{sign}₹{int(round(k))}k"
+        return f"{sign}₹{k:.1f}k"
     else:
-        return f"{sign}₹{int(round(abs_amt))}"
+        return f"{sign}₹{abs_amt:.0f}"
 
 
 def _fmt_rupee_hover(values: list, name: str = "%{x|%b %d}") -> dict:
@@ -669,7 +670,7 @@ def render_revenue_breakdown(
         # Full category breakdown table
         _cat_table = cat_df[["category", "amount"]].copy()
         _cat_table["% of Total"] = _cat_table["amount"].apply(
-            lambda x: f"{x / total_cat * 100:.0f}%" if total_cat > 0 else "0%"
+            lambda x: f"{x / total_cat * 100:.1f}%" if total_cat > 0 else "0%"
         )
         _cat_table["amount"] = _cat_table["amount"].apply(
             lambda x: utils.format_currency(float(x))
@@ -971,14 +972,14 @@ def render_target_and_daily(
                     ["date", "Outlet", "net_total", "target", "pct_target"]
                 ].copy()
                 _tgt_tbl["pct_target"] = _tgt_tbl["pct_target"].apply(
-                    lambda x: f"{float(x or 0):.0f}%"
+                    lambda x: f"{float(x or 0):.2f}%"
                 )
             else:
                 _tgt_tbl = target_df[
                     ["date", "net_total", "target", "achievement"]
                 ].copy()
                 _tgt_tbl["achievement"] = _tgt_tbl["achievement"].apply(
-                    lambda x: f"{float(x or 0):.0f}%"
+                    lambda x: f"{float(x or 0):.2f}%"
                 )
                 _tgt_tbl = _tgt_tbl.rename(columns={"achievement": "pct_target"})
             _tgt_tbl = _tgt_tbl.rename(
@@ -1030,7 +1031,7 @@ def render_target_and_daily(
                 "Covers": "{:,.0f}",
                 "Net Sales (₹)": lambda x: utils.format_indian_currency(float(x)),
                 "Target (₹)": lambda x: utils.format_indian_currency(float(x)),
-                "Achievement %": "{:.0f}%",
+                "Achievement %": "{:.2f}%",
             },
             na_rep="",
         )
@@ -1072,7 +1073,7 @@ def render_target_and_daily(
                 "Covers": "{:,.0f}",
                 "Net Sales (₹)": lambda x: utils.format_indian_currency(float(x)),
                 "Target (₹)": lambda x: utils.format_indian_currency(float(x)),
-                "Achievement %": "{:.0f}%",
+                "Achievement %": "{:.2f}%",
             },
             na_rep="",
         )

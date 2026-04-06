@@ -38,9 +38,9 @@ class TestFormatIndianCurrency:
         assert format_indian_currency(-130235) == "-₹1,30,235"
 
     def test_decimal_amounts(self):
-        """Test amounts with decimals (rounded to nearest rupee)."""
-        assert format_indian_currency(1000.50) == "₹1,001"
-        assert format_indian_currency(130235.75) == "₹1,30,236"
+        """Test amounts with decimals (paise)."""
+        assert format_indian_currency(1000.50) == "₹1,000.50"
+        assert format_indian_currency(130235.75) == "₹1,30,235.75"
 
     def test_very_large_amounts(self):
         """Test very large amounts."""

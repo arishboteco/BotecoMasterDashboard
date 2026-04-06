@@ -38,7 +38,7 @@ def format_daily_data_table(
     detail["Covers"] = detail["covers"].astype(int).astype(str)
     detail["Net Sales"] = detail["net_total"].apply(utils.format_currency)
     detail["Target"] = detail["target"].apply(utils.format_currency)
-    detail["Achievement"] = detail["achievement"].round(0).astype(int).astype(str) + "%"
+    detail["Achievement"] = detail["achievement"].apply(lambda x: f"{float(x):.2f}%")
 
     # Select display columns
     result = detail[
@@ -50,7 +50,7 @@ def format_daily_data_table(
     total_sales = detail["net_total"].sum()
     total_target = detail["target"].sum()
     overall_achievement = (
-        f"{(total_sales / total_target * 100):.0f}%" if total_target > 0 else "—"
+        f"{(total_sales / total_target * 100):.2f}%" if total_target > 0 else "—"
     )
 
     totals_row = pd.DataFrame(

@@ -35,15 +35,19 @@ def format_indian_currency(amount: float) -> str:
     """Format amount as Indian currency with ₹ symbol and Indian numbering.
 
     Handles positive, negative, zero, and decimal amounts.
-    Decimal values are rounded to the nearest integer for app-wide
-    integer-only display.
-    Example: 1234567.50 → ₹12,34,568
+    Example: 1234567.50 → ₹12,34,567.50
     """
     is_negative = amount < 0
     amount = abs(amount)
 
-    # Integer-only output across the app (round half up).
-    integer_part = str(int(amount + 0.5))
+    # Split into integer and decimal parts
+    if isinstance(amount, float) and amount % 1 != 0:
+        parts = f"{amount:.2f}".split(".")
+        integer_part = parts[0]
+        decimal_part = parts[1]
+    else:
+        integer_part = str(int(amount))
+        decimal_part = None
 
     # Format integer part with Indian numbering
     if len(integer_part) <= 3:
@@ -58,7 +62,11 @@ def format_indian_currency(amount: float) -> str:
             s = s[:-2]
         formatted_int = result
 
-    formatted = formatted_int
+    # Combine with decimal part
+    if decimal_part and int(decimal_part) > 0:
+        formatted = f"{formatted_int}.{decimal_part}"
+    else:
+        formatted = formatted_int
 
     # Add sign and currency symbol
     if is_negative:
@@ -67,16 +75,15 @@ def format_indian_currency(amount: float) -> str:
 
 
 def format_number(num: float, decimals: int = 0) -> str:
-    """Format number with commas (integer-only display)."""
+    """Format number with commas."""
     if decimals > 0:
-        # Keep signature for compatibility but enforce integer output globally.
-        return f"{num:,.0f}"
+        return f"{num:,.{decimals}f}"
     return f"{num:,.0f}"
 
 
 def format_percent(value: Optional[float]) -> str:
-    """Format percentage without decimal places."""
-    return f"{float(value or 0):.0f}%"
+    """Format percentage with 2 decimal places."""
+    return f"{float(value or 0):.2f}%"
 
 
 def format_delta(
