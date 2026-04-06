@@ -387,12 +387,12 @@ def render_sales_performance(
                             )
                         )
 
-            # Compute y-axis range for nice tick labels
-            all_vals = values[:]
+            # Compute y-axis range for nice tick labels (only available in single-outlet branch)
+            tickvals, ticktext = None, None
             if forecast:
                 all_vals = values + [f["value"] for f in forecast]
-            y_min, y_max = 0, max(all_vals) * 1.1 if all_vals else 200_000
-            tickvals, ticktext = _make_rupee_ticks(y_min, y_max)
+                y_min, y_max = 0, max(all_vals) * 1.1 if all_vals else 200_000
+                tickvals, ticktext = _make_rupee_ticks(y_min, y_max)
 
             fig_line.update_layout(
                 xaxis_title="Date",
@@ -402,9 +402,11 @@ def render_sales_performance(
                 xaxis=dict(tickformat="%b %d"),
                 yaxis=dict(
                     tickprefix="₹",
-                    tickvals=tickvals,
-                    ticktext=ticktext,
-                ),
+                    tickvals=tickvals or [],
+                    ticktext=ticktext or [],
+                )
+                if tickvals
+                else dict(tickprefix="₹"),
             )
             st.plotly_chart(fig_line, use_container_width=True)
 
