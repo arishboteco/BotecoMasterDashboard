@@ -1,11 +1,12 @@
 """Forecasting helpers for analytics charts.
 
-Pure functions: linear regression forecast, moving average, forecast date generation.
+Pure functions: exponential smoothing forecast, moving average, forecast date generation.
 No Streamlit or database dependencies.
 """
 
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
@@ -18,67 +19,57 @@ def linear_forecast(
     values: List[float],
     forecast_days: int = 5,
 ) -> Optional[List[Dict[str, Any]]]:
-    """Linear regression forecast with ±1 std dev confidence band.
+    """Forecast future values using exponential smoothing + weekday patterns.
 
-    Returns None if fewer than 3 data points (minimum for trend estimation).
-    Confidence band widens for shorter datasets to reflect uncertainty.
+    Approach (based on restaurant forecasting research):
+    1. Compute a base forecast using Simple Exponential Smoothing (alpha=0.3).
+       This reacts to recent data without extrapolating a slope.
+    2. If enough data exists (>=7 points), overlay weekday multipliers so the
+       forecast reflects day-of-week patterns (e.g., weekends are higher).
+    3. Confidence band = ±1 std dev of actual data, widening slightly over time.
+
+    Returns None if fewer than 3 data points.
     Each entry: {"date": Timestamp, "value": float, "upper": float, "lower": float}
     """
     if len(values) < 3:
         return None
 
-    # Use actual day offsets between points (handles missing dates) instead of
-    # assuming values are consecutive.
     date_series = pd.to_datetime(dates)
-    first_date = pd.Timestamp(
-        date_series.iloc[0] if hasattr(date_series, "iloc") else date_series[0]
-    )
+    y = np.array(values, dtype=float)
 
-    # Day offsets from first_date
-    x_raw = np.array(
-        [(pd.Timestamp(d) - first_date).days for d in date_series], dtype=float
-    )
-    y_raw = np.array(values, dtype=float)
+    # ── Step 1: Simple Exponential Smoothing ──────────────────────────
+    # Alpha controls responsiveness: 0.3 is a balanced default that weights
+    # recent observations more than old ones without being too jumpy.
+    alpha = 0.3
+    smoothed = y[0]
+    for val in y[1:]:
+        smoothed = alpha * val + (1 - alpha) * smoothed
+    base_forecast = float(smoothed)
 
-    # Working arrays used for regression (may be smoothed / filtered)
-    x = x_raw.copy()
-    y = y_raw.copy()
+    # ── Step 2: Weekday multipliers (when enough data) ────────────────
+    # Group values by weekday and compute per-weekday averages.
+    # The multiplier for each weekday = (weekday avg) / (overall avg).
+    # This captures patterns like "Fridays are 30% above average".
+    weekday_multipliers: Dict[int, float] = {}
+    overall_avg = float(np.mean(y))
 
-    # Smooth the series to reduce overreaction on short ranges.
-    # Apply smoothing only when we have enough points to still fit a line.
-    if len(values) >= 5:
-        # With 5 data points, a full 7-day MA would leave too few samples.
-        smooth_window = 7 if len(values) >= 7 else 3
-        y_smooth = np.array(moving_average(values, window=smooth_window), dtype=float)
-        valid = ~np.isnan(y_smooth)
-        x = x[valid]
-        y = y_smooth[valid]
+    if len(values) >= 7 and overall_avg > 0:
+        weekday_sums: Dict[int, float] = defaultdict(float)
+        weekday_counts: Dict[int, int] = defaultdict(int)
+        for dt, val in zip(date_series, y):
+            wd = pd.Timestamp(dt).weekday()  # 0=Mon .. 6=Sun
+            weekday_sums[wd] += val
+            weekday_counts[wd] += 1
+        for wd in weekday_sums:
+            weekday_multipliers[wd] = (
+                weekday_sums[wd] / weekday_counts[wd]
+            ) / overall_avg
 
-        if len(y) < 3:
-            return None
+    # ── Step 3: Confidence band ───────────────────────────────────────
+    std_dev = float(np.std(y))
+    std_dev = max(std_dev, overall_avg * 0.05)  # Floor at 5% of average
 
-    coeffs = np.polyfit(x, y, 1)
-    slope, intercept = coeffs[0], coeffs[1]
-
-    # Cap slope on short datasets to avoid unrealistic extrapolation.
-    if len(values) < 7:
-        rates: List[float] = []
-        for i in range(1, len(x_raw)):
-            dt = x_raw[i] - x_raw[i - 1]
-            if dt != 0:
-                rates.append((y_raw[i] - y_raw[i - 1]) / dt)
-
-        if rates:
-            # Use recent interval magnitude; allow up to ~2x typical change.
-            cap_abs = max(1e-9, float(np.median(np.abs(rates[-3:])) * 2.0))
-            slope = float(np.clip(slope, -cap_abs, cap_abs))
-
-    residuals = y - (slope * x + intercept)
-    std_err = float(np.std(residuals))
-    # Ensure minimum uncertainty even for perfectly linear data
-    std_err = max(std_err, 1.0)
-
-    # Handle both Series and DatetimeIndex
+    # ── Step 4: Generate forecast ─────────────────────────────────────
     if isinstance(date_series, pd.DatetimeIndex):
         last_date = pd.Timestamp(date_series[-1])
     else:
@@ -87,15 +78,22 @@ def linear_forecast(
 
     result: List[Dict[str, Any]] = []
     for i, fdate in enumerate(forecast_dates):
-        future_x = float((pd.Timestamp(fdate) - first_date).days)
-        value = slope * future_x + intercept
-        band = std_err * (1 + i * 0.15)
+        value = base_forecast
+
+        # Apply weekday adjustment if available
+        wd = pd.Timestamp(fdate).weekday()
+        if wd in weekday_multipliers:
+            value *= weekday_multipliers[wd]
+
+        # Band widens slightly over time to reflect growing uncertainty
+        band = std_dev * (1 + i * 0.05)
+
         result.append(
             {
                 "date": fdate,
-                "value": float(value),
-                "upper": float(value + band),
-                "lower": float(max(0, value - band)),
+                "value": max(0, float(value)),
+                "upper": max(0, float(value + band)),
+                "lower": max(0, float(value - band)),
             }
         )
 
