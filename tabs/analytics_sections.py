@@ -18,6 +18,19 @@ from tabs.analytics_logic import build_daily_view_table
 from tabs.forecasting import linear_forecast, moving_average
 
 
+def _period_supports_trend_analysis(period: str, data_points: int) -> bool:
+    """Return True if the selected period has enough data for MA and forecast."""
+    _long_periods = {"Last 7 Days", "Last 30 Days", "Last Month", "Custom"}
+    if period in _long_periods:
+        return data_points >= 7
+    return False
+
+
+def _chart_summary(text: str) -> None:
+    """Render a screen-reader-friendly text summary of a chart's key insight."""
+    st.caption(text)
+
+
 def _daily_table_column_config() -> dict:
     return {
         "date": st.column_config.TextColumn("Date"),
@@ -97,7 +110,10 @@ def render_sales_performance(
     df_raw: pd.DataFrame,
     multi_analytics: bool,
     prior_df: pd.DataFrame = pd.DataFrame(),
+    analysis_period: str = "",
 ) -> None:
+    show_ma_and_forecast = _period_supports_trend_analysis(analysis_period, len(df))
+
     with st.expander("💰 Sales Performance", expanded=True):
         col_chart1, col_chart2 = st.columns(2)
 
@@ -116,7 +132,6 @@ def render_sales_performance(
             else:
                 dates = pd.to_datetime(df["date"])
                 values = df["net_total"].tolist()
-                ma_values = moving_average(values, window=7)
 
                 fig_line = go.Figure()
 
@@ -132,59 +147,63 @@ def render_sales_performance(
                     )
                 )
 
-                # 7-day moving average
-                ma_series = pd.Series(ma_values)
-                ma_valid = ma_series[pd.notna(ma_series)]
-                if not ma_valid.empty:
-                    fig_line.add_trace(
-                        go.Scatter(
-                            x=dates[pd.notna(ma_series)],
-                            y=ma_valid.tolist(),
-                            mode="lines",
-                            name="7-day MA",
-                            line=dict(
-                                color=ui_theme.BRAND_PRIMARY, width=1.5, dash="dot"
-                            ),
-                            opacity=0.6,
+                # 7-day moving average (only for longer periods)
+                if show_ma_and_forecast:
+                    ma_values = moving_average(values, window=7)
+                    ma_series = pd.Series(ma_values)
+                    ma_valid = ma_series[pd.notna(ma_series)]
+                    if not ma_valid.empty:
+                        fig_line.add_trace(
+                            go.Scatter(
+                                x=dates[pd.notna(ma_series)],
+                                y=ma_valid.tolist(),
+                                mode="lines",
+                                name="7-day MA",
+                                line=dict(
+                                    color=ui_theme.BRAND_PRIMARY, width=1.5, dash="dot"
+                                ),
+                                opacity=0.6,
+                            )
                         )
+
+                    # Forecast
+                    forecast_days = max(len(values) // 2, 3)
+                    forecast = linear_forecast(
+                        dates, values, forecast_days=forecast_days
                     )
+                    if forecast:
+                        f_dates = [f["date"] for f in forecast]
+                        f_values = [f["value"] for f in forecast]
+                        f_upper = [f["upper"] for f in forecast]
+                        f_lower = [f["lower"] for f in forecast]
 
-                # Forecast
-                forecast_days = max(len(values) // 2, 3)
-                forecast = linear_forecast(dates, values, forecast_days=forecast_days)
-                if forecast:
-                    f_dates = [f["date"] for f in forecast]
-                    f_values = [f["value"] for f in forecast]
-                    f_upper = [f["upper"] for f in forecast]
-                    f_lower = [f["lower"] for f in forecast]
-
-                    # Forecast line
-                    fig_line.add_trace(
-                        go.Scatter(
-                            x=f_dates,
-                            y=f_values,
-                            mode="lines",
-                            name="Forecast",
-                            line=dict(
-                                color=ui_theme.BRAND_PRIMARY, width=2, dash="dash"
-                            ),
-                            opacity=0.6,
+                        # Forecast line
+                        fig_line.add_trace(
+                            go.Scatter(
+                                x=f_dates,
+                                y=f_values,
+                                mode="lines",
+                                name="Forecast",
+                                line=dict(
+                                    color=ui_theme.BRAND_PRIMARY, width=2, dash="dash"
+                                ),
+                                opacity=0.6,
+                            )
                         )
-                    )
 
-                    # Forecast band
-                    fig_line.add_trace(
-                        go.Scatter(
-                            x=f_dates + f_dates[::-1],
-                            y=f_upper + f_lower[::-1],
-                            fill="toself",
-                            fillcolor="rgba(31,95,168,0.15)",
-                            line=dict(color="transparent"),
-                            name="Forecast Range",
-                            showlegend=False,
-                            hoverinfo="skip",
+                        # Forecast band
+                        fig_line.add_trace(
+                            go.Scatter(
+                                x=f_dates + f_dates[::-1],
+                                y=f_upper + f_lower[::-1],
+                                fill="toself",
+                                fillcolor=ui_theme.BRAND_PRIMARY + "26",
+                                line=dict(color="transparent"),
+                                name="Forecast Range",
+                                showlegend=False,
+                                hoverinfo="skip",
+                            )
                         )
-                    )
 
             fig_line.update_layout(
                 xaxis_title="Date",
@@ -193,6 +212,16 @@ def render_sales_performance(
                 height=ui_theme.CHART_HEIGHT,
             )
             st.plotly_chart(fig_line, use_container_width=True)
+
+            # Screen reader summary
+            if not multi_analytics and values:
+                _chart_summary(
+                    "Daily sales range from {} to {} across {} days.".format(
+                        utils.format_currency(min(values)),
+                        utils.format_currency(max(values)),
+                        len(values),
+                    )
+                )
 
         # ── Covers Trend ───────────────────────────────────────
         with col_chart2:
@@ -222,28 +251,42 @@ def render_sales_performance(
                     )
                 )
 
-                # Forecast bars
-                forecast_days = max(len(covers) // 2, 3)
-                forecast = linear_forecast(dates, covers, forecast_days=forecast_days)
-                if forecast:
-                    f_dates = [f["date"] for f in forecast]
-                    f_values = [max(0, f["value"]) for f in forecast]
-                    fig_bar.add_trace(
-                        go.Bar(
-                            x=f_dates,
-                            y=f_values,
-                            name="Forecast",
-                            marker_color=ui_theme.BRAND_SUCCESS,
-                            opacity=0.4,
-                        )
+                # Forecast bars (only for longer periods)
+                if show_ma_and_forecast:
+                    forecast_days = max(len(covers) // 2, 3)
+                    forecast = linear_forecast(
+                        dates, covers, forecast_days=forecast_days
                     )
+                    if forecast:
+                        f_dates = [f["date"] for f in forecast]
+                        f_values = [max(0, f["value"]) for f in forecast]
+                        fig_bar.add_trace(
+                            go.Bar(
+                                x=f_dates,
+                                y=f_values,
+                                name="Forecast",
+                                marker_color=ui_theme.BRAND_INFO,
+                                opacity=0.6,
+                            )
+                        )
 
             fig_bar.update_layout(
                 xaxis_title="Date",
                 yaxis_title="Covers",
+                hovermode="x unified",
                 height=ui_theme.CHART_HEIGHT,
             )
             st.plotly_chart(fig_bar, use_container_width=True)
+
+            # Screen reader summary
+            if not multi_analytics and covers:
+                _chart_summary(
+                    "Daily covers range from {:,} to {:,} with an average of {:,}.".format(
+                        min(covers),
+                        max(covers),
+                        sum(covers) // len(covers),
+                    )
+                )
 
         # ── APC Trend ──────────────────────────────────────────
         st.markdown("### Average Per Cover (APC) Trend")
@@ -272,6 +315,12 @@ def render_sales_performance(
                 height=ui_theme.CHART_HEIGHT,
             )
             st.plotly_chart(fig_apc, use_container_width=True)
+            _chart_summary(
+                "Average per cover is {} across {} days with data.".format(
+                    utils.format_currency(avg_apc),
+                    len(apc_df),
+                )
+            )
         else:
             st.caption("No APC data for this period.")
 
@@ -291,26 +340,47 @@ def render_revenue_breakdown(
     if cat_data:
         cat_df = pd.DataFrame(cat_data)
         total_cat = float(cat_df["amount"].sum())
-        fig_cat_pie = px.pie(
-            cat_df,
-            names="category",
-            values="amount",
-            title=f"Category revenue mix (Total: {utils.format_currency(total_cat)})",
-            hole=0.4,
-            color="category",
-            color_discrete_sequence=ui_theme.CHART_COLORWAY,
-        )
-        fig_cat_pie.update_traces(
-            textposition="inside",
-            textinfo="percent+label",
-        )
-        fig_cat_pie.update_layout(height=ui_theme.CHART_HEIGHT)
-        st.plotly_chart(fig_cat_pie, use_container_width=True)
+        n_categories = len(cat_df)
+
+        if n_categories > 5:
+            fig_cat = px.bar(
+                cat_df.sort_values("amount", ascending=True),
+                y="category",
+                x="amount",
+                orientation="h",
+                title=f"Category revenue (Total: {utils.format_currency(total_cat)})",
+                color="category",
+                color_discrete_sequence=ui_theme.CHART_COLORWAY,
+            )
+            fig_cat.update_layout(
+                yaxis_title="",
+                xaxis_title="Revenue (₹)",
+                height=max(ui_theme.CHART_HEIGHT, 60 * n_categories),
+                showlegend=False,
+            )
+        else:
+            fig_cat = px.pie(
+                cat_df,
+                names="category",
+                values="amount",
+                title=f"Category revenue mix (Total: {utils.format_currency(total_cat)})",
+                hole=0.4,
+                color="category",
+                color_discrete_sequence=ui_theme.CHART_COLORWAY,
+            )
+            fig_cat.update_traces(
+                textposition="inside",
+                textinfo="percent+label",
+            )
+            fig_cat.update_layout(height=ui_theme.CHART_HEIGHT)
+
+        st.plotly_chart(fig_cat, use_container_width=True)
     else:
         st.caption("No category data for this period.")
 
     # ── Weekday Analysis ───────────────────────────────────────
-    if len(df) >= 3:
+    # Only meaningful for periods spanning at least 7 days
+    if len(df) >= 7:
         st.markdown("### Weekday Analysis")
         wd_df = df[df["net_total"] > 0].copy()
         wd_df["weekday"] = wd_df["date"].apply(utils.get_weekday_name)
@@ -344,13 +414,22 @@ def render_revenue_breakdown(
             else ui_theme.BRAND_ERROR
             for v in wd_agg["avg_sales"]
         ]
+        wd_patterns = [
+            "✓" if v >= daily_tgt else "⚠" if v >= daily_tgt * 0.8 else "✗"
+            for v in wd_agg["avg_sales"]
+        ]
         fig_wd = px.bar(
             wd_agg,
             x="weekday",
             y="avg_sales",
             title="Average net sales by day of week",
+            text=wd_patterns,
         )
-        fig_wd.update_traces(marker_color=wd_colors)
+        fig_wd.update_traces(
+            marker_color=wd_colors,
+            textposition="outside",
+            textfont=dict(size=14, color=ui_theme.TEXT_PRIMARY),
+        )
         if daily_tgt > 0:
             fig_wd.add_hline(
                 y=daily_tgt,
@@ -393,8 +472,16 @@ def render_revenue_breakdown(
             height=ui_theme.CHART_HEIGHT,
         )
         st.plotly_chart(fig_wd, use_container_width=True)
+        _chart_summary(
+            "Best day is {} (avg {}) and worst is {} (avg {}).".format(
+                best_day,
+                utils.format_currency(best_val),
+                worst_day,
+                utils.format_currency(worst_val),
+            )
+        )
     else:
-        st.caption("Need at least 3 days of data for weekday analysis.")
+        st.caption("Need at least 7 days of data for weekday analysis.")
 
 
 def render_target_and_daily(
@@ -403,9 +490,11 @@ def render_target_and_daily(
     df: pd.DataFrame,
     df_raw: pd.DataFrame,
     multi_analytics: bool,
+    analysis_period: str = "",
 ) -> None:
     monthly_target = scope.sum_location_monthly_targets(report_loc_ids)
-    if monthly_target > 0:
+    is_monthly_period = analysis_period in {"This Month", "Last Month", "Custom"}
+    if monthly_target > 0 and is_monthly_period:
         st.markdown("### Target Achievement")
         days_in_month = utils.get_days_in_month(start_date.year, start_date.month)
         daily_target = monthly_target / days_in_month
@@ -450,9 +539,9 @@ def render_target_and_daily(
         actual_last = df_sorted["cumulative"].iloc[-1]
         target_last = target_line[-1]
         fill_color = (
-            "rgba(63,167,163,0.2)"
+            ui_theme.BRAND_SUCCESS + "33"
             if actual_last >= target_last
-            else "rgba(239,68,68,0.2)"
+            else ui_theme.BRAND_ERROR + "33"
         )
 
         fig_target.add_trace(
@@ -515,6 +604,13 @@ def render_target_and_daily(
             st.error(
                 f"⚠️ **Behind by {utils.format_currency(target_last - actual_last)}** — below target pace"
             )
+
+        _chart_summary(
+            "Cumulative sales are {} vs target pace of {}.".format(
+                utils.format_currency(actual_last),
+                utils.format_currency(target_last),
+            )
+        )
 
         st.markdown("### Daily Data")
         dv = build_daily_view_table(df, df_raw, multi_analytics)

@@ -129,6 +129,7 @@ def render(ctx: TabContext) -> None:
             df_raw,
             multi_analytics,
             prior_df=prior_df,
+            analysis_period=analysis_period,
         )
         render_revenue_breakdown(
             ctx.report_loc_ids,
@@ -143,6 +144,7 @@ def render(ctx: TabContext) -> None:
             df,
             df_raw,
             multi_analytics,
+            analysis_period=analysis_period,
         )
 
     else:
