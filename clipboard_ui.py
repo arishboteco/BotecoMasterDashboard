@@ -71,7 +71,7 @@ def _safe_id(key: str) -> str:
 def _btn_style(*, primary: bool = True) -> str:
     """Generate inline button styles with proper overflow handling."""
     c = ui_theme.BRAND_PRIMARY
-    focus_style = f"outline:2px solid {ui_theme.BRAND_SECONDARY};outline-offset:2px;"
+    focus_style = f"outline:2px solid {ui_theme.BRAND_LIGHT};outline-offset:2px;"
     if primary:
         return (
             f"padding:0.5rem 1rem;cursor:pointer;border-radius:6px;border:none;"
@@ -94,7 +94,7 @@ def _btn_style(*, primary: bool = True) -> str:
 def _icon_btn_style(*, primary: bool = True) -> str:
     """Generate square icon button styles (40x40px)."""
     c = ui_theme.BRAND_PRIMARY
-    focus_style = f"outline:2px solid {ui_theme.BRAND_SECONDARY};outline-offset:2px;"
+    focus_style = f"outline:2px solid {ui_theme.BRAND_LIGHT};outline-offset:2px;"
     if primary:
         return (
             f"display:inline-flex;align-items:center;justify-content:center;"
