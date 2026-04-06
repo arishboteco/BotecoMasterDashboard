@@ -29,13 +29,35 @@ def _hex_to_rgba(hex_color: str, alpha: float = 0.2) -> str:
     return f"rgba({r},{g},{b},{alpha})"
 
 
-def _fmt_rupee_hover(values: list, name: str = "%{x|%b %d}") -> dict:
-    """Build customdata + hovertemplate for Indian ₹ formatting on a Plotly trace.
+def _fmt_rupee_short(amount: float) -> str:
+    """Format a rupee amount as a short label: ₹73k, ₹1.3L, ₹15L.
 
-    Returns dict with 'customdata' and 'hovertemplate' keys to unpack into
-    go.Scatter(...).  Hover shows: "Apr 05: ₹1,30,235".
+    No decimals for round amounts, one decimal otherwise.
     """
-    formatted = [utils.format_indian_currency(float(v)) for v in values]
+    abs_amt = abs(amount)
+    sign = "-" if amount < 0 else ""
+    if abs_amt >= 1_00_000:
+        # Lakhs
+        lakhs = abs_amt / 1_00_000
+        if lakhs == int(lakhs):
+            return f"{sign}₹{int(lakhs)}L"
+        return f"{sign}₹{lakhs:.1f}L"
+    elif abs_amt >= 1_000:
+        # Thousands
+        k = abs_amt / 1_000
+        if k == int(k):
+            return f"{sign}₹{int(k)}k"
+        return f"{sign}₹{k:.1f}k"
+    else:
+        return f"{sign}₹{int(abs_amt)}"
+
+
+def _fmt_rupee_hover(values: list, name: str = "%{x|%b %d}") -> dict:
+    """Build customdata + hovertemplate for ₹ formatting on a Plotly trace.
+
+    Hover shows: "Sales: ₹1.3L" or "Forecast: ₹73k".
+    """
+    formatted = [_fmt_rupee_short(float(v)) for v in values]
     return {
         "customdata": formatted,
         "hovertemplate": name + ": %{customdata}<extra></extra>",
@@ -45,9 +67,9 @@ def _fmt_rupee_hover(values: list, name: str = "%{x|%b %d}") -> dict:
 def _fmt_int_hover(values: list, name: str = "%{x|%b %d}") -> dict:
     """Build hovertemplate for integer values (covers, counts).
 
-    Hover shows: "Apr 05: 72".
+    Hover shows: "Covers: 72".
     """
-    formatted = [f"{int(v):,}" for v in values]
+    formatted = [f"{int(v)}" for v in values]
     return {
         "customdata": formatted,
         "hovertemplate": name + ": %{customdata}<extra></extra>",
@@ -55,10 +77,10 @@ def _fmt_int_hover(values: list, name: str = "%{x|%b %d}") -> dict:
 
 
 def _rupee_yaxis() -> dict:
-    """Return xaxis/yaxis config that formats sales ticks as ₹1L, ₹2L etc."""
+    """Y-axis config: ₹50k, ₹1L, ₹2L etc."""
     return dict(
         tickprefix="₹",
-        tickformat=",.0f",
+        tickformat=".2s",
     )
 
 
