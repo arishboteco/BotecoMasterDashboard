@@ -146,7 +146,7 @@ def render_overview(
     prior_covers: int | None,
     prior_avg: float | None,
 ) -> None:
-    with st.expander("📊 Overview", expanded=True):
+    with st.expander("insights Overview", expanded=True):
         st.markdown("### Period Summary")
         with st.container(border=True):
             show_projection = analysis_period == "This Month"
@@ -208,7 +208,7 @@ def render_sales_performance(
 ) -> None:
     show_ma_and_forecast = _period_supports_trend_analysis(analysis_period, len(df))
 
-    with st.expander("💰 Sales Performance", expanded=True):
+    with st.expander("payments Sales Performance", expanded=True):
         col_chart1, col_chart2 = st.columns(2)
 
         # ── Daily Sales Trend ──────────────────────────────────
