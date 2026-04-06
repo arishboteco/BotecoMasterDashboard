@@ -35,10 +35,14 @@ def linear_forecast(
     )
 
     # Day offsets from first_date
-    x = np.array(
+    x_raw = np.array(
         [(pd.Timestamp(d) - first_date).days for d in date_series], dtype=float
     )
-    y = np.array(values, dtype=float)
+    y_raw = np.array(values, dtype=float)
+
+    # Working arrays used for regression (may be smoothed / filtered)
+    x = x_raw.copy()
+    y = y_raw.copy()
 
     # Smooth the series to reduce overreaction on short ranges.
     # Apply smoothing only when we have enough points to still fit a line.
@@ -55,6 +59,19 @@ def linear_forecast(
 
     coeffs = np.polyfit(x, y, 1)
     slope, intercept = coeffs[0], coeffs[1]
+
+    # Cap slope on short datasets to avoid unrealistic extrapolation.
+    if len(values) < 7:
+        rates: List[float] = []
+        for i in range(1, len(x_raw)):
+            dt = x_raw[i] - x_raw[i - 1]
+            if dt != 0:
+                rates.append((y_raw[i] - y_raw[i - 1]) / dt)
+
+        if rates:
+            # Use recent interval magnitude; allow up to ~2x typical change.
+            cap_abs = max(1e-9, float(np.median(np.abs(rates[-3:])) * 2.0))
+            slope = float(np.clip(slope, -cap_abs, cap_abs))
 
     residuals = y - (slope * x + intercept)
     std_err = float(np.std(residuals))
