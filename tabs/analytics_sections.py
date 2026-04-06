@@ -29,6 +29,39 @@ def _hex_to_rgba(hex_color: str, alpha: float = 0.2) -> str:
     return f"rgba({r},{g},{b},{alpha})"
 
 
+def _fmt_rupee_hover(values: list, name: str = "%{x|%b %d}") -> dict:
+    """Build customdata + hovertemplate for Indian ₹ formatting on a Plotly trace.
+
+    Returns dict with 'customdata' and 'hovertemplate' keys to unpack into
+    go.Scatter(...).  Hover shows: "Apr 05: ₹1,30,235".
+    """
+    formatted = [utils.format_indian_currency(float(v)) for v in values]
+    return {
+        "customdata": formatted,
+        "hovertemplate": name + ": %{customdata}<extra></extra>",
+    }
+
+
+def _fmt_int_hover(values: list, name: str = "%{x|%b %d}") -> dict:
+    """Build hovertemplate for integer values (covers, counts).
+
+    Hover shows: "Apr 05: 72".
+    """
+    formatted = [f"{int(v):,}" for v in values]
+    return {
+        "customdata": formatted,
+        "hovertemplate": name + ": %{customdata}<extra></extra>",
+    }
+
+
+def _rupee_yaxis() -> dict:
+    """Return xaxis/yaxis config that formats sales ticks as ₹1L, ₹2L etc."""
+    return dict(
+        tickprefix="₹",
+        tickformat=",.0f",
+    )
+
+
 def _period_supports_trend_analysis(period: str, data_points: int) -> bool:
     """Return True if the selected period has enough data for MA and forecast.
 
@@ -136,14 +169,20 @@ def render_sales_performance(
         with col_chart1:
             st.markdown("### Daily Sales Trend")
             if multi_analytics and not df_raw.empty:
-                fig_line = px.line(
-                    df_raw,
-                    x="date",
-                    y="net_total",
-                    color="Outlet",
-                    markers=True,
-                    title="Net sales by outlet",
-                )
+                fig_line = go.Figure()
+                for outlet_name in df_raw["Outlet"].unique():
+                    odf = df_raw[df_raw["Outlet"] == outlet_name].sort_values("date")
+                    hover = _fmt_rupee_hover(odf["net_total"].tolist(), outlet_name)
+                    fig_line.add_trace(
+                        go.Scatter(
+                            x=pd.to_datetime(odf["date"]),
+                            y=odf["net_total"].tolist(),
+                            mode="lines+markers",
+                            name=outlet_name,
+                            marker=dict(size=4),
+                            **hover,
+                        )
+                    )
                 # Add 7-day MA per outlet as dashed lines
                 if show_ma_and_forecast:
                     outlet_colors = {
@@ -191,6 +230,7 @@ def render_sales_performance(
                             f_lower = [f["lower"] for f in forecast]
 
                             # Forecast line per outlet (overlay)
+                            hover_fc = _fmt_rupee_hover(f_values, "Forecast")
                             fig_line.add_trace(
                                 go.Scatter(
                                     x=f_dates,
@@ -202,6 +242,7 @@ def render_sales_performance(
                                     ),
                                     opacity=0.8,
                                     showlegend=False,
+                                    **hover_fc,
                                 )
                             )
 
@@ -225,6 +266,7 @@ def render_sales_performance(
                 fig_line = go.Figure()
 
                 # Actual sales area
+                hover_sales = _fmt_rupee_hover(values, "Sales")
                 fig_line.add_trace(
                     go.Scatter(
                         x=dates,
@@ -235,6 +277,7 @@ def render_sales_performance(
                         fillcolor=_hex_to_rgba(ui_theme.BRAND_PRIMARY, 0.15),
                         line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
                         marker=dict(size=4),
+                        **hover_sales,
                     )
                 )
 
@@ -269,16 +312,18 @@ def render_sales_performance(
                         f_lower = [f["lower"] for f in forecast]
 
                         # Forecast line
+                        hover_fc = _fmt_rupee_hover(f_values, "Forecast")
                         fig_line.add_trace(
                             go.Scatter(
                                 x=f_dates,
                                 y=f_values,
                                 mode="lines",
-                                name="📈 Forecast",
+                                name="Forecast",
                                 line=dict(
                                     color=ui_theme.BRAND_WARN, width=2, dash="dash"
                                 ),
                                 opacity=0.8,
+                                **hover_fc,
                             )
                         )
 
@@ -302,6 +347,7 @@ def render_sales_performance(
                 hovermode="x unified",
                 height=ui_theme.CHART_HEIGHT,
                 xaxis=dict(tickformat="%b %d"),
+                yaxis=_rupee_yaxis(),
             )
             st.plotly_chart(fig_line, use_container_width=True)
 
@@ -327,11 +373,13 @@ def render_sales_performance(
                     outlet_dates = pd.to_datetime(outlet_df["date"])
                     outlet_covers = outlet_df["covers"].tolist()
 
+                    hover_cov = _fmt_int_hover(outlet_covers, outlet_name)
                     fig_covers.add_trace(
                         go.Bar(
                             x=outlet_dates,
                             y=outlet_covers,
                             name=outlet_name,
+                            **hover_cov,
                         )
                     )
 
@@ -350,6 +398,7 @@ def render_sales_performance(
                             f_upper = [f["upper"] for f in forecast]
                             f_lower = [f["lower"] for f in forecast]
 
+                            hover_cov_fc = _fmt_int_hover(f_values, "Forecast")
                             fig_covers.add_trace(
                                 go.Scatter(
                                     x=f_dates,
@@ -363,6 +412,7 @@ def render_sales_performance(
                                     ),
                                     opacity=0.6,
                                     showlegend=False,
+                                    **hover_cov_fc,
                                 )
                             )
                             fig_covers.add_trace(
@@ -384,6 +434,7 @@ def render_sales_performance(
                 fig_covers = go.Figure()
 
                 # Actual covers area
+                hover_cov = _fmt_int_hover(covers, "Covers")
                 fig_covers.add_trace(
                     go.Scatter(
                         x=dates,
@@ -394,6 +445,7 @@ def render_sales_performance(
                         fillcolor=_hex_to_rgba(ui_theme.BRAND_SUCCESS, 0.15),
                         line=dict(color=ui_theme.BRAND_SUCCESS, width=2),
                         marker=dict(size=4),
+                        **hover_cov,
                     )
                 )
 
@@ -408,6 +460,7 @@ def render_sales_performance(
                     if forecast:
                         f_dates = [f["date"] for f in forecast]
                         f_values = [max(0, f["value"]) for f in forecast]
+                        hover_cov_fc = _fmt_int_hover(f_values, "Forecast")
                         fig_covers.add_trace(
                             go.Scatter(
                                 x=f_dates,
@@ -420,6 +473,7 @@ def render_sales_performance(
                                     color=ui_theme.BRAND_INFO, width=2, dash="dash"
                                 ),
                                 opacity=0.6,
+                                **hover_cov_fc,
                             )
                         )
 
