@@ -106,12 +106,12 @@ def render(ctx: TabContext) -> None:
                 if is_currency:
                     return (
                         f'<span style="color:{color};font-size:0.8rem;">'
-                        f"{arrow} {utils.format_currency(change)} ({pct:+.1f}%)</span>"
+                        f"{arrow} {utils.format_currency(change)} ({pct:+.0f}%)</span>"
                     )
                 else:
                     return (
                         f'<span style="color:{color};font-size:0.8rem;">'
-                        f"{arrow} {int(change):,} ({pct:+.1f}%)</span>"
+                        f"{arrow} {int(change):,} ({pct:+.0f}%)</span>"
                     )
 
             _net_cmp = _delta_indicator(_curr_net, _prev_net, is_currency=True)

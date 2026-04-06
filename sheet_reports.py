@@ -266,12 +266,12 @@ def build_verbose_daily_summary(report_data: Dict[str, Any]) -> str:
     line_4 = (
         "Profitability watch: discount signal unavailable (gross sales missing)."
         if discount_pct is None
-        else f"Profitability watch: discount at {discount_pct:.1f}% of gross."
+        else f"Profitability watch: discount at {discount_pct:.0f}% of gross."
     )
     line_5 = (
         "APC benchmark unavailable for anomaly check."
         if apc_drop_pct is None
-        else f"APC is {_r(apc)} ({apc_drop_pct:.1f}% below 7-day baseline)."
+        else f"APC is {_r(apc)} ({apc_drop_pct:.0f}% below 7-day baseline)."
     )
     line_6 = "Suggested action: tighten discount approvals and push high-APC combos in next shift."
     return "\n".join([line_1, line_2, line_3, line_4, line_5, line_6])
@@ -1269,7 +1269,7 @@ def _section_footfall_metrics(
         if previous == 0:
             return "—"
         pct = ((current - previous) / previous) * 100
-        return f"{pct:+.2f}%"
+        return f"{pct:+.0f}%"
 
     # Helper to calculate daily avg % change
     def _calc_avg_pct_change(
@@ -1280,7 +1280,7 @@ def _section_footfall_metrics(
         curr_avg = curr_foot / curr_days
         prev_avg = prev_foot / prev_days
         pct = ((curr_avg - prev_avg) / prev_avg) * 100
-        return f"{pct:+.2f}%"
+        return f"{pct:+.0f}%"
 
     # ── Monthly Table ─────────────────────────────────────────────────────────
     if monthly:

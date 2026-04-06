@@ -30,26 +30,19 @@ def _hex_to_rgba(hex_color: str, alpha: float = 0.2) -> str:
 
 
 def _fmt_rupee_short(amount: float) -> str:
-    """Format a rupee amount as a short label: ₹73k, ₹1.3L, ₹15L.
-
-    No decimals for round amounts, one decimal otherwise.
-    """
+    """Format a rupee amount as a short integer label: ₹73k, ₹1L, ₹15L."""
     abs_amt = abs(amount)
     sign = "-" if amount < 0 else ""
     if abs_amt >= 1_00_000:
         # Lakhs
         lakhs = abs_amt / 1_00_000
-        if lakhs == int(lakhs):
-            return f"{sign}₹{int(lakhs)}L"
-        return f"{sign}₹{lakhs:.1f}L"
+        return f"{sign}₹{int(round(lakhs))}L"
     elif abs_amt >= 1_000:
         # Thousands
         k = abs_amt / 1_000
-        if k == int(k):
-            return f"{sign}₹{int(k)}k"
-        return f"{sign}₹{k:.1f}k"
+        return f"{sign}₹{int(round(k))}k"
     else:
-        return f"{sign}₹{int(abs_amt)}"
+        return f"{sign}₹{int(round(abs_amt))}"
 
 
 def _fmt_rupee_hover(values: list, name: str = "%{x|%b %d}") -> dict:
@@ -676,7 +669,7 @@ def render_revenue_breakdown(
         # Full category breakdown table
         _cat_table = cat_df[["category", "amount"]].copy()
         _cat_table["% of Total"] = _cat_table["amount"].apply(
-            lambda x: f"{x / total_cat * 100:.1f}%" if total_cat > 0 else "0%"
+            lambda x: f"{x / total_cat * 100:.0f}%" if total_cat > 0 else "0%"
         )
         _cat_table["amount"] = _cat_table["amount"].apply(
             lambda x: utils.format_currency(float(x))
@@ -1037,7 +1030,7 @@ def render_target_and_daily(
                 "Covers": "{:,.0f}",
                 "Net Sales (₹)": lambda x: utils.format_indian_currency(float(x)),
                 "Target (₹)": lambda x: utils.format_indian_currency(float(x)),
-                "Achievement %": "{:.1f}%",
+                "Achievement %": "{:.0f}%",
             },
             na_rep="",
         )
@@ -1079,7 +1072,7 @@ def render_target_and_daily(
                 "Covers": "{:,.0f}",
                 "Net Sales (₹)": lambda x: utils.format_indian_currency(float(x)),
                 "Target (₹)": lambda x: utils.format_indian_currency(float(x)),
-                "Achievement %": "{:.1f}%",
+                "Achievement %": "{:.0f}%",
             },
             na_rep="",
         )

@@ -35,19 +35,15 @@ def format_indian_currency(amount: float) -> str:
     """Format amount as Indian currency with ₹ symbol and Indian numbering.
 
     Handles positive, negative, zero, and decimal amounts.
-    Example: 1234567.50 → ₹12,34,567.50
+    Decimal values are rounded to the nearest integer for app-wide
+    integer-only display.
+    Example: 1234567.50 → ₹12,34,568
     """
     is_negative = amount < 0
     amount = abs(amount)
 
-    # Split into integer and decimal parts
-    if isinstance(amount, float) and amount % 1 != 0:
-        parts = f"{amount:.2f}".split(".")
-        integer_part = parts[0]
-        decimal_part = parts[1]
-    else:
-        integer_part = str(int(amount))
-        decimal_part = None
+    # Integer-only output across the app (round half up).
+    integer_part = str(int(amount + 0.5))
 
     # Format integer part with Indian numbering
     if len(integer_part) <= 3:
@@ -62,11 +58,7 @@ def format_indian_currency(amount: float) -> str:
             s = s[:-2]
         formatted_int = result
 
-    # Combine with decimal part
-    if decimal_part and int(decimal_part) > 0:
-        formatted = f"{formatted_int}.{decimal_part}"
-    else:
-        formatted = formatted_int
+    formatted = formatted_int
 
     # Add sign and currency symbol
     if is_negative:
@@ -75,9 +67,10 @@ def format_indian_currency(amount: float) -> str:
 
 
 def format_number(num: float, decimals: int = 0) -> str:
-    """Format number with commas."""
+    """Format number with commas (integer-only display)."""
     if decimals > 0:
-        return f"{num:,.{decimals}f}"
+        # Keep signature for compatibility but enforce integer output globally.
+        return f"{num:,.0f}"
     return f"{num:,.0f}"
 
 
