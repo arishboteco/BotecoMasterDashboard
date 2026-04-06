@@ -220,11 +220,11 @@ def render_sales_performance(
                                 x=f_dates,
                                 y=f_values,
                                 mode="lines",
-                                name="Forecast",
+                                name="📈 Forecast",
                                 line=dict(
-                                    color=ui_theme.BRAND_PRIMARY, width=2, dash="dash"
+                                    color=ui_theme.BRAND_WARN, width=2, dash="dash"
                                 ),
-                                opacity=0.6,
+                                opacity=0.8,
                             )
                         )
 
@@ -234,7 +234,7 @@ def render_sales_performance(
                                 x=f_dates + f_dates[::-1],
                                 y=f_upper + f_lower[::-1],
                                 fill="toself",
-                                fillcolor=_hex_to_rgba(ui_theme.BRAND_PRIMARY, 0.10),
+                                fillcolor=_hex_to_rgba(ui_theme.BRAND_WARN, 0.25),
                                 line=dict(color="rgba(0,0,0,0)"),
                                 name="Forecast Range",
                                 showlegend=False,
@@ -247,6 +247,7 @@ def render_sales_performance(
                 yaxis_title="Net Sales (₹)",
                 hovermode="x unified",
                 height=ui_theme.CHART_HEIGHT,
+                xaxis=dict(tickformat="%b %d"),
             )
             st.plotly_chart(fig_line, use_container_width=True)
 
@@ -321,6 +322,7 @@ def render_sales_performance(
                 yaxis_title="Covers",
                 hovermode="x unified",
                 height=ui_theme.CHART_HEIGHT,
+                xaxis=dict(tickformat="%b %d"),
             )
             st.plotly_chart(fig_covers, use_container_width=True)
 
@@ -360,6 +362,7 @@ def render_sales_performance(
                 yaxis=dict(rangemode="tozero"),
                 hovermode="x unified",
                 height=ui_theme.CHART_HEIGHT,
+                xaxis=dict(tickformat="%b %d"),
             )
             st.plotly_chart(fig_apc, use_container_width=True)
             _chart_summary(
