@@ -158,6 +158,7 @@ def render_sales_performance(
                         )
                         outlet_values = outlet_df["net_total"].tolist()
                         outlet_dates = pd.to_datetime(outlet_df["date"])
+
                         ma_vals = moving_average(outlet_values, window=7)
                         ma_series = pd.Series(ma_vals)
                         ma_valid = ma_series[pd.notna(ma_series)]
@@ -172,6 +173,49 @@ def render_sales_performance(
                                     line=dict(color=ma_color, width=2, dash="dash"),
                                     opacity=0.7,
                                     showlegend=False,
+                                )
+                            )
+
+                        forecast_days = calculate_forecast_days(
+                            analysis_period, len(outlet_values)
+                        )
+                        forecast = linear_forecast(
+                            outlet_dates,
+                            outlet_values,
+                            forecast_days=forecast_days,
+                        )
+                        if forecast:
+                            f_dates = [f["date"] for f in forecast]
+                            f_values = [f["value"] for f in forecast]
+                            f_upper = [f["upper"] for f in forecast]
+                            f_lower = [f["lower"] for f in forecast]
+
+                            # Forecast line per outlet (overlay)
+                            fig_line.add_trace(
+                                go.Scatter(
+                                    x=f_dates,
+                                    y=f_values,
+                                    mode="lines",
+                                    name=f"{outlet_name} Forecast",
+                                    line=dict(
+                                        color=ui_theme.BRAND_WARN, width=2, dash="dash"
+                                    ),
+                                    opacity=0.8,
+                                    showlegend=False,
+                                )
+                            )
+
+                            # Forecast confidence band per outlet
+                            fig_line.add_trace(
+                                go.Scatter(
+                                    x=f_dates + f_dates[::-1],
+                                    y=f_upper + f_lower[::-1],
+                                    fill="toself",
+                                    fillcolor=_hex_to_rgba(ui_theme.BRAND_WARN, 0.25),
+                                    line=dict(color="rgba(0,0,0,0)"),
+                                    name="Forecast Range",
+                                    showlegend=False,
+                                    hoverinfo="skip",
                                 )
                             )
             else:
@@ -275,14 +319,64 @@ def render_sales_performance(
         with col_chart2:
             st.markdown("### Covers Trend")
             if multi_analytics and not df_raw.empty:
-                fig_covers = px.bar(
-                    df_raw,
-                    x="date",
-                    y="covers",
-                    color="Outlet",
-                    barmode="group",
-                    title="Daily covers by outlet",
-                )
+                fig_covers = go.Figure()
+                for outlet_name in df_raw["Outlet"].unique():
+                    outlet_df = df_raw[df_raw["Outlet"] == outlet_name].sort_values(
+                        "date"
+                    )
+                    outlet_dates = pd.to_datetime(outlet_df["date"])
+                    outlet_covers = outlet_df["covers"].tolist()
+
+                    fig_covers.add_trace(
+                        go.Bar(
+                            x=outlet_dates,
+                            y=outlet_covers,
+                            name=outlet_name,
+                        )
+                    )
+
+                    if show_ma_and_forecast:
+                        forecast_days = calculate_forecast_days(
+                            analysis_period, len(outlet_covers)
+                        )
+                        forecast = linear_forecast(
+                            outlet_dates,
+                            outlet_covers,
+                            forecast_days=forecast_days,
+                        )
+                        if forecast:
+                            f_dates = [f["date"] for f in forecast]
+                            f_values = [max(0, f["value"]) for f in forecast]
+                            f_upper = [f["upper"] for f in forecast]
+                            f_lower = [f["lower"] for f in forecast]
+
+                            fig_covers.add_trace(
+                                go.Scatter(
+                                    x=f_dates,
+                                    y=f_values,
+                                    mode="lines",
+                                    name=f"{outlet_name} Forecast",
+                                    line=dict(
+                                        color=ui_theme.BRAND_INFO,
+                                        width=2,
+                                        dash="dash",
+                                    ),
+                                    opacity=0.6,
+                                    showlegend=False,
+                                )
+                            )
+                            fig_covers.add_trace(
+                                go.Scatter(
+                                    x=f_dates + f_dates[::-1],
+                                    y=f_upper + f_lower[::-1],
+                                    fill="toself",
+                                    fillcolor=_hex_to_rgba(ui_theme.BRAND_INFO, 0.25),
+                                    line=dict(color="rgba(0,0,0,0)"),
+                                    name="Forecast Range",
+                                    showlegend=False,
+                                    hoverinfo="skip",
+                                )
+                            )
             else:
                 dates = pd.to_datetime(df["date"])
                 covers = df["covers"].tolist()
@@ -334,6 +428,7 @@ def render_sales_performance(
                 yaxis_title="Covers",
                 hovermode="x unified",
                 height=ui_theme.CHART_HEIGHT,
+                barmode="group",
                 xaxis=dict(tickformat="%b %d"),
             )
             st.plotly_chart(fig_covers, use_container_width=True)
