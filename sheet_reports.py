@@ -484,6 +484,7 @@ def _table_data_row(
     text_color=C_SLATE,
     right_color=None,
     font_size=None,
+    cell_colors=None,
 ):
     """One data row — alternating band if is_alt."""
     total_w = sum(widths)
@@ -505,7 +506,12 @@ def _table_data_row(
     for i, (cell, cw) in enumerate(zip(cells, widths)):
         ha = "left" if i == 0 else "right"
         px = cx + 0.006 if ha == "left" else cx + cw - 0.006
-        rc = right_color if (i > 0 and right_color) else text_color
+        if cell_colors and i < len(cell_colors) and cell_colors[i]:
+            rc = cell_colors[i]
+        elif right_color and i > 0:
+            rc = right_color
+        else:
+            rc = text_color
         _label(
             ax,
             px,
@@ -1299,7 +1305,30 @@ def _section_footfall_metrics(
         # Sort by month descending (most recent first)
         sorted_monthly = sorted(monthly, key=lambda x: x.get("month", ""), reverse=True)
 
-        for idx, row in enumerate(sorted_monthly[:9]):  # Show last 9 months
+        # Collect values for conditional formatting (best/worst highlighting)
+        monthly_covers = []
+        monthly_daily_avgs = []
+        for row in sorted_monthly[:9]:
+            covers = int(row.get("covers") or 0)
+            total_days = int(row.get("total_days") or 0)
+            daily_avg = covers / total_days if total_days > 0 else 0
+            monthly_covers.append(covers)
+            monthly_daily_avgs.append(daily_avg)
+
+        # Find best/worst indices (only if 2+ rows with data)
+        valid_covers = [(i, v) for i, v in enumerate(monthly_covers) if v > 0]
+        valid_avgs = [(i, v) for i, v in enumerate(monthly_daily_avgs) if v > 0]
+
+        monthly_best_idx = {}
+        monthly_worst_idx = {}
+        if len(valid_covers) >= 2:
+            monthly_best_idx["footfall"] = max(valid_covers, key=lambda x: x[1])[0]
+            monthly_worst_idx["footfall"] = min(valid_covers, key=lambda x: x[1])[0]
+        if len(valid_avgs) >= 2:
+            monthly_best_idx["daily_avg"] = max(valid_avgs, key=lambda x: x[1])[0]
+            monthly_worst_idx["daily_avg"] = min(valid_avgs, key=lambda x: x[1])[0]
+
+        for idx, row in enumerate(sorted_monthly[:9]):
             month = str(row.get("month", ""))
             covers = int(row.get("covers") or 0)
             total_days = int(row.get("total_days") or 0)
@@ -1333,6 +1362,17 @@ def _section_footfall_metrics(
                 avg_pct,
             ]
 
+            # Build per-cell colors for conditional formatting
+            cell_colors = [None] * 6
+            if idx == monthly_best_idx.get("footfall"):
+                cell_colors[1] = C_GREEN
+            elif idx == monthly_worst_idx.get("footfall"):
+                cell_colors[1] = C_RED
+            if idx == monthly_best_idx.get("daily_avg"):
+                cell_colors[4] = C_GREEN
+            elif idx == monthly_worst_idx.get("daily_avg"):
+                cell_colors[4] = C_RED
+
             cur_y -= row_h
             _table_data_row(
                 ax,
@@ -1343,6 +1383,7 @@ def _section_footfall_metrics(
                 row_h=row_h,
                 is_alt=(idx % 2 == 1),
                 font_size=10.5,
+                cell_colors=cell_colors,
             )
 
         cur_y -= row_h * 0.3

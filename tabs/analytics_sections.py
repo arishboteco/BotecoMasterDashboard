@@ -142,15 +142,17 @@ def render_sales_performance(
 
                 fig_line = go.Figure()
 
-                # Actual sales line
+                # Actual sales area
                 fig_line.add_trace(
                     go.Scatter(
                         x=dates,
                         y=values,
                         mode="lines+markers",
                         name="Daily Sales",
+                        fill="tozeroy",
+                        fillcolor=_hex_to_rgba(ui_theme.BRAND_PRIMARY, 0.15),
                         line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
-                        marker=dict(size=5),
+                        marker=dict(size=4),
                     )
                 )
 
@@ -167,9 +169,9 @@ def render_sales_performance(
                                 mode="lines",
                                 name="7-day MA",
                                 line=dict(
-                                    color=ui_theme.BRAND_PRIMARY, width=1.5, dash="dot"
+                                    color=ui_theme.BRAND_PRIMARY, width=2, dash="dot"
                                 ),
-                                opacity=0.6,
+                                opacity=0.8,
                             )
                         )
 
@@ -204,7 +206,7 @@ def render_sales_performance(
                                 x=f_dates + f_dates[::-1],
                                 y=f_upper + f_lower[::-1],
                                 fill="toself",
-                                fillcolor=_hex_to_rgba(ui_theme.BRAND_PRIMARY, 0.15),
+                                fillcolor=_hex_to_rgba(ui_theme.BRAND_PRIMARY, 0.10),
                                 line=dict(color="transparent"),
                                 name="Forecast Range",
                                 showlegend=False,
@@ -246,19 +248,23 @@ def render_sales_performance(
                 dates = pd.to_datetime(df["date"])
                 covers = df["covers"].tolist()
 
-                fig_bar = go.Figure()
+                fig_covers = go.Figure()
 
-                # Actual covers bars
-                fig_bar.add_trace(
-                    go.Bar(
+                # Actual covers area
+                fig_covers.add_trace(
+                    go.Scatter(
                         x=dates,
                         y=covers,
+                        mode="lines+markers",
                         name="Covers",
-                        marker_color=ui_theme.BRAND_SUCCESS,
+                        fill="tozeroy",
+                        fillcolor=_hex_to_rgba(ui_theme.BRAND_SUCCESS, 0.15),
+                        line=dict(color=ui_theme.BRAND_SUCCESS, width=2),
+                        marker=dict(size=4),
                     )
                 )
 
-                # Forecast bars (only for longer periods)
+                # Forecast area (only for longer periods)
                 if show_ma_and_forecast:
                     forecast_days = max(len(covers) // 2, 3)
                     forecast = linear_forecast(
@@ -267,23 +273,28 @@ def render_sales_performance(
                     if forecast:
                         f_dates = [f["date"] for f in forecast]
                         f_values = [max(0, f["value"]) for f in forecast]
-                        fig_bar.add_trace(
-                            go.Bar(
+                        fig_covers.add_trace(
+                            go.Scatter(
                                 x=f_dates,
                                 y=f_values,
+                                mode="lines",
                                 name="Forecast",
-                                marker_color=ui_theme.BRAND_INFO,
+                                fill="tozeroy",
+                                fillcolor=_hex_to_rgba(ui_theme.BRAND_INFO, 0.15),
+                                line=dict(
+                                    color=ui_theme.BRAND_INFO, width=2, dash="dash"
+                                ),
                                 opacity=0.6,
                             )
                         )
 
-            fig_bar.update_layout(
+            fig_covers.update_layout(
                 xaxis_title="Date",
                 yaxis_title="Covers",
                 hovermode="x unified",
                 height=ui_theme.CHART_HEIGHT,
             )
-            st.plotly_chart(fig_bar, use_container_width=True)
+            st.plotly_chart(fig_covers, use_container_width=True)
 
             # Screen reader summary
             if not multi_analytics and covers:
