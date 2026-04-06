@@ -153,7 +153,7 @@ def render(ctx: TabContext) -> None:
     else:
         st.markdown(
             '<div class="empty-state">'
-            '<div class="empty-state-icon">\U0001f4ca</div>'
+            '<div class="empty-state-icon material-symbols-outlined">insights</div>'
             '<div class="empty-state-title">No data available</div>'
             '<div class="empty-state-desc">'
             "This period has no sales data yet. "

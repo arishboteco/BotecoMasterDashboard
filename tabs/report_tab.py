@@ -287,7 +287,7 @@ def render(ctx: TabContext) -> None:
     else:
         st.markdown(
             '<div class="empty-state">'
-            '<div class="empty-state-icon">\U0001f4ca</div>'
+            '<div class="empty-state-icon material-symbols-outlined">insights</div>'
             '<div class="empty-state-title">No data for this date</div>'
             '<div class="empty-state-desc">'
             f"No saved data for **{selected_date.strftime('%d %b %Y')}**. "

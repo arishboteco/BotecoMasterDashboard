@@ -8,6 +8,7 @@ def get_css() -> str:
     return """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..24,400,0,0&display=swap');
 
     /* Force system fonts for Streamlit expander icons */
     section[data-testid="stExpander"] * {
@@ -97,6 +98,11 @@ def get_css() -> str:
 
         /* Icon */
         --icon-size: 18px;
+
+        /* Material Symbols */
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
 
         /* Z-index scale */
         --z-index-dropdown: 10;
@@ -761,6 +767,20 @@ def get_css() -> str:
         font-size: 3rem;
         margin-bottom: 1rem;
         opacity: 0.5;
+        font-family: 'Material Symbols Outlined';
+        font-weight: normal;
+        font-style: normal;
+        line-height: 1;
+        letter-spacing: normal;
+        text-transform: none;
+        display: inline-block;
+        white-space: nowrap;
+        word-wrap: normal;
+        direction: rtl;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
+        font-feature-settings: 'liga';
     }
     .empty-state-title {
         font-family: var(--font-display);
