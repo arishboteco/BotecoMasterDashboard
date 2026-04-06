@@ -4,8 +4,11 @@ import config
 
 
 def format_currency(amount: float) -> str:
-    """Format amount as currency string."""
-    return config.CURRENCY_FORMAT.format(amount)
+    """Format amount as Indian currency string.
+
+    Uses Indian numbering system: 1,30,235 instead of 130,235
+    """
+    return format_indian_currency(amount)
 
 
 def format_indian_number(num: float) -> str:
@@ -29,8 +32,46 @@ def format_indian_number(num: float) -> str:
 
 
 def format_indian_currency(amount: float) -> str:
-    """Format amount as Indian currency with ₹ symbol and Indian numbering."""
-    return f"₹{format_indian_number(round(amount))}"
+    """Format amount as Indian currency with ₹ symbol and Indian numbering.
+
+    Handles positive, negative, zero, and decimal amounts.
+    Example: 1234567.50 → ₹12,34,567.50
+    """
+    is_negative = amount < 0
+    amount = abs(amount)
+
+    # Split into integer and decimal parts
+    if isinstance(amount, float) and amount % 1 != 0:
+        parts = f"{amount:.2f}".split(".")
+        integer_part = parts[0]
+        decimal_part = parts[1]
+    else:
+        integer_part = str(int(amount))
+        decimal_part = None
+
+    # Format integer part with Indian numbering
+    if len(integer_part) <= 3:
+        formatted_int = integer_part
+    else:
+        # Last 3 digits
+        result = integer_part[-3:]
+        s = integer_part[:-3]
+        # Groups of 2 from right
+        while s:
+            result = s[-2:] + "," + result
+            s = s[:-2]
+        formatted_int = result
+
+    # Combine with decimal part
+    if decimal_part and int(decimal_part) > 0:
+        formatted = f"{formatted_int}.{decimal_part}"
+    else:
+        formatted = formatted_int
+
+    # Add sign and currency symbol
+    if is_negative:
+        return f"-₹{formatted}"
+    return f"₹{formatted}"
 
 
 def format_number(num: float, decimals: int = 0) -> str:
