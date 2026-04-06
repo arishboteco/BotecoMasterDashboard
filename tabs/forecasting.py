@@ -27,7 +27,19 @@ def linear_forecast(
     if len(values) < 3:
         return None
 
-    x = np.arange(len(values), dtype=float)
+    # Use actual day offsets between points (handles missing dates) instead of
+    # assuming values are consecutive.
+    date_series = pd.to_datetime(dates)
+    first_date = pd.Timestamp(
+        date_series.iloc[0] if hasattr(date_series, "iloc") else date_series[0]
+    )
+    x = (
+        (date_series - first_date).days.astype(float)
+        if hasattr((date_series - first_date), "days")
+        else np.array(
+            [(pd.Timestamp(d) - first_date).days for d in date_series], dtype=float
+        )
+    )
     y = np.array(values, dtype=float)
 
     coeffs = np.polyfit(x, y, 1)
@@ -39,15 +51,15 @@ def linear_forecast(
     std_err = max(std_err, 1.0)
 
     # Handle both Series and DatetimeIndex
-    if isinstance(dates, pd.DatetimeIndex):
-        last_date = pd.Timestamp(dates[-1])
+    if isinstance(date_series, pd.DatetimeIndex):
+        last_date = pd.Timestamp(date_series[-1])
     else:
-        last_date = pd.Timestamp(dates.iloc[-1])
+        last_date = pd.Timestamp(date_series.iloc[-1])
     forecast_dates = generate_forecast_dates(last_date, forecast_days)
 
     result: List[Dict[str, Any]] = []
     for i, fdate in enumerate(forecast_dates):
-        future_x = len(values) + i
+        future_x = float((pd.Timestamp(fdate) - first_date).days)
         value = slope * future_x + intercept
         band = std_err * (1 + i * 0.15)
         result.append(
