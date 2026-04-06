@@ -1300,7 +1300,7 @@ def _section_footfall_metrics(
     if monthly:
         cur_y -= row_h * 0.2
         _label(ax, 0.012, cur_y, "Monthly", size=9.0, color=C_BRAND, weight="bold")
-        cur_y -= row_h * 0.5
+        cur_y -= row_h * 0.8
 
         # Header - compact column widths
         col_w = [0.16, 0.144, 0.144, 0.144, 0.144, 0.144]
@@ -1312,8 +1312,8 @@ def _section_footfall_metrics(
             "Daily Avg.",
             "% Change",
         ]
-        _table_header_row(ax, 0, cur_y, headers, col_w, row_h, font_size=9.0)
         cur_y -= row_h
+        _table_header_row(ax, 0, cur_y, headers, col_w, row_h, font_size=9.0)
 
         # Sort by month descending (most recent first)
         sorted_monthly = sorted(monthly, key=lambda x: x.get("month", ""), reverse=True)
@@ -1405,7 +1405,7 @@ def _section_footfall_metrics(
     if weekly:
         cur_y -= row_h * 0.2
         _label(ax, 0.012, cur_y, "Weekly", size=9.0, color=C_BRAND, weight="bold")
-        cur_y -= row_h * 0.5
+        cur_y -= row_h * 0.8
 
         # Header - compact column widths
         col_w = [0.16, 0.144, 0.144, 0.144, 0.144, 0.144]
@@ -1417,8 +1417,8 @@ def _section_footfall_metrics(
             "Daily Avg.",
             "% Change",
         ]
-        _table_header_row(ax, 0, cur_y, headers, col_w, row_h, font_size=9.0)
         cur_y -= row_h
+        _table_header_row(ax, 0, cur_y, headers, col_w, row_h, font_size=9.0)
 
         # Sort by week descending (most recent first)
         sorted_weekly = sorted(weekly, key=lambda x: x.get("week", ""), reverse=True)
