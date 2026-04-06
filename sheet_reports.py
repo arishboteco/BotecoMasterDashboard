@@ -1298,10 +1298,6 @@ def _section_footfall_metrics(
 
     # ── Monthly Table ─────────────────────────────────────────────────────────
     if monthly:
-        # Light section label above table
-        _label(ax, 0.012, cur_y, "Monthly", size=8.5, color=C_SLATE, weight="bold")
-        cur_y -= row_h * 0.6
-
         # Header - compact column widths
         col_w = [0.16, 0.144, 0.144, 0.144, 0.144, 0.144]
         headers = [
@@ -1401,15 +1397,8 @@ def _section_footfall_metrics(
 
         cur_y -= row_h * 0.3
 
-        # Tiny separator between tables
-        cur_y -= row_h * 0.25
-
     # ── Weekly Table ──────────────────────────────────────────────────────────
     if weekly:
-        # Light section label above table
-        _label(ax, 0.012, cur_y, "Weekly", size=8.5, color=C_SLATE, weight="bold")
-        cur_y -= row_h * 0.6
-
         # Header - compact column widths
         col_w = [0.16, 0.144, 0.144, 0.144, 0.144, 0.144]
         headers = [
