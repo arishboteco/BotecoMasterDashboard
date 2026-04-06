@@ -593,6 +593,13 @@ def get_css() -> str:
         gap: 0.5rem;
         min-height: var(--btn-height-md);
     }
+    .whatsapp-btn-container button:focus {
+        outline: 2px solid var(--brand-light);
+        outline-offset: 2px;
+    }
+    .whatsapp-btn-container button:focus:not(:focus-visible) {
+        outline: none;
+    }
     .whatsapp-btn {
         display: inline-flex;
         align-items: center;
@@ -640,6 +647,13 @@ def get_css() -> str:
     }
 
     /* ── Icon-only action buttons ──────────────────────────── */
+    .action-btn-container button:focus {
+        outline: 2px solid var(--brand-light);
+        outline-offset: 2px;
+    }
+    .action-btn-container button:focus:not(:focus-visible) {
+        outline: none;
+    }
     .action-btn-row {
         display: inline-flex;
         align-items: center;
