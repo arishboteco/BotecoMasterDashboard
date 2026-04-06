@@ -20,10 +20,11 @@ def linear_forecast(
 ) -> Optional[List[Dict[str, Any]]]:
     """Linear regression forecast with ±1 std dev confidence band.
 
-    Returns None if fewer than 7 data points (not enough for reliable forecast).
+    Returns None if fewer than 3 data points (minimum for trend estimation).
+    Confidence band widens for shorter datasets to reflect uncertainty.
     Each entry: {"date": Timestamp, "value": float, "upper": float, "lower": float}
     """
-    if len(values) < 7:
+    if len(values) < 3:
         return None
 
     x = np.arange(len(values), dtype=float)
@@ -101,10 +102,11 @@ def calculate_forecast_days(analysis_period: str, data_points: int = 0) -> int:
     - "Last 30 Days" → forecast 30 days ahead
     - "Custom" → forecast 30 days ahead (default for custom ranges)
 
-    Minimum 7 data points required; if fewer, uses minimum forecast of 3 days.
+    Minimum 3 data points required for forecast. With < 7 points, shows forecast
+    but with wider confidence band to reflect uncertainty.
     """
-    if data_points < 7:
-        return 3  # Fallback for short periods
+    if data_points < 3:
+        return 0  # Not enough data for any forecast
 
     period_map = {
         "this_week": 7,

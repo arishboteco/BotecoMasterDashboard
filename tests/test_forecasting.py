@@ -13,9 +13,17 @@ from tabs.forecasting import (
 
 
 class TestLinearForecast:
-    def test_returns_none_when_fewer_than_7_points(self):
+    def test_returns_forecast_with_3_points(self):
+        """Forecast should work with minimum 3 data points for visibility in short periods."""
         dates = pd.to_datetime(["2026-04-01", "2026-04-02", "2026-04-03"])
         values = [100, 200, 150]
+        result = linear_forecast(dates, values, forecast_days=2)
+        assert result is not None
+        assert len(result) == 2
+
+    def test_returns_none_when_fewer_than_3_points(self):
+        dates = pd.to_datetime(["2026-04-01", "2026-04-02"])
+        values = [100, 200]
         result = linear_forecast(dates, values, forecast_days=2)
         assert result is None
 
@@ -131,9 +139,15 @@ class TestCalculateForecastDays:
         result = calculate_forecast_days("Custom", data_points=10)
         assert result == 30
 
-    def test_insufficient_data_returns_3_days(self):
+    def test_sufficient_data_returns_period_days(self):
+        """Even with 5 data points, period mapping applies (e.g., This Month -> 30 days)."""
         result = calculate_forecast_days("This Month", data_points=5)
-        assert result == 3
+        assert result == 30
+
+    def test_insufficient_data_returns_0_days(self):
+        """Less than 3 data points: no forecast possible."""
+        result = calculate_forecast_days("This Month", data_points=2)
+        assert result == 0
 
     def test_unknown_period_defaults_to_30_days(self):
         result = calculate_forecast_days("Unknown Period", data_points=10)
