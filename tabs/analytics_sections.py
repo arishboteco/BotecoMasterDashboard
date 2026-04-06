@@ -421,8 +421,8 @@ def render_sales_performance(
             if not multi_analytics and values:
                 _chart_summary(
                     "Daily sales range from {} to {} across {} days.".format(
-                        utils.format_currency(min(values)),
-                        utils.format_currency(max(values)),
+                        utils.format_rupee_short(min(values)),
+                        utils.format_rupee_short(max(values)),
                         len(values),
                     )
                 )
@@ -689,7 +689,7 @@ def render_revenue_breakdown(
                 y="category",
                 x="amount",
                 orientation="h",
-                title=f"Category revenue (Total: {utils.format_currency(total_cat)})",
+                title=f"Category revenue (Total: {utils.format_rupee_short(total_cat)})",
                 color="category",
                 color_discrete_sequence=ui_theme.CHART_COLORWAY,
             )
@@ -704,7 +704,7 @@ def render_revenue_breakdown(
                 chart_df,
                 names="category",
                 values="amount",
-                title=f"Category revenue mix (Total: {utils.format_currency(total_cat)})",
+                title=f"Category revenue mix (Total: {utils.format_rupee_short(total_cat)})",
                 hole=0.4,
                 color="category",
                 color_discrete_sequence=ui_theme.CHART_COLORWAY,
@@ -795,7 +795,7 @@ def render_revenue_breakdown(
                 y=daily_tgt,
                 line_dash="dash",
                 line_color="gray",
-                annotation_text=f"Daily target {utils.format_currency(daily_tgt)}",
+                annotation_text=f"Daily target {utils.format_rupee_short(daily_tgt)}",
                 annotation_position="top right",
             )
 
@@ -835,9 +835,9 @@ def render_revenue_breakdown(
         _chart_summary(
             "Best day is {} (avg {}) and worst is {} (avg {}).".format(
                 best_day,
-                utils.format_currency(best_val),
+                utils.format_rupee_short(best_val),
                 worst_day,
-                utils.format_currency(worst_val),
+                utils.format_rupee_short(worst_val),
             )
         )
 
@@ -1001,17 +1001,17 @@ def render_target_and_daily(
         # On-track / Behind badge
         if actual_last >= target_last:
             st.success(
-                f"✅ **On track** — {utils.format_currency(actual_last - target_last)} ahead of target pace"
+                f"✅ **On track** — {utils.format_rupee_short(actual_last - target_last)} ahead of target pace"
             )
         else:
             st.error(
-                f"⚠️ **Behind by {utils.format_currency(target_last - actual_last)}** — below target pace"
+                f"⚠️ **Behind by {utils.format_rupee_short(target_last - actual_last)}** — below target pace"
             )
 
         _chart_summary(
             "Cumulative sales are {} vs target pace of {}.".format(
-                utils.format_currency(actual_last),
-                utils.format_currency(target_last),
+                utils.format_rupee_short(actual_last),
+                utils.format_rupee_short(target_last),
             )
         )
 
