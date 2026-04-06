@@ -387,27 +387,34 @@ def render_sales_performance(
                             )
                         )
 
-            # Compute y-axis range for nice tick labels (only available in single-outlet branch)
-            tickvals, ticktext = None, None
-            if forecast:
-                all_vals = values + [f["value"] for f in forecast]
+                # Compute y-axis range for nice tick labels (only in single-outlet mode)
+                all_vals = values[:]
+                if forecast:
+                    all_vals = values + [f["value"] for f in forecast]
                 y_min, y_max = 0, max(all_vals) * 1.1 if all_vals else 200_000
                 tickvals, ticktext = _make_rupee_ticks(y_min, y_max)
 
-            fig_line.update_layout(
-                xaxis_title="Date",
-                yaxis_title="Net Sales (₹)",
-                hovermode="x unified",
-                height=ui_theme.CHART_HEIGHT,
-                xaxis=dict(tickformat="%b %d"),
-                yaxis=dict(
-                    tickprefix="₹",
-                    tickvals=tickvals or [],
-                    ticktext=ticktext or [],
+                fig_line.update_layout(
+                    xaxis_title="Date",
+                    yaxis_title="Net Sales (₹)",
+                    hovermode="x unified",
+                    height=ui_theme.CHART_HEIGHT,
+                    xaxis=dict(tickformat="%b %d"),
+                    yaxis=dict(
+                        tickprefix="₹",
+                        tickvals=tickvals,
+                        ticktext=ticktext,
+                    ),
                 )
-                if tickvals
-                else dict(tickprefix="₹"),
-            )
+
+            if multi_analytics and not df_raw.empty:
+                fig_line.update_layout(
+                    xaxis_title="Date",
+                    yaxis_title="Net Sales (₹)",
+                    hovermode="x unified",
+                    height=ui_theme.CHART_HEIGHT,
+                    xaxis=dict(tickformat="%b %d"),
+                )
             st.plotly_chart(fig_line, use_container_width=True)
 
             # Screen reader summary
