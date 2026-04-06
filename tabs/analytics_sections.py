@@ -207,6 +207,7 @@ def render_sales_performance(
     analysis_period: str = "",
 ) -> None:
     show_ma_and_forecast = _period_supports_trend_analysis(analysis_period, len(df))
+    forecast = None
 
     with st.expander("Sales Performance", expanded=True):
         col_chart1, col_chart2 = st.columns(2)
