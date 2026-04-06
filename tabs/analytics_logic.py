@@ -29,10 +29,18 @@ def resolve_period_window(
     prior_map = {
         "this_week": "last_week",
         "this_month": "last_month",
+        "last_week": "last_week_prior",
+        "last_month": "last_month_prior",
     }
     days_span = (end_date - start_date).days + 1
     if period_key in prior_map:
-        prior_start, prior_end = utils.get_date_range(prior_map[period_key])
+        target = prior_map[period_key]
+        if target in ("last_week", "last_month"):
+            prior_start, prior_end = utils.get_date_range(target)
+        else:
+            # Prior equivalent period: same number of days before start_date
+            prior_end = start_date - timedelta(days=1)
+            prior_start = prior_end - timedelta(days=days_span - 1)
     elif period_key in ("last_7_days", "last_30_days"):
         prior_end = start_date - timedelta(days=1)
         prior_start = prior_end - timedelta(days=days_span - 1)
@@ -44,8 +52,12 @@ def build_daily_view_table(
     df: pd.DataFrame,
     df_raw: pd.DataFrame,
     multi_analytics: bool,
+    numeric: bool = False,
 ) -> pd.DataFrame:
-    """Build and format the daily table view shown in analytics."""
+    """Build and format the daily table view shown in analytics.
+
+    If numeric=True, keeps numeric columns for conditional styling (no totals row).
+    """
     if multi_analytics and not df_raw.empty:
         dv = (
             df_raw[
@@ -61,6 +73,10 @@ def build_daily_view_table(
             .sort_values(["date", "Outlet"])
             .copy()
         )
+        _num_covers = pd.to_numeric(dv["covers"], errors="coerce").fillna(0)
+        _num_net = pd.to_numeric(dv["net_total"], errors="coerce").fillna(0)
+        _num_target = pd.to_numeric(dv["target"], errors="coerce").fillna(0)
+        _num_pct = pd.to_numeric(dv["pct_target"], errors="coerce").fillna(0)
     elif multi_analytics:
         return pd.DataFrame()
     else:
@@ -77,9 +93,86 @@ def build_daily_view_table(
             .sort_values("date")
             .copy()
         )
+        _num_covers = pd.to_numeric(dv["covers"], errors="coerce").fillna(0)
+        _num_net = pd.to_numeric(dv["net_total"], errors="coerce").fillna(0)
+        _num_target = pd.to_numeric(dv["target"], errors="coerce").fillna(0)
+        _num_pct = pd.to_numeric(dv["pct_target"], errors="coerce").fillna(0)
+
+    if numeric:
+        dv["pct_target"] = _num_pct
+        # Add totals row
+        if multi_analytics and not df_raw.empty:
+            totals = pd.DataFrame(
+                [
+                    {
+                        "date": "TOTAL",
+                        "Outlet": "",
+                        "covers": int(_num_covers.sum()),
+                        "net_total": float(_num_net.sum()),
+                        "target": float(_num_target.sum()),
+                        "pct_target": float(_num_net.sum() / _num_target.sum() * 100)
+                        if _num_target.sum() > 0
+                        else 0,
+                    }
+                ]
+            )
+        else:
+            totals = pd.DataFrame(
+                [
+                    {
+                        "date": "TOTAL",
+                        "covers": int(_num_covers.sum()),
+                        "net_total": float(_num_net.sum()),
+                        "target": float(_num_target.sum()),
+                        "pct_target": float(_num_net.sum() / _num_target.sum() * 100)
+                        if _num_target.sum() > 0
+                        else 0,
+                    }
+                ]
+            )
+        dv = pd.concat([dv, totals], ignore_index=True)
+        return dv
 
     dv["covers"] = [f"{int(x or 0):,}" for x in dv["covers"]]
-    dv["net_total"] = [utils.format_currency(float(x or 0)) for x in dv["net_total"]]
-    dv["target"] = [utils.format_currency(float(x or 0)) for x in dv["target"]]
+    dv["net_total"] = [
+        utils.format_indian_currency(float(x or 0)) for x in dv["net_total"]
+    ]
+    dv["target"] = [utils.format_indian_currency(float(x or 0)) for x in dv["target"]]
     dv["pct_target"] = [utils.format_percent(float(x or 0)) for x in dv["pct_target"]]
+
+    # Add totals/average row
+    if multi_analytics and not df_raw.empty:
+        totals = pd.DataFrame(
+            [
+                {
+                    "date": "TOTAL",
+                    "Outlet": "",
+                    "covers": f"{int(_num_covers.sum()):,}",
+                    "net_total": utils.format_indian_currency(float(_num_net.sum())),
+                    "target": utils.format_indian_currency(float(_num_target.sum())),
+                    "pct_target": utils.format_percent(
+                        float(_num_net.sum() / _num_target.sum() * 100)
+                        if _num_target.sum() > 0
+                        else 0
+                    ),
+                }
+            ]
+        )
+    else:
+        totals = pd.DataFrame(
+            [
+                {
+                    "date": "TOTAL",
+                    "covers": f"{int(_num_covers.sum()):,}",
+                    "net_total": utils.format_indian_currency(float(_num_net.sum())),
+                    "target": utils.format_indian_currency(float(_num_target.sum())),
+                    "pct_target": utils.format_percent(
+                        float(_num_net.sum() / _num_target.sum() * 100)
+                        if _num_target.sum() > 0
+                        else 0
+                    ),
+                }
+            ]
+        )
+    dv = pd.concat([dv, totals], ignore_index=True)
     return dv

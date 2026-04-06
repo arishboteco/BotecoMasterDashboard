@@ -8,6 +8,31 @@ def format_currency(amount: float) -> str:
     return config.CURRENCY_FORMAT.format(amount)
 
 
+def format_indian_number(num: float) -> str:
+    """Format number using Indian numbering system (lakhs/crores).
+
+    Example: 1234567 → 12,34,567
+    """
+    if num < 0:
+        return f"-{format_indian_number(abs(num))}"
+    s = str(int(num))
+    if len(s) <= 3:
+        return s
+    # Last 3 digits
+    result = s[-3:]
+    s = s[:-3]
+    # Groups of 2 from right
+    while s:
+        result = s[-2:] + "," + result
+        s = s[:-2]
+    return result
+
+
+def format_indian_currency(amount: float) -> str:
+    """Format amount as Indian currency with ₹ symbol and Indian numbering."""
+    return f"₹{format_indian_number(round(amount))}"
+
+
 def format_number(num: float, decimals: int = 0) -> str:
     """Format number with commas."""
     if decimals > 0:

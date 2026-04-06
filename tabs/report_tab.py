@@ -73,6 +73,61 @@ def render(ctx: TabContext) -> None:
         y_m = [int(x) for x in date_str.split("-")[:2]]
         multi_outlet = len(outlets_bundle) > 1
 
+        # ── Previous day comparison ────────────────────────────
+        _prev_date = selected_date - timedelta(days=1)
+        _prev_date_str = _prev_date.strftime("%Y-%m-%d")
+        _prev_summary = scope.get_daily_summary_for_scope(
+            ctx.report_loc_ids, _prev_date_str
+        )
+        if _prev_summary:
+            _prev_net = float(_prev_summary.get("net_total") or 0)
+            _prev_cov = int(_prev_summary.get("covers") or 0)
+            _prev_apc = float(_prev_summary.get("apc") or 0)
+            _curr_net = float(summary.get("net_total") or 0)
+            _curr_cov = int(summary.get("covers") or 0)
+            _curr_apc = float(summary.get("apc") or 0)
+
+            def _delta_indicator(curr, prev, is_currency=True):
+                if prev is None or prev == 0:
+                    return ""
+                g = utils.calculate_growth(curr, prev)
+                pct = g["percentage"]
+                change = g["change"]
+                if change > 0:
+                    arrow = "▲"
+                    color = "#22c55e"
+                elif change < 0:
+                    arrow = "▼"
+                    color = "#ef4444"
+                    change = abs(change)
+                    pct = abs(pct)
+                else:
+                    return "—"
+                if is_currency:
+                    return (
+                        f'<span style="color:{color};font-size:0.8rem;">'
+                        f"{arrow} {utils.format_currency(change)} ({pct:+.1f}%)</span>"
+                    )
+                else:
+                    return (
+                        f'<span style="color:{color};font-size:0.8rem;">'
+                        f"{arrow} {int(change):,} ({pct:+.1f}%)</span>"
+                    )
+
+            _net_cmp = _delta_indicator(_curr_net, _prev_net, is_currency=True)
+            _cov_cmp = _delta_indicator(_curr_cov, _prev_cov, is_currency=False)
+            _apc_cmp = _delta_indicator(_curr_apc, _prev_apc, is_currency=True)
+            st.markdown(
+                f'<div style="display:flex;gap:2rem;padding:0.25rem 0 0.5rem 0;'
+                f"color:var(--text-secondary);font-size:0.85rem;"
+                f'border-bottom:1px solid #e2e8f0;margin-bottom:0.5rem;">'
+                f"<span>vs {_prev_date.strftime('%d %b')}: "
+                f"Net {_net_cmp} &nbsp;|&nbsp; "
+                f"Covers {_cov_cmp} &nbsp;|&nbsp; "
+                f"APC {_apc_cmp}</span></div>",
+                unsafe_allow_html=True,
+            )
+
         divider()
 
         # Individual PNG sections

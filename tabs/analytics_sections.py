@@ -136,6 +136,36 @@ def render_sales_performance(
                     markers=True,
                     title="Net sales by outlet",
                 )
+                # Add 7-day MA per outlet as dashed lines
+                if show_ma_and_forecast:
+                    outlet_colors = {
+                        trace.name: trace.line.color
+                        if hasattr(trace.line, "color")
+                        else None
+                        for trace in fig_line.data
+                    }
+                    for outlet_name in df_raw["Outlet"].unique():
+                        outlet_df = df_raw[df_raw["Outlet"] == outlet_name].sort_values(
+                            "date"
+                        )
+                        outlet_values = outlet_df["net_total"].tolist()
+                        outlet_dates = pd.to_datetime(outlet_df["date"])
+                        ma_vals = moving_average(outlet_values, window=7)
+                        ma_series = pd.Series(ma_vals)
+                        ma_valid = ma_series[pd.notna(ma_series)]
+                        if not ma_valid.empty:
+                            ma_color = outlet_colors.get(outlet_name, "#FF6B35")
+                            fig_line.add_trace(
+                                go.Scatter(
+                                    x=outlet_dates[pd.notna(ma_series)],
+                                    y=ma_valid.tolist(),
+                                    mode="lines",
+                                    name=f"{outlet_name} 7-day Avg",
+                                    line=dict(color=ma_color, width=2, dash="dash"),
+                                    opacity=0.7,
+                                    showlegend=False,
+                                )
+                            )
             else:
                 dates = pd.to_datetime(df["date"])
                 values = df["net_total"].tolist()
@@ -167,11 +197,9 @@ def render_sales_performance(
                                 x=dates[pd.notna(ma_series)],
                                 y=ma_valid.tolist(),
                                 mode="lines",
-                                name="7-day MA",
-                                line=dict(
-                                    color=ui_theme.BRAND_PRIMARY, width=2, dash="dot"
-                                ),
-                                opacity=0.8,
+                                name="7-day Avg",
+                                line=dict(color="#FF6B35", width=2, dash="dash"),
+                                opacity=0.7,
                             )
                         )
 
@@ -207,7 +235,7 @@ def render_sales_performance(
                                 y=f_upper + f_lower[::-1],
                                 fill="toself",
                                 fillcolor=_hex_to_rgba(ui_theme.BRAND_PRIMARY, 0.10),
-                                line=dict(color="transparent"),
+                                line=dict(color="rgba(0,0,0,0)"),
                                 name="Forecast Range",
                                 showlegend=False,
                                 hoverinfo="skip",
@@ -329,6 +357,7 @@ def render_sales_performance(
             fig_apc.update_layout(
                 xaxis_title="Date",
                 yaxis_title="APC (₹)",
+                yaxis=dict(rangemode="tozero"),
                 hovermode="x unified",
                 height=ui_theme.CHART_HEIGHT,
             )
@@ -341,6 +370,48 @@ def render_sales_performance(
             )
         else:
             st.caption("No APC data for this period.")
+
+        # ── Sales Performance drill-down table ───────────────────
+        with st.expander("View data"):
+            if multi_analytics and not df_raw.empty:
+                _sales_tbl = df_raw[["date", "Outlet", "net_total", "covers"]].copy()
+            else:
+                _sales_tbl = df[["date", "net_total", "covers"]].copy()
+            if "apc" in df.columns:
+                if multi_analytics and not df_raw.empty:
+                    _sales_tbl["apc"] = _sales_tbl.apply(
+                        lambda r: (
+                            r["net_total"] / r["covers"] if r["covers"] > 0 else 0
+                        ),
+                        axis=1,
+                    )
+                else:
+                    _sales_tbl["apc"] = df["apc"]
+            else:
+                _sales_tbl["apc"] = _sales_tbl.apply(
+                    lambda r: r["net_total"] / r["covers"] if r["covers"] > 0 else 0,
+                    axis=1,
+                )
+            _sales_tbl = _sales_tbl.rename(
+                columns={
+                    "date": "Date",
+                    "net_total": "Net Sales (₹)",
+                    "covers": "Covers",
+                    "apc": "APC (₹)",
+                }
+            )
+            if "Outlet" in _sales_tbl.columns:
+                _sales_tbl = _sales_tbl.sort_values(["Date", "Outlet"])
+            else:
+                _sales_tbl = _sales_tbl.sort_values("Date")
+            _sales_tbl["Net Sales (₹)"] = _sales_tbl["Net Sales (₹)"].apply(
+                lambda x: utils.format_currency(float(x))
+            )
+            _sales_tbl["APC (₹)"] = _sales_tbl["APC (₹)"].apply(
+                lambda x: utils.format_currency(float(x))
+            )
+            _sales_tbl["Covers"] = _sales_tbl["Covers"].apply(lambda x: f"{int(x):,}")
+            st.dataframe(_sales_tbl, use_container_width=True, hide_index=True)
 
 
 def render_revenue_breakdown(
@@ -358,11 +429,33 @@ def render_revenue_breakdown(
     if cat_data:
         cat_df = pd.DataFrame(cat_data)
         total_cat = float(cat_df["amount"].sum())
-        n_categories = len(cat_df)
+
+        # Group categories <2% into "Other"
+        cat_df["pct"] = cat_df["amount"] / total_cat * 100 if total_cat > 0 else 0
+        small_cats = cat_df[cat_df["pct"] < 2]
+        large_cats = cat_df[cat_df["pct"] >= 2].copy()
+        if not small_cats.empty:
+            other_amount = float(small_cats["amount"].sum())
+            other_qty = int(small_cats["qty"].sum())
+            other_row = pd.DataFrame(
+                [
+                    {
+                        "category": "Other",
+                        "amount": other_amount,
+                        "qty": other_qty,
+                        "pct": other_amount / total_cat * 100,
+                    }
+                ]
+            )
+            chart_df = pd.concat([large_cats, other_row], ignore_index=True)
+        else:
+            chart_df = large_cats.copy()
+
+        n_categories = len(chart_df)
 
         if n_categories > 5:
             fig_cat = px.bar(
-                cat_df.sort_values("amount", ascending=True),
+                chart_df.sort_values("amount", ascending=True),
                 y="category",
                 x="amount",
                 orientation="h",
@@ -378,7 +471,7 @@ def render_revenue_breakdown(
             )
         else:
             fig_cat = px.pie(
-                cat_df,
+                chart_df,
                 names="category",
                 values="amount",
                 title=f"Category revenue mix (Total: {utils.format_currency(total_cat)})",
@@ -393,6 +486,20 @@ def render_revenue_breakdown(
             fig_cat.update_layout(height=ui_theme.CHART_HEIGHT)
 
         st.plotly_chart(fig_cat, use_container_width=True)
+
+        # Full category breakdown table
+        _cat_table = cat_df[["category", "amount"]].copy()
+        _cat_table["% of Total"] = _cat_table["amount"].apply(
+            lambda x: f"{x / total_cat * 100:.1f}%" if total_cat > 0 else "0%"
+        )
+        _cat_table["amount"] = _cat_table["amount"].apply(
+            lambda x: utils.format_currency(float(x))
+        )
+        _cat_table = _cat_table.rename(
+            columns={"category": "Category", "amount": "Amount"}
+        )
+        with st.expander("View category data"):
+            st.dataframe(_cat_table, use_container_width=True, hide_index=True)
     else:
         st.caption("No category data for this period.")
 
@@ -424,14 +531,19 @@ def render_revenue_breakdown(
         monthly_tgt = scope.sum_location_monthly_targets(report_loc_ids)
         days_in_mo = utils.get_days_in_month(start_date.year, start_date.month)
         daily_tgt = monthly_tgt / days_in_mo if monthly_tgt > 0 else 0
-        wd_colors = [
-            ui_theme.BRAND_SUCCESS
-            if v >= daily_tgt
-            else ui_theme.BRAND_WARN
-            if v >= daily_tgt * 0.8
-            else ui_theme.BRAND_ERROR
-            for v in wd_agg["avg_sales"]
-        ]
+
+        # Best/worst day identification for conditional coloring
+        _best_idx = wd_agg["avg_sales"].idxmax()
+        _worst_idx = wd_agg["avg_sales"].idxmin()
+        wd_colors = []
+        for i in range(len(wd_agg)):
+            if i == _best_idx:
+                wd_colors.append("#22c55e")
+            elif i == _worst_idx:
+                wd_colors.append("#ef4444")
+            else:
+                wd_colors.append("#6366f1")
+
         wd_patterns = [
             "✓" if v >= daily_tgt else "⚠" if v >= daily_tgt * 0.8 else "✗"
             for v in wd_agg["avg_sales"]
@@ -498,6 +610,49 @@ def render_revenue_breakdown(
                 utils.format_currency(worst_val),
             )
         )
+
+        # Weekday drill-down table
+        with st.expander("View data"):
+            wd_covers = (
+                wd_df.groupby("weekday")["covers"]
+                .mean()
+                .reset_index()
+                .rename(columns={"covers": "avg_covers"})
+            )
+            wd_count = (
+                wd_df.groupby("weekday")["net_total"]
+                .count()
+                .reset_index()
+                .rename(columns={"net_total": "count_days"})
+            )
+            wd_table = wd_agg.merge(wd_covers, on="weekday", how="left").merge(
+                wd_count, on="weekday", how="left"
+            )
+            wd_table["weekday"] = pd.Categorical(
+                wd_table["weekday"], categories=day_order, ordered=True
+            )
+            wd_table = wd_table.sort_values("weekday")
+            wd_table = wd_table.rename(
+                columns={
+                    "weekday": "Day of Week",
+                    "avg_sales": "Avg Net Sales (₹)",
+                    "avg_covers": "Avg Covers",
+                    "count_days": "Count of Days",
+                }
+            )
+            wd_table["Avg Net Sales (₹)"] = wd_table["Avg Net Sales (₹)"].apply(
+                lambda x: utils.format_currency(float(x))
+            )
+            wd_table["Avg Covers"] = wd_table["Avg Covers"].apply(
+                lambda x: f"{float(x):.0f}"
+            )
+            st.dataframe(
+                wd_table[
+                    ["Day of Week", "Avg Net Sales (₹)", "Avg Covers", "Count of Days"]
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
     else:
         st.caption("Need at least 7 days of data for weekday analysis.")
 
@@ -630,19 +785,121 @@ def render_target_and_daily(
             )
         )
 
+        # Target achievement drill-down table
+        with st.expander("View data"):
+            if multi_analytics and not df_raw.empty:
+                _tgt_tbl = df_raw[
+                    ["date", "Outlet", "net_total", "target", "pct_target"]
+                ].copy()
+                _tgt_tbl["pct_target"] = _tgt_tbl["pct_target"].apply(
+                    lambda x: f"{float(x or 0):.0f}%"
+                )
+            else:
+                _tgt_tbl = target_df[
+                    ["date", "net_total", "target", "achievement"]
+                ].copy()
+                _tgt_tbl["achievement"] = _tgt_tbl["achievement"].apply(
+                    lambda x: f"{float(x or 0):.0f}%"
+                )
+                _tgt_tbl = _tgt_tbl.rename(columns={"achievement": "pct_target"})
+            _tgt_tbl = _tgt_tbl.rename(
+                columns={
+                    "date": "Date",
+                    "net_total": "Net Sales (₹)",
+                    "target": "Target (₹)",
+                    "pct_target": "Achievement",
+                }
+            )
+            _tgt_tbl["Net Sales (₹)"] = _tgt_tbl["Net Sales (₹)"].apply(
+                lambda x: utils.format_currency(float(x))
+            )
+            _tgt_tbl["Target (₹)"] = _tgt_tbl["Target (₹)"].apply(
+                lambda x: utils.format_currency(float(x))
+            )
+            st.dataframe(_tgt_tbl, use_container_width=True, hide_index=True)
+
         st.markdown("### Daily Data")
-        dv = build_daily_view_table(df, df_raw, multi_analytics)
-        st.dataframe(
-            dv,
-            use_container_width=True,
-            hide_index=True,
-            column_config=_daily_table_column_config(),
+        dv = build_daily_view_table(df, df_raw, multi_analytics, numeric=True)
+
+        def _style_achievement(val):
+            if pd.isna(val):
+                return ""
+            if val >= 100:
+                return "background-color: #dcfce7; color: #166534"
+            elif val >= 70:
+                return "background-color: #fef9c3; color: #854d0e"
+            else:
+                return "background-color: #fee2e2; color: #991b1b"
+
+        dv_display = dv.copy()
+        _is_multi_table = "Outlet" in dv_display.columns
+        rename_map = {
+            "date": "Date",
+            "covers": "Covers",
+            "net_total": "Net Sales (₹)",
+            "target": "Target (₹)",
+            "pct_target": "Achievement %",
+        }
+        if _is_multi_table:
+            rename_map["Outlet"] = "Outlet"
+        dv_display = dv_display.rename(columns=rename_map)
+
+        styler = dv_display.style.map(
+            _style_achievement, subset=["Achievement %"]
+        ).format(
+            {
+                "Covers": "{:,.0f}",
+                "Net Sales (₹)": lambda x: utils.format_indian_currency(float(x)),
+                "Target (₹)": lambda x: utils.format_indian_currency(float(x)),
+                "Achievement %": "{:.1f}%",
+            },
+            na_rep="",
         )
+        # Bold the total row
+        _total_row_idx = len(dv_display) - 1
+        styler = styler.set_properties(
+            subset=pd.IndexSlice[_total_row_idx, :],
+            **{"font-weight": "bold"},
+        )
+        st.dataframe(styler, use_container_width=True, hide_index=True)
     else:
-        daily_view = build_daily_view_table(df, pd.DataFrame(), multi_analytics=False)
-        st.dataframe(
-            daily_view,
-            use_container_width=True,
-            hide_index=True,
-            column_config=_daily_table_column_config(),
+        daily_view = build_daily_view_table(
+            df, pd.DataFrame(), multi_analytics=False, numeric=True
         )
+
+        def _style_achievement(val):
+            if pd.isna(val):
+                return ""
+            if val >= 100:
+                return "background-color: #dcfce7; color: #166534"
+            elif val >= 70:
+                return "background-color: #fef9c3; color: #854d0e"
+            else:
+                return "background-color: #fee2e2; color: #991b1b"
+
+        dv_display = daily_view.rename(
+            columns={
+                "date": "Date",
+                "covers": "Covers",
+                "net_total": "Net Sales (₹)",
+                "target": "Target (₹)",
+                "pct_target": "Achievement %",
+            }
+        )
+        styler = dv_display.style.map(
+            _style_achievement, subset=["Achievement %"]
+        ).format(
+            {
+                "Covers": "{:,.0f}",
+                "Net Sales (₹)": lambda x: utils.format_indian_currency(float(x)),
+                "Target (₹)": lambda x: utils.format_indian_currency(float(x)),
+                "Achievement %": "{:.1f}%",
+            },
+            na_rep="",
+        )
+        _total_row_idx = len(dv_display) - 1
+        styler = styler.set_properties(
+            subset=pd.IndexSlice[_total_row_idx, :],
+            **{"font-weight": "bold"},
+        )
+        st.dataframe(styler, use_container_width=True, hide_index=True)

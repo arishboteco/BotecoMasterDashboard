@@ -80,7 +80,8 @@ class TestBuildDailyViewTable:
         out = build_daily_view_table(pd.DataFrame(), df_raw, multi_analytics=True)
 
         assert "Outlet" in out.columns
-        assert len(out) == 2
+        assert len(out) == 3
+        assert out.iloc[-1]["date"] == "TOTAL"
 
     def test_returns_empty_when_multi_without_raw_rows(self):
         out = build_daily_view_table(
