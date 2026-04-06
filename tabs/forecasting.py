@@ -37,7 +37,11 @@ def linear_forecast(
     # Ensure minimum uncertainty even for perfectly linear data
     std_err = max(std_err, 1.0)
 
-    last_date = pd.Timestamp(dates.iloc[-1])
+    # Handle both Series and DatetimeIndex
+    if isinstance(dates, pd.DatetimeIndex):
+        last_date = pd.Timestamp(dates[-1])
+    else:
+        last_date = pd.Timestamp(dates.iloc[-1])
     forecast_dates = generate_forecast_dates(last_date, forecast_days)
 
     result: List[Dict[str, Any]] = []
