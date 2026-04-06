@@ -18,6 +18,13 @@ from tabs.analytics_logic import build_daily_view_table
 from tabs.forecasting import linear_forecast, moving_average
 
 
+def _hex_to_rgba(hex_color: str, alpha: float = 0.2) -> str:
+    """Convert a hex color to rgba string with given alpha."""
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return f"rgba({r},{g},{b},{alpha})"
+
+
 def _period_supports_trend_analysis(period: str, data_points: int) -> bool:
     """Return True if the selected period has enough data for MA and forecast."""
     _long_periods = {"Last 7 Days", "Last 30 Days", "Last Month", "Custom"}
@@ -197,7 +204,7 @@ def render_sales_performance(
                                 x=f_dates + f_dates[::-1],
                                 y=f_upper + f_lower[::-1],
                                 fill="toself",
-                                fillcolor=ui_theme.BRAND_PRIMARY + "26",
+                                fillcolor=_hex_to_rgba(ui_theme.BRAND_PRIMARY, 0.15),
                                 line=dict(color="transparent"),
                                 name="Forecast Range",
                                 showlegend=False,
@@ -539,9 +546,9 @@ def render_target_and_daily(
         actual_last = df_sorted["cumulative"].iloc[-1]
         target_last = target_line[-1]
         fill_color = (
-            ui_theme.BRAND_SUCCESS + "33"
+            _hex_to_rgba(ui_theme.BRAND_SUCCESS, 0.2)
             if actual_last >= target_last
-            else ui_theme.BRAND_ERROR + "33"
+            else _hex_to_rgba(ui_theme.BRAND_ERROR, 0.2)
         )
 
         fig_target.add_trace(
