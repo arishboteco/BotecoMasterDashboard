@@ -240,7 +240,7 @@ def render(ctx: TabContext) -> None:
                 "MTD for all outlets in scope. Footfall metrics are shown per outlet."
             )
 
-        with st.expander("#### Individual PNG sections", expanded=True):
+        with st.expander("Individual PNG sections", expanded=True):
             _sec_meta = [
                 ("sales_summary", "Sales summary"),
                 ("category", "Category sales"),
