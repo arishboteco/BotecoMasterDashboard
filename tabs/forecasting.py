@@ -33,14 +33,25 @@ def linear_forecast(
     first_date = pd.Timestamp(
         date_series.iloc[0] if hasattr(date_series, "iloc") else date_series[0]
     )
-    x = (
-        (date_series - first_date).days.astype(float)
-        if hasattr((date_series - first_date), "days")
-        else np.array(
-            [(pd.Timestamp(d) - first_date).days for d in date_series], dtype=float
-        )
+
+    # Day offsets from first_date
+    x = np.array(
+        [(pd.Timestamp(d) - first_date).days for d in date_series], dtype=float
     )
     y = np.array(values, dtype=float)
+
+    # Smooth the series to reduce overreaction on short ranges.
+    # Apply smoothing only when we have enough points to still fit a line.
+    if len(values) >= 5:
+        # With 5 data points, a full 7-day MA would leave too few samples.
+        smooth_window = 7 if len(values) >= 7 else 3
+        y_smooth = np.array(moving_average(values, window=smooth_window), dtype=float)
+        valid = ~np.isnan(y_smooth)
+        x = x[valid]
+        y = y_smooth[valid]
+
+        if len(y) < 3:
+            return None
 
     coeffs = np.polyfit(x, y, 1)
     slope, intercept = coeffs[0], coeffs[1]
