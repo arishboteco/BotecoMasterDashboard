@@ -161,7 +161,7 @@ def render_overview(
             with kpi_cols[0]:
                 st.metric(
                     "Total Sales",
-                    utils.format_currency(total_sales),
+                    utils.format_rupee_short(total_sales),
                     delta=_delta_str(total_sales, prior_total),
                 )
             with kpi_cols[1]:
@@ -178,7 +178,7 @@ def render_overview(
             with kpi_cols[2]:
                 st.metric(
                     "Avg Daily Sales",
-                    utils.format_currency(avg_daily),
+                    utils.format_rupee_short(avg_daily),
                     delta=_delta_str(avg_daily, prior_avg),
                 )
             with kpi_cols[3]:
@@ -194,7 +194,7 @@ def render_overview(
                 with kpi_cols[4]:
                     st.metric(
                         "Projected Month-End",
-                        utils.format_currency(projected),
+                        utils.format_rupee_short(projected),
                         help="Based on current run rate extrapolated to end of month.",
                     )
 

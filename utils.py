@@ -11,6 +11,23 @@ def format_currency(amount: float) -> str:
     return format_indian_currency(amount)
 
 
+def format_rupee_short(amount: float) -> str:
+    """Format rupee amount as short label: ₹1.3k, ₹130k, ₹1.3L, ₹15L.
+
+    Uses 1 decimal place for clarity. For use in KPI cards and compact displays.
+    """
+    abs_amt = abs(amount)
+    sign = "-" if amount < 0 else ""
+    if abs_amt >= 1_00_000:
+        lakhs = abs_amt / 1_00_000
+        return f"{sign}₹{lakhs:.1f}L"
+    elif abs_amt >= 1_000:
+        k = abs_amt / 1_000
+        return f"{sign}₹{k:.1f}k"
+    else:
+        return f"{sign}₹{abs_amt:.0f}"
+
+
 def format_indian_number(num: float) -> str:
     """Format number using Indian numbering system (lakhs/crores).
 

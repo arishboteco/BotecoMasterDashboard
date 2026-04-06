@@ -1,7 +1,7 @@
 """Tests for Indian currency formatting."""
 
 import pytest
-from utils import format_indian_currency
+from utils import format_indian_currency, format_rupee_short
 
 
 class TestFormatIndianCurrency:
@@ -46,3 +46,33 @@ class TestFormatIndianCurrency:
         """Test very large amounts."""
         assert format_indian_currency(123456789) == "₹12,34,56,789"
         assert format_indian_currency(1234567890) == "₹1,23,45,67,890"
+
+
+class TestFormatRupeeShort:
+    """Test rupee short format (k/L notation)."""
+
+    def test_hundreds(self):
+        """Test amounts under 1000."""
+        assert format_rupee_short(500) == "₹500"
+        assert format_rupee_short(999) == "₹999"
+
+    def test_thousands(self):
+        """Test amounts in thousands (k notation)."""
+        assert format_rupee_short(1000) == "₹1.0k"
+        assert format_rupee_short(13000) == "₹13.0k"
+        assert format_rupee_short(99999) == "₹100.0k"
+
+    def test_lakhs(self):
+        """Test amounts in lakhs (L notation)."""
+        assert format_rupee_short(100000) == "₹1.0L"
+        assert format_rupee_short(130235) == "₹1.3L"
+        assert format_rupee_short(1500000) == "₹15.0L"
+
+    def test_zero(self):
+        """Test zero amount."""
+        assert format_rupee_short(0) == "₹0"
+
+    def test_negative_amounts(self):
+        """Test negative amounts."""
+        assert format_rupee_short(-1000) == "-₹1.0k"
+        assert format_rupee_short(-130235) == "-₹1.3L"
