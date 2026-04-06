@@ -15,7 +15,11 @@ import scope
 import ui_theme
 import utils
 from tabs.analytics_logic import build_daily_view_table
-from tabs.forecasting import linear_forecast, moving_average
+from tabs.forecasting import (
+    calculate_forecast_days,
+    linear_forecast,
+    moving_average,
+)
 
 
 def _hex_to_rgba(hex_color: str, alpha: float = 0.2) -> str:
@@ -204,7 +208,9 @@ def render_sales_performance(
                         )
 
                     # Forecast
-                    forecast_days = max(len(values) // 2, 3)
+                    forecast_days = calculate_forecast_days(
+                        analysis_period, len(values)
+                    )
                     forecast = linear_forecast(
                         dates, values, forecast_days=forecast_days
                     )
@@ -295,7 +301,9 @@ def render_sales_performance(
 
                 # Forecast area (only for longer periods)
                 if show_ma_and_forecast:
-                    forecast_days = max(len(covers) // 2, 3)
+                    forecast_days = calculate_forecast_days(
+                        analysis_period, len(covers)
+                    )
                     forecast = linear_forecast(
                         dates, covers, forecast_days=forecast_days
                     )

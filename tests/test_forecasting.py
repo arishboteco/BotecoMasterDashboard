@@ -5,6 +5,7 @@ import math
 import pandas as pd
 
 from tabs.forecasting import (
+    calculate_forecast_days,
     generate_forecast_dates,
     linear_forecast,
     moving_average,
@@ -99,3 +100,41 @@ class TestGenerateForecastDates:
         assert result[0] == pd.Timestamp("2026-04-16")
         assert result[1] == pd.Timestamp("2026-04-17")
         assert result[2] == pd.Timestamp("2026-04-18")
+
+
+class TestCalculateForecastDays:
+    def test_this_week_returns_7_days(self):
+        result = calculate_forecast_days("This Week", data_points=10)
+        assert result == 7
+
+    def test_last_week_returns_7_days(self):
+        result = calculate_forecast_days("Last Week", data_points=10)
+        assert result == 7
+
+    def test_last_7_days_returns_7_days(self):
+        result = calculate_forecast_days("Last 7 Days", data_points=10)
+        assert result == 7
+
+    def test_this_month_returns_30_days(self):
+        result = calculate_forecast_days("This Month", data_points=10)
+        assert result == 30
+
+    def test_last_month_returns_30_days(self):
+        result = calculate_forecast_days("Last Month", data_points=10)
+        assert result == 30
+
+    def test_last_30_days_returns_30_days(self):
+        result = calculate_forecast_days("Last 30 Days", data_points=10)
+        assert result == 30
+
+    def test_custom_returns_30_days(self):
+        result = calculate_forecast_days("Custom", data_points=10)
+        assert result == 30
+
+    def test_insufficient_data_returns_3_days(self):
+        result = calculate_forecast_days("This Month", data_points=5)
+        assert result == 3
+
+    def test_unknown_period_defaults_to_30_days(self):
+        result = calculate_forecast_days("Unknown Period", data_points=10)
+        assert result == 30

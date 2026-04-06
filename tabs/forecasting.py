@@ -90,3 +90,31 @@ def generate_forecast_dates(
 ) -> List[pd.Timestamp]:
     """Generate consecutive dates starting the day after last_date."""
     return [last_date + timedelta(days=i + 1) for i in range(forecast_days)]
+
+
+def calculate_forecast_days(analysis_period: str, data_points: int = 0) -> int:
+    """Calculate forecast length based on selected analysis period.
+
+    Forecast should extend beyond the selected period to be useful:
+    - "This Week" / "Last Week" / "Last 7 Days" → forecast 7 days ahead
+    - "This Month" / "Last Month" → forecast 30 days ahead
+    - "Last 30 Days" → forecast 30 days ahead
+    - "Custom" → forecast 30 days ahead (default for custom ranges)
+
+    Minimum 7 data points required; if fewer, uses minimum forecast of 3 days.
+    """
+    if data_points < 7:
+        return 3  # Fallback for short periods
+
+    period_map = {
+        "this_week": 7,
+        "last_week": 7,
+        "last_7_days": 7,
+        "this_month": 30,
+        "last_month": 30,
+        "last_30_days": 30,
+        "custom": 30,
+    }
+
+    period_key = analysis_period.lower().replace(" ", "_")
+    return period_map.get(period_key, 30)
