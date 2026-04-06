@@ -1302,8 +1302,8 @@ def _section_footfall_metrics(
         _label(ax, 0.012, cur_y, "Monthly", size=9.0, color=C_BRAND, weight="bold")
         cur_y -= row_h * 0.8
 
-        # Header - compact column widths
-        col_w = [0.16, 0.144, 0.144, 0.144, 0.144, 0.144]
+        # Header - better distribution, filling more width
+        col_w = [0.20, 0.15, 0.16, 0.14, 0.16, 0.17]
         headers = [
             "Month",
             "Footfall",
@@ -1313,7 +1313,7 @@ def _section_footfall_metrics(
             "% Change",
         ]
         cur_y -= row_h
-        _table_header_row(ax, 0, cur_y, headers, col_w, row_h, font_size=9.0)
+        _table_header_row(ax, 0.01, cur_y, headers, col_w, row_h, font_size=9.0)
 
         # Sort by month descending (most recent first)
         sorted_monthly = sorted(monthly, key=lambda x: x.get("month", ""), reverse=True)
@@ -1389,7 +1389,7 @@ def _section_footfall_metrics(
             cur_y -= row_h
             _table_data_row(
                 ax,
-                0,
+                0.01,
                 cur_y,
                 cells,
                 col_w,
@@ -1407,8 +1407,8 @@ def _section_footfall_metrics(
         _label(ax, 0.012, cur_y, "Weekly", size=9.0, color=C_BRAND, weight="bold")
         cur_y -= row_h * 0.8
 
-        # Header - compact column widths
-        col_w = [0.16, 0.144, 0.144, 0.144, 0.144, 0.144]
+        # Header - better distribution, filling more width
+        col_w = [0.20, 0.15, 0.16, 0.14, 0.16, 0.17]
         headers = [
             "Week",
             "Footfall",
@@ -1418,7 +1418,7 @@ def _section_footfall_metrics(
             "% Change",
         ]
         cur_y -= row_h
-        _table_header_row(ax, 0, cur_y, headers, col_w, row_h, font_size=9.0)
+        _table_header_row(ax, 0.01, cur_y, headers, col_w, row_h, font_size=9.0)
 
         # Sort by week descending (most recent first)
         sorted_weekly = sorted(weekly, key=lambda x: x.get("week", ""), reverse=True)
@@ -1487,7 +1487,7 @@ def _section_footfall_metrics(
             cur_y -= row_h
             _table_data_row(
                 ax,
-                0,
+                0.01,
                 cur_y,
                 cells,
                 col_w,
@@ -1690,7 +1690,7 @@ def generate_sheet_style_report_sections(
             n_mo = len(mo_rows) if mo_rows else 0
             n_wk = len(wk_rows) if wk_rows else 0
             n_ft = 5 + n_mo + n_wk  # header + labels + tables
-            fig, ax = _fig_for_section(n_ft, min_rows=8, cap_h=24.0, w=fig_w)
+            fig, ax = _fig_for_section(n_ft, min_rows=4, cap_h=16.0, w=fig_w)
             _section_footfall_metrics(ax, mo_rows, wk_rows, outlet_name)
             outlet_slug = _section_key_slug(outlet_name, default=f"outlet_{idx}")
             out[f"footfall_metrics__{outlet_slug}_{idx}"] = _save_fig(fig)
@@ -1699,7 +1699,7 @@ def generate_sheet_style_report_sections(
         n_mo = len(ff_metrics_mo) if ff_metrics_mo else 0
         n_wk = len(ff_metrics_wk) if ff_metrics_wk else 0
         n_ft = 5 + n_mo + n_wk
-        fig, ax = _fig_for_section(n_ft, min_rows=8, cap_h=24.0, w=fig_w)
+        fig, ax = _fig_for_section(n_ft, min_rows=4, cap_h=16.0, w=fig_w)
         _section_footfall_metrics(ax, ff_metrics_mo, ff_metrics_wk, location_name)
         out["footfall_metrics"] = _save_fig(fig)
     elif per_outlet_ff and len(per_outlet_ff) > 1:
