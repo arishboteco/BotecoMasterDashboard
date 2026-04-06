@@ -123,7 +123,7 @@ def format_delta(
         change = abs(change)
         pct = abs(pct)
     if is_currency:
-        return f"{sign}{format_currency(change)} ({sign}{format_percent(pct)})"
+        return f"{sign}{format_rupee_short(change)} ({sign}{format_percent(pct)})"
     elif is_percent:
         return f"{sign}{format_percent(change)}pp"
     else:

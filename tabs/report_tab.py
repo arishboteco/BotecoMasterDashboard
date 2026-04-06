@@ -106,7 +106,7 @@ def render(ctx: TabContext) -> None:
                 if is_currency:
                     return (
                         f'<span style="color:{color};font-size:0.8rem;">'
-                        f"{arrow} {utils.format_currency(change)} ({pct:+.2f}%)</span>"
+                        f"{arrow} {utils.format_rupee_short(change)} ({pct:+.2f}%)</span>"
                     )
                 else:
                     return (
