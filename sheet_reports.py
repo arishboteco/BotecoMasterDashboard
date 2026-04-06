@@ -1411,7 +1411,30 @@ def _section_footfall_metrics(
         # Sort by week descending (most recent first)
         sorted_weekly = sorted(weekly, key=lambda x: x.get("week", ""), reverse=True)
 
-        for idx, row in enumerate(sorted_weekly[:4]):  # Show last 4 weeks
+        # Collect values for conditional formatting (best/worst highlighting)
+        weekly_covers = []
+        weekly_daily_avgs = []
+        for row in sorted_weekly[:4]:
+            covers = int(row.get("covers") or 0)
+            total_days = int(row.get("total_days") or 0)
+            daily_avg = covers / total_days if total_days > 0 else 0
+            weekly_covers.append(covers)
+            weekly_daily_avgs.append(daily_avg)
+
+        # Find best/worst indices (only if 2+ rows with data)
+        valid_covers = [(i, v) for i, v in enumerate(weekly_covers) if v > 0]
+        valid_avgs = [(i, v) for i, v in enumerate(weekly_daily_avgs) if v > 0]
+
+        weekly_best_idx = {}
+        weekly_worst_idx = {}
+        if len(valid_covers) >= 2:
+            weekly_best_idx["footfall"] = max(valid_covers, key=lambda x: x[1])[0]
+            weekly_worst_idx["footfall"] = min(valid_covers, key=lambda x: x[1])[0]
+        if len(valid_avgs) >= 2:
+            weekly_best_idx["daily_avg"] = max(valid_avgs, key=lambda x: x[1])[0]
+            weekly_worst_idx["daily_avg"] = min(valid_avgs, key=lambda x: x[1])[0]
+
+        for idx, row in enumerate(sorted_weekly[:4]):
             week = str(row.get("week", ""))
             covers = int(row.get("covers") or 0)
             total_days = int(row.get("total_days") or 0)
@@ -1438,6 +1461,17 @@ def _section_footfall_metrics(
                 avg_pct,
             ]
 
+            # Build per-cell colors for conditional formatting
+            cell_colors = [None] * 6
+            if idx == weekly_best_idx.get("footfall"):
+                cell_colors[1] = C_GREEN
+            elif idx == weekly_worst_idx.get("footfall"):
+                cell_colors[1] = C_RED
+            if idx == weekly_best_idx.get("daily_avg"):
+                cell_colors[4] = C_GREEN
+            elif idx == weekly_worst_idx.get("daily_avg"):
+                cell_colors[4] = C_RED
+
             cur_y -= row_h
             _table_data_row(
                 ax,
@@ -1448,6 +1482,7 @@ def _section_footfall_metrics(
                 row_h=row_h,
                 is_alt=(idx % 2 == 1),
                 font_size=10.5,
+                cell_colors=cell_colors,
             )
 
     # If no data at all

@@ -236,7 +236,7 @@ def render_sales_performance(
         with col_chart2:
             st.markdown("### Covers Trend")
             if multi_analytics and not df_raw.empty:
-                fig_bar = px.bar(
+                fig_covers = px.bar(
                     df_raw,
                     x="date",
                     y="covers",
