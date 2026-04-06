@@ -1276,7 +1276,7 @@ def _section_footfall_metrics(
     _label(ax, 0.012, banner_top - 0.045, location_name[:32], size=9.0, color="#8BA3BD")
 
     cur_y = banner_y - 0.015
-    row_h = 0.042
+    row_h = 0.036
 
     # Helper to calculate MoM/WoW % change
     def _calc_pct_change(current: float, previous: float) -> str:
@@ -1301,7 +1301,7 @@ def _section_footfall_metrics(
         cur_y -= row_h * 0.3
         # Section label above table
         _label(ax, 0.012, cur_y, "Monthly", size=10.0, color=C_SLATE, weight="bold")
-        cur_y -= row_h * 1.5
+        cur_y -= row_h * 0.5
 
         # Header - compact column widths
         col_w = [0.16, 0.144, 0.144, 0.144, 0.144, 0.144]
@@ -1313,7 +1313,7 @@ def _section_footfall_metrics(
             "Daily Avg.",
             "% Change",
         ]
-        _table_header_row(ax, 0, cur_y, headers, col_w, row_h, font_size=10.5)
+        _table_header_row(ax, 0, cur_y, headers, col_w, row_h, font_size=9.5)
         cur_y -= row_h
 
         # Sort by month descending (most recent first)
@@ -1396,7 +1396,7 @@ def _section_footfall_metrics(
                 col_w,
                 row_h=row_h,
                 is_alt=(idx % 2 == 1),
-                font_size=10.5,
+                font_size=9.5,
                 cell_colors=cell_colors,
             )
 
@@ -1407,7 +1407,7 @@ def _section_footfall_metrics(
         cur_y -= row_h * 0.3
         # Section label above table
         _label(ax, 0.012, cur_y, "Weekly", size=10.0, color=C_SLATE, weight="bold")
-        cur_y -= row_h * 1.5
+        cur_y -= row_h * 0.5
 
         # Header - compact column widths
         col_w = [0.16, 0.144, 0.144, 0.144, 0.144, 0.144]
@@ -1419,7 +1419,7 @@ def _section_footfall_metrics(
             "Daily Avg.",
             "% Change",
         ]
-        _table_header_row(ax, 0, cur_y, headers, col_w, row_h, font_size=10.5)
+        _table_header_row(ax, 0, cur_y, headers, col_w, row_h, font_size=9.5)
         cur_y -= row_h
 
         # Sort by week descending (most recent first)
@@ -1495,7 +1495,7 @@ def _section_footfall_metrics(
                 col_w,
                 row_h=row_h,
                 is_alt=(idx % 2 == 1),
-                font_size=10.5,
+                font_size=9.5,
                 cell_colors=cell_colors,
             )
 
@@ -1692,7 +1692,7 @@ def generate_sheet_style_report_sections(
             n_mo = len(mo_rows) if mo_rows else 0
             n_wk = len(wk_rows) if wk_rows else 0
             n_ft = 4 + n_mo + n_wk  # header + spacing + tables
-            fig, ax = _fig_for_section(n_ft, min_rows=8, cap_h=28.0, w=fig_w)
+            fig, ax = _fig_for_section(n_ft, min_rows=6, cap_h=20.0, w=fig_w)
             _section_footfall_metrics(ax, mo_rows, wk_rows, outlet_name)
             outlet_slug = _section_key_slug(outlet_name, default=f"outlet_{idx}")
             out[f"footfall_metrics__{outlet_slug}_{idx}"] = _save_fig(fig)
@@ -1701,7 +1701,7 @@ def generate_sheet_style_report_sections(
         n_mo = len(ff_metrics_mo) if ff_metrics_mo else 0
         n_wk = len(ff_metrics_wk) if ff_metrics_wk else 0
         n_ft = 4 + n_mo + n_wk
-        fig, ax = _fig_for_section(n_ft, min_rows=8, cap_h=28.0, w=fig_w)
+        fig, ax = _fig_for_section(n_ft, min_rows=6, cap_h=20.0, w=fig_w)
         _section_footfall_metrics(ax, ff_metrics_mo, ff_metrics_wk, location_name)
         out["footfall_metrics"] = _save_fig(fig)
     elif per_outlet_ff and len(per_outlet_ff) > 1:
