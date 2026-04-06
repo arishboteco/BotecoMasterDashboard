@@ -61,16 +61,61 @@ auth.init_auth_state()
 if not auth.check_authentication():
     auth.show_login_form()
 else:
-    # Sidebar branding
     st.sidebar.image("logo.png", width=180)
-    # Render sidebar
-    auth.render_auth_sidebar()
     st.sidebar.divider()
-    st.sidebar.markdown("##### POS import")
+
+    # Account section with user badge
+    st.sidebar.markdown("##### Account")
+    username = st.session_state.username or "User"
+    initials = username[:2].upper() if username else "U"
+    st.sidebar.markdown(
+        f'<div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.25rem;">'
+        f'<span style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.2);'
+        f"display:inline-flex;align-items:center;justify-content:center;font-size:0.8rem;"
+        f'font-weight:600;color:#fff;">{initials}</span>'
+        f'<span style="font-weight:500;color:#fff;">{username}</span></div>',
+        unsafe_allow_html=True,
+    )
+    st.sidebar.caption(f"**Role:** {st.session_state.user_role}")
+    st.sidebar.caption(f"**Location:** {st.session_state.location_name or 'Default'}")
+    st.sidebar.divider()
+    st.sidebar.markdown("##### Reports & scope")
+    st.sidebar.caption("Daily Report and Analytics use this scope.")
 
     report_loc_ids = auth.get_report_location_ids()
     report_display_name = auth.get_report_display_name()
     all_locs = database.get_all_locations()
+    if len(all_locs) > 1 and auth.is_admin():
+        options = ["all"] + [
+            str(loc["id"]) for loc in sorted(all_locs, key=lambda x: x["name"])
+        ]
+
+        def _scope_label(k: str) -> str:
+            if k == "all":
+                return "All locations"
+            for loc in all_locs:
+                if str(loc["id"]) == k:
+                    return str(loc["name"])
+            return k
+
+        vs = st.session_state.get("view_scope")
+        if vs not in options:
+            st.session_state.view_scope = "all"
+            vs = "all"
+        ix = options.index(vs)
+        choice = st.sidebar.selectbox(
+            "Report scope",
+            options=options,
+            index=ix,
+            format_func=_scope_label,
+            key="sidebar_report_scope",
+        )
+        st.session_state.view_scope = choice
+    else:
+        st.session_state.view_scope = str(st.session_state.location_id)
+
+    st.sidebar.divider()
+    st.sidebar.markdown("##### POS import")
     if len(all_locs) > 1 and auth.is_admin():
         imp_labels = {
             str(loc["id"]): loc["name"]
@@ -82,7 +127,7 @@ else:
             default_imp = imp_keys[0]
         import_loc_id = int(
             st.sidebar.selectbox(
-                "POS import for",
+                "Import for",
                 options=imp_keys,
                 index=imp_keys.index(default_imp),
                 format_func=lambda k: imp_labels[k],
@@ -96,12 +141,18 @@ else:
             if loc["id"] == import_loc_id:
                 imp_name = loc["name"]
                 break
-        st.sidebar.caption(f"POS imports save to **{imp_name}**.")
+        st.sidebar.caption(f"Saved to **{imp_name}**.")
     else:
         import_loc_id = all_locs[0]["id"] if all_locs else st.session_state.location_id
 
     import_location_settings = database.get_location_settings(import_loc_id)
     location_id = st.session_state.location_id
+
+    st.sidebar.divider()
+    if st.sidebar.button(
+        "\U0001f50d Logout", key="sidebar_logout_btn", use_container_width=True
+    ):
+        auth.logout()
 
     # Build shared context
     ctx = TabContext(

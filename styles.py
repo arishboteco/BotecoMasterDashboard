@@ -721,6 +721,129 @@ def get_css() -> str:
         box-shadow: 0 0 0 3px rgba(63,167,163,0.25) !important;
     }
 
+    /* ── Danger button styling ─────────────────────────────── */
+    .stButton > button.danger-btn {
+        background-color: transparent !important;
+        color: #dc2626 !important;
+        border: 1.5px solid #fca5a5 !important;
+        font-weight: 500 !important;
+    }
+    .stButton > button.danger-btn:hover {
+        background-color: #fef2f2 !important;
+        border-color: #dc2626 !important;
+        color: #b91c1c !important;
+    }
+    .stButton > button.danger-btn-danger:hover {
+        background-color: #dc2626 !important;
+        color: #fff !important;
+    }
+
+    /* ── Section labels ───────────────────────────────────── */
+    .section-label {
+        font-family: var(--font-display);
+        font-size: 1rem;
+        font-weight: 600;
+        color: #374151;
+        padding-bottom: 0.5rem;
+        margin-bottom: 0.75rem;
+        border-bottom: 1px solid var(--border-subtle);
+    }
+
+    /* ── Empty state ─────────────────────────────────────── */
+    .empty-state {
+        text-align: center;
+        padding: 2rem;
+        background: var(--surface);
+        border: 1px dashed var(--border-medium);
+        border-radius: var(--radius-md);
+    }
+    .empty-state-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
+    .empty-state-title {
+        font-family: var(--font-display);
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--text);
+        margin-bottom: 0.5rem;
+    }
+    .empty-state-desc {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+        line-height: 1.5;
+    }
+
+    /* ── Sidebar improvements ─────────────────────────────── */
+    .sidebar-account-section {
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: var(--radius-md);
+        padding: 0.75rem;
+        margin-bottom: 0.5rem;
+    }
+    .sidebar-user-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: var(--radius-sm);
+        padding: 0.25rem 0.5rem;
+        font-size: 0.85rem;
+        color: #fff;
+    }
+    .sidebar-user-initials {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.3);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    /* ── Table compact styling ────────────────────────────── */
+    .compact-table {
+        font-size: 0.8rem !important;
+    }
+    .compact-table th {
+        padding: 0.4rem 0.5rem !important;
+    }
+    .compact-table td {
+        padding: 0.35rem 0.5rem !important;
+    }
+
+    /* ── Loading skeleton ────────────────────────────────── */
+    @keyframes skeleton-pulse {
+        0% { opacity: 0.6; }
+        50% { opacity: 0.3; }
+        100% { opacity: 0.6; }
+    }
+    .skeleton {
+        background: linear-gradient(90deg, var(--surface) 25%, var(--border-subtle) 50%, var(--surface) 75%);
+        background-size: 200% 100%;
+        animation: skeleton-pulse 1.5s ease-in-out infinite;
+        border-radius: var(--radius-sm);
+    }
+    .skeleton-card {
+        height: 120px;
+        margin-bottom: 1rem;
+    }
+
+    /* ── Touch target improvements ────────────────────────── */
+    @media (pointer: coarse) {
+        .stButton > button,
+        .action-btn {
+            min-height: 44px !important;
+            min-width: 44px !important;
+        }
+        .date-nav-btn {
+            min-height: 44px !important;
+        }
+    }
+
     /* ── Responsive breakpoints ────────────────────────────── */
     @media (max-width: 768px) {
         .main .block-container {
@@ -759,6 +882,45 @@ def get_css() -> str:
     @media (min-width: 1440px) {
         .main .block-container {
             max-width: 1400px;
+        }
+    }
+
+    /* ── Reduce vertical whitespace for Report tab ───────── */
+    .reduce-whitespace {
+        padding-top: 0.25rem !important;
+    }
+    .reduce-whitespace > div {
+        margin-bottom: 0.25rem !important;
+    }
+
+    /* ── Mobile touch improvements ───────────────────────── */
+    @media (max-width: 480px) {
+        .action-btn-row .action-btn {
+            width: 44px !important;
+            height: 44px !important;
+        }
+        .stButton > button {
+            min-height: 44px !important;
+            font-size: 0.9rem !important;
+        }
+        [data-testid="stVerticalBlock"] {
+            gap: 0.5rem !important;
+        }
+        /* Stack report cards on mobile */
+        [data-testid="stHorizontalBlock"] {
+            flex-direction: column !important;
+        }
+        [data-testid="stHorizontalBlock"] > div {
+            width: 100% !important;
+        }
+        /* Scrollable tables on mobile */
+        [data-testid="stDataFrame"] {
+            overflow-x: auto !important;
+        }
+        .stMarkdown table {
+            display: block;
+            overflow-x: auto;
+            white-space: nowrap;
         }
     }
 </style>

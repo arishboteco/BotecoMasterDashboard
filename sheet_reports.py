@@ -452,7 +452,11 @@ def _table_header_row(ax, x, y, cols, widths, row_h=0.048, bg=C_HEADER, font_siz
     )
     ax.add_patch(patch)
     n_cols = len(cols)
-    fs = font_size if font_size else (11.0 if n_cols > 4 else 11.5)
+    fs = (
+        font_size
+        if font_size
+        else (10.0 if n_cols > 5 else (10.5 if n_cols > 4 else 11.0))
+    )
     cx = x
     for i, (col, cw) in enumerate(zip(cols, widths)):
         ha = "left" if i == 0 else "right"
@@ -501,7 +505,11 @@ def _table_data_row(
     )
     ax.add_patch(patch)
     n_cols = len(cells)
-    fs = font_size if font_size else (11.2 if n_cols > 4 else 11.8)
+    fs = (
+        font_size
+        if font_size
+        else (10.0 if n_cols > 5 else (10.5 if n_cols > 4 else 11.0))
+    )
     cx = x
     for i, (cell, cw) in enumerate(zip(cells, widths)):
         ha = "left" if i == 0 else "right"
@@ -853,9 +861,9 @@ def _section_category(
     # Column widths: for multi-outlet add per-outlet daily columns
     if multi:
         n_data = len(per_outlet) + 1  # outlets + combined
-        label_w = 0.22
-        mtd_w = 0.14
-        pct_w = 0.06
+        label_w = 0.20
+        mtd_w = 0.13
+        pct_w = 0.05
         remaining = 1.0 - label_w - mtd_w - pct_w
         data_w = remaining / n_data
         col_w = [label_w] + [data_w] * n_data + [mtd_w, pct_w]
@@ -874,7 +882,7 @@ def _section_category(
         ax,
         0.012,
         banner_top - 0.018,
-        f"Category Sales — {location_name[:28]}",
+        f"Category Sales \u2014 {location_name[:28]}",
         size=11.0,
         color=C_WHITE,
         weight="bold",
@@ -887,8 +895,11 @@ def _section_category(
     if multi:
         headers = (
             ["Category"]
-            + [_short_outlet_name(nm, 12) for nm, _ in per_outlet]
-            + ["Combined", "MTD", "%"]
+            + [
+                _short_outlet_name(nm, 8 if len(per_outlet) > 2 else 10)
+                for nm, _ in per_outlet
+            ]
+            + ["Comb.", "MTD", "%"]
         )
     else:
         headers = ["Category", "Daily", "MTD", "%"]
@@ -995,9 +1006,9 @@ def _section_service(
 
     if multi:
         n_data = len(per_outlet) + 1
-        label_w = 0.22
-        mtd_w = 0.14
-        pct_w = 0.06
+        label_w = 0.20
+        mtd_w = 0.13
+        pct_w = 0.05
         remaining = 1.0 - label_w - mtd_w - pct_w
         data_w = remaining / n_data
         col_w = [label_w] + [data_w] * n_data + [mtd_w, pct_w]
@@ -1015,7 +1026,7 @@ def _section_service(
         ax,
         0.012,
         banner_top - 0.018,
-        f"Service Sales — {location_name[:28]}",
+        f"Service Sales \u2014 {location_name[:28]}",
         size=11.0,
         color=C_WHITE,
         weight="bold",
@@ -1027,8 +1038,11 @@ def _section_service(
     if multi:
         headers = (
             ["Service"]
-            + [_short_outlet_name(nm, 12) for nm, _ in per_outlet]
-            + ["Combined", "MTD", "%"]
+            + [
+                _short_outlet_name(nm, 8 if len(per_outlet) > 2 else 10)
+                for nm, _ in per_outlet
+            ]
+            + ["Comb.", "MTD", "%"]
         )
     else:
         headers = ["Service", "Daily", "MTD", "%"]

@@ -28,6 +28,9 @@ def render(ctx: TabContext) -> None:
     # ── Period selector ──────────────────────────────────────────
     col_per1, col_per2 = st.columns([2, 3])
     with col_per1:
+        default_period = "Last Month"
+        if "analysis_period" not in st.session_state:
+            st.session_state.analysis_period = default_period
         analysis_period = st.selectbox(
             "Time Period",
             [
@@ -148,7 +151,16 @@ def render(ctx: TabContext) -> None:
         )
 
     else:
-        st.info(
-            "No data in this period. Upload POS files from the **Upload** tab "
-            "or choose a different time range."
+        st.markdown(
+            '<div class="empty-state">'
+            '<div class="empty-state-icon">\U0001f4ca</div>'
+            '<div class="empty-state-title">No data available</div>'
+            '<div class="empty-state-desc">'
+            "This period has no sales data yet. "
+            "Upload POS files from the **Upload** tab or select a different time range."
+            "<br><br>"
+            "<strong>Tip:</strong> Try selecting 'Last Month' or 'Last 30 Days' to see recent data."
+            "</div>"
+            "</div>",
+            unsafe_allow_html=True,
         )

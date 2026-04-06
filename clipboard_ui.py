@@ -167,10 +167,10 @@ def render_image_action_row(
   border-left: 1px solid #E2E8F0;
 }}
 </style>
-<div class="action-btn-row" id="{uid}_row">
-  <button class="action-btn" id="{uid}_copy" title="Copy to clipboard" type="button">&#xe14d;</button>
-  <button class="action-btn" id="{uid}_wa" title="Share via WhatsApp" type="button">{WHATSAPP_ICON_SVG}</button>
-  <button class="action-btn" id="{uid}_dl" title="Download" type="button">&#xe2c4;</button>
+<div class="action-btn-row" id="{uid}_row" role="toolbar" aria-label="Image actions">
+  <button class="action-btn" id="{uid}_copy" title="Copy this section as image to clipboard" aria-label="Copy image to clipboard" type="button">&#xe14d;</button>
+  <button class="action-btn" id="{uid}_wa" title="Share this section via WhatsApp" aria-label="Share via WhatsApp" type="button">{WHATSAPP_ICON_SVG}</button>
+  <button class="action-btn" id="{uid}_dl" title="Download this section as PNG" aria-label="Download image" type="button">&#xe2c4;</button>
 </div>
 <span id="{uid}_msg" style="font-size:0.75rem;margin-left:0.5rem;color:#6DBE45;"></span>
 <script>

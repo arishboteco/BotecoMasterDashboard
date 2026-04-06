@@ -229,29 +229,60 @@ def render(ctx: TabContext) -> None:
                 "Date to remove",
                 value=datetime.now().date(),
                 key="delete_day_date_pick",
+                format="DD/MM/YYYY",
             )
         with del_col3:
             st.write("")
             st.write("")
             del_date_str = delete_target_date.strftime("%Y-%m-%d")
-            if st.button("Delete this day's data", key="delete_day_btn"):
+            del_date_display = delete_target_date.strftime("%d %b %Y")
+            st.markdown(
+                '<style>.stButton > button[key="delete_day_btn"] { '
+                "background-color: transparent !important; "
+                "color: #dc2626 !important; "
+                "border: 1.5px solid #fca5a5 !important; "
+                "font-weight: 500 !important; } "
+                '.stButton > button[key="delete_day_btn"]:hover { '
+                "background-color: #fef2f2 !important; "
+                "border-color: #dc2626 !important; "
+                "color: #b91c1c !important; } "
+                "</style>",
+                unsafe_allow_html=True,
+            )
+            if st.button("\u26a0\ufe0f Delete this day's data", key="delete_day_btn"):
                 if delete_target_loc is None:
                     st.error("Select an outlet before deleting data.")
                 else:
                     st.session_state["_pending_delete"] = (
                         int(delete_target_loc),
                         del_date_str,
+                        del_date_display,
                     )
         pend = st.session_state.get("_pending_delete")
         if pend:
-            ploc, pdate = pend
+            ploc, pdate, pdate_disp = pend
             pn = _del_name.get(ploc, str(ploc))
-            st.error(
-                f"**Confirm:** permanently delete saved data for **{pn}** on **{pdate}**?"
+            st.warning(
+                f"\u26a0\ufe0f **Warning:** This will permanently delete all saved data for "
+                f"**{pn}** on **{pdate_disp}**. This action cannot be undone."
             )
             dc1, dc2 = st.columns(2)
             with dc1:
-                if st.button("Yes, delete", key="delete_confirm_yes", type="primary"):
+                st.markdown(
+                    '<style>.stButton > button[key="delete_confirm_yes"] { '
+                    "background-color: #dc2626 !important; "
+                    "color: #fff !important; "
+                    "border: none !important; } "
+                    '.stButton > button[key="delete_confirm_yes"]:hover { '
+                    "background-color: #b91c1c !important; } "
+                    "</style>",
+                    unsafe_allow_html=True,
+                )
+                if st.button(
+                    "\u26a0\ufe0f Yes, delete permanently",
+                    key="delete_confirm_yes",
+                    type="primary",
+                ):
                     removed = database.delete_daily_summary_for_location_date(
                         ploc, pdate
                     )
@@ -288,6 +319,14 @@ def render(ctx: TabContext) -> None:
             "uploaded_at": "When",
         }
         hdf = hdf.rename(columns={k: v for k, v in rename.items() if k in hdf.columns})
+        if "Day" in hdf.columns:
+            hdf["Day"] = hdf["Day"].apply(
+                lambda x: (
+                    datetime.strptime(x[:10], "%Y-%m-%d").strftime("%d %b %Y")
+                    if pd.notna(x)
+                    else x
+                )
+            )
         st.dataframe(hdf, use_container_width=True, hide_index=True)
     else:
         st.caption("No imports yet for this outlet.")

@@ -23,7 +23,6 @@ def render(ctx: TabContext) -> None:
     """Render the Daily Report tab UI."""
     st.header("Daily Sales Report")
     st.caption(f"Viewing: **{ctx.report_display_name}** — pick a date below.")
-    st.divider()
 
     # Date selector with Prev/Next navigation
     if "report_date" not in st.session_state:
@@ -40,7 +39,7 @@ def render(ctx: TabContext) -> None:
 
     nav_col1, nav_col2, nav_col3 = st.columns([1, 4, 1])
     with nav_col1:
-        if st.button("← Prev", key="report_prev_day", use_container_width=True):
+        if st.button("\u25c0 Prev", key="report_prev_day", use_container_width=True):
             st.session_state["report_date"] -= timedelta(days=1)
             st.rerun()
     with nav_col2:
@@ -54,13 +53,14 @@ def render(ctx: TabContext) -> None:
         "Select a date",
         value=selected_date,
         key="report_date_picker",
+        format="DD/MM/YYYY",
         help="Choose a date to view that day's report",
     )
     if picked != selected_date:
         st.session_state["report_date"] = picked
         st.rerun()
     with nav_col3:
-        if st.button("Next →", key="report_next_day", use_container_width=True):
+        if st.button("Next \u25b6", key="report_next_day", use_container_width=True):
             st.session_state["report_date"] += timedelta(days=1)
             st.rerun()
 
@@ -94,15 +94,15 @@ def render(ctx: TabContext) -> None:
                 pct = g["percentage"]
                 change = g["change"]
                 if change > 0:
-                    arrow = "▲"
+                    arrow = "\u25b2"
                     color = "#22c55e"
                 elif change < 0:
-                    arrow = "▼"
+                    arrow = "\u25bc"
                     color = "#ef4444"
                     change = abs(change)
                     pct = abs(pct)
                 else:
-                    return "—"
+                    return "\u2014"
                 if is_currency:
                     return (
                         f'<span style="color:{color};font-size:0.8rem;">'
@@ -240,7 +240,7 @@ def render(ctx: TabContext) -> None:
                 "MTD for all outlets in scope. Footfall metrics are shown per outlet."
             )
 
-        with st.expander("Individual PNG sections", expanded=True):
+        with st.expander("#### Individual PNG sections", expanded=True):
             _sec_meta = [
                 ("sales_summary", "Sales summary"),
                 ("category", "Category sales"),
@@ -269,9 +269,14 @@ def render(ctx: TabContext) -> None:
                 sec_bytes = section_bufs[key].getvalue()
                 row_idx, col_idx = divmod(idx, 2)
                 with _cells[row_idx][col_idx]:
-                    st.caption(title)
+                    st.markdown(
+                        f'<div class="section-label">{title}</div>',
+                        unsafe_allow_html=True,
+                    )
                     st.image(BytesIO(sec_bytes), use_container_width=True)
-                    _wa_text = f"Boteco Bangalore EOD Report – {date_str} ({title})"
+                    _wa_text = (
+                        f"Boteco Bangalore EOD Report \u2013 {date_str} ({title})"
+                    )
                     clipboard_ui.render_image_action_row(
                         sec_bytes,
                         f"boteco_{key}_{date_str}.png",
@@ -280,7 +285,14 @@ def render(ctx: TabContext) -> None:
                         fallback_url=f"https://wa.me/?text={quote_plus(_wa_text)}",
                     )
     else:
-        st.info(
+        st.markdown(
+            '<div class="empty-state">'
+            '<div class="empty-state-icon">\U0001f4ca</div>'
+            '<div class="empty-state-title">No data for this date</div>'
+            '<div class="empty-state-desc">'
             f"No saved data for **{selected_date.strftime('%d %b %Y')}**. "
             "Go to the **Upload** tab and import POS files for that date."
+            "</div>"
+            "</div>",
+            unsafe_allow_html=True,
         )
