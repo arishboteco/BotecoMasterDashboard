@@ -18,6 +18,11 @@ BRAND_GREEN = "#6DBE45"  # Leaf Green — freshness, Zomato charts
 BRAND_ERROR = "#EF4444"  # Red — negative deltas, destructive
 BRAND_INFO = "#6366F1"  # Indigo — info
 
+# -- Conditional formatting colors for tables --------------------------------
+TABLE_ACHIEVEMENT_GREEN = "#10B981"  # ≥100% achievement
+TABLE_ACHIEVEMENT_YELLOW = "#FBBF24"  # 70–99% achievement
+TABLE_ACHIEVEMENT_RED = "#EF4444"  # <70% achievement
+
 # -- Surface & neutral palette -------------------------------------------------
 SURFACE_BASE = "#F7FAFC"  # Main background — soft off-white
 SURFACE_ELEVATED = "#FFFFFF"  # Cards — white
