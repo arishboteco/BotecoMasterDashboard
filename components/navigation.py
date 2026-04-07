@@ -92,6 +92,4 @@ def date_range_nav(
             st.session_state.get(session_key_end, end_date),
         )
 
-    st.session_state[session_key_start] = start_date
-    st.session_state[session_key_end] = end_date
     return start_date, end_date
