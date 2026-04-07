@@ -22,7 +22,6 @@ from tabs import TabContext
 def render(ctx: TabContext) -> None:
     """Render the Analytics tab UI with charts and period analysis."""
     st.header("Sales Analytics")
-    st.caption(f"Viewing: **{ctx.report_display_name}** — trends for the period below.")
     st.divider()
 
     # ── Period selector ──────────────────────────────────────────

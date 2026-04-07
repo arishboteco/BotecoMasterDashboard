@@ -22,8 +22,6 @@ from components import divider
 def render(ctx: TabContext) -> None:
     """Render the Daily Report tab UI."""
     st.header("Daily Sales Report")
-    st.caption(f"Viewing: **{ctx.report_display_name}** — pick a date below.")
-
     # Date selector with Prev/Next navigation
     if "report_date" not in st.session_state:
         most_recent_date = database.get_most_recent_date_with_data(ctx.report_loc_ids)
