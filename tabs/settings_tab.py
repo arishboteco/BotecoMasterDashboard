@@ -14,6 +14,7 @@ import database
 import utils
 from auth import is_admin
 from tabs import TabContext
+from components.navigation import date_range_nav
 
 
 def render(ctx: TabContext) -> None:
@@ -346,7 +347,7 @@ def render(ctx: TabContext) -> None:
         "Use the filters to narrow the export."
     )
 
-    exp_c1, exp_c2, exp_c3 = st.columns(3)
+    exp_c1, exp_c2 = st.columns([1, 2])
     with exp_c1:
         exp_loc_opts = {"all": "All outlets"}
         exp_loc_opts.update(
@@ -359,16 +360,11 @@ def render(ctx: TabContext) -> None:
             key="export_outlet",
         )
     with exp_c2:
-        exp_start = st.date_input(
-            "From date",
-            value=datetime.now().date().replace(day=1),
-            key="export_start",
-        )
-    with exp_c3:
-        exp_end = st.date_input(
-            "To date",
-            value=datetime.now().date(),
-            key="export_end",
+        exp_start, exp_end = date_range_nav(
+            session_key_start="export_start",
+            session_key_end="export_end",
+            label_start="From date",
+            label_end="To date",
         )
 
     exp_loc_ids = [int(exp_loc)] if exp_loc != "all" else None
