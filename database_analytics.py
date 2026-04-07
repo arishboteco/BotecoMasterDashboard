@@ -7,9 +7,12 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+import streamlit as st
+
 from database import db_connection
 
 
+@st.cache_data(ttl=600)
 def get_monthly_footfall_multi(
     location_ids: List[int], start_date: str, end_date: str
 ) -> List[Dict[str, Any]]:
@@ -50,6 +53,7 @@ def get_monthly_footfall_multi(
     return [dict(row) for row in rows]
 
 
+@st.cache_data(ttl=600)
 def get_weekly_footfall_multi(
     location_ids: List[int], start_date: str, end_date: str
 ) -> List[Dict[str, Any]]:
@@ -86,6 +90,7 @@ def get_weekly_footfall_multi(
     return [dict(row) for row in rows]
 
 
+@st.cache_data(ttl=300)
 def get_category_mtd_totals_multi(
     location_ids: List[int], year: int, month: int
 ) -> Dict[str, float]:
@@ -114,6 +119,7 @@ def get_category_mtd_totals_multi(
     return {row["category"]: float(row["total"] or 0) for row in rows}
 
 
+@st.cache_data(ttl=300)
 def get_service_mtd_totals_multi(
     location_ids: List[int], year: int, month: int
 ) -> Dict[str, float]:
@@ -174,6 +180,7 @@ def get_top_items_for_date_range(
     return [dict(row) for row in rows]
 
 
+@st.cache_data(ttl=120)
 def get_category_sales_for_date_range(
     location_ids: List[int], start_date: str, end_date: str
 ) -> List[Dict]:
@@ -205,6 +212,7 @@ def get_category_sales_for_date_range(
     return [dict(row) for row in rows]
 
 
+@st.cache_data(ttl=120)
 def get_service_sales_for_date_range(
     location_ids: List[int], start_date: str, end_date: str
 ) -> List[Dict]:
