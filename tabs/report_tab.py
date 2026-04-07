@@ -47,8 +47,8 @@ def render(ctx: TabContext) -> None:
         y_m = [int(x) for x in date_str.split("-")[:2]]
         multi_outlet = len(outlets_bundle) > 1
 
-        # ── Previous day comparison ────────────────────────────
-        _prev_date = selected_date - timedelta(days=1)
+        # ── Same weekday previous week comparison ──────────────
+        _prev_date = selected_date - timedelta(days=7)
         _prev_date_str = _prev_date.strftime("%Y-%m-%d")
         _prev_summary = scope.get_daily_summary_for_scope(
             ctx.report_loc_ids, _prev_date_str
