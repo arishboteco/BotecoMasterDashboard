@@ -1,4 +1,5 @@
 import re
+import streamlit as st
 from collections import defaultdict
 from datetime import datetime
 from io import BytesIO
@@ -623,6 +624,7 @@ def calculate_mtd_metrics(
     }
 
 
+@st.cache_data(ttl=300)
 def calculate_mtd_metrics_multi(
     location_ids: List[int],
     target_monthly: float,
