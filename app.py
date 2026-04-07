@@ -78,41 +78,9 @@ else:
     )
     st.sidebar.caption(f"**Role:** {st.session_state.user_role}")
     st.sidebar.caption(f"**Location:** {st.session_state.location_name or 'Default'}")
-    st.sidebar.divider()
-    st.sidebar.markdown("##### Reports & scope")
-    st.sidebar.caption("Daily Report and Analytics use this scope.")
-
     report_loc_ids = auth.get_report_location_ids()
     report_display_name = auth.get_report_display_name()
     all_locs = database.get_all_locations()
-    if len(all_locs) > 1 and auth.is_admin():
-        options = ["all"] + [
-            str(loc["id"]) for loc in sorted(all_locs, key=lambda x: x["name"])
-        ]
-
-        def _scope_label(k: str) -> str:
-            if k == "all":
-                return "All locations"
-            for loc in all_locs:
-                if str(loc["id"]) == k:
-                    return str(loc["name"])
-            return k
-
-        vs = st.session_state.get("view_scope")
-        if vs not in options:
-            st.session_state.view_scope = "all"
-            vs = "all"
-        ix = options.index(vs)
-        choice = st.sidebar.selectbox(
-            "Report scope",
-            options=options,
-            index=ix,
-            format_func=_scope_label,
-            key="sidebar_report_scope",
-        )
-        st.session_state.view_scope = choice
-    else:
-        st.session_state.view_scope = str(st.session_state.location_id)
 
     location_id = st.session_state.location_id
 

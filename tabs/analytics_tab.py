@@ -81,13 +81,42 @@ def render(ctx: TabContext) -> None:
     start_str = start_date.strftime("%Y-%m-%d")
     end_str = end_date.strftime("%Y-%m-%d")
 
+    multi_analytics = len(ctx.report_loc_ids) > 1
+    analytics_loc_ids = ctx.report_loc_ids
+
+    if multi_analytics and ctx.all_locs:
+        _loc_options = ["All outlets"] + [
+            loc["name"] for loc in sorted(ctx.all_locs, key=lambda x: x["name"])
+        ]
+        _default_idx = 0
+        if "analytics_outlet_scope" not in st.session_state:
+            st.session_state.analytics_outlet_scope = "All outlets"
+        _current = st.session_state.get("analytics_outlet_scope", "All outlets")
+        if _current in _loc_options:
+            _default_idx = _loc_options.index(_current)
+        selected_outlet = st.radio(
+            "Select outlet",
+            options=_loc_options,
+            horizontal=True,
+            index=_default_idx,
+            key="analytics_outlet_radio",
+            label_visibility="collapsed",
+        )
+        st.session_state.analytics_outlet_scope = selected_outlet
+
+        if selected_outlet != "All outlets":
+            analytics_loc_ids = []
+            for loc in ctx.all_locs:
+                if loc["name"] == selected_outlet:
+                    analytics_loc_ids = [loc["id"]]
+                    break
+
     raw_summaries = database.get_summaries_for_date_range_multi(
-        ctx.report_loc_ids,
+        analytics_loc_ids,
         start_str,
         end_str,
     )
     summaries = scope.merge_summaries_by_date(raw_summaries)
-    multi_analytics = len(ctx.report_loc_ids) > 1
     df_raw = pd.DataFrame(raw_summaries) if raw_summaries else pd.DataFrame()
     if multi_analytics and not df_raw.empty:
         loc_names = {loc["id"]: str(loc["name"]) for loc in ctx.all_locs}
@@ -101,7 +130,7 @@ def render(ctx: TabContext) -> None:
         prior_summaries = []
         if prior_start and prior_end:
             prior_summaries = database.get_summaries_for_date_range_multi(
-                ctx.report_loc_ids,
+                analytics_loc_ids,
                 prior_start.strftime("%Y-%m-%d"),
                 prior_end.strftime("%Y-%m-%d"),
             )
@@ -135,14 +164,14 @@ def render(ctx: TabContext) -> None:
             analysis_period=analysis_period,
         )
         render_revenue_breakdown(
-            ctx.report_loc_ids,
+            analytics_loc_ids,
             start_str,
             end_str,
             df,
             start_date,
         )
         render_target_and_daily(
-            ctx.report_loc_ids,
+            analytics_loc_ids,
             start_date,
             df,
             df_raw,
