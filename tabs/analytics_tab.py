@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import pandas as pd
 import streamlit as st
@@ -17,6 +17,7 @@ from tabs.analytics_sections import (
     render_target_and_daily,
 )
 from tabs import TabContext
+from components.navigation import date_range_nav
 
 
 def render(ctx: TabContext) -> None:
@@ -48,19 +49,12 @@ def render(ctx: TabContext) -> None:
     custom_end = None
     if analysis_period == "Custom":
         with col_per2:
-            c1, c2 = st.columns(2)
-            with c1:
-                custom_start = st.date_input(
-                    "From",
-                    datetime.now().date() - timedelta(days=29),
-                    key="analytics_custom_start",
-                )
-            with c2:
-                custom_end = st.date_input(
-                    "To",
-                    datetime.now().date(),
-                    key="analytics_custom_end",
-                )
+            custom_start, custom_end = date_range_nav(
+                session_key_start="analytics_custom_start",
+                session_key_end="analytics_custom_end",
+                label_start="From",
+                label_end="To",
+            )
     start_date, end_date, prior_start, prior_end, _ = resolve_period_window(
         analysis_period,
         custom_start=custom_start,
