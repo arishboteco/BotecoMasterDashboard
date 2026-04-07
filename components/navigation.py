@@ -50,3 +50,48 @@ def date_nav(
         st.rerun()
 
     return selected_date
+
+
+def date_range_nav(
+    session_key_start: str,
+    session_key_end: str,
+    label_start: str = "From",
+    label_end: str = "To",
+) -> tuple[datetime.date, datetime.date]:
+    """Render a side-by-side date range selector (From / To) with validation."""
+    today = datetime.now().date()
+
+    if session_key_start not in st.session_state:
+        st.session_state[session_key_start] = today - timedelta(days=29)
+    if session_key_end not in st.session_state:
+        st.session_state[session_key_end] = today
+
+    col_start, col_end = st.columns(2)
+    with col_start:
+        start_date = st.date_input(
+            label_start,
+            value=st.session_state[session_key_start],
+            key=session_key_start,
+            format="DD/MM/YYYY",
+        )
+    with col_end:
+        end_date = st.date_input(
+            label_end,
+            value=st.session_state[session_key_end],
+            key=session_key_end,
+            format="DD/MM/YYYY",
+        )
+
+    if start_date > end_date:
+        st.warning(
+            f"Start date ({start_date.strftime('%d/%m/%Y')}) cannot be after "
+            f"end date ({end_date.strftime('%d/%m/%Y')})."
+        )
+        return (
+            st.session_state.get(session_key_start, start_date),
+            st.session_state.get(session_key_end, end_date),
+        )
+
+    st.session_state[session_key_start] = start_date
+    st.session_state[session_key_end] = end_date
+    return start_date, end_date
