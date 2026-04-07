@@ -640,6 +640,13 @@ def get_upload_history(location_id: int, limit: int = 50) -> List[Dict]:
     return _impl(location_id, limit)
 
 
+def get_recent_summaries(location_id: int, weeks: int = 8) -> List[Dict]:
+    """Fetch recent daily summaries for weekday mix analysis."""
+    from database_reads import get_recent_summaries as _impl
+
+    return _impl(location_id, weeks)
+
+
 def save_upload_record(
     location_id: int, date: str, filename: str, file_type: str, uploaded_by: str
 ):

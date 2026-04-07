@@ -25,6 +25,7 @@ import pandas as pd
 
 import config
 import database
+import utils
 import dynamic_report_parser
 import file_detector
 import pos_parser
@@ -749,6 +750,10 @@ def save_smart_upload_results(
 
     days = result.location_results.get(location_id, result.days)
 
+    recent = database.get_recent_summaries(location_id, weeks=8)
+    weekday_mix = utils.compute_weekday_mix(recent)
+    day_targets = utils.compute_day_targets(monthly_target, weekday_mix)
+
     for day in days:
         if day.errors:
             skipped += 1
@@ -761,7 +766,7 @@ def save_smart_upload_results(
         merged.setdefault("lunch_covers", None)
         merged.setdefault("dinner_covers", None)
 
-        merged["target"] = daily_target
+        merged["target"] = utils.get_target_for_date(day_targets, day.date)
         if seat_count:
             merged["seat_count"] = int(seat_count)
 

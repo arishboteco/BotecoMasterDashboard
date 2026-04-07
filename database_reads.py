@@ -282,3 +282,24 @@ def get_upload_history(location_id: int, limit: int = 50) -> List[Dict]:
         )
         rows = cursor.fetchall()
     return [dict(row) for row in rows]
+
+
+def get_recent_summaries(location_id: int, weeks: int = 8) -> List[Dict]:
+    """Fetch daily summaries for the last N weeks for a location.
+
+    Returns rows with date, net_total — sufficient for weekday mix analysis.
+    """
+    with database.db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT date, net_total
+            FROM daily_summaries
+            WHERE location_id = ?
+            ORDER BY date DESC
+            LIMIT ?
+            """,
+            (location_id, weeks * 7),
+        )
+        rows = cursor.fetchall()
+    return [dict(row) for row in rows]

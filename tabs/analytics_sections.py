@@ -901,7 +901,13 @@ def render_target_and_daily(
     if monthly_target > 0 and is_monthly_period:
         st.markdown("### Target Achievement")
         days_in_month = utils.get_days_in_month(start_date.year, start_date.month)
-        daily_target = monthly_target / days_in_month
+
+        weekday_mix: dict = {}
+        day_targets: dict = {}
+        if len(report_loc_ids) == 1:
+            recent = database.get_recent_summaries(report_loc_ids[0], weeks=8)
+            weekday_mix = utils.compute_weekday_mix(recent)
+            day_targets = utils.compute_day_targets(monthly_target, weekday_mix)
 
         fig_target = make_subplots(
             rows=1,
@@ -911,9 +917,21 @@ def render_target_and_daily(
         )
 
         target_df = df.copy()
-        target_df["achievement"] = (
-            target_df["net_total"] / daily_target * 100 if daily_target > 0 else 0
-        )
+        if day_targets:
+            target_df["day_target"] = target_df["date"].apply(
+                lambda d: utils.get_target_for_date(day_targets, str(d))
+            )
+            target_df["achievement"] = target_df.apply(
+                lambda r: (
+                    r["net_total"] / r["day_target"] * 100 if r["day_target"] > 0 else 0
+                ),
+                axis=1,
+            )
+        else:
+            daily_target = monthly_target / days_in_month
+            target_df["achievement"] = (
+                target_df["net_total"] / daily_target * 100 if daily_target > 0 else 0
+            )
         colors = [
             ui_theme.BRAND_SUCCESS
             if x >= 100

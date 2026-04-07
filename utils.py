@@ -350,3 +350,106 @@ def calculate_table_metrics(covers: int, tables_available: int = 100) -> Dict:
         "tables_used": min(covers, tables_available),
         "tables_available": tables_available,
     }
+
+
+WEEKDAY_NAMES = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+]
+
+
+def compute_weekday_mix(summaries: List[Dict]) -> Dict[str, float]:
+    """Compute each weekday's share of weekly sales from historical summaries.
+
+    Each day's net_total is expressed as a fraction of its parent week's total,
+    then averaged across the lookback window. This normalizes for week-to-week
+    volume changes and gives a stable day-of-week profile.
+
+    Returns dict: {weekday_name: proportion_of_week}
+    """
+    if not summaries:
+        return {day: 1.0 / 7 for day in WEEKDAY_NAMES}
+
+    from collections import defaultdict
+
+    week_sums: Dict[str, float] = defaultdict(float)
+    week_days: Dict[str, int] = defaultdict(int)
+    day_nets: Dict[str, List[float]] = defaultdict(list)
+
+    for row in summaries:
+        date_str = str(row.get("date") or "")
+        net = float(row.get("net_total") or 0)
+        if not date_str or net <= 0:
+            continue
+        try:
+            dt = datetime.strptime(date_str[:10], "%Y-%m-%d")
+        except ValueError:
+            continue
+        week_key = date_str[:7]
+        wd = dt.weekday()
+        wd_name = WEEKDAY_NAMES[wd]
+        week_sums[week_key] += net
+        week_days[week_key] += 1
+        day_nets[wd_name].append(net)
+
+    if not week_sums:
+        return {day: 1.0 / 7 for day in WEEKDAY_NAMES}
+
+    weekday_pct: Dict[str, float] = {}
+    for wd_name in WEEKDAY_NAMES:
+        day_nets_list = day_nets.get(wd_name, [])
+        if not day_nets_list:
+            weekday_pct[wd_name] = 0.0
+            continue
+        week_pcts = []
+        for net in day_nets_list:
+            iso = str(date_str[:10])
+            try:
+                dt = datetime.strptime(iso, "%Y-%m-%d")
+            except ValueError:
+                continue
+            week_key = iso[:7]
+            week_total = week_sums.get(week_key, 0)
+            if week_total > 0:
+                week_pcts.append(net / week_total)
+        weekday_pct[wd_name] = sum(week_pcts) / len(week_pcts) if week_pcts else 0.0
+
+    total = sum(weekday_pct.values())
+    if total > 0:
+        weekday_pct = {k: v / total for k, v in weekday_pct.items()}
+
+    return weekday_pct
+
+
+def compute_day_targets(
+    monthly_target: float,
+    weekday_mix: Dict[str, float],
+) -> Dict[str, float]:
+    """Derive per-day targets by applying weekday mix to a monthly target.
+
+    Args:
+        monthly_target: Total monthly sales target.
+        weekday_mix: Dict of {weekday_name: proportion} summing to ~1.0.
+
+    Returns:
+        Dict of {weekday_name: daily_target_amount}
+    """
+    return {day: monthly_target * pct for day, pct in weekday_mix.items()}
+
+
+def get_target_for_date(targets_by_weekday: Dict[str, float], date_str: str) -> float:
+    """Look up the appropriate target for a specific date string.
+
+    Falls back to uniform monthly/30 if date cannot be parsed.
+    """
+    try:
+        dt = datetime.strptime(str(date_str)[:10], "%Y-%m-%d")
+        wd_name = WEEKDAY_NAMES[dt.weekday()]
+        return targets_by_weekday.get(wd_name, 0.0)
+    except ValueError:
+        return 0.0
