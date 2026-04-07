@@ -43,6 +43,7 @@ def date_nav(
         value=selected_date,
         key=f"{session_key}_picker",
         help=help_text,
+        format="DD/MM/YYYY",
     )
     if picked != selected_date:
         st.session_state[session_key] = picked
