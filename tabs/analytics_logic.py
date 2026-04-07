@@ -76,7 +76,7 @@ def build_daily_view_table(
         _num_covers = pd.to_numeric(dv["covers"], errors="coerce").fillna(0)
         _num_net = pd.to_numeric(dv["net_total"], errors="coerce").fillna(0)
         _num_target = pd.to_numeric(dv["target"], errors="coerce").fillna(0)
-        _num_pct = pd.to_numeric(dv["pct_target"], errors="coerce").fillna(0)
+        _num_pct = (_num_net / _num_target * 100).where(_num_target > 0, 0)
     elif multi_analytics:
         return pd.DataFrame()
     else:
@@ -96,10 +96,10 @@ def build_daily_view_table(
         _num_covers = pd.to_numeric(dv["covers"], errors="coerce").fillna(0)
         _num_net = pd.to_numeric(dv["net_total"], errors="coerce").fillna(0)
         _num_target = pd.to_numeric(dv["target"], errors="coerce").fillna(0)
-        _num_pct = pd.to_numeric(dv["pct_target"], errors="coerce").fillna(0)
+        _num_pct = (_num_net / _num_target * 100).where(_num_target > 0, 0)
 
     if numeric:
-        dv["pct_target"] = _num_pct
+        dv["pct_target"] = (_num_net / _num_target * 100) if _num_target > 0 else 0
         # Add totals row
         if multi_analytics and not df_raw.empty:
             totals = pd.DataFrame(
@@ -138,7 +138,7 @@ def build_daily_view_table(
         utils.format_indian_currency(float(x or 0)) for x in dv["net_total"]
     ]
     dv["target"] = [utils.format_indian_currency(float(x or 0)) for x in dv["target"]]
-    dv["pct_target"] = [utils.format_percent(float(x or 0)) for x in dv["pct_target"]]
+    dv["pct_target"] = [utils.format_percent(x) for x in _num_pct]
 
     # Add totals/average row
     if multi_analytics and not df_raw.empty:
