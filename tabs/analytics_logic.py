@@ -27,18 +27,17 @@ def resolve_period_window(
     prior_start: Optional[date] = None
     prior_end: Optional[date] = None
     prior_map = {
-        "this_week": "last_week",
-        "this_month": "last_month",
+        "this_week": None,  # same-day-span logic below
+        "this_month": None,  # same-day-span logic below
         "last_week": "last_week_prior",
         "last_month": "last_month_prior",
     }
     days_span = (end_date - start_date).days + 1
     if period_key in prior_map:
         target = prior_map[period_key]
-        if target in ("last_week", "last_month"):
+        if target in ("last_week_prior", "last_month_prior"):
             prior_start, prior_end = utils.get_date_range(target)
         else:
-            # Prior equivalent period: same number of days before start_date
             prior_end = start_date - timedelta(days=1)
             prior_start = prior_end - timedelta(days=days_span - 1)
     elif period_key in ("last_7_days", "last_30_days"):

@@ -1,6 +1,6 @@
 """Tests for pure analytics tab helper logic."""
 
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 
@@ -27,6 +27,52 @@ class TestResolvePeriodWindow:
         assert prior_start is None
         assert prior_end is None
         assert period_key is None
+
+    def test_last_7_days_prior_has_exactly_7_days(self):
+        start, end, prior_start, prior_end, period_key = resolve_period_window(
+            "Last 7 Days"
+        )
+        current_days = (end - start).days + 1
+        prior_days = (prior_end - prior_start).days + 1
+
+        assert current_days == 7
+        assert prior_days == 7
+        assert prior_end == start - timedelta(days=1)
+        assert (prior_end - prior_start).days == 6
+
+    def test_last_30_days_prior_has_exactly_30_days(self):
+        start, end, prior_start, prior_end, period_key = resolve_period_window(
+            "Last 30 Days"
+        )
+        current_days = (end - start).days + 1
+        prior_days = (prior_end - prior_start).days + 1
+
+        assert current_days == 30
+        assert prior_days == 30
+        assert prior_end == start - timedelta(days=1)
+        assert (prior_end - prior_start).days == 29
+
+    def test_this_week_prior_is_last_week_exact(self):
+        start, end, prior_start, prior_end, period_key = resolve_period_window(
+            "This Week"
+        )
+        current_days = (end - start).days + 1
+        prior_days = (prior_end - prior_start).days + 1
+
+        assert current_days == prior_days
+        assert prior_end == start - timedelta(days=1)
+        assert prior_start == prior_end - timedelta(days=current_days - 1)
+
+    def test_this_month_prior_is_last_month_exact(self):
+        start, end, prior_start, prior_end, period_key = resolve_period_window(
+            "This Month"
+        )
+        current_days = (end - start).days + 1
+        prior_days = (prior_end - prior_start).days + 1
+
+        assert current_days == prior_days
+        assert prior_end == start - timedelta(days=1)
+        assert prior_start == prior_end - timedelta(days=current_days - 1)
 
 
 class TestBuildDailyViewTable:
