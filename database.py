@@ -547,6 +547,24 @@ def get_service_mtd_totals(location_id: int, year: int, month: int) -> Dict[str,
     return _impl(location_id, year, month)
 
 
+def get_mtd_totals_multi(
+    location_ids: List[int], year: int, month: int
+) -> Tuple[Dict[str, float], Dict[str, float]]:
+    """Fetch both category and service MTD totals across multiple locations."""
+    from database_reads import get_mtd_totals_multi as _impl
+
+    return _impl(location_ids, year, month)
+
+
+def get_summaries_for_month_multi(
+    location_ids: List[int], year: int, month: int
+) -> List[Dict]:
+    """Get all summaries for a specific month across multiple locations."""
+    from database_reads import get_summaries_for_month_multi as _impl
+
+    return _impl(location_ids, year, month)
+
+
 def get_summaries_for_date_range(
     location_id: int, start_date: str, end_date: str
 ) -> List[Dict]:
