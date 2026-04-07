@@ -377,7 +377,7 @@ def render(ctx: TabContext) -> None:
                                 share_text=_wa_text,
                                 fallback_url=f"https://wa.me/?text={quote_plus(_wa_text)}",
                             )
-                st.stop()
+                return
 
         with st.expander("Individual PNG sections", expanded=True):
             _sec_meta = [
