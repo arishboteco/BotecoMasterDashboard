@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+import streamlit as st
+
 import database
 
 
@@ -127,6 +129,7 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
     return None
 
 
+@st.cache_data(ttl=300)
 def get_summaries_for_month(location_id: int, year: int, month: int) -> List[Dict]:
     """Get all summaries for a specific month."""
     start_date = f"{year}-{month:02d}-01"
@@ -149,6 +152,7 @@ def get_summaries_for_month(location_id: int, year: int, month: int) -> List[Dic
     return [dict(row) for row in rows]
 
 
+@st.cache_data(ttl=300)
 def get_category_mtd_totals(
     location_id: int, year: int, month: int
 ) -> Dict[str, float]:
@@ -174,6 +178,7 @@ def get_category_mtd_totals(
     return {row["category"]: float(row["total"] or 0) for row in rows}
 
 
+@st.cache_data(ttl=300)
 def get_service_mtd_totals(location_id: int, year: int, month: int) -> Dict[str, float]:
     """Sum service sales amounts for calendar month."""
     start_date = f"{year}-{month:02d}-01"
@@ -197,6 +202,7 @@ def get_service_mtd_totals(location_id: int, year: int, month: int) -> Dict[str,
     return {row["service_type"]: float(row["total"] or 0) for row in rows}
 
 
+@st.cache_data(ttl=120)
 def get_summaries_for_date_range(
     location_id: int, start_date: str, end_date: str
 ) -> List[Dict]:
@@ -215,6 +221,7 @@ def get_summaries_for_date_range(
     return [dict(row) for row in rows]
 
 
+@st.cache_data(ttl=120)
 def get_summaries_for_date_range_multi(
     location_ids: List[int], start_date: str, end_date: str
 ) -> List[Dict]:
@@ -284,6 +291,7 @@ def get_upload_history(location_id: int, limit: int = 50) -> List[Dict]:
     return [dict(row) for row in rows]
 
 
+@st.cache_data(ttl=300)
 def get_recent_summaries(location_id: int, weeks: int = 8) -> List[Dict]:
     """Fetch daily summaries for the last N weeks for a location.
 
