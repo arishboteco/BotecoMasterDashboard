@@ -59,3 +59,10 @@ MAX_FILE_SIZE_MB = 10
 
 # Legacy: was used by All Restaurant Sales parser (removed). Kept for any future multi-outlet tooling.
 DEFAULT_RESTAURANT_FILTER = "Boteco"
+
+# Map CSV "Restaurant" column value → DB location name.
+# Used to auto-detect import location from Dynamic Report CSV files.
+RESTAURANT_NAME_MAP: dict[str, str] = {
+    "Boteco": "Boteco - Indiqube",
+    "Boteco - Bagmane": "Boteco - Bagmane",
+}

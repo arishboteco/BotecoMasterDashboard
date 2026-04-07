@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
+import config
 import database
 import dynamic_report_parser
 import file_detector
@@ -92,6 +93,7 @@ class SmartUploadResult:
     files: List[FileResult]
     days: List[DayResult]
     global_notes: List[str] = field(default_factory=list)
+    location_results: Dict[int, List[DayResult]] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -575,9 +577,26 @@ def process_smart_upload(
             if fr_match:
                 fr_match.error = str(ex)
 
-    # Step 5 — group fragments by date and merge
-    by_date = pos_parser.group_fragments_by_date(fragments)
-    day_results: List[DayResult] = []
+    # Step 5 — group fragments by restaurant → location, then by date and merge
+    from collections import defaultdict as _defaultdict
+
+    # Map restaurant names in CSV → DB location name → location ID
+    _restaurant_to_loc: Dict[str, int] = {}
+    _all_locs = database.get_all_locations()
+    _name_to_id = {str(loc["name"]): int(loc["id"]) for loc in _all_locs}
+    for csv_name, db_name in config.RESTAURANT_NAME_MAP.items():
+        if db_name in _name_to_id:
+            _restaurant_to_loc[csv_name] = _name_to_id[db_name]
+
+    # Split fragments by restaurant (for dynamic_report) vs untagged (other types)
+    by_restaurant: Dict[Optional[str], List[Dict[str, Any]]] = _defaultdict(list)
+    for frag in fragments:
+        rest = frag.get("restaurant")
+        by_restaurant[rest].append(frag)
+
+    # Untagged fragments (item_order_details, etc.) go under None
+    # and will be routed to the first location (if any) or kept standalone.
+    untagged = by_restaurant.pop(None, [])
 
     _KIND_PRIORITY = {
         "dynamic_report": 5,
@@ -586,52 +605,117 @@ def process_smart_upload(
         "flash_report": 30,
     }
 
-    for d in sorted(by_date.keys()):
-        frags = by_date[d]
-        frags.sort(key=lambda f: _KIND_PRIORITY.get(f.get("file_type", ""), 100))
-        source_kinds = sorted(
-            {
-                str(f.get("file_type"))
-                for f in frags
-                if isinstance(f.get("file_type"), str) and f.get("file_type")
-            },
-            key=lambda k: _KIND_PRIORITY.get(k, 100),
-        )
-        merged = pos_parser.merge_upload_fragments(frags)
+    location_results: Dict[int, List[DayResult]] = {}
 
-        # Attach timing services if none already present
-        if timing_services and not merged.get("services"):
-            # Try exact date match first, then fallback to first timing result
-            matched_timing = next(
-                (t for t in timing_services if t.get("date") == d),
-                timing_services[0] if len(timing_services) == 1 else None,
+    for rest_name, rest_frags in by_restaurant.items():
+        loc_id = _restaurant_to_loc.get(rest_name)
+        if loc_id is None:
+            global_notes.append(f"Unknown restaurant '{rest_name}' in CSV — skipped.")
+            continue
+
+        by_date = pos_parser.group_fragments_by_date(rest_frags)
+        day_results: List[DayResult] = []
+
+        for d in sorted(by_date.keys()):
+            frags = by_date[d]
+            frags.sort(key=lambda f: _KIND_PRIORITY.get(f.get("file_type", ""), 100))
+            source_kinds = sorted(
+                {
+                    str(f.get("file_type"))
+                    for f in frags
+                    if isinstance(f.get("file_type"), str) and f.get("file_type")
+                },
+                key=lambda k: _KIND_PRIORITY.get(k, 100),
             )
-            if matched_timing and matched_timing.get("services"):
-                merged["services"] = [
-                    {"type": s["type"], "amount": s["amount"]}
-                    for s in matched_timing["services"]
-                ]
+            merged = pos_parser.merge_upload_fragments(frags)
 
-        # Basic validation / coercion
-        if not merged.get("net_total") and merged.get("gross_total"):
-            merged["net_total"] = float(merged["gross_total"])
-        if not merged.get("gross_total") and merged.get("net_total"):
-            merged["gross_total"] = float(merged["net_total"])
+            # Attach timing services if none already present
+            if timing_services and not merged.get("services"):
+                matched_timing = next(
+                    (t for t in timing_services if t.get("date") == d),
+                    timing_services[0] if len(timing_services) == 1 else None,
+                )
+                if matched_timing and matched_timing.get("services"):
+                    merged["services"] = [
+                        {"type": s["type"], "amount": s["amount"]}
+                        for s in matched_timing["services"]
+                    ]
 
-        ok, verr = pos_parser.validate_data(merged)
-        day_results.append(
-            DayResult(
-                date=d,
-                merged=merged,
-                source_kinds=source_kinds,
-                errors=(verr if not ok else []),
+            # Basic validation / coercion
+            if not merged.get("net_total") and merged.get("gross_total"):
+                merged["net_total"] = float(merged["gross_total"])
+            if not merged.get("gross_total") and merged.get("net_total"):
+                merged["gross_total"] = float(merged["net_total"])
+
+            ok, verr = pos_parser.validate_data(merged)
+            day_results.append(
+                DayResult(
+                    date=d,
+                    merged=merged,
+                    source_kinds=source_kinds,
+                    errors=(verr if not ok else []),
+                )
             )
-        )
+
+        location_results[loc_id] = day_results
+
+    # Handle untagged fragments (item_order_details, etc. — no restaurant column)
+    if untagged:
+        by_date = pos_parser.group_fragments_by_date(untagged)
+        day_results: List[DayResult] = []
+
+        for d in sorted(by_date.keys()):
+            frags = by_date[d]
+            frags.sort(key=lambda f: _KIND_PRIORITY.get(f.get("file_type", ""), 100))
+            source_kinds = sorted(
+                {
+                    str(f.get("file_type"))
+                    for f in frags
+                    if isinstance(f.get("file_type"), str) and f.get("file_type")
+                },
+                key=lambda k: _KIND_PRIORITY.get(k, 100),
+            )
+            merged = pos_parser.merge_upload_fragments(frags)
+
+            if timing_services and not merged.get("services"):
+                matched_timing = next(
+                    (t for t in timing_services if t.get("date") == d),
+                    timing_services[0] if len(timing_services) == 1 else None,
+                )
+                if matched_timing and matched_timing.get("services"):
+                    merged["services"] = [
+                        {"type": s["type"], "amount": s["amount"]}
+                        for s in matched_timing["services"]
+                    ]
+
+            if not merged.get("net_total") and merged.get("gross_total"):
+                merged["net_total"] = float(merged["gross_total"])
+            if not merged.get("gross_total") and merged.get("net_total"):
+                merged["gross_total"] = float(merged["net_total"])
+
+            ok, verr = pos_parser.validate_data(merged)
+            day_results.append(
+                DayResult(
+                    date=d,
+                    merged=merged,
+                    source_kinds=source_kinds,
+                    errors=(verr if not ok else []),
+                )
+            )
+
+        # Route untagged to the first available location (or fallback to provided location_id)
+        fallback_loc = location_id or next(iter(location_results), None)
+        if fallback_loc is not None:
+            location_results.setdefault(fallback_loc, []).extend(day_results)
+        else:
+            # No dynamic report and no fallback — use a sentinel key so data isn't lost
+            location_results[location_id] = day_results
 
     return SmartUploadResult(
         files=file_results,
-        days=day_results,
+        days=[],  # deprecated; use location_results
         global_notes=global_notes,
+        location_results=location_results,
     )
 
 
@@ -645,6 +729,9 @@ def save_smart_upload_results(
 ) -> Tuple[int, int, List[str]]:
     """
     Save valid DayResult entries to the database.
+
+    Uses result.location_results[location_id] if available,
+    otherwise falls back to result.days for backward compatibility.
 
     Returns (saved_count, skipped_count, messages).
     """
@@ -660,7 +747,9 @@ def save_smart_upload_results(
     skipped = 0
     messages: List[str] = []
 
-    for day in result.days:
+    days = result.location_results.get(location_id, result.days)
+
+    for day in days:
         if day.errors:
             skipped += 1
             messages.append(f"Skipped {day.date}: " + " · ".join(day.errors))

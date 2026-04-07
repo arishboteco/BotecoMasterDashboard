@@ -193,11 +193,17 @@ class TestProcessSmartUpload:
         monkeypatch.setattr(
             smart_upload.pos_parser, "validate_data", lambda data: (True, [])
         )
+        monkeypatch.setattr(
+            smart_upload.database,
+            "get_all_locations",
+            lambda: [{"id": 1, "name": "Boteco - Indiqube"}],
+        )
 
         result = smart_upload.process_smart_upload(
             [("item.xlsx", b"x"), ("orders.csv", b"x")],
             location_id=1,
         )
 
-        dates = [d.date for d in result.days]
+        days = result.location_results.get(1, [])
+        dates = [d.date for d in days]
         assert dates == ["2026-04-01", "2026-04-02"]

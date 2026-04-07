@@ -132,6 +132,14 @@ def parse_dynamic_report(
     if missing:
         return None, [f"{filename} missing required columns: {', '.join(missing)}"]
 
+    # Extract restaurant name (column A) for location routing
+    rest_col = col_map.get("restaurant")
+    restaurant_name: Optional[str] = None
+    if rest_col and not df.empty:
+        first_val = str(df[rest_col].iloc[0]).strip()
+        if first_val and first_val.lower() not in ("", "nan", "none"):
+            restaurant_name = first_val
+
     # Filter to successful orders only
     if "bill status" in col_map:
         status_col = col_map["bill status"]
@@ -263,6 +271,7 @@ def parse_dynamic_report(
             "categories": categories,
             "services": services,
             "file_type": "dynamic_report",
+            "restaurant": restaurant_name,
         }
         results.append(record)
 

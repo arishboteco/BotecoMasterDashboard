@@ -11,9 +11,7 @@ class TabContext:
     """Shared context passed to every tab's render() function."""
 
     location_id: int
-    import_loc_id: int
     report_loc_ids: List[int]
     report_display_name: str
     all_locs: List[Dict[str, Any]]
     location_settings: Optional[Dict[str, Any]]
-    import_location_settings: Optional[Dict[str, Any]]

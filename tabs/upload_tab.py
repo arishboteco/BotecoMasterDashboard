@@ -23,15 +23,9 @@ def render(ctx: TabContext) -> None:
     """Render the Upload tab UI and handle import logic."""
     st.header("Upload POS Data")
 
-    _imp_nm = (
-        ctx.import_location_settings.get("name", "")
-        if ctx.import_location_settings
-        else ""
-    ) or str(ctx.import_loc_id)
-
     st.caption(
-        f"Drop **any** Petpooja exports below — the system auto-detects file types. "
-        f"Importing to: **{_imp_nm}**"
+        "Drop **any** Petpooja exports below — the system auto-detects file types "
+        "and routes data to the correct outlet automatically."
     )
 
     flash = st.session_state.pop("_import_summary_flash", None)
@@ -46,10 +40,10 @@ def render(ctx: TabContext) -> None:
         st.markdown(
             "**Just drop all your Petpooja downloads at once.** The system will:\n\n"
             "1. **Auto-detect** each file type from its content (not filename)\n"
-            "2. **Import** Dynamic Report CSV (primary data) and Item Reports (fallback)\n"
+            "2. **Auto-route** data to the correct outlet using the Restaurant column\n"
             "3. **Skip** redundant files (Group Wise, All Restaurant, Comparison)\n"
             "4. **Merge** data for the same date from multiple files\n\n"
-            "Saving for the same **location + date** overwrites that day's data."
+            "Saving for the same **outlet + date** overwrites that day's data."
         )
 
     st.markdown("### Drop your files")
@@ -97,26 +91,39 @@ def render(ctx: TabContext) -> None:
 
         if importable_count > 0:
             upload_result = smart_upload.process_smart_upload(
-                files_payload, ctx.import_loc_id
+                files_payload,
+                ctx.location_id,
             )
 
+            loc_name_map = {loc["id"]: loc["name"] for loc in ctx.all_locs}
+
+            # Show detected outlets
+            if upload_result.location_results:
+                outlet_names = [
+                    loc_name_map.get(lid, str(lid))
+                    for lid in upload_result.location_results
+                ]
+                st.info(f"Auto-detected outlets: **{'**, **'.join(outlet_names)}**")
+
+            # Collect overlaps across all locations
             overlap_rows: list = []
-            for day in upload_result.days:
-                if day.errors:
-                    continue
-                prev_net = database.peek_daily_net_sales(ctx.import_loc_id, day.date)
-                if prev_net is not None:
-                    overlap_rows.append((day.date, prev_net))
+            for lid, days in upload_result.location_results.items():
+                for day in days:
+                    if day.errors:
+                        continue
+                    prev_net = database.peek_daily_net_sales(lid, day.date)
+                    if prev_net is not None:
+                        ovr_name = loc_name_map.get(lid, str(lid))
+                        overlap_rows.append((ovr_name, day.date, prev_net))
 
             must_confirm_replace = len(overlap_rows) > 0
             if overlap_rows:
                 lines = "\n".join(
-                    f"- **{d}** \u2014 saved net sales {utils.format_currency(n)}"
-                    for d, n in overlap_rows
+                    f"- **{n}** — **{d}** — saved net sales {utils.format_currency(v)}"
+                    for n, d, v in overlap_rows
                 )
                 st.warning(
-                    f"These dates already have data for **{_imp_nm}** "
-                    f"and will be **replaced**:\n{lines}"
+                    "These dates already have data and will be **replaced**:\n" + lines
                 )
 
             if must_confirm_replace:
@@ -146,50 +153,60 @@ def render(ctx: TabContext) -> None:
                         if fr.error:
                             st.error(f"**{fr.filename}**: {fr.error}")
 
-                    monthly_tgt = (
-                        ctx.import_location_settings.get(
-                            "target_monthly_sales", config.MONTHLY_TARGET
-                        )
-                        if ctx.import_location_settings
-                        else config.MONTHLY_TARGET
-                    )
-                    daily_tgt = (
-                        ctx.import_location_settings.get(
-                            "target_daily_sales", config.DAILY_TARGET
-                        )
-                        if ctx.import_location_settings
-                        else config.DAILY_TARGET
-                    )
-                    sc_setting = (
-                        ctx.import_location_settings.get("seat_count")
-                        if ctx.import_location_settings
-                        else None
-                    )
                     uploaded_by = st.session_state.get("username") or "user"
-                    saved_days, skipped_validation, save_messages = (
-                        smart_upload.save_smart_upload_results(
-                            upload_result,
-                            ctx.import_loc_id,
-                            uploaded_by,
-                            monthly_target=float(monthly_tgt),
-                            daily_target=float(daily_tgt),
-                            seat_count=(int(sc_setting) if sc_setting else None),
-                        )
-                    )
+                    total_saved = 0
+                    total_skipped = 0
+                    all_save_messages: list = []
 
-                    for msg in save_messages:
-                        if msg.startswith("Saved "):
-                            st.success(msg)
-                        else:
-                            st.error(msg)
+                    for lid, days in upload_result.location_results.items():
+                        loc_settings = database.get_location_settings(lid)
+                        monthly_tgt = (
+                            loc_settings.get(
+                                "target_monthly_sales", config.MONTHLY_TARGET
+                            )
+                            if loc_settings
+                            else config.MONTHLY_TARGET
+                        )
+                        daily_tgt = (
+                            loc_settings.get("target_daily_sales", config.DAILY_TARGET)
+                            if loc_settings
+                            else config.DAILY_TARGET
+                        )
+                        sc_setting = (
+                            loc_settings.get("seat_count") if loc_settings else None
+                        )
+
+                        # Build a per-location SmartUploadResult for save function
+                        loc_result = smart_upload.SmartUploadResult(
+                            files=upload_result.files,
+                            days=days,
+                            global_notes=[],
+                            location_results={lid: days},
+                        )
+                        saved_days, skipped_validation, save_messages = (
+                            smart_upload.save_smart_upload_results(
+                                loc_result,
+                                lid,
+                                uploaded_by,
+                                monthly_target=float(monthly_tgt),
+                                daily_target=float(daily_tgt),
+                                seat_count=(int(sc_setting) if sc_setting else None),
+                            )
+                        )
+                        total_saved += saved_days
+                        total_skipped += skipped_validation
+                        ovr_name = loc_name_map.get(lid, str(lid))
+                        all_save_messages.append(
+                            f"**{ovr_name}:** {saved_days} day(s) saved, "
+                            f"{skipped_validation} day(s) skipped."
+                        )
+
+                    for msg in all_save_messages:
+                        st.info(msg)
 
                     note_count = len(upload_result.global_notes)
-                    st.info(
-                        f"**Import complete:** {saved_days} day(s) saved, "
-                        f"{skipped_validation} day(s) skipped."
-                    )
 
-                    if saved_days > 0:
+                    if total_saved > 0:
                         most_recent_date = database.get_most_recent_date_with_data(
                             ctx.report_loc_ids
                         )
@@ -201,8 +218,8 @@ def render(ctx: TabContext) -> None:
                             st.session_state["report_date_picker"] = latest_date
 
                         st.session_state["_import_summary_flash"] = (
-                            saved_days,
-                            skipped_validation,
+                            total_saved,
+                            total_skipped,
                             note_count,
                         )
                         st.rerun()
@@ -305,7 +322,7 @@ def render(ctx: TabContext) -> None:
 
     st.markdown("---")
     st.markdown("### Recent Entries")
-    history = database.get_upload_history(ctx.import_loc_id, 10)
+    history = database.get_upload_history(ctx.location_id, 10)
     if history:
         hdf = pd.DataFrame(history)
         drop_cols = [c for c in ("id", "location_id") if c in hdf.columns]
