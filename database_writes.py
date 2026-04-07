@@ -376,54 +376,53 @@ def backfill_weekday_weighted_targets() -> Tuple[int, int]:
             database.logger.info("weekday_target_backfill already run, skipping.")
             return 0, 0
 
-    updated_total = 0
-    locations_processed = 0
-
     with database.db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT DISTINCT location_id FROM daily_summaries")
         location_ids = [row["location_id"] for row in cursor.fetchall()]
 
-    for loc_id in location_ids:
-        recent = database.get_recent_summaries(loc_id, weeks=8)
-        weekday_mix = utils.compute_weekday_mix(recent)
+    updated_total = 0
+    locations_processed = 0
 
-        st = database.get_location_settings(loc_id)
-        monthly = (
-            float(st["target_monthly_sales"])
-            if st and st.get("target_monthly_sales")
-            else float(config.MONTHLY_TARGET)
-        )
-        day_targets = utils.compute_day_targets(monthly, weekday_mix)
+    with database.db_connection() as conn:
+        cursor = conn.cursor()
+        for loc_id in location_ids:
+            recent = database.get_recent_summaries(loc_id, weeks=8)
+            weekday_mix = utils.compute_weekday_mix(recent)
 
-        with database.db_connection() as conn:
-            cursor = conn.cursor()
+            st = database.get_location_settings(loc_id)
+            monthly = (
+                float(st["target_monthly_sales"])
+                if st and st.get("target_monthly_sales")
+                else float(config.MONTHLY_TARGET)
+            )
+            day_targets = utils.compute_day_targets(monthly, weekday_mix)
+
             cursor.execute(
                 "SELECT id, date FROM daily_summaries WHERE location_id = ?",
                 (loc_id,),
             )
             rows = cursor.fetchall()
 
-        for row in rows:
-            new_target = utils.get_target_for_date(day_targets, row["date"])
-            with database.db_connection() as conn:
-                cursor = conn.cursor()
+            for row in rows:
+                new_target = utils.get_target_for_date(day_targets, row["date"])
                 cursor.execute(
                     "UPDATE daily_summaries SET target = ? WHERE id = ?",
                     (new_target, row["id"]),
                 )
-        updated_total += len(rows)
-        locations_processed += 1
-        database.logger.info(
-            f"Location {loc_id}: updated {len(rows)} rows with weekday-weighted targets"
-        )
+            updated_total += len(rows)
+            locations_processed += 1
+            database.logger.info(
+                f"Location {loc_id}: updated {len(rows)} rows with weekday-weighted targets"
+            )
 
-    with database.db_connection() as conn:
-        cursor = conn.cursor()
+        conn.commit()
+
         cursor.execute(
             "INSERT OR REPLACE INTO app_meta (k, v) VALUES (?, ?)",
             ("weekday_target_backfill", "done"),
         )
+        conn.commit()
 
     database.logger.info(
         f"backfill_weekday_weighted_targets complete: {updated_total} rows across {locations_processed} locations"
