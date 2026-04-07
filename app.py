@@ -121,12 +121,17 @@ else:
         auth.logout()
 
     # Build shared context
+    import_loc_id = int(st.session_state.location_id)
+    import_location_settings = database.get_location_settings(import_loc_id)
+
     ctx = TabContext(
         location_id=location_id,
+        import_loc_id=import_loc_id,
         report_loc_ids=report_loc_ids,
         report_display_name=report_display_name,
         all_locs=all_locs,
         location_settings=database.get_location_settings(location_id),
+        import_location_settings=import_location_settings,
     )
 
     # Tabs
