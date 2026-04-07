@@ -140,6 +140,7 @@ def render(ctx: TabContext) -> None:
             foot_rows = database.get_summaries_for_month_multi(
                 ctx.report_loc_ids, y_m[0], y_m[1]
             )
+            per_outlet_footfall = None
             per_outlet_cat = None
             per_outlet_svc = None
         else:
