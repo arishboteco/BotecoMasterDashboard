@@ -111,18 +111,12 @@ def render(ctx: TabContext) -> None:
         per_outlet_cat = None
         per_outlet_svc = None
         if len(ctx.report_loc_ids) > 1:
-            mtd_cat = database.get_category_mtd_totals_multi(
+            mtd_cat, mtd_svc = database.get_mtd_totals_multi(
                 ctx.report_loc_ids, y_m[0], y_m[1]
             )
-            mtd_svc = database.get_service_mtd_totals_multi(
-                ctx.report_loc_ids, y_m[0], y_m[1]
-            )
-            # Get per-outlet footfall metrics (monthly + weekly aggregated data)
-            # Calculate date range: last 9 months for monthly, current week + 3 previous weeks for weekly
             _today = datetime.now().date()
             _end = _today.strftime("%Y-%m-%d")
-            # 9 months back
-            _start_mo = _today
+            _start_mo = _today.replace(day=1)
             for _ in range(9):
                 _m = _start_mo.month - 1
                 if _m == 0:
@@ -130,8 +124,7 @@ def render(ctx: TabContext) -> None:
                     _start_mo = _start_mo.replace(year=_start_mo.year - 1, month=_m)
                 else:
                     _start_mo = _start_mo.replace(month=_m)
-            _start_mo_str = _start_mo.replace(day=1).strftime("%Y-%m-%d")
-            # 4 weeks: current week (Mon-Sun) + previous 3 weeks
+            _start_mo_str = _start_mo.strftime("%Y-%m-%d")
             _days_since_monday = _today.weekday()
             _current_week_monday = _today - timedelta(days=_days_since_monday)
             _start_wk = (_current_week_monday - timedelta(weeks=3)).strftime("%Y-%m-%d")
@@ -144,17 +137,11 @@ def render(ctx: TabContext) -> None:
                 )
                 for lid, name, _ in outlets_bundle
             ]
-            foot_rows = []
-            per_outlet_footfall = None
-            # Per-outlet MTD category & service for PNG sections
-            per_outlet_cat = [
-                (name, database.get_category_mtd_totals(lid, y_m[0], y_m[1]))
-                for lid, name, _ in outlets_bundle
-            ]
-            per_outlet_svc = [
-                (name, database.get_service_mtd_totals(lid, y_m[0], y_m[1]))
-                for lid, name, _ in outlets_bundle
-            ]
+            foot_rows = database.get_summaries_for_month_multi(
+                ctx.report_loc_ids, y_m[0], y_m[1]
+            )
+            per_outlet_cat = None
+            per_outlet_svc = None
         else:
             mtd_cat = database.get_category_mtd_totals(
                 ctx.report_loc_ids[0], y_m[0], y_m[1]
@@ -167,6 +154,8 @@ def render(ctx: TabContext) -> None:
             )
             per_outlet_footfall = None
             per_outlet_footfall_metrics = None
+            per_outlet_cat = None
+            per_outlet_svc = None
 
         section_bufs = reports.generate_sheet_style_report_sections(
             summary,

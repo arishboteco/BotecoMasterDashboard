@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import streamlit as st
 
@@ -236,6 +236,80 @@ def get_summaries_for_date_range_multi(
             SELECT * FROM daily_summaries
             WHERE location_id IN ({placeholders}) AND date >= ? AND date <= ?
             ORDER BY date, location_id
+            """,
+            (*location_ids, start_date, end_date),
+        )
+        rows = cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+@st.cache_data(ttl=300)
+def get_mtd_totals_multi(
+    location_ids: List[int], year: int, month: int
+) -> Tuple[Dict[str, float], Dict[str, float]]:
+    """Fetch both category and service MTD totals across multiple locations in one query.
+
+    Returns (category_totals, service_totals).
+    """
+    if not location_ids:
+        return {}, {}
+    placeholders = ",".join("?" * len(location_ids))
+    start_date = f"{year}-{month:02d}-01"
+    if month == 12:
+        end_date = f"{year + 1}-01-01"
+    else:
+        end_date = f"{year}-{month + 1:02d}-01"
+
+    with database.db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            SELECT cs.category, SUM(cs.amount) AS total
+            FROM category_sales cs
+            INNER JOIN daily_summaries ds ON cs.summary_id = ds.id
+            WHERE ds.location_id IN ({placeholders}) AND ds.date >= ? AND ds.date < ?
+            GROUP BY cs.category
+            """,
+            (*location_ids, start_date, end_date),
+        )
+        cat_rows = cursor.fetchall()
+        cursor.execute(
+            f"""
+            SELECT sv.service_type, SUM(sv.amount) AS total
+            FROM service_sales sv
+            INNER JOIN daily_summaries ds ON sv.summary_id = ds.id
+            WHERE ds.location_id IN ({placeholders}) AND ds.date >= ? AND ds.date < ?
+            GROUP BY sv.service_type
+            """,
+            (*location_ids, start_date, end_date),
+        )
+        svc_rows = cursor.fetchall()
+
+    cat_totals = {row["category"]: float(row["total"] or 0) for row in cat_rows}
+    svc_totals = {row["service_type"]: float(row["total"] or 0) for row in svc_rows}
+    return cat_totals, svc_totals
+
+
+@st.cache_data(ttl=300)
+def get_summaries_for_month_multi(
+    location_ids: List[int], year: int, month: int
+) -> List[Dict]:
+    """Get all summaries for a specific month across multiple locations."""
+    if not location_ids:
+        return []
+    placeholders = ",".join("?" * len(location_ids))
+    start_date = f"{year}-{month:02d}-01"
+    if month == 12:
+        end_date = f"{year + 1}-01-01"
+    else:
+        end_date = f"{year}-{month + 1:02d}-01"
+    with database.db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            SELECT * FROM daily_summaries
+            WHERE location_id IN ({placeholders}) AND date >= ? AND date < ?
+            ORDER BY date
             """,
             (*location_ids, start_date, end_date),
         )
