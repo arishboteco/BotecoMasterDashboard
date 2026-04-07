@@ -1,12 +1,15 @@
 """Multi-location report scope: aggregate daily summaries for combined views."""
+
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import config
 import database
 import pos_parser as parser
+import utils
 
 
 def sum_location_monthly_targets(location_ids: List[int]) -> float:
@@ -27,7 +30,9 @@ def sum_location_seat_counts(location_ids: List[int]) -> int:
     return n
 
 
-def aggregate_daily_summaries(summaries: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+def aggregate_daily_summaries(
+    summaries: List[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
     """Merge multiple DB summary dicts (same calendar date, different locations)."""
     summaries = [s for s in summaries if s]
     if not summaries:
@@ -122,11 +127,11 @@ def _synthetic_daily_summary(location_id: int, date_str: str) -> Dict[str, Any]:
         if st and st.get("target_monthly_sales")
         else float(config.MONTHLY_TARGET)
     )
-    daily_tgt = (
-        float(st["target_daily_sales"])
-        if st and st.get("target_daily_sales")
-        else monthly / 30.0
-    )
+    recent = database.get_recent_summaries(location_id, weeks=8)
+    weekday_mix = utils.compute_weekday_mix(recent)
+    day_targets = utils.compute_day_targets(monthly, weekday_mix)
+    day_target = utils.get_target_for_date(day_targets, date_str)
+
     return {
         "date": date_str,
         "location_id": location_id,
@@ -143,7 +148,7 @@ def _synthetic_daily_summary(location_id: int, date_str: str) -> Dict[str, Any]:
         "sgst": 0.0,
         "discount": 0.0,
         "complimentary": 0.0,
-        "target": daily_tgt,
+        "target": day_target,
         "categories": [],
         "services": [],
         "lunch_covers": None,
@@ -196,7 +201,9 @@ def get_daily_report_bundle(
     return outlets, combined_e
 
 
-def merge_month_footfall_rows(location_ids: List[int], year: int, month: int) -> List[Dict[str, Any]]:
+def merge_month_footfall_rows(
+    location_ids: List[int], year: int, month: int
+) -> List[Dict[str, Any]]:
     by_date: Dict[str, Dict[str, Any]] = defaultdict(
         lambda: {"covers": 0, "lunch_covers": 0, "dinner_covers": 0, "has_split": False}
     )
@@ -205,7 +212,10 @@ def merge_month_footfall_rows(location_ids: List[int], year: int, month: int) ->
             d = str(row.get("date", ""))[:10]
             b = by_date[d]
             b["covers"] += int(row.get("covers") or 0)
-            if row.get("lunch_covers") is not None or row.get("dinner_covers") is not None:
+            if (
+                row.get("lunch_covers") is not None
+                or row.get("dinner_covers") is not None
+            ):
                 b["has_split"] = True
                 b["lunch_covers"] += int(row.get("lunch_covers") or 0)
                 b["dinner_covers"] += int(row.get("dinner_covers") or 0)

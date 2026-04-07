@@ -760,8 +760,14 @@ def render_revenue_breakdown(
         )
         wd_agg = wd_agg.sort_values("weekday")
         monthly_tgt = scope.sum_location_monthly_targets(report_loc_ids)
-        days_in_mo = utils.get_days_in_month(start_date.year, start_date.month)
-        daily_tgt = monthly_tgt / days_in_mo if monthly_tgt > 0 else 0
+        if monthly_tgt > 0 and len(report_loc_ids) == 1:
+            recent = database.get_recent_summaries(report_loc_ids[0], weeks=8)
+            weekday_mix = utils.compute_weekday_mix(recent)
+            day_targets = utils.compute_day_targets(monthly_tgt, weekday_mix)
+            daily_tgt = sum(day_targets.values()) / len(day_targets)
+        else:
+            days_in_mo = utils.get_days_in_month(start_date.year, start_date.month)
+            daily_tgt = monthly_tgt / days_in_mo if monthly_tgt > 0 else 0
 
         # Best/worst day identification for conditional coloring
         _best_idx = wd_agg["avg_sales"].idxmax()
