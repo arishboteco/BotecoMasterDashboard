@@ -16,7 +16,7 @@ import scope
 import sheet_reports as reports
 import utils
 from tabs import TabContext
-from components import divider
+from components import date_nav, divider
 
 
 def render(ctx: TabContext) -> None:
@@ -32,35 +32,11 @@ def render(ctx: TabContext) -> None:
         else:
             st.session_state["report_date"] = datetime.now().date()
 
-    selected_date = st.session_state["report_date"]
-    date_display = selected_date.strftime("%a, %d %b %Y")
-
-    nav_col1, nav_col2, nav_col3 = st.columns([1, 4, 1])
-    with nav_col1:
-        if st.button("\u25c0 Prev", key="report_prev_day", use_container_width=True):
-            st.session_state["report_date"] -= timedelta(days=1)
-            st.rerun()
-    with nav_col2:
-        st.markdown(
-            f'<div class="date-display" style="text-align:center;">{date_display}</div>',
-            unsafe_allow_html=True,
-        )
-
-    # Date picker below navigation for clearer access
-    picked = st.date_input(
-        "Select a date",
-        value=selected_date,
-        key="report_date_picker",
-        format="DD/MM/YYYY",
-        help="Choose a date to view that day's report",
+    selected_date = date_nav(
+        session_key="report_date",
+        label="Select a date",
+        help_text="Choose a date to view that day's report",
     )
-    if picked != selected_date:
-        st.session_state["report_date"] = picked
-        st.rerun()
-    with nav_col3:
-        if st.button("Next \u25b6", key="report_next_day", use_container_width=True):
-            st.session_state["report_date"] += timedelta(days=1)
-            st.rerun()
 
     date_str = selected_date.strftime("%Y-%m-%d")
     outlets_bundle, summary = scope.get_daily_report_bundle(
