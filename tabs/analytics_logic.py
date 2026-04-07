@@ -99,7 +99,7 @@ def build_daily_view_table(
         _num_pct = (_num_net / _num_target * 100).where(_num_target > 0, 0)
 
     if numeric:
-        dv["pct_target"] = (_num_net / _num_target * 100) if _num_target > 0 else 0
+        dv["pct_target"] = (_num_net / _num_target * 100).where(_num_target > 0, 0)
         # Add totals row
         if multi_analytics and not df_raw.empty:
             totals = pd.DataFrame(
