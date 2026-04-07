@@ -656,6 +656,17 @@ def save_upload_record(
     _impl(location_id, date, filename, file_type, uploaded_by)
 
 
+def backfill_weekday_weighted_targets() -> Tuple[int, int]:
+    """One-time backfill: recompute all existing daily_summaries target values.
+
+    Uses per-location weekday mix to produce day-specific targets instead of uniform.
+    Returns (updated_count, locations_processed). Idempotent — only runs once.
+    """
+    from database_writes import backfill_weekday_weighted_targets as _impl
+
+    return _impl()
+
+
 def get_top_items_for_date_range(
     location_ids: List[int], start_date: str, end_date: str, limit: int = 20
 ) -> List[Dict]:
