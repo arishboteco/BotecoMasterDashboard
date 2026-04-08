@@ -61,35 +61,41 @@ def get_all_summaries_for_export(
     """Return daily summary rows (with location name) for CSV/Excel export."""
     if database.use_supabase():
         supabase = database.get_supabase_client()
+
+        location_map = {
+            loc["id"]: loc["name"]
+            for loc in supabase.table("locations").select("id,name").execute().data
+        }
+
         query = supabase.table("daily_summaries").select(
             """
-            l.name as outlet,
-            ds.date,
-            ds.covers,
-            ds.order_count,
-            ds.gross_total,
-            ds.net_total,
-            ds.cash_sales,
-            ds.card_sales,
-            ds.gpay_sales,
-            ds.zomato_sales,
-            ds.other_sales,
-            ds.discount,
-            ds.complimentary,
-            ds.service_charge,
-            ds.cgst,
-            ds.sgst,
-            ds.apc,
-            ds.turns,
-            ds.target,
-            ds.pct_target,
-            ds.lunch_covers,
-            ds.dinner_covers,
-            ds.mtd_net_sales,
-            ds.mtd_total_covers,
-            ds.mtd_avg_daily,
-            ds.mtd_target,
-            ds.mtd_pct_target
+            location_id,
+            date,
+            covers,
+            order_count,
+            gross_total,
+            net_total,
+            cash_sales,
+            card_sales,
+            gpay_sales,
+            zomato_sales,
+            other_sales,
+            discount,
+            complimentary,
+            service_charge,
+            cgst,
+            sgst,
+            apc,
+            turns,
+            target,
+            pct_target,
+            lunch_covers,
+            dinner_covers,
+            mtd_net_sales,
+            mtd_total_covers,
+            mtd_avg_daily,
+            mtd_target,
+            mtd_pct_target
             """
         )
 
@@ -102,7 +108,12 @@ def get_all_summaries_for_export(
 
         query = query.order("date", desc=True)
         result = query.execute()
-        return result.data
+
+        rows = []
+        for row in result.data:
+            row["outlet"] = location_map.get(row.get("location_id"), "Unknown")
+            rows.append(row)
+        return rows
     else:
         with database.db_connection() as conn:
             cursor = conn.cursor()
