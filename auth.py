@@ -75,19 +75,21 @@ def init_auth_state():
     # one full render cycle to synchronize. Retry up to 3 times with reruns to
     # give it time to arrive before we conclude there's no valid session.
     for attempt in range(3):
-        if not st.session_state.get("_cm"):
+        try:
+            token = st.session_state._cm.get(_COOKIE_NAME)
+        except TypeError:
             break
-        token = st.session_state._cm.get(_COOKIE_NAME)
-        if token:
-            user = database.validate_session_token(token)
-            if user:
-                _apply_user_to_session(user, token)
-            else:
-                st.session_state._cm.remove(_COOKIE_NAME)
-                st.rerun()  # clear stale cookie and re-render
-            break
-        if attempt < 2:
+        if not token:
+            if attempt < 2:
+                st.rerun()
+            continue
+        user = database.validate_session_token(token)
+        if user:
+            _apply_user_to_session(user, token)
+        else:
+            st.session_state._cm.remove(_COOKIE_NAME)
             st.rerun()
+        break
 
 
 def show_login_form():
