@@ -77,6 +77,32 @@ def db_connection():
         conn.close()
 
 
+# Supabase client (lazy initialization)
+_supabase_client = None
+_use_supabase_override: bool | None = None
+
+
+def get_supabase_client():
+    """Get or create Supabase client."""
+    global _supabase_client
+    if _supabase_client is None:
+        try:
+            from supabase import create_client
+
+            _supabase_client = create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
+        except ImportError:
+            logger.warning("supabase package not installed")
+            return None
+    return _supabase_client
+
+
+def use_supabase() -> bool:
+    """Check if Supabase is configured and available."""
+    if _use_supabase_override is not None:
+        return _use_supabase_override
+    return bool(config.SUPABASE_KEY and get_supabase_client())
+
+
 def init_database():
     """Initialize database with all tables."""
     conn = get_connection()
