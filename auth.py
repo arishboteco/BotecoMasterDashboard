@@ -71,15 +71,21 @@ def init_auth_state():
         return  # already logged in this server-side session
 
     # Attempt cookie-based session restoration.
-    # Returns None on the very first render (JS not yet run); the component
-    # automatically triggers a rerun once it has sent the cookie data.
-    token = st.session_state._cm.get(_COOKIE_NAME)
-    if token:
-        user = database.validate_session_token(token)
-        if user:
-            _apply_user_to_session(user, token)
-        else:
-            st.session_state._cm.remove(_COOKIE_NAME)  # stale / expired
+    # Cookie data arrives from JS asynchronously. The component needs at least
+    # one full render cycle to synchronize. Retry up to 3 times with reruns to
+    # give it time to arrive before we conclude there's no valid session.
+    for attempt in range(3):
+        token = st.session_state._cm.get(_COOKIE_NAME)
+        if token:
+            user = database.validate_session_token(token)
+            if user:
+                _apply_user_to_session(user, token)
+            else:
+                st.session_state._cm.remove(_COOKIE_NAME)
+                st.rerun()  # clear stale cookie and re-render
+            break
+        if attempt < 2:
+            st.rerun()
 
 
 def show_login_form():
