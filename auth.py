@@ -250,7 +250,7 @@ def logout():
     if cm is not None:
         try:
             cm.remove(_COOKIE_NAME)
-        except TypeError:
+        except (TypeError, AttributeError):
             pass
 
     st.session_state.authenticated = False
