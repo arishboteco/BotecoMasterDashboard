@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from datetime import datetime, timedelta
 
 import streamlit as st
@@ -11,16 +11,18 @@ _COOKIE_NAME = "boteco_session"
 _COOKIE_EXPIRY_DAYS = 30
 
 
-def _get_cookie_manager() -> CookieController:
+def _get_cookie_manager() -> Optional[CookieController]:
     """Return the CookieController for the current render.
 
     A fresh instance is created once per render inside init_auth_state() and
     stored in st.session_state so that subsequent calls within the same render
     reuse it (avoiding duplicate-component-key errors).
     """
-    if "_cm" not in st.session_state:
-        # Fallback: shouldn't normally be needed if init_auth_state() runs first
-        st.session_state._cm = CookieController(key="boteco_cookie_manager")
+    if "_cm" not in st.session_state or st.session_state._cm is None:
+        try:
+            st.session_state._cm = CookieController(key="boteco_cookie_manager")
+        except TypeError:
+            return None
     return st.session_state._cm
 
 
@@ -65,7 +67,10 @@ def init_auth_state():
     # that its internal __cookies dict reflects the latest component state.
     # Storing it in session_state lets other functions reuse it within this
     # render without creating a duplicate component call.
-    st.session_state._cm = CookieController(key="boteco_cookie_manager")
+    try:
+        st.session_state._cm = CookieController(key="boteco_cookie_manager")
+    except TypeError:
+        st.session_state._cm = None
 
     if st.session_state.authenticated:
         return  # already logged in this server-side session
@@ -77,7 +82,7 @@ def init_auth_state():
     for attempt in range(3):
         try:
             token = st.session_state._cm.get(_COOKIE_NAME)
-        except TypeError:
+        except (TypeError, AttributeError):
             break
         if not token:
             if attempt < 2:
@@ -87,7 +92,11 @@ def init_auth_state():
         if user:
             _apply_user_to_session(user, token)
         else:
-            st.session_state._cm.remove(_COOKIE_NAME)
+            if st.session_state._cm is not None:
+                try:
+                    st.session_state._cm.remove(_COOKIE_NAME)
+                except (TypeError, AttributeError):
+                    pass
             st.rerun()
         break
 
@@ -122,11 +131,14 @@ def show_login_form():
                     token = database.create_user_session(
                         user["id"], days=_COOKIE_EXPIRY_DAYS
                     )
-                    _get_cookie_manager().set(
-                        _COOKIE_NAME,
-                        token,
-                        expires=datetime.now() + timedelta(days=_COOKIE_EXPIRY_DAYS),
-                    )
+                    cm = _get_cookie_manager()
+                    if cm is not None:
+                        cm.set(
+                            _COOKIE_NAME,
+                            token,
+                            expires=datetime.now()
+                            + timedelta(days=_COOKIE_EXPIRY_DAYS),
+                        )
                     _apply_user_to_session(user, token)
                     st.rerun()
                 else:
@@ -231,7 +243,9 @@ def logout():
     token = st.session_state.get("session_token")
     if token:
         database.delete_session_token(token)
-    _get_cookie_manager().remove(_COOKIE_NAME)
+    cm = _get_cookie_manager()
+    if cm is not None:
+        cm.remove(_COOKIE_NAME)
 
     st.session_state.authenticated = False
     st.session_state.username = None
