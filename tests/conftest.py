@@ -29,10 +29,11 @@ def initialized_db(tmp_db_path, monkeypatch):
     """Initialize a fresh in-memory-like SQLite DB against a temp file.
 
     Patches DATABASE_PATH so all database module operations use the temp file.
+    Also disables Supabase mode to ensure tests use the temp SQLite DB.
     """
     monkeypatch.setattr(database, "DATABASE_PATH", tmp_db_path)
+    monkeypatch.setattr(database, "_use_supabase_override", False)
     database.init_database()
-    # Ensure at least one location exists for tests that need it
     with database.db_connection() as conn:
         conn.execute(
             "INSERT OR IGNORE INTO locations (name) VALUES (?)", ("Test Outlet",)
