@@ -385,3 +385,15 @@ def get_recent_summaries(location_id: int, weeks: int = 8) -> List[Dict]:
         )
         rows = cursor.fetchall()
     return [dict(row) for row in rows]
+
+
+def clear_location_cache(location_id: int) -> None:
+    """Clear all @st.cache_data caches for a specific location.
+
+    Called after successful upload to ensure subsequent reads
+    reflect the new data immediately.
+    """
+    get_summaries_for_month.clear(location_id=location_id)
+    get_category_mtd_totals.clear(location_id=location_id)
+    get_service_mtd_totals.clear(location_id=location_id)
+    get_recent_summaries.clear(location_id=location_id)

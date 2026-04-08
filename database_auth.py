@@ -199,10 +199,10 @@ def validate_session_token(token: str) -> Optional[Dict]:
             FROM user_sessions s
             JOIN users u ON u.id = s.user_id
             LEFT JOIN locations l ON l.id = u.location_id
-            WHERE s.token IN (?, ?)
+            WHERE s.token = ?
               AND s.expires_at > datetime('now')
             """,
-            (token_hash, token),
+            (token_hash,),
         ).fetchone()
     return dict(row) if row else None
 
@@ -214,8 +214,8 @@ def delete_session_token(token: str) -> None:
     token_hash = database._hash_session_token(token)
     with database.db_connection() as conn:
         conn.execute(
-            "DELETE FROM user_sessions WHERE token IN (?, ?)",
-            (token_hash, token),
+            "DELETE FROM user_sessions WHERE token = ?",
+            (token_hash,),
         )
         conn.commit()
 

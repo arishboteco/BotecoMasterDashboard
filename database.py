@@ -62,7 +62,7 @@ def _hash_session_token(token: str) -> str:
 
 def get_connection():
     """Get database connection with row factory."""
-    conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=10.0)
     conn.row_factory = sqlite3.Row
     return conn
 

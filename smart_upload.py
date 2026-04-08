@@ -419,10 +419,12 @@ def process_smart_upload(
         else:
             classified[kind].append((fname, content))
 
+    filename_to_fr: Dict[str, FileResult] = {fr.filename: fr for fr in file_results}
+
     # Step 2 — collect timing report services (date may be None; matched later)
     timing_services: List[Dict[str, Any]] = []
     for fname, content in classified.get("timing_report", []):
-        fr_match = next((f for f in file_results if f.filename == fname), None)
+        fr_match = filename_to_fr.get(fname)
         try:
             result = timing_parser.parse_timing_report(content, fname)
             if result and result.get("services"):
@@ -445,7 +447,7 @@ def process_smart_upload(
     # 4a. Dynamic Report CSV (primary — per-bill order-level data)
     dynamic_dates: set = set()
     for fname, content in classified.get("dynamic_report", []):
-        fr_match = next((f for f in file_results if f.filename == fname), None)
+        fr_match = filename_to_fr.get(fname)
         try:
             parsed, dr_notes = dynamic_report_parser.parse_dynamic_report(
                 content, fname
@@ -473,7 +475,7 @@ def process_smart_upload(
 
     # 4b. Item Report (fallback — only for dates not covered by Dynamic Report)
     for fname, content in classified.get("item_order_details", []):
-        fr_match = next((f for f in file_results if f.filename == fname), None)
+        fr_match = filename_to_fr.get(fname)
         try:
             parsed = pos_parser.parse_item_order_details(content, fname)
             if parsed:
@@ -518,7 +520,7 @@ def process_smart_upload(
 
     # 4c. Order Summary CSV (backup — only for dates not covered by Item Report)
     for fname, content in classified.get("order_summary_csv", []):
-        fr_match = next((f for f in file_results if f.filename == fname), None)
+        fr_match = filename_to_fr.get(fname)
         try:
             parsed, notes_csv = _parse_order_summary_csv(content, fname)
             for n in notes_csv:
@@ -547,7 +549,7 @@ def process_smart_upload(
 
     # 4c. Flash Report (supplement: fills service_charge gap on Item Report days)
     for fname, content in classified.get("flash_report", []):
-        fr_match = next((f for f in file_results if f.filename == fname), None)
+        fr_match = filename_to_fr.get(fname)
         try:
             parsed, notes_fl = _parse_flash_report(content, fname)
             for n in notes_fl:

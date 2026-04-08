@@ -633,16 +633,16 @@ def calculate_mtd_metrics_multi(
     as_of_date: Optional[str] = None,
 ) -> Dict:
     """MTD across multiple locations (sum of each outlet's rows in the month)."""
-    from database import get_summaries_for_month
+    from database import get_summaries_for_month_multi
 
     if year is None or month is None:
         t = datetime.now()
         year, month = t.year, t.month
 
-    summaries: List[Dict] = []
-    for lid in location_ids:
-        summaries.extend(get_summaries_for_month(lid, year, month))
+    summaries = get_summaries_for_month_multi(location_ids, year, month)
     if as_of_date:
+        cap = str(as_of_date)[:10]
+        summaries = [s for s in summaries if str(s.get("date", ""))[:10] <= cap]
         cap = str(as_of_date)[:10]
         summaries = [s for s in summaries if str(s.get("date", ""))[:10] <= cap]
 

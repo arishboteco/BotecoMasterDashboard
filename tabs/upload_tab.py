@@ -13,6 +13,7 @@ import database
 import file_detector
 import smart_upload
 import utils
+from database_reads import clear_location_cache
 from auth import is_admin
 from tabs import TabContext
 
@@ -200,6 +201,9 @@ def render(ctx: TabContext) -> None:
                             f"**{ovr_name}:** {saved_days} day(s) saved, "
                             f"{skipped_validation} day(s) skipped."
                         )
+
+                    for lid in upload_result.location_results:
+                        clear_location_cache(lid)
 
                     for msg in all_save_messages:
                         st.info(msg)

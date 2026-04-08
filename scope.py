@@ -111,11 +111,10 @@ def aggregate_daily_summaries(
 def get_daily_summary_for_scope(
     location_ids: List[int], date_str: str
 ) -> Optional[Dict[str, Any]]:
-    parts = []
-    for lid in location_ids:
-        s = database.get_daily_summary(lid, date_str)
-        if s:
-            parts.append(s)
+    if not location_ids:
+        return None
+    rows = database.get_summaries_for_date_range_multi(location_ids, date_str, date_str)
+    parts = [r for r in rows if r.get("date") == date_str]
     return aggregate_daily_summaries(parts)
 
 
@@ -168,8 +167,13 @@ def get_daily_report_bundle(
     if not location_ids:
         return [], None
 
-    parts_raw: List[Dict[str, Any]] = []
+    rows = database.get_summaries_for_date_range_multi(location_ids, date_str, date_str)
+    rows_by_loc: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+    for r in rows:
+        rows_by_loc[r["location_id"]].append(r)
+
     outlets: List[Tuple[int, str, Dict[str, Any]]] = []
+    parts_raw: List[Dict[str, Any]] = []
 
     for lid in location_ids:
         st = database.get_location_settings(lid)
@@ -179,10 +183,10 @@ def get_daily_report_bundle(
             if st and st.get("target_monthly_sales")
             else float(config.MONTHLY_TARGET)
         )
-        raw = database.get_daily_summary(lid, date_str)
-        if raw is not None:
-            parts_raw.append(raw)
-            base = dict(raw)
+        loc_rows = rows_by_loc.get(lid, [])
+        if loc_rows:
+            base = dict(loc_rows[0])
+            parts_raw.append(loc_rows[0])
         else:
             base = _synthetic_daily_summary(lid, date_str)
         enriched = enrich_summary_for_display(base, [lid], monthly_tgt, date_str)

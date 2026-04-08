@@ -381,41 +381,77 @@ def backfill_weekday_weighted_targets() -> Tuple[int, int]:
         cursor.execute("SELECT DISTINCT location_id FROM daily_summaries")
         location_ids = [row["location_id"] for row in cursor.fetchall()]
 
-    updated_total = 0
-    locations_processed = 0
+    if not location_ids:
+        return 0, 0
 
+    # Pre-fetch all recent summaries in one query for all locations
+    placeholders = ",".join("?" * len(location_ids))
     with database.db_connection() as conn:
         cursor = conn.cursor()
-        for loc_id in location_ids:
-            recent = database.get_recent_summaries(loc_id, weeks=8)
-            weekday_mix = utils.compute_weekday_mix(recent)
+        cursor.execute(
+            f"""
+            SELECT location_id, date, net_total
+            FROM daily_summaries
+            WHERE location_id IN ({placeholders})
+            ORDER BY location_id, date DESC
+            """,
+            list(location_ids),
+        )
+        recent_rows = cursor.fetchall()
 
-            st = database.get_location_settings(loc_id)
-            monthly = (
-                float(st["target_monthly_sales"])
-                if st and st.get("target_monthly_sales")
-                else float(config.MONTHLY_TARGET)
+    recent_by_loc: Dict[int, List[Dict]] = defaultdict(list)
+    for row in recent_rows:
+        recent_by_loc[row["location_id"]].append(dict(row))
+
+    # Pre-fetch all location settings in one query
+    loc_settings_by_id: Dict[int, Optional[Dict]] = {}
+    for lid in location_ids:
+        st = database.get_location_settings(lid)
+        loc_settings_by_id[lid] = st
+
+    # Pre-compute day_targets per location
+    day_targets_by_loc: Dict[int, dict] = {}
+    for loc_id in location_ids:
+        recent = recent_by_loc.get(loc_id, [])
+        weekday_mix = utils.compute_weekday_mix(recent)
+        st = loc_settings_by_id[loc_id]
+        monthly = (
+            float(st["target_monthly_sales"])
+            if st and st.get("target_monthly_sales")
+            else float(config.MONTHLY_TARGET)
+        )
+        day_targets_by_loc[loc_id] = utils.compute_day_targets(monthly, weekday_mix)
+
+    # Batch fetch all rows to update
+    with database.db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            SELECT id, date, location_id
+            FROM daily_summaries
+            WHERE location_id IN ({placeholders})
+            ORDER BY location_id
+            """,
+            list(location_ids),
+        )
+        all_update_rows = cursor.fetchall()
+
+    updated_total = 0
+    locations_processed = len(location_ids)
+
+    # Batch update all rows
+    with database.db_connection() as conn:
+        cursor = conn.cursor()
+        for row in all_update_rows:
+            loc_id = row["location_id"]
+            new_target = utils.get_target_for_date(
+                day_targets_by_loc[loc_id], row["date"]
             )
-            day_targets = utils.compute_day_targets(monthly, weekday_mix)
-
             cursor.execute(
-                "SELECT id, date FROM daily_summaries WHERE location_id = ?",
-                (loc_id,),
+                "UPDATE daily_summaries SET target = ? WHERE id = ?",
+                (new_target, row["id"]),
             )
-            rows = cursor.fetchall()
-
-            for row in rows:
-                new_target = utils.get_target_for_date(day_targets, row["date"])
-                cursor.execute(
-                    "UPDATE daily_summaries SET target = ? WHERE id = ?",
-                    (new_target, row["id"]),
-                )
-            updated_total += len(rows)
-            locations_processed += 1
-            database.logger.info(
-                f"Location {loc_id}: updated {len(rows)} rows with weekday-weighted targets"
-            )
-
+            updated_total += 1
         conn.commit()
 
         cursor.execute(

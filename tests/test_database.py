@@ -119,7 +119,7 @@ class TestSessionTokens:
         assert restored is not None
         assert restored["username"] == "session_user"
 
-    def test_validate_supports_legacy_plain_token_rows(self, initialized_db):
+    def test_validate_rejects_legacy_plain_token_rows(self, initialized_db):
         ok, _ = database.create_user(
             username="legacy_user",
             password="averysecurepwd",
@@ -129,17 +129,33 @@ class TestSessionTokens:
         assert ok
 
         user = database.verify_user("legacy_user", "averysecurepwd")
-        legacy_token = "legacy-token-123"
+        plain_legacy_token = "legacy-token-123"
         with database.db_connection() as conn:
             conn.execute(
                 "INSERT INTO user_sessions (token, user_id, expires_at) VALUES (?, ?, datetime('now', '+1 day'))",
-                (legacy_token, int(user["id"])),
+                (plain_legacy_token, int(user["id"])),
             )
             conn.commit()
 
-        restored = database.validate_session_token(legacy_token)
+        restored = database.validate_session_token(plain_legacy_token)
+        assert restored is None, (
+            "Plain-text tokens must not authenticate — security risk"
+        )
+
+    def test_validate_accepts_hashed_token(self, initialized_db):
+        ok, _ = database.create_user(
+            username="hashed_user",
+            password="averysecurepwd",
+            role="manager",
+            location_id=1,
+        )
+        assert ok
+
+        user = database.verify_user("hashed_user", "averysecurepwd")
+        token = database.create_user_session(int(user["id"]), days=1)
+        restored = database.validate_session_token(token)
         assert restored is not None
-        assert restored["username"] == "legacy_user"
+        assert restored["username"] == "hashed_user"
 
 
 class TestPasswordPolicy:
