@@ -75,6 +75,8 @@ def init_auth_state():
     # one full render cycle to synchronize. Retry up to 3 times with reruns to
     # give it time to arrive before we conclude there's no valid session.
     for attempt in range(3):
+        if not st.session_state.get("_cm"):
+            break
         token = st.session_state._cm.get(_COOKIE_NAME)
         if token:
             user = database.validate_session_token(token)
