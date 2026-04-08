@@ -133,12 +133,15 @@ def show_login_form():
                     )
                     cm = _get_cookie_manager()
                     if cm is not None:
-                        cm.set(
-                            _COOKIE_NAME,
-                            token,
-                            expires=datetime.now()
-                            + timedelta(days=_COOKIE_EXPIRY_DAYS),
-                        )
+                        try:
+                            cm.set(
+                                _COOKIE_NAME,
+                                token,
+                                expires=datetime.now()
+                                + timedelta(days=_COOKIE_EXPIRY_DAYS),
+                            )
+                        except TypeError:
+                            pass
                     _apply_user_to_session(user, token)
                     st.rerun()
                 else:
@@ -245,7 +248,10 @@ def logout():
         database.delete_session_token(token)
     cm = _get_cookie_manager()
     if cm is not None:
-        cm.remove(_COOKIE_NAME)
+        try:
+            cm.remove(_COOKIE_NAME)
+        except TypeError:
+            pass
 
     st.session_state.authenticated = False
     st.session_state.username = None
