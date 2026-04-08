@@ -281,7 +281,7 @@ def render_auth_sidebar():
         st.markdown("##### Reports & scope")
         st.caption("Daily Report and Analytics use this scope.")
         locs = database.get_all_locations()
-        if is_admin() and len(locs) > 1:
+        if is_manager() and len(locs) > 1:
             options = ["all"] + [
                 str(l["id"]) for l in sorted(locs, key=lambda x: x["name"])
             ]
