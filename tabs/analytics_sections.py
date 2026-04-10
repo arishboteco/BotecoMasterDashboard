@@ -410,7 +410,7 @@ def render_sales_performance(
                     height=ui_theme.CHART_HEIGHT,
                     xaxis=dict(tickformat="%b %d"),
                 )
-            st.plotly_chart(fig_line, use_container_width=True)
+            st.plotly_chart(fig_line, width="stretch")
 
             # Screen reader summary
             if not multi_analytics and values:
@@ -546,7 +546,7 @@ def render_sales_performance(
                 barmode="group",
                 xaxis=dict(tickformat="%b %d"),
             )
-            st.plotly_chart(fig_covers, use_container_width=True)
+            st.plotly_chart(fig_covers, width="stretch")
 
             # Screen reader summary
             if not multi_analytics and covers:
@@ -586,7 +586,7 @@ def render_sales_performance(
                 height=ui_theme.CHART_HEIGHT,
                 xaxis=dict(tickformat="%b %d"),
             )
-            st.plotly_chart(fig_apc, use_container_width=True)
+            st.plotly_chart(fig_apc, width="stretch")
             _chart_summary(
                 "Average per cover is {} across {} days with data.".format(
                     utils.format_currency(avg_apc),
@@ -636,7 +636,7 @@ def render_sales_performance(
                 lambda x: utils.format_currency(float(x))
             )
             _sales_tbl["Covers"] = _sales_tbl["Covers"].apply(lambda x: f"{int(x):,}")
-            st.dataframe(_sales_tbl, use_container_width=True, hide_index=True)
+            st.dataframe(_sales_tbl, width="stretch", hide_index=True)
 
 
 def render_revenue_breakdown(
@@ -710,7 +710,7 @@ def render_revenue_breakdown(
             )
             fig_cat.update_layout(height=ui_theme.CHART_HEIGHT)
 
-        st.plotly_chart(fig_cat, use_container_width=True)
+        st.plotly_chart(fig_cat, width="stretch")
 
         # Full category breakdown table
         _cat_table = cat_df[["category", "amount"]].copy()
@@ -724,7 +724,7 @@ def render_revenue_breakdown(
             columns={"category": "Category", "amount": "Amount"}
         )
         with st.expander("View category data"):
-            st.dataframe(_cat_table, use_container_width=True, hide_index=True)
+            st.dataframe(_cat_table, width="stretch", hide_index=True)
     else:
         st.caption("No category data for this period.")
 
@@ -832,7 +832,7 @@ def render_revenue_breakdown(
             yaxis_title="Avg Net Sales (₹)",
             height=ui_theme.CHART_HEIGHT,
         )
-        st.plotly_chart(fig_wd, use_container_width=True)
+        st.plotly_chart(fig_wd, width="stretch")
         _chart_summary(
             "Best day is {} (avg {}) and worst is {} (avg {}).".format(
                 best_day,
@@ -881,7 +881,7 @@ def render_revenue_breakdown(
                 wd_table[
                     ["Day of Week", "Avg Net Sales (₹)", "Avg Covers", "Count of Days"]
                 ],
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
     else:
@@ -1015,7 +1015,7 @@ def render_target_and_daily(
                     )
 
         fig_target.update_layout(height=ui_theme.CHART_HEIGHT, showlegend=True)
-        st.plotly_chart(fig_target, use_container_width=True)
+        st.plotly_chart(fig_target, width="stretch")
 
         # On-track / Behind badge
         if actual_last >= target_last:
@@ -1065,7 +1065,7 @@ def render_target_and_daily(
             _tgt_tbl["Target (₹)"] = _tgt_tbl["Target (₹)"].apply(
                 lambda x: utils.format_currency(float(x))
             )
-            st.dataframe(_tgt_tbl, use_container_width=True, hide_index=True)
+            st.dataframe(_tgt_tbl, width="stretch", hide_index=True)
 
         st.markdown("### Daily Data")
         dv = build_daily_view_table(df, df_raw, multi_analytics, numeric=True)
@@ -1110,7 +1110,7 @@ def render_target_and_daily(
             subset=pd.IndexSlice[_total_row_idx, :],
             **{"font-weight": "bold"},
         )
-        st.dataframe(styler, use_container_width=True, hide_index=True)
+        st.dataframe(styler, width="stretch", hide_index=True)
     else:
         daily_view = build_daily_view_table(
             df, pd.DataFrame(), multi_analytics=False, numeric=True
@@ -1151,4 +1151,4 @@ def render_target_and_daily(
             subset=pd.IndexSlice[_total_row_idx, :],
             **{"font-weight": "bold"},
         )
-        st.dataframe(styler, use_container_width=True, hide_index=True)
+        st.dataframe(styler, width="stretch", hide_index=True)

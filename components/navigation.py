@@ -21,9 +21,7 @@ def date_nav(
 
     nav_col1, nav_col2, nav_col3 = st.columns([1, 4, 1])
     with nav_col1:
-        if st.button(
-            "\u2190 Prev", key=f"{session_key}_prev", use_container_width=True
-        ):
+        if st.button("\u2190 Prev", key=f"{session_key}_prev", width="stretch"):
             st.session_state[session_key] -= timedelta(days=1)
             st.rerun()
     with nav_col2:
@@ -32,9 +30,7 @@ def date_nav(
             unsafe_allow_html=True,
         )
     with nav_col3:
-        if st.button(
-            "Next \u2192", key=f"{session_key}_next", use_container_width=True
-        ):
+        if st.button("Next \u2192", key=f"{session_key}_next", width="stretch"):
             st.session_state[session_key] += timedelta(days=1)
             st.rerun()
 
