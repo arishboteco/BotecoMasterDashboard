@@ -388,6 +388,52 @@ def init_database():
     conn.close()
 
 
+def _migrate_supabase_schema() -> None:
+    """Ensure Supabase tables have all columns that SQLite migrations would have added.
+
+    SQLite init_database() handles migrations via ALTER TABLE. Supabase tables
+    need equivalent migrations. This function introspects the Supabase schema
+    and applies missing columns using the admin client.
+    """
+    if not use_supabase():
+        return
+
+    supabase = get_supabase_admin_client()
+    if supabase is None:
+        logger.warning(
+            "Supabase admin client unavailable — skipping schema migrations. "
+            "Set SUPABASE_SERVICE_KEY for admin-level access."
+        )
+        return
+
+    # Check if item_sales has the 'category' column (added as SQLite migration).
+    # The Supabase table may have been created before this migration existed.
+    try:
+        result = supabase.table("item_sales").select("id").limit(1).execute()
+        columns = set(result.data[0].keys()) if result.data else set()
+    except Exception:
+        logger.exception("Failed to inspect item_sales schema during migration")
+        columns = set()
+
+    if "category" not in columns:
+        logger.info(
+            "Supabase item_sales table missing 'category' column. "
+            "Attempting to add it via raw SQL."
+        )
+        try:
+            supabase.rpc(
+                "execute_sql",
+                {"query": "ALTER TABLE item_sales ADD COLUMN category TEXT DEFAULT ''"},
+            ).execute()
+        except Exception:
+            logger.warning(
+                "Could not add 'category' to item_sales via RPC. "
+                "The column will be inserted without 'category' as a fallback. "
+                "To fix permanently, run this SQL in the Supabase SQL editor:\n\n"
+                "ALTER TABLE item_sales ADD COLUMN category TEXT DEFAULT '';\n"
+            )
+
+
 def _migrate_daily_summaries_composite_unique(cursor) -> None:
     """One-time: replace global UNIQUE(date) with UNIQUE(location_id, date). Preserves ids for FK children."""
     cursor.execute("SELECT v FROM app_meta WHERE k = ?", ("ds_composite_unique",))
@@ -898,6 +944,7 @@ def bootstrap():
     """Initialize database and ensure default locations exist. Call explicitly from app.py."""
     logger.info("Bootstrapping database")
     init_database()
+    _migrate_supabase_schema()
     ensure_default_locations()
     purge_expired_sessions()
 

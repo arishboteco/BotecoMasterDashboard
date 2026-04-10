@@ -143,7 +143,18 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
                 }
                 for item in data["top_items"]
             ]
-            supabase_write.table("item_sales").insert(item_records).execute()
+            try:
+                supabase_write.table("item_sales").insert(item_records).execute()
+            except Exception as exc:
+                database.logger.warning(
+                    "item_sales insert failed, retrying without category column: %s",
+                    exc,
+                )
+                item_records_no_cat = [
+                    {k: v for k, v in r.items() if k != "category"}
+                    for r in item_records
+                ]
+                supabase_write.table("item_sales").insert(item_records_no_cat).execute()
 
         return summary_id
     else:
