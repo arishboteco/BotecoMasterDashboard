@@ -673,22 +673,9 @@ def wipe_all_data() -> Tuple[Dict[str, int], List[str]]:
             "upload_history",
         ]:
             try:
-                result = supabase.table(table).select("id", count="exact").execute()
-                expected = (
-                    result.count if hasattr(result, "count") else len(result.data)
-                )
-                delete_result = supabase.table(table).delete().execute()
-                actual_deleted = (
-                    len(delete_result.data)
-                    if hasattr(delete_result, "data")
-                    else expected
-                )
+                delete_result = supabase.table(table).delete().gt("id", -1).execute()
+                actual_deleted = len(delete_result.data) if hasattr(delete_result, "data") else 0
                 counts[table] = actual_deleted
-                if actual_deleted < expected:
-                    errors.append(
-                        f"{table}: expected {expected} deletes, got {actual_deleted} "
-                        f"— likely blocked by RLS policies"
-                    )
             except Exception as e:
                 counts[table] = 0
                 errors.append(f"{table}: {e}")

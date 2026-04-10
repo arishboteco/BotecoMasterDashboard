@@ -22,7 +22,7 @@ def data_table(
 
     st.dataframe(
         df,
-        use_container_width=use_container_width,
+        width="stretch" if use_container_width else "content",
         hide_index=hide_index,
         column_config=column_config,
     )

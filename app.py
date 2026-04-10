@@ -86,7 +86,7 @@ else:
     location_id = st.session_state.location_id
 
     st.sidebar.divider()
-    if st.sidebar.button("Logout", key="sidebar_logout_btn", use_container_width=True):
+    if st.sidebar.button("Logout", key="sidebar_logout_btn", width="stretch"):
         auth.logout()
 
     # Build shared context
