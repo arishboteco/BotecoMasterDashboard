@@ -19,7 +19,10 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
     )
 
     if database.use_supabase():
-        supabase = database.get_supabase_client()
+        supabase_read = database.get_supabase_client()
+        supabase_write = (
+            database.get_supabase_admin_client() or database.get_supabase_client()
+        )
 
         row_data = {
             "location_id": location_id,
@@ -53,7 +56,7 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
         }
 
         existing = (
-            supabase.table("daily_summaries")
+            supabase_read.table("daily_summaries")
             .select("id")
             .eq("location_id", location_id)
             .eq("date", data["date"])
@@ -62,15 +65,15 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
 
         if existing.data:
             summary_id = existing.data[0]["id"]
-            supabase.table("daily_summaries").update(row_data).eq(
+            supabase_write.table("daily_summaries").update(row_data).eq(
                 "id", summary_id
             ).execute()
         else:
-            result = supabase.table("daily_summaries").insert(row_data).execute()
+            result = supabase_write.table("daily_summaries").insert(row_data).execute()
             summary_id = result.data[0]["id"]
 
         if "categories" in data:
-            supabase.table("category_sales").delete().eq(
+            supabase_write.table("category_sales").delete().eq(
                 "summary_id", summary_id
             ).execute()
             if data["categories"]:
@@ -78,15 +81,17 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
                     {
                         "summary_id": summary_id,
                         "category": cat["category"],
-                        "qty": cat.get("qty", 0),
-                        "amount": cat.get("amount", 0),
+                        "qty": cat.get("qty", 0) if cat.get("qty") is not None else 0,
+                        "amount": cat.get("amount", 0)
+                        if cat.get("amount") is not None
+                        else 0,
                     }
                     for cat in data["categories"]
                 ]
-                supabase.table("category_sales").insert(cat_records).execute()
+                supabase_write.table("category_sales").insert(cat_records).execute()
 
         if "super_categories" in data:
-            supabase.table("super_category_sales").delete().eq(
+            supabase_write.table("super_category_sales").delete().eq(
                 "summary_id", summary_id
             ).execute()
             if data["super_categories"]:
@@ -94,15 +99,19 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
                     {
                         "summary_id": summary_id,
                         "category": cat["category"],
-                        "qty": cat.get("qty", 0),
-                        "amount": cat.get("amount", 0),
+                        "qty": cat.get("qty", 0) if cat.get("qty") is not None else 0,
+                        "amount": cat.get("amount", 0)
+                        if cat.get("amount") is not None
+                        else 0,
                     }
                     for cat in data["super_categories"]
                 ]
-                supabase.table("super_category_sales").insert(scat_records).execute()
+                supabase_write.table("super_category_sales").insert(
+                    scat_records
+                ).execute()
 
         if "services" in data:
-            supabase.table("service_sales").delete().eq(
+            supabase_write.table("service_sales").delete().eq(
                 "summary_id", summary_id
             ).execute()
             if data["services"]:
@@ -110,25 +119,31 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
                     {
                         "summary_id": summary_id,
                         "service_type": svc["type"],
-                        "amount": svc.get("amount", 0),
+                        "amount": svc.get("amount", 0)
+                        if svc.get("amount") is not None
+                        else 0,
                     }
                     for svc in data["services"]
                 ]
-                supabase.table("service_sales").insert(svc_records).execute()
+                supabase_write.table("service_sales").insert(svc_records).execute()
 
         if "top_items" in data and data["top_items"]:
-            supabase.table("item_sales").delete().eq("summary_id", summary_id).execute()
+            supabase_write.table("item_sales").delete().eq(
+                "summary_id", summary_id
+            ).execute()
             item_records = [
                 {
                     "summary_id": summary_id,
                     "item_name": item.get("item_name", ""),
                     "category": item.get("category", ""),
-                    "qty": item.get("qty", 0),
-                    "amount": item.get("amount", 0),
+                    "qty": item.get("qty", 0) if item.get("qty") is not None else 0,
+                    "amount": item.get("amount", 0)
+                    if item.get("amount") is not None
+                    else 0,
                 }
                 for item in data["top_items"]
             ]
-            supabase.table("item_sales").insert(item_records).execute()
+            supabase_write.table("item_sales").insert(item_records).execute()
 
         return summary_id
     else:
@@ -262,13 +277,16 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
 def ensure_default_locations() -> None:
     """Ensure Boteco default locations exist."""
     if database.use_supabase():
-        supabase = database.get_supabase_client()
+        supabase_read = database.get_supabase_client()
+        supabase_write = (
+            database.get_supabase_admin_client() or database.get_supabase_client()
+        )
         for name in ("Boteco - Indiqube", "Boteco - Bagmane"):
             existing = (
-                supabase.table("locations").select("id").eq("name", name).execute()
+                supabase_read.table("locations").select("id").eq("name", name).execute()
             )
             if not existing.data:
-                supabase.table("locations").insert(
+                supabase_write.table("locations").insert(
                     {
                         "name": name,
                         "target_monthly_sales": config.MONTHLY_TARGET,
@@ -301,14 +319,20 @@ def create_location(
         return False, "Location name cannot be empty."
 
     if database.use_supabase():
-        supabase = database.get_supabase_client()
+        supabase_read = database.get_supabase_client()
+        supabase_write = (
+            database.get_supabase_admin_client() or database.get_supabase_client()
+        )
         existing = (
-            supabase.table("locations").select("id").eq("name", name.strip()).execute()
+            supabase_read.table("locations")
+            .select("id")
+            .eq("name", name.strip())
+            .execute()
         )
         if existing.data:
             return False, f"Location '{name}' already exists."
         daily = monthly_target / 30.0
-        supabase.table("locations").insert(
+        supabase_write.table("locations").insert(
             {
                 "name": name.strip(),
                 "target_monthly_sales": monthly_target,
@@ -340,16 +364,22 @@ def create_location(
 def delete_location(location_id: int) -> Tuple[bool, str]:
     """Delete a location when it has no saved summaries."""
     if database.use_supabase():
-        supabase = database.get_supabase_client()
+        supabase_read = database.get_supabase_client()
+        supabase_write = (
+            database.get_supabase_admin_client() or database.get_supabase_client()
+        )
         result = (
-            supabase.table("locations").select("name").eq("id", location_id).execute()
+            supabase_read.table("locations")
+            .select("name")
+            .eq("id", location_id)
+            .execute()
         )
         if not result.data:
             return False, "Location not found."
         name = result.data[0]["name"]
 
         summary_count = (
-            supabase.table("daily_summaries")
+            supabase_read.table("daily_summaries")
             .select("id", count="exact")
             .eq("location_id", location_id)
             .execute()
@@ -360,7 +390,7 @@ def delete_location(location_id: int) -> Tuple[bool, str]:
                 f"Cannot delete '{name}' — it has {summary_count.count} saved day(s) of data. "
                 "Remove all data first or archive the location instead.",
             )
-        supabase.table("locations").delete().eq("id", location_id).execute()
+        supabase_write.table("locations").delete().eq("id", location_id).execute()
         get_all_locations.clear()
         get_location_settings.clear()
         return True, f"Location '{name}' deleted."
@@ -395,7 +425,10 @@ def update_location_settings(location_id: int, settings: Dict) -> None:
     allowed_cols = {"name", "target_monthly_sales", "target_daily_sales", "seat_count"}
 
     if database.use_supabase():
-        supabase = database.get_supabase_client()
+        supabase_read = database.get_supabase_client()
+        supabase_write = (
+            database.get_supabase_admin_client() or database.get_supabase_client()
+        )
         updates = {}
 
         if "name" in settings and settings["name"] is not None:
@@ -403,7 +436,7 @@ def update_location_settings(location_id: int, settings: Dict) -> None:
             if not name:
                 raise ValueError("Location name cannot be empty.")
             existing = (
-                supabase.table("locations")
+                supabase_read.table("locations")
                 .select("id")
                 .eq("name", name)
                 .neq("id", location_id)
@@ -429,7 +462,9 @@ def update_location_settings(location_id: int, settings: Dict) -> None:
             for col in updates.keys():
                 if col not in allowed_cols:
                     raise ValueError(f"Invalid column name: {col}")
-            supabase.table("locations").update(updates).eq("id", location_id).execute()
+            supabase_write.table("locations").update(updates).eq(
+                "id", location_id
+            ).execute()
             get_location_settings.clear()
             get_all_locations.clear()
     else:
@@ -484,8 +519,10 @@ def save_upload_record(
 ) -> None:
     """Save upload record."""
     if database.use_supabase():
-        supabase = database.get_supabase_client()
-        supabase.table("upload_history").insert(
+        supabase_write = (
+            database.get_supabase_admin_client() or database.get_supabase_client()
+        )
+        supabase_write.table("upload_history").insert(
             {
                 "location_id": location_id,
                 "date": date,
@@ -514,9 +551,12 @@ def delete_daily_summary_for_location_date(location_id: int, date: str) -> bool:
     )
 
     if database.use_supabase():
-        supabase = database.get_supabase_client()
+        supabase_read = database.get_supabase_client()
+        supabase_write = (
+            database.get_supabase_admin_client() or database.get_supabase_client()
+        )
         result = (
-            supabase.table("daily_summaries")
+            supabase_read.table("daily_summaries")
             .select("id")
             .eq("location_id", location_id)
             .eq("date", date)
@@ -527,13 +567,19 @@ def delete_daily_summary_for_location_date(location_id: int, date: str) -> bool:
             return False
 
         summary_id = result.data[0]["id"]
-        supabase.table("category_sales").delete().eq("summary_id", summary_id).execute()
-        supabase.table("super_category_sales").delete().eq(
+        supabase_write.table("category_sales").delete().eq(
             "summary_id", summary_id
         ).execute()
-        supabase.table("service_sales").delete().eq("summary_id", summary_id).execute()
-        supabase.table("item_sales").delete().eq("summary_id", summary_id).execute()
-        supabase.table("daily_summaries").delete().eq("id", summary_id).execute()
+        supabase_write.table("super_category_sales").delete().eq(
+            "summary_id", summary_id
+        ).execute()
+        supabase_write.table("service_sales").delete().eq(
+            "summary_id", summary_id
+        ).execute()
+        supabase_write.table("item_sales").delete().eq(
+            "summary_id", summary_id
+        ).execute()
+        supabase_write.table("daily_summaries").delete().eq("id", summary_id).execute()
         return True
     else:
         with database.db_connection() as conn:
@@ -572,9 +618,12 @@ def update_daily_summary_covers_only(
 ) -> bool:
     """Update covers fields on an existing row."""
     if database.use_supabase():
-        supabase = database.get_supabase_client()
+        supabase_read = database.get_supabase_client()
+        supabase_write = (
+            database.get_supabase_admin_client() or database.get_supabase_client()
+        )
         result = (
-            supabase.table("daily_summaries")
+            supabase_read.table("daily_summaries")
             .select("id, net_total, target, locations(seat_count)")
             .eq("location_id", location_id)
             .eq("date", date)
@@ -600,7 +649,7 @@ def update_daily_summary_covers_only(
             turns = round(covers / 100, 1) if covers else 0.0
         pct_target = round((net / tgt) * 100, 2) if tgt > 0 else 0.0
 
-        supabase.table("daily_summaries").update(
+        supabase_write.table("daily_summaries").update(
             {
                 "covers": covers,
                 "lunch_covers": lunch_covers,
@@ -685,7 +734,9 @@ def wipe_all_data() -> Tuple[Dict[str, int], List[str]]:
         ]:
             try:
                 delete_result = supabase.table(table).delete().gt("id", -1).execute()
-                actual_deleted = len(delete_result.data) if hasattr(delete_result, "data") else 0
+                actual_deleted = (
+                    len(delete_result.data) if hasattr(delete_result, "data") else 0
+                )
                 counts[table] = actual_deleted
             except Exception as e:
                 counts[table] = 0
@@ -732,10 +783,13 @@ def backfill_weekday_weighted_targets() -> Tuple[int, int]:
     import utils
 
     if database.use_supabase():
-        supabase = database.get_supabase_client()
+        supabase_read = database.get_supabase_client()
+        supabase_write = (
+            database.get_supabase_admin_client() or database.get_supabase_client()
+        )
 
         meta = (
-            supabase.table("app_meta")
+            supabase_read.table("app_meta")
             .select("k")
             .eq("k", "weekday_target_backfill")
             .execute()
@@ -745,7 +799,7 @@ def backfill_weekday_weighted_targets() -> Tuple[int, int]:
             return 0, 0
 
         locations_result = (
-            supabase.table("daily_summaries").select("location_id").execute()
+            supabase_read.table("daily_summaries").select("location_id").execute()
         )
         location_ids = list(set(row["location_id"] for row in locations_result.data))
 
@@ -753,7 +807,7 @@ def backfill_weekday_weighted_targets() -> Tuple[int, int]:
             return 0, 0
 
         recent_result = (
-            supabase.table("daily_summaries")
+            supabase_read.table("daily_summaries")
             .select("location_id, date, net_total")
             .in_("location_id", location_ids)
             .order("date", desc=True)
@@ -782,7 +836,7 @@ def backfill_weekday_weighted_targets() -> Tuple[int, int]:
             day_targets_by_loc[loc_id] = utils.compute_day_targets(monthly, weekday_mix)
 
         all_rows_result = (
-            supabase.table("daily_summaries")
+            supabase_read.table("daily_summaries")
             .select("id, date, location_id")
             .in_("location_id", location_ids)
             .order("location_id")
@@ -795,12 +849,12 @@ def backfill_weekday_weighted_targets() -> Tuple[int, int]:
             new_target = utils.get_target_for_date(
                 day_targets_by_loc[loc_id], row["date"]
             )
-            supabase.table("daily_summaries").update({"target": new_target}).eq(
+            supabase_write.table("daily_summaries").update({"target": new_target}).eq(
                 "id", row["id"]
             ).execute()
             updated_total += 1
 
-        supabase.table("app_meta").insert(
+        supabase_write.table("app_meta").insert(
             {"k": "weekday_target_backfill", "v": "done"}
         ).execute()
 
