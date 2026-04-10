@@ -220,6 +220,18 @@ def init_database():
         )
     """)
 
+    # Super-category sales table (aggregated from specific categories)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS super_category_sales (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            summary_id INTEGER NOT NULL,
+            category TEXT NOT NULL,
+            qty INTEGER DEFAULT 0,
+            amount REAL DEFAULT 0,
+            FOREIGN KEY (summary_id) REFERENCES daily_summaries(id)
+        )
+    """)
+
     # Service sales table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS service_sales (
@@ -251,12 +263,14 @@ def init_database():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             summary_id INTEGER NOT NULL,
             item_name TEXT NOT NULL,
+            category TEXT DEFAULT '',
             qty INTEGER DEFAULT 0,
             amount REAL DEFAULT 0,
             FOREIGN KEY (summary_id) REFERENCES daily_summaries(id)
         )
     """)
 
+    # Migrations
     cursor.execute("PRAGMA table_info(daily_summaries)")
     _ds_cols = {row[1] for row in cursor.fetchall()}
     for _col, _typ in (
@@ -268,6 +282,25 @@ def init_database():
             cursor.execute(
                 f"ALTER TABLE daily_summaries ADD COLUMN {_col} {_typ} DEFAULT NULL"
             )
+
+    cursor.execute("PRAGMA table_info(item_sales)")
+    _is_cols = {row[1] for row in cursor.fetchall()}
+    if "category" not in _is_cols:
+        cursor.execute("ALTER TABLE item_sales ADD COLUMN category TEXT DEFAULT ''")
+
+    cursor.execute("PRAGMA table_info(super_category_sales)")
+    _scs_exists = cursor.fetchall()
+    if not _scs_exists:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS super_category_sales (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                summary_id INTEGER NOT NULL,
+                category TEXT NOT NULL,
+                qty INTEGER DEFAULT 0,
+                amount REAL DEFAULT 0,
+                FOREIGN KEY (summary_id) REFERENCES daily_summaries(id)
+            )
+        """)
 
     cursor.execute("PRAGMA table_info(locations)")
     _loc_cols = {row[1] for row in cursor.fetchall()}
@@ -319,6 +352,12 @@ def init_database():
         """
         CREATE INDEX IF NOT EXISTS idx_item_sales_summary_id
         ON item_sales(summary_id)
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_super_category_sales_summary_id
+        ON super_category_sales(summary_id)
         """
     )
 
@@ -745,6 +784,42 @@ def get_daily_service_sales_for_date_range(
     from database_analytics import get_daily_service_sales_for_date_range as _impl
 
     return _impl(location_ids, start_date, end_date)
+
+
+def get_super_category_mtd_totals(
+    location_id: int, year: int, month: int
+) -> Dict[str, float]:
+    """Sum super-category sales amounts for calendar month."""
+    from database_analytics import get_super_category_mtd_totals as _impl
+
+    return _impl(location_id, year, month)
+
+
+def get_super_category_mtd_totals_multi(
+    location_ids: List[int], year: int, month: int
+) -> Dict[str, float]:
+    """Sum super-category sales across multiple locations for calendar month."""
+    from database_analytics import get_super_category_mtd_totals_multi as _impl
+
+    return _impl(location_ids, year, month)
+
+
+def get_super_category_sales_for_date_range(
+    location_ids: List[int], start_date: str, end_date: str
+) -> List[Dict]:
+    """Aggregate super-category sales across a date range."""
+    from database_analytics import get_super_category_sales_for_date_range as _impl
+
+    return _impl(location_ids, start_date, end_date)
+
+
+def get_item_sales_for_date_range(
+    location_ids: List[int], start_date: str, end_date: str, limit: int = 30
+) -> List[Dict]:
+    """Top-selling menu items across a date range for one or more locations."""
+    from database_analytics import get_item_sales_for_date_range as _impl
+
+    return _impl(location_ids, start_date, end_date, limit)
 
 
 def create_user_session(user_id: int, days: int = 30) -> str:

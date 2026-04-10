@@ -351,3 +351,91 @@ def get_daily_service_sales_for_date_range(
             )
             rows = cursor.fetchall()
         return [dict(row) for row in rows]
+
+
+@st.cache_data(ttl=300)
+def get_super_category_mtd_totals(
+    location_id: int, year: int, month: int
+) -> Dict[str, float]:
+    start_date = f"{year}-{month:02d}-01"
+    end_date = f"{year + 1}-01-01" if month == 12 else f"{year}-{month + 1:02d}-01"
+    with database.db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT scs.category, SUM(scs.amount) AS total, SUM(scs.qty) AS total_qty
+            FROM super_category_sales scs
+            INNER JOIN daily_summaries ds ON scs.summary_id = ds.id
+            WHERE ds.location_id = ? AND ds.date >= ? AND ds.date < ?
+            GROUP BY scs.category""",
+            (location_id, start_date, end_date),
+        )
+        rows = cursor.fetchall()
+    return {row["category"]: float(row["total"] or 0) for row in rows}
+
+
+@st.cache_data(ttl=300)
+def get_super_category_mtd_totals_multi(
+    location_ids: List[int], year: int, month: int
+) -> Dict[str, float]:
+    if not location_ids:
+        return {}
+    start_date = f"{year}-{month:02d}-01"
+    end_date = f"{year + 1}-01-01" if month == 12 else f"{year}-{month + 1:02d}-01"
+    ph = ",".join("?" * len(location_ids))
+    with database.db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""SELECT scs.category, SUM(scs.amount) AS total, SUM(scs.qty) AS total_qty
+            FROM super_category_sales scs
+            INNER JOIN daily_summaries ds ON scs.summary_id = ds.id
+            WHERE ds.location_id IN ({ph}) AND ds.date >= ? AND ds.date < ?
+            GROUP BY scs.category""",
+            (*location_ids, start_date, end_date),
+        )
+        rows = cursor.fetchall()
+    return {row["category"]: float(row["total"] or 0) for row in rows}
+
+
+@st.cache_data(ttl=120)
+def get_super_category_sales_for_date_range(
+    location_ids: List[int], start_date: str, end_date: str
+) -> List[Dict]:
+    if not location_ids:
+        return []
+    ph = ",".join("?" * len(location_ids))
+    with database.db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""WITH filtered_days AS (
+                SELECT id FROM daily_summaries
+                WHERE location_id IN ({ph}) AND date BETWEEN ? AND ?
+            ) SELECT scs.category, SUM(scs.amount) AS amount, SUM(scs.qty) AS qty
+            FROM super_category_sales scs
+            JOIN filtered_days ds ON scs.summary_id = ds.id
+            GROUP BY scs.category ORDER BY amount DESC""",
+            (*location_ids, start_date, end_date),
+        )
+        rows = cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+@st.cache_data(ttl=120)
+def get_item_sales_for_date_range(
+    location_ids: List[int], start_date: str, end_date: str, limit: int = 30
+) -> List[Dict]:
+    if not location_ids:
+        return []
+    ph = ",".join("?" * len(location_ids))
+    with database.db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""WITH filtered_days AS (
+                SELECT id FROM daily_summaries
+                WHERE location_id IN ({ph}) AND date BETWEEN ? AND ?
+            ) SELECT iss.item_name, iss.category, SUM(iss.qty) AS qty, SUM(iss.amount) AS amount
+            FROM item_sales iss JOIN filtered_days ds ON iss.summary_id = ds.id
+            GROUP BY iss.item_name, iss.category ORDER BY qty DESC LIMIT ?""",
+            (*location_ids, start_date, end_date, limit),
+        )
+        rows = cursor.fetchall()
+    return [dict(row) for row in rows]

@@ -84,6 +84,22 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
                 ]
                 supabase.table("category_sales").insert(cat_records).execute()
 
+        if "super_categories" in data:
+            supabase.table("super_category_sales").delete().eq(
+                "summary_id", summary_id
+            ).execute()
+            if data["super_categories"]:
+                scat_records = [
+                    {
+                        "summary_id": summary_id,
+                        "category": cat["category"],
+                        "qty": cat.get("qty", 0),
+                        "amount": cat.get("amount", 0),
+                    }
+                    for cat in data["super_categories"]
+                ]
+                supabase.table("super_category_sales").insert(scat_records).execute()
+
         if "services" in data:
             supabase.table("service_sales").delete().eq(
                 "summary_id", summary_id
@@ -105,6 +121,7 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
                 {
                     "summary_id": summary_id,
                     "item_name": item.get("item_name", ""),
+                    "category": item.get("category", ""),
                     "qty": item.get("qty", 0),
                     "amount": item.get("amount", 0),
                 }
@@ -185,6 +202,25 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
                         ),
                     )
 
+            if "super_categories" in data:
+                cursor.execute(
+                    "DELETE FROM super_category_sales WHERE summary_id = ?",
+                    (summary_id,),
+                )
+                for cat in data["super_categories"]:
+                    cursor.execute(
+                        """
+                        INSERT INTO super_category_sales (summary_id, category, qty, amount)
+                        VALUES (?, ?, ?, ?)
+                        """,
+                        (
+                            summary_id,
+                            cat["category"],
+                            cat.get("qty", 0),
+                            cat.get("amount", 0),
+                        ),
+                    )
+
             if "services" in data:
                 cursor.execute(
                     "DELETE FROM service_sales WHERE summary_id = ?",
@@ -206,12 +242,13 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
                 for item in data["top_items"]:
                     cursor.execute(
                         """
-                        INSERT INTO item_sales (summary_id, item_name, qty, amount)
-                        VALUES (?, ?, ?, ?)
+                        INSERT INTO item_sales (summary_id, item_name, category, qty, amount)
+                        VALUES (?, ?, ?, ?, ?)
                         """,
                         (
                             summary_id,
                             item.get("item_name", ""),
+                            item.get("category", ""),
                             item.get("qty", 0),
                             item.get("amount", 0),
                         ),
@@ -480,6 +517,9 @@ def delete_daily_summary_for_location_date(location_id: int, date: str) -> bool:
 
         summary_id = result.data[0]["id"]
         supabase.table("category_sales").delete().eq("summary_id", summary_id).execute()
+        supabase.table("super_category_sales").delete().eq(
+            "summary_id", summary_id
+        ).execute()
         supabase.table("service_sales").delete().eq("summary_id", summary_id).execute()
         supabase.table("item_sales").delete().eq("summary_id", summary_id).execute()
         supabase.table("daily_summaries").delete().eq("id", summary_id).execute()
@@ -497,6 +537,9 @@ def delete_daily_summary_for_location_date(location_id: int, date: str) -> bool:
             summary_id = row["id"]
             cursor.execute(
                 "DELETE FROM category_sales WHERE summary_id = ?", (summary_id,)
+            )
+            cursor.execute(
+                "DELETE FROM super_category_sales WHERE summary_id = ?", (summary_id,)
             )
             cursor.execute(
                 "DELETE FROM service_sales  WHERE summary_id = ?", (summary_id,)
@@ -612,6 +655,7 @@ def wipe_all_data() -> Tuple[Dict[str, int], List[str]]:
         supabase = database.get_supabase_client()
         for table in [
             "item_sales",
+            "super_category_sales",
             "category_sales",
             "service_sales",
             "daily_summaries",
@@ -630,6 +674,7 @@ def wipe_all_data() -> Tuple[Dict[str, int], List[str]]:
             cursor = conn.cursor()
             for table in [
                 "item_sales",
+                "super_category_sales",
                 "category_sales",
                 "service_sales",
                 "daily_summaries",
