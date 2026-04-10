@@ -211,18 +211,17 @@ def merge_month_footfall_rows(
     by_date: Dict[str, Dict[str, Any]] = defaultdict(
         lambda: {"covers": 0, "lunch_covers": 0, "dinner_covers": 0, "has_split": False}
     )
-    for lid in location_ids:
-        for row in database.get_summaries_for_month(lid, year, month):
-            d = str(row.get("date", ""))[:10]
-            b = by_date[d]
-            b["covers"] += int(row.get("covers") or 0)
-            if (
-                row.get("lunch_covers") is not None
-                or row.get("dinner_covers") is not None
-            ):
-                b["has_split"] = True
-                b["lunch_covers"] += int(row.get("lunch_covers") or 0)
-                b["dinner_covers"] += int(row.get("dinner_covers") or 0)
+    for row in database.get_summaries_for_month_multi(location_ids, year, month):
+        d = str(row.get("date", ""))[:10]
+        b = by_date[d]
+        b["covers"] += int(row.get("covers") or 0)
+        if (
+            row.get("lunch_covers") is not None
+            or row.get("dinner_covers") is not None
+        ):
+            b["has_split"] = True
+            b["lunch_covers"] += int(row.get("lunch_covers") or 0)
+            b["dinner_covers"] += int(row.get("dinner_covers") or 0)
     out: List[Dict[str, Any]] = []
     for d in sorted(by_date.keys()):
         b = by_date[d]

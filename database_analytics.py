@@ -186,6 +186,7 @@ def get_service_mtd_totals_multi(
         return {row["service_type"]: float(row["total"] or 0) for row in rows}
 
 
+@st.cache_data(ttl=300)
 def get_top_items_for_date_range(
     location_ids: List[int], start_date: str, end_date: str, limit: int = 20
 ) -> List[Dict]:
@@ -313,6 +314,7 @@ def get_service_sales_for_date_range(
         return [dict(row) for row in rows]
 
 
+@st.cache_data(ttl=300)
 def get_daily_service_sales_for_date_range(
     location_ids: List[int], start_date: str, end_date: str
 ) -> List[Dict]:

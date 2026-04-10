@@ -19,8 +19,10 @@ from tabs.settings_tab import render as render_settings
 
 boteco_logger.setup_logging()
 ui_theme.apply_plotly_theme()
-database.bootstrap()
-database.backfill_weekday_weighted_targets()
+if "bootstrapped" not in st.session_state:
+    database.bootstrap()
+    database.backfill_weekday_weighted_targets()
+    st.session_state["bootstrapped"] = True
 
 # Hardcode admin user if none exists
 with database.db_connection() as conn:

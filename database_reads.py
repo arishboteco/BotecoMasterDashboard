@@ -9,6 +9,7 @@ import streamlit as st
 import database
 
 
+@st.cache_data(ttl=600)
 def get_all_locations() -> List[Dict]:
     """Get all locations."""
     if database.use_supabase():
@@ -175,6 +176,7 @@ def get_all_summaries_for_export(
         return [dict(row) for row in rows]
 
 
+@st.cache_data(ttl=300)
 def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
     """Get daily summary for a specific date."""
     if database.use_supabase():
@@ -342,7 +344,7 @@ def get_service_mtd_totals(location_id: int, year: int, month: int) -> Dict[str,
         return {row["service_type"]: float(row["total"] or 0) for row in rows}
 
 
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=300)
 def get_summaries_for_date_range(
     location_id: int, start_date: str, end_date: str
 ) -> List[Dict]:
@@ -374,7 +376,7 @@ def get_summaries_for_date_range(
         return [dict(row) for row in rows]
 
 
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=300)
 def get_summaries_for_date_range_multi(
     location_ids: List[int], start_date: str, end_date: str
 ) -> List[Dict]:
@@ -521,6 +523,7 @@ def get_summaries_for_month_multi(
         return [dict(row) for row in rows]
 
 
+@st.cache_data(ttl=300)
 def get_most_recent_date_with_data(location_ids: List[int]) -> Optional[str]:
     """Get most recent saved summary date across one or more locations."""
     if not location_ids:
@@ -557,6 +560,7 @@ def get_most_recent_date_with_data(location_ids: List[int]) -> Optional[str]:
         return None
 
 
+@st.cache_data(ttl=600)
 def get_location_settings(location_id: int) -> Optional[Dict]:
     """Get location settings."""
     if database.use_supabase():
@@ -571,6 +575,7 @@ def get_location_settings(location_id: int) -> Optional[Dict]:
         return dict(row) if row else None
 
 
+@st.cache_data(ttl=300)
 def get_upload_history(location_id: int, limit: int = 50) -> List[Dict]:
     """Get upload history."""
     if database.use_supabase():
@@ -644,3 +649,10 @@ def clear_location_cache(location_id: int) -> None:
     get_category_mtd_totals.clear(location_id=location_id)
     get_service_mtd_totals.clear(location_id=location_id)
     get_recent_summaries.clear(location_id=location_id)
+    get_all_locations.clear()
+    get_location_settings.clear()
+    get_most_recent_date_with_data.clear()
+    get_daily_summary.clear()
+    get_upload_history.clear()
+    get_summaries_for_date_range.clear()
+    get_summaries_for_date_range_multi.clear()

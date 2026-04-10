@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple
 
 import config
 import database
+from database_reads import get_all_locations, get_location_settings
 
 
 def save_daily_summary(location_id: int, data: Dict) -> int:
@@ -315,6 +316,7 @@ def create_location(
                 "seat_count": seat_count,
             }
         ).execute()
+        get_all_locations.clear()
         return True, f"Location '{name}' created."
     else:
         with database.db_connection() as conn:
@@ -331,6 +333,7 @@ def create_location(
                 (name.strip(), monthly_target, daily, seat_count),
             )
             conn.commit()
+        get_all_locations.clear()
         return True, f"Location '{name}' created."
 
 
@@ -358,6 +361,8 @@ def delete_location(location_id: int) -> Tuple[bool, str]:
                 "Remove all data first or archive the location instead.",
             )
         supabase.table("locations").delete().eq("id", location_id).execute()
+        get_all_locations.clear()
+        get_location_settings.clear()
         return True, f"Location '{name}' deleted."
     else:
         with database.db_connection() as conn:
@@ -380,6 +385,8 @@ def delete_location(location_id: int) -> Tuple[bool, str]:
                 )
             cursor.execute("DELETE FROM locations WHERE id = ?", (location_id,))
             conn.commit()
+        get_all_locations.clear()
+        get_location_settings.clear()
         return True, f"Location '{name}' deleted."
 
 
@@ -423,6 +430,8 @@ def update_location_settings(location_id: int, settings: Dict) -> None:
                 if col not in allowed_cols:
                     raise ValueError(f"Invalid column name: {col}")
             supabase.table("locations").update(updates).eq("id", location_id).execute()
+            get_location_settings.clear()
+            get_all_locations.clear()
     else:
         with database.db_connection() as conn:
             cursor = conn.cursor()
@@ -462,6 +471,8 @@ def update_location_settings(location_id: int, settings: Dict) -> None:
                     vals,
                 )
             conn.commit()
+            get_location_settings.clear()
+            get_all_locations.clear()
 
 
 def save_upload_record(

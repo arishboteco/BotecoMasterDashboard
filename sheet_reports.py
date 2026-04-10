@@ -26,6 +26,7 @@ from io import BytesIO
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
+import streamlit as st
 import matplotlib
 
 matplotlib.use("Agg")
@@ -1571,6 +1572,7 @@ def _fig_for_section(
     return fig, ax
 
 
+@st.cache_data(ttl=600)
 def generate_sheet_style_report_sections(
     report_data: Dict,
     location_name: str = "Boteco Bangalore",
