@@ -13,7 +13,7 @@ def data_table(
     column_config: Optional[Dict] = None,
     empty_message: str = "No data available.",
     hide_index: bool = True,
-    use_container_width: bool = True,
+    width: str = "stretch",
 ) -> None:
     """Render a styled data table with empty state handling."""
     if df.empty:
@@ -22,7 +22,7 @@ def data_table(
 
     st.dataframe(
         df,
-        width="stretch" if use_container_width else "content",
+        width=width,
         hide_index=hide_index,
         column_config=column_config,
     )

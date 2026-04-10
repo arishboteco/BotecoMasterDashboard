@@ -203,7 +203,7 @@ def render(ctx: TabContext) -> None:
                     "created_at": "Created",
                 }
             ),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -403,7 +403,7 @@ def render(ctx: TabContext) -> None:
         )
 
         with st.expander("Preview (first 10 rows)", expanded=False):
-            st.dataframe(exp_df.head(10), use_container_width=True, hide_index=True)
+            st.dataframe(exp_df.head(10), width="stretch", hide_index=True)
     else:
         st.caption("No data found for the selected filters.")
 

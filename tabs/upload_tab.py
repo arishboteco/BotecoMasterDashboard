@@ -252,6 +252,6 @@ def render(ctx: TabContext) -> None:
                     else x
                 )
             )
-        st.dataframe(hdf, use_container_width=True, hide_index=True)
+        st.dataframe(hdf, width="stretch", hide_index=True)
     else:
         st.caption("No imports yet for this outlet.")

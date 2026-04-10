@@ -369,7 +369,7 @@ def render(ctx: TabContext) -> None:
                                 f'<div class="section-label">{title}</div>',
                                 unsafe_allow_html=True,
                             )
-                            st.image(BytesIO(sec_bytes), use_container_width=True)
+                            st.image(BytesIO(sec_bytes), width="stretch")
                             _wa_text = f"Boteco {_selected_outlet} EOD Report \u2013 {date_str} ({title})"
                             clipboard_ui.render_image_action_row(
                                 sec_bytes,
@@ -413,7 +413,7 @@ def render(ctx: TabContext) -> None:
                         f'<div class="section-label">{title}</div>',
                         unsafe_allow_html=True,
                     )
-                    st.image(BytesIO(sec_bytes), use_container_width=True)
+                    st.image(BytesIO(sec_bytes), width="stretch")
                     _wa_text = (
                         f"Boteco Bangalore EOD Report \u2013 {date_str} ({title})"
                     )
