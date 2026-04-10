@@ -79,11 +79,12 @@ def db_connection():
 
 # Supabase client (lazy initialization)
 _supabase_client = None
+_supabase_admin_client = None
 _use_supabase_override: bool | None = None
 
 
 def get_supabase_client():
-    """Get or create Supabase client."""
+    """Get or create Supabase client (anon key, subject to RLS)."""
     global _supabase_client
     if _supabase_client is None:
         try:
@@ -94,6 +95,28 @@ def get_supabase_client():
             logger.warning("supabase package not installed")
             return None
     return _supabase_client
+
+
+def get_supabase_admin_client():
+    """Get or create Supabase client with service role key (bypasses RLS).
+
+    Requires SUPABASE_SERVICE_KEY env variable to be set.
+    Returns None if not configured.
+    """
+    global _supabase_admin_client
+    if not config.SUPABASE_SERVICE_KEY:
+        return None
+    if _supabase_admin_client is None:
+        try:
+            from supabase import create_client
+
+            _supabase_admin_client = create_client(
+                config.SUPABASE_URL, config.SUPABASE_SERVICE_KEY
+            )
+        except ImportError:
+            logger.warning("supabase package not installed")
+            return None
+    return _supabase_admin_client
 
 
 def use_supabase() -> bool:

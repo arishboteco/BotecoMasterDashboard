@@ -428,15 +428,34 @@ def render(ctx: TabContext) -> None:
         ):
             counts, errors = database.wipe_all_data()
             total = sum(counts.values())
-            st.success(f"Wiped **{total:,}** records across {len(counts)} tables:")
-            for table, count in counts.items():
-                if count > 0:
-                    st.write(f"- `{table}`: {count:,} records deleted")
             if errors:
-                st.warning("Some tables had errors:")
+                st.warning("Some issues occurred during wipe:")
                 for err in errors:
                     st.write(f"- {err}")
+            st.session_state["wipe_result"] = {
+                "total": total,
+                "counts": counts,
+                "errors": errors,
+            }
             st.rerun()
+
+        if "wipe_result" in st.session_state:
+            result = st.session_state.pop("wipe_result")
+            total = result["total"]
+            counts = result["counts"]
+            errors = result["errors"]
+            if total > 0:
+                st.success(f"Wiped **{total:,}** records across {len(counts)} tables:")
+                for table, count in counts.items():
+                    if count > 0:
+                        st.write(f"- `{table}`: {count:,} records deleted")
+            else:
+                st.error(
+                    "Wipe completed but 0 records were deleted. Check for RLS policy restrictions on Supabase tables."
+                )
+            if errors:
+                for err in errors:
+                    st.warning(f"- {err}")
 
     st.markdown("---")
 

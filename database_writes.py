@@ -652,7 +652,18 @@ def wipe_all_data() -> Tuple[Dict[str, int], List[str]]:
     errors: List[str] = []
 
     if database.use_supabase():
-        supabase = database.get_supabase_client()
+        supabase = (
+            database.get_supabase_admin_client() or database.get_supabase_client()
+        )
+        if supabase is None:
+            errors.append("Supabase client unavailable")
+            return counts, errors
+        is_admin = database.get_supabase_admin_client() is not None
+        if not is_admin:
+            errors.append(
+                "WARNING: Using anon key — Supabase RLS may block deletes. "
+                "Set SUPABASE_SERVICE_KEY env variable for admin-level access."
+            )
         for table in [
             "item_sales",
             "super_category_sales",
@@ -663,9 +674,21 @@ def wipe_all_data() -> Tuple[Dict[str, int], List[str]]:
         ]:
             try:
                 result = supabase.table(table).select("id", count="exact").execute()
-                count = result.count if hasattr(result, "count") else len(result.data)
-                supabase.table(table).delete().execute()
-                counts[table] = count
+                expected = (
+                    result.count if hasattr(result, "count") else len(result.data)
+                )
+                delete_result = supabase.table(table).delete().execute()
+                actual_deleted = (
+                    len(delete_result.data)
+                    if hasattr(delete_result, "data")
+                    else expected
+                )
+                counts[table] = actual_deleted
+                if actual_deleted < expected:
+                    errors.append(
+                        f"{table}: expected {expected} deletes, got {actual_deleted} "
+                        f"— likely blocked by RLS policies"
+                    )
             except Exception as e:
                 counts[table] = 0
                 errors.append(f"{table}: {e}")
