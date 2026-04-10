@@ -1834,16 +1834,32 @@ def generate_whatsapp_text(
         status_emoji, status_text = "\U0001f534", "Below Target"
 
     categories = r.get("categories") or []
-    cat_total = sum(c.get("amount", 0) for c in categories) or 1
-    cat_lines = (
-        "\n".join(
-            f"  \u2022 {c.get('category', '?')}: "
-            f"{int(c.get('amount', 0) / cat_total * 100)}% "
-            f"({config.CURRENCY_FORMAT.format(c.get('amount', 0))})"
-            for c in categories
+    cat_amount_total = sum(c.get("amount", 0) for c in categories)
+    has_amounts = cat_amount_total > 0
+    if has_amounts:
+        cat_total_divisor = cat_amount_total or 1
+        cat_lines = (
+            "\n".join(
+                f"  \u2022 {c.get('category', '?')}: "
+                f"{int(c.get('amount', 0) / cat_total_divisor * 100)}% "
+                f"({config.CURRENCY_FORMAT.format(c.get('amount', 0))})"
+                for c in categories
+                if c.get("amount", 0) > 0
+            )
+            or "  \u2022 Data not available"
         )
-        or "  \u2022 Data not available"
-    )
+    else:
+        cat_qty_total = sum(c.get("qty", 0) for c in categories) or 1
+        cat_lines = (
+            "\n".join(
+                f"  \u2022 {c.get('category', '?')}: "
+                f"{c.get('qty', 0)} items "
+                f"({int(c.get('qty', 0) / cat_qty_total * 100)}%)"
+                for c in categories
+                if c.get("qty", 0) > 0
+            )
+            or "  \u2022 Data not available"
+        )
 
     services = r.get("services") or []
     svc_lines = "\n".join(

@@ -383,6 +383,7 @@ def parse_item_order_details(
 
 
 _MERGE_PRIORITY = {
+    "dynamic_report": 5,
     "item_order_details": 10,
 }
 
@@ -405,6 +406,25 @@ _NUMERIC_SUM_KEYS = (
 
 
 def _merge_category_lists(
+    a: List[Dict[str, Any]], b: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    m: Dict[str, Dict[str, Any]] = {}
+    for c in a:
+        k = c.get("category") or "Other"
+        m[k] = {"qty": int(c.get("qty", 0)), "amount": float(c.get("amount", 0))}
+    for c in b:
+        k = c.get("category") or "Other"
+        if k not in m:
+            m[k] = {"qty": 0, "amount": 0.0}
+        m[k]["qty"] += int(c.get("qty", 0))
+        m[k]["amount"] += float(c.get("amount", 0))
+    return [
+        {"category": k, "qty": int(v["qty"]), "amount": v["amount"]}
+        for k, v in sorted(m.items(), key=lambda x: -x[1]["amount"])
+    ]
+
+
+def _merge_super_category_lists(
     a: List[Dict[str, Any]], b: List[Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
     m: Dict[str, Dict[str, Any]] = {}
@@ -490,9 +510,12 @@ def merge_upload_fragments(fragments: List[Dict]) -> Dict[str, Any]:
                 merged[k] = frag.get(k) or 0
                 continue
             merged[k] = float(merged.get(k) or 0) + float(frag.get(k) or 0)
-        if ft == "item_order_details":
+        if ft in ("dynamic_report", "item_order_details"):
             merged["categories"] = _merge_category_lists(
                 merged.get("categories") or [], frag.get("categories") or []
+            )
+            merged["super_categories"] = _merge_super_category_lists(
+                merged.get("super_categories") or [], frag.get("super_categories") or []
             )
             merged["services"] = _merge_service_lists(
                 merged.get("services") or [], frag.get("services") or []
