@@ -1,9 +1,7 @@
 """Per-tab rendering modules for the Boteco Dashboard."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -12,8 +10,8 @@ class TabContext:
 
     location_id: int
     import_loc_id: int
-    report_loc_ids: List[int]
+    report_loc_ids: list[int]
     report_display_name: str
-    all_locs: List[Dict[str, Any]]
-    location_settings: Optional[Dict[str, Any]]
-    import_location_settings: Optional[Dict[str, Any]]
+    all_locs: list[dict[str, Any]]
+    location_settings: dict[str, Any] | None
+    import_location_settings: dict[str, Any] | None
