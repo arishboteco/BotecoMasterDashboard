@@ -130,7 +130,7 @@ def _is_numeric(val: Any) -> bool:
         return False
 
 
-def _meal_from_time(ts_val: Any) -> Optional[str]:
+def _meal_from_time(ts_val: Any, is_12h: bool = False) -> Optional[str]:
     if ts_val is None:
         return None
     s = str(ts_val).strip()
@@ -142,9 +142,38 @@ def _meal_from_time(ts_val: Any) -> Optional[str]:
         return None
     if pd.isna(ts):
         return None
-    if ts.hour < 18:
+    h = ts.hour
+    if is_12h:
+        # POS uses 12-hour format without AM/PM; pd.Timestamp parses as AM.
+        # Restaurant business-hours heuristic:
+        #   parsed 12 or 1-5  → noon–5 PM  → Lunch
+        #   parsed 6-11       → 6–11 PM    → Dinner
+        if 6 <= h <= 11:
+            return "Dinner"
+        return "Lunch"
+    if h < 18:
         return "Lunch"
     return "Dinner"
+
+
+def _detect_12h_format(df: pd.DataFrame, cdt_col: Optional[str]) -> bool:
+    """Return True if all Created Date Time values use 12-hour format (max hour <= 12)."""
+    if not cdt_col:
+        return False
+    max_hour = 0
+    for val in df[cdt_col].dropna().head(500):
+        s = str(val).strip()
+        if s in ("", "nan", "None"):
+            continue
+        try:
+            ts = pd.Timestamp(s)
+        except Exception:
+            continue
+        if pd.isna(ts):
+            continue
+        if ts.hour > max_hour:
+            max_hour = ts.hour
+    return max_hour <= 12
 
 
 def _normalize_date(val: Any) -> Optional[str]:
@@ -193,6 +222,8 @@ def _parse_v1(
     missing = [r for r in required if r not in col_map]
     if missing:
         return None, [f"{filename} missing required columns: {', '.join(missing)}"]
+
+    is_12h = _detect_12h_format(df, col_map.get("created date time"))
 
     rest_col = col_map.get("restaurant")
     restaurant_name: Optional[str] = None
@@ -282,7 +313,7 @@ def _parse_v1(
                     )
 
         if cdt_col:
-            meal = _meal_from_time(row.get(cdt_col))
+            meal = _meal_from_time(row.get(cdt_col), is_12h=is_12h)
             if meal:
                 net_val = _safe_float(row.get(net_col, 0))
                 day["meals"][meal] = day["meals"].get(meal, 0.0) + net_val
@@ -376,6 +407,8 @@ def _parse_v2(
     if not date_col:
         return None, [f"{filename} missing Bill Date column"]
 
+    is_12h = _detect_12h_format(df, col_map.get("created date time"))
+
     restaurant_name: Optional[str] = None
     if rest_col and not df.empty:
         first_val = str(df[rest_col].iloc[0]).strip()
@@ -455,34 +488,25 @@ def _parse_v2(
                 summary_row = row
                 break
 
-        # Collect items and categories from ALL rows in the bill
+        # Collect items and categories from ALL rows in the bill (qty only;
+        # amounts are distributed proportionally after we know the bill total).
+        bill_items: List[Tuple[str, str, int]] = []  # (item_name, raw_cat, qty)
         for idx in idxs:
             row = df.iloc[idx]
             item_qty = max(_safe_int(row.get(qty_col, 1) if qty_col else 1), 1)
-            item_amount = _safe_float(row.get(amount_col, 0)) if amount_col else 0.0
             raw_cat = ""
             if cat_col and pd.notna(row.get(cat_col)):
                 raw_cat = str(row.get(cat_col)).strip()
-            if raw_cat and raw_cat.lower() not in ("", "nan", "none"):
-                day["categories"][raw_cat]["qty"] += item_qty
-                day["categories"][raw_cat]["amount"] += item_amount
-                super_cat = _map_to_super_category(raw_cat)
-                if super_cat != raw_cat:
-                    day["super_categories"][super_cat]["qty"] += item_qty
-                    day["super_categories"][super_cat]["amount"] += item_amount
+            if raw_cat and raw_cat.lower() in ("", "nan", "none"):
+                raw_cat = ""
 
             item_name = ""
             if item_col and pd.notna(row.get(item_col)):
                 item_name = str(row.get(item_col)).strip()
-            if item_name and item_name.lower() not in ("", "nan", "none"):
-                cat_for_item = (
-                    raw_cat
-                    if raw_cat and raw_cat.lower() not in ("", "nan", "none")
-                    else ""
-                )
-                day["top_items"][item_name]["qty"] += item_qty
-                day["top_items"][item_name]["amount"] += item_amount
-                day["top_items"][item_name]["category"] = cat_for_item
+            if item_name and item_name.lower() in ("", "nan", "none"):
+                item_name = ""
+
+            bill_items.append((item_name, raw_cat, item_qty))
 
         # Complimentary bills: add gross to complimentary, no revenue
         if is_compli:
@@ -505,7 +529,8 @@ def _parse_v2(
         # Extract bill-level financials from summary row
         pax = _safe_int(summary_row.get(pax_col, 0)) if pax_col else 0
         day["covers"] += pax
-        day["net_total"] += _safe_float(summary_row.get(net_col, 0)) if net_col else 0.0
+        bill_net = _safe_float(summary_row.get(net_col, 0)) if net_col else 0.0
+        day["net_total"] += bill_net
         day["gross_total"] += (
             _safe_float(summary_row.get(gross_col, 0)) if gross_col else 0.0
         )
@@ -520,6 +545,23 @@ def _parse_v2(
         day["complimentary"] += (
             _safe_float(summary_row.get(comp_col, 0)) if comp_col else 0.0
         )
+
+        # Distribute bill net amount proportionally across items/categories by qty
+        total_qty = sum(q for _, _, q in bill_items)
+        for item_name, raw_cat, item_qty in bill_items:
+            share = (bill_net * item_qty / total_qty) if total_qty > 0 else 0.0
+            if raw_cat:
+                day["categories"][raw_cat]["qty"] += item_qty
+                day["categories"][raw_cat]["amount"] += share
+                super_cat = _map_to_super_category(raw_cat)
+                if super_cat != raw_cat:
+                    day["super_categories"][super_cat]["qty"] += item_qty
+                    day["super_categories"][super_cat]["amount"] += share
+            if item_name:
+                cat_for_item = raw_cat or ""
+                day["top_items"][item_name]["qty"] += item_qty
+                day["top_items"][item_name]["amount"] += share
+                day["top_items"][item_name]["category"] = cat_for_item
 
         # Payment breakdown — use Payment Type to bucket each bill's Gross Sale
         gross_val = _safe_float(summary_row.get(gross_col, 0)) if gross_col else 0.0
@@ -553,7 +595,7 @@ def _parse_v2(
 
         # Meal period (service breakdown) from summary row's Created Date Time
         if cdt_col:
-            meal = _meal_from_time(summary_row.get(cdt_col))
+            meal = _meal_from_time(summary_row.get(cdt_col), is_12h=is_12h)
             net_val = _safe_float(summary_row.get(net_col, 0)) if net_col else 0.0
             if meal and net_val > 0:
                 day["meals"][meal] += net_val
