@@ -53,7 +53,7 @@ C_AMBER = "#F4B400"  # Golden mustard — warning
 C_RED = "#EF4444"  # Red — negative/discount
 C_WHITE = "#FFFFFF"  # White
 
-FONT = "Inter"
+FONT = "DejaVu Sans"
 DPI = 150
 
 
