@@ -79,6 +79,66 @@ def _sheet_date_label(iso_date: str) -> str:
     return f"{dt.strftime('%a')}, {dt.day} {dt.strftime('%b %Y')}"
 
 
+def _to_super_category(name: str) -> str:
+    k = str(name or "").strip().lower()
+    if not k:
+        return "Other"
+    if "beer" in k:
+        return "Beer"
+    if any(
+        x in k
+        for x in (
+            "liquor",
+            "spirit",
+            "wine",
+            "cocktail",
+            "whisky",
+            "vodka",
+            "gin",
+            "rum",
+        )
+    ):
+        return "Liquor"
+    if any(x in k for x in ("tobacco", "hookah", "cigar")):
+        return "Tobacco"
+    if any(
+        x in k
+        for x in ("coffee", "hot beverage", "hot beverages", "espresso", "cappuccino")
+    ):
+        return "Coffee"
+    if any(
+        x in k
+        for x in (
+            "soft",
+            "beverage",
+            "drink",
+            "juice",
+            "mocktail",
+            "water",
+            "tea",
+            "soda",
+        )
+    ):
+        return "Soft Beverages"
+    return "Food"
+
+
+def _collapse_super_category_amounts(rows: List[Dict[str, Any]]) -> Dict[str, float]:
+    totals: Dict[str, float] = {}
+    for row in rows or []:
+        name = _to_super_category(str(row.get("category") or ""))
+        totals[name] = totals.get(name, 0.0) + float(row.get("amount") or 0)
+    return totals
+
+
+def _collapse_super_category_totals(raw: Dict[str, float]) -> Dict[str, float]:
+    totals: Dict[str, float] = {}
+    for name, amount in (raw or {}).items():
+        super_name = _to_super_category(str(name or ""))
+        totals[super_name] = totals.get(super_name, 0.0) + float(amount or 0)
+    return totals
+
+
 def _format_week_label(week_str: str) -> str:
     """Return week string as-is (expected format: YYYY-W##)."""
     week_str = str(week_str or "").strip()
@@ -833,21 +893,15 @@ def _section_category(
     multi = per_outlet and len(per_outlet) >= 2
     std_cats = ["Food", "Liquor", "Beer", "Soft Beverages", "Coffee", "Tobacco"]
 
-    daily_cat = {
-        c.get("category"): float(c.get("amount") or 0)
-        for c in r.get("categories") or []
-    }
-    mtd_category = dict(mtd_category or {})
+    daily_cat = _collapse_super_category_amounts(r.get("categories") or [])
+    mtd_category = _collapse_super_category_totals(dict(mtd_category or {}))
     total_cat_mtd = sum(mtd_category.values()) or 1.0
 
     # Per-outlet daily category data
     outlet_daily_cats = []
     if multi and per_outlet:
         for _, od in per_outlet:
-            od_cats = {
-                c.get("category"): float(c.get("amount") or 0)
-                for c in od.get("categories") or []
-            }
+            od_cats = _collapse_super_category_amounts(od.get("categories") or [])
             outlet_daily_cats.append(od_cats)
 
     cat_order = [x for x in std_cats if x in daily_cat or x in mtd_category]

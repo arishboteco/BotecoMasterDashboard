@@ -1,5 +1,7 @@
 """Formatting tests for sheet report helpers."""
 
+import matplotlib.pyplot as plt
+
 import sheet_reports
 
 
@@ -14,3 +16,33 @@ class TestRupeeFormatting:
 class TestForecastFormatting:
     def test_currency_formatter_handles_forecast_values(self):
         assert sheet_reports._r(300000.4) == "₹300,000"
+
+
+class TestCategorySuperCategoryDisplay:
+    def test_category_section_displays_super_categories_only(self):
+        fig, ax = plt.subplots(figsize=(8, 6), dpi=120)
+        try:
+            report_data = {
+                "date": "2026-04-08",
+                "categories": [
+                    {"category": "Tira Gosto", "qty": 2, "amount": 800.0},
+                    {"category": "Hot Beverages", "qty": 1, "amount": 200.0},
+                ],
+            }
+            mtd_category = {"Tira Gosto": 1800.0, "Hot Beverages": 600.0}
+
+            sheet_reports._section_category(
+                ax,
+                report_data,
+                location_name="All locations",
+                mtd_category=mtd_category,
+                day_lbl="Wed, 8 Apr 2026",
+            )
+
+            text_values = {t.get_text() for t in ax.texts}
+            assert "Food" in text_values
+            assert "Coffee" in text_values
+            assert "Tira Gosto" not in text_values
+            assert "Hot Beverages" not in text_values
+        finally:
+            plt.close(fig)

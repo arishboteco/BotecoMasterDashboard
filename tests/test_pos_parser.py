@@ -9,6 +9,8 @@ from pos_parser import (
     _cell_date_to_iso,
     _payment_bucket,
     _normalize_group_category,
+    calculate_mtd_metrics,
+    calculate_mtd_metrics_multi,
 )
 
 
@@ -127,3 +129,57 @@ class TestNormalizeGroupCategory:
 
     def test_unknown(self):
         assert _normalize_group_category("Misc") == "Misc"
+
+
+class TestMtdComplimentary:
+    def test_single_location_includes_mtd_complimentary(self, monkeypatch):
+        monkeypatch.setattr(
+            "database.get_summaries_for_month",
+            lambda location_id, year, month: [
+                {
+                    "date": "2026-04-01",
+                    "net_total": 1000,
+                    "covers": 10,
+                    "discount": 50,
+                    "complimentary": 120,
+                },
+                {
+                    "date": "2026-04-02",
+                    "net_total": 500,
+                    "covers": 5,
+                    "discount": 0,
+                    "complimentary": 30,
+                },
+            ],
+        )
+
+        out = calculate_mtd_metrics(1, target_monthly=10000, year=2026, month=4)
+
+        assert out["mtd_complimentary"] == 150
+
+    def test_multi_location_includes_mtd_complimentary(self, monkeypatch):
+        monkeypatch.setattr(
+            "database.get_summaries_for_month_multi",
+            lambda location_ids, year, month: [
+                {
+                    "date": "2026-04-01",
+                    "net_total": 1000,
+                    "covers": 10,
+                    "discount": 50,
+                    "complimentary": 100,
+                },
+                {
+                    "date": "2026-04-01",
+                    "net_total": 700,
+                    "covers": 7,
+                    "discount": 25,
+                    "complimentary": 40,
+                },
+            ],
+        )
+
+        out = calculate_mtd_metrics_multi(
+            [1, 2], target_monthly=20000, year=2026, month=4
+        )
+
+        assert out["mtd_complimentary"] == 140

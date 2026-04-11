@@ -639,6 +639,7 @@ def calculate_mtd_metrics(
     total_covers = sum(s.get("covers", 0) or 0 for s in summaries)
     total_sales = sum(s.get("net_total", 0) or 0 for s in summaries)
     total_discount = sum(s.get("discount", 0) or 0 for s in summaries)
+    total_complimentary = sum(s.get("complimentary", 0) or 0 for s in summaries)
     days_counted = len([s for s in summaries if (s.get("net_total", 0) or 0) > 0])
 
     avg_daily = total_sales / days_counted if days_counted > 0 else 0
@@ -648,6 +649,7 @@ def calculate_mtd_metrics(
         "mtd_total_covers": total_covers,
         "mtd_net_sales": total_sales,
         "mtd_discount": total_discount,
+        "mtd_complimentary": total_complimentary,
         "mtd_avg_daily": avg_daily,
         "mtd_target": target_monthly,
         "mtd_pct_target": pct_target,
@@ -680,6 +682,7 @@ def calculate_mtd_metrics_multi(
     total_covers = sum(s.get("covers", 0) or 0 for s in summaries)
     total_sales = sum(s.get("net_total", 0) or 0 for s in summaries)
     total_discount = sum(s.get("discount", 0) or 0 for s in summaries)
+    total_complimentary = sum(s.get("complimentary", 0) or 0 for s in summaries)
     days_counted = len([s for s in summaries if (s.get("net_total", 0) or 0) > 0])
 
     avg_daily = total_sales / days_counted if days_counted > 0 else 0
@@ -689,6 +692,7 @@ def calculate_mtd_metrics_multi(
         "mtd_total_covers": total_covers,
         "mtd_net_sales": total_sales,
         "mtd_discount": total_discount,
+        "mtd_complimentary": total_complimentary,
         "mtd_avg_daily": avg_daily,
         "mtd_target": target_monthly,
         "mtd_pct_target": pct_target,

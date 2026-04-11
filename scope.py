@@ -91,7 +91,8 @@ def aggregate_daily_summaries(
     svc_amt: Dict[str, float] = defaultdict(float)
     for s in summaries:
         for sv in s.get("services") or []:
-            svc_amt[str(sv.get("type", ""))] += float(sv.get("amount", 0) or 0)
+            key = str(sv.get("type") or sv.get("service_type") or "")
+            svc_amt[key] += float(sv.get("amount", 0) or 0)
     out["services"] = [
         {"type": k, "amount": v}
         for k, v in sorted(svc_amt.items(), key=lambda x: -x[1])
@@ -186,7 +187,12 @@ def get_daily_report_bundle(
         loc_rows = rows_by_loc.get(lid, [])
         if loc_rows:
             base = dict(loc_rows[0])
-            parts_raw.append(loc_rows[0])
+            detailed = database.get_daily_summary(lid, date_str) or {}
+            if detailed.get("categories") is not None:
+                base["categories"] = list(detailed.get("categories") or [])
+            if detailed.get("services") is not None:
+                base["services"] = list(detailed.get("services") or [])
+            parts_raw.append(base)
         else:
             base = _synthetic_daily_summary(lid, date_str)
         enriched = enrich_summary_for_display(base, [lid], monthly_tgt, date_str)
@@ -215,10 +221,7 @@ def merge_month_footfall_rows(
         d = str(row.get("date", ""))[:10]
         b = by_date[d]
         b["covers"] += int(row.get("covers") or 0)
-        if (
-            row.get("lunch_covers") is not None
-            or row.get("dinner_covers") is not None
-        ):
+        if row.get("lunch_covers") is not None or row.get("dinner_covers") is not None:
             b["has_split"] = True
             b["lunch_covers"] += int(row.get("lunch_covers") or 0)
             b["dinner_covers"] += int(row.get("dinner_covers") or 0)
