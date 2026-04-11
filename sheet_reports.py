@@ -11,9 +11,9 @@ Design language (Boteco Mango):
   - Page bg              (#F7FAFC)
   - Card bg              (#FFFFFF)
   - Border               (#E2E8F0)
-  - Leaf green           (#6DBE45)
-  - Golden mustard       (#F4B400)
-  - Red error            (#EF4444)
+  - Leaf green           (#2E7D32)
+  - Golden mustard       (#946B00)
+  - Red error            (#DC2626)
 
 The composite PNG is built with matplotlib drawing primitives
 (patches + text), not tables, so every element can be positioned
@@ -48,9 +48,9 @@ C_DATE_LABEL = "#8BA3BD"  # Muted blue-grey — date/location labels in banners
 C_MUTED = "#64748B"  # Slate 500 (muted text — WCAG AA compliant)
 C_BORDER = "#E2E8F0"  # Slate 200 (card borders)
 C_BAND = "#F7FAFC"  # Soft off-white (alternating rows, matches page)
-C_GREEN = "#6DBE45"  # Leaf green — positive/achievement
-C_AMBER = "#F4B400"  # Golden mustard — warning
-C_RED = "#EF4444"  # Red — negative/discount
+C_GREEN = "#2E7D32"  # Leaf green — positive/achievement (WCAG AA)
+C_AMBER = "#946B00"  # Golden mustard — warning (WCAG AA)
+C_RED = "#DC2626"  # Red — negative/discount (WCAG AA)
 C_WHITE = "#FFFFFF"  # White
 
 FONT = "DejaVu Sans"
@@ -716,12 +716,12 @@ def _section_sales_summary(
             _table_section_label(
                 ax,
                 0,
-                cur_y - row_h * 0.85,
+                cur_y - row_h,
                 section_label,
                 sum(col_w),
-                row_h=row_h * 0.85,
+                row_h=row_h,
             )
-            cur_y -= row_h * 0.85
+            cur_y -= row_h
             row_idx[0] = 0
             return
         # Gather values
@@ -813,7 +813,7 @@ def _section_sales_summary(
         bold=True,
         bg=C_BANNER,
         text_color=C_WHITE,
-        right_color=C_BRAND,
+        right_color=C_WHITE,
     )
 
     # ── MTD block ────────────────────────────────────────────────────────
@@ -1298,7 +1298,7 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
             text_color=C_MUTED,
         )
 
-    ax.set_ylim(cur_y - 0.06, 1.0)
+    ax.set_ylim(cur_y - 0.04, 1.0)
 
 
 def _section_footfall_metrics(
@@ -1331,7 +1331,7 @@ def _section_footfall_metrics(
     )
     _label(ax, 0.012, banner_top - 0.045, location_name[:32], size=9.0, color="#8BA3BD")
 
-    cur_y = banner_y - 0.015
+    cur_y = banner_y - 0.01
     row_h = 0.038
 
     # Helper to calculate MoM/WoW % change
