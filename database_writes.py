@@ -11,21 +11,9 @@ from database_reads import get_all_locations, get_location_settings
 
 
 def _bulk_delete_child_records(supabase, summary_id: int) -> None:
-    """Delete all child records for a summary using raw SQL (single round-trip)."""
-    try:
-        supabase.rpc(
-            "execute_sql",
-            {
-                "query": f"""
-                DELETE FROM item_sales WHERE summary_id = {summary_id};
-                DELETE FROM service_sales WHERE summary_id = {summary_id};
-            """
-            },
-        ).execute()
-    except Exception:
-        # Fallback: delete individually if RPC unavailable
-        supabase.table("item_sales").delete().eq("summary_id", summary_id).execute()
-        supabase.table("service_sales").delete().eq("summary_id", summary_id).execute()
+    """Delete all child records for a summary via Supabase client API."""
+    supabase.table("item_sales").delete().eq("summary_id", summary_id).execute()
+    supabase.table("service_sales").delete().eq("summary_id", summary_id).execute()
 
 
 def _bulk_upsert_service_sales(supabase, summary_id: int, services: List[Dict]) -> None:

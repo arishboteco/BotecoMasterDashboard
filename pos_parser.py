@@ -65,6 +65,11 @@ def _cell_date_to_iso(val: Any) -> Optional[str]:
     return ts.strftime("%Y-%m-%d")
 
 
+# Public aliases for use by smart_upload and other modules
+parse_date = _parse_date
+cell_date_to_iso = _cell_date_to_iso
+
+
 def _load_tabular(file_content: bytes, filename: str) -> Optional[pd.DataFrame]:
     """Load first sheet into a single DataFrame without header."""
     bio = BytesIO(file_content)

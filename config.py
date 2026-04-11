@@ -12,8 +12,13 @@ GST_RATE = 0.025
 DATABASE_PATH = "data/boteco.db"
 
 # Supabase (when using cloud database)
-SUPABASE_URL = "https://qhuyklkussmzopahtpri.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFodXlrbGt1c3Ntem9wYWh0cHJpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTM3MTgsImV4cCI6MjA5MTIyOTcxOH0.FCL6juxXUJZEG11PvioESbREEChadlhaCo2jPSbcZhc"
+SUPABASE_URL = os.environ.get(
+    "SUPABASE_URL", "https://qhuyklkussmzopahtpri.supabase.co"
+)
+SUPABASE_KEY = os.environ.get(
+    "SUPABASE_KEY",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFodXlrbGt1c3Ntem9wYWh0cHJpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTM3MTgsImV4cCI6MjA5MTIyOTcxOH0.FCL6juxXUJZEG11PvioESbREEChadlhaCo2jPSbcZhc",
+)
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 
 # App Settings

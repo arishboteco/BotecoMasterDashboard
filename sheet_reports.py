@@ -1620,7 +1620,7 @@ def _section_fig_width(n_outlets: int) -> float:
 def _fig_for_section(
     n_rows: int, min_rows: int = 4, cap_h: float = 20.0, w: float = 8.5
 ) -> Tuple[plt.Figure, plt.Axes]:
-    h = min(cap_h, 2.8 + 0.48 * max(n_rows, min_rows))
+    h = min(cap_h, 0.5 + 0.52 * max(n_rows, min_rows))
     fig, ax = plt.subplots(figsize=(w, h), dpi=DPI)
     fig.patch.set_facecolor(C_PAGE)
     ax.set_facecolor(C_PAGE)
