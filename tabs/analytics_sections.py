@@ -668,7 +668,7 @@ def render_revenue_breakdown(
                         "category": "Other",
                         "amount": other_amount,
                         "qty": other_qty,
-                        "pct": other_amount / total_cat * 100,
+                        "pct": other_amount / total_cat * 100 if total_cat > 0 else 0,
                     }
                 ]
             )
