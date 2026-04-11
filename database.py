@@ -231,7 +231,7 @@ def init_database():
         )
     """)
 
-    # Category sales table
+    # Category sales table (deprecated - use VIEW category_sales_view instead)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS category_sales (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -243,7 +243,20 @@ def init_database():
         )
     """)
 
-    # Super-category sales table (aggregated from specific categories)
+    # Create view for category sales derived from item_sales
+    cursor.execute("""
+        CREATE VIEW IF NOT EXISTS category_sales_view AS
+        SELECT 
+            ds.id AS summary_id,
+            COALESCE(NULLIF(i.category, ''), 'Uncategorized') AS category,
+            SUM(i.qty) AS qty,
+            SUM(i.amount) AS amount
+        FROM daily_summaries ds
+        LEFT JOIN item_sales i ON i.summary_id = ds.id
+        GROUP BY ds.id, COALESCE(NULLIF(i.category, ''), 'Uncategorized')
+    """)
+
+    # Super-category sales table (deprecated - use VIEW super_category_sales_view instead)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS super_category_sales (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -253,6 +266,54 @@ def init_database():
             amount REAL DEFAULT 0,
             FOREIGN KEY (summary_id) REFERENCES daily_summaries(id)
         )
+    """)
+
+    # Create view for super-category sales
+    cursor.execute("""
+        CREATE VIEW IF NOT EXISTS super_category_sales_view AS
+        SELECT 
+            ds.id AS summary_id,
+            CASE 
+                WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
+                    'beer', 'wine', 'spirits', 'cocktails', 'whisky', 'rum', 'vodka', 'gin', 'brandy'
+                ) THEN 'Beverages'
+                WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
+                    'veg starters', 'non-veg starters', 'starters', 'appetizers', 'snacks'
+                ) THEN 'Starters'
+                WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
+                    'veg main course', 'non-veg main course', 'main course', 'biryani', 'rice', 'curry'
+                ) THEN 'Main Course'
+                WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
+                    'desserts', 'sweets', 'ice cream'
+                ) THEN 'Desserts'
+                WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
+                    'soft drinks', 'juices', 'mocktails', 'shakes', 'coffee', 'tea'
+                ) THEN 'Beverages - Non Alcoholic'
+                ELSE 'Other'
+            END AS category,
+            SUM(i.qty) AS qty,
+            SUM(i.amount) AS amount
+        FROM daily_summaries ds
+        LEFT JOIN item_sales i ON i.summary_id = ds.id
+        GROUP BY ds.id,
+            CASE 
+                WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
+                    'beer', 'wine', 'spirits', 'cocktails', 'whisky', 'rum', 'vodka', 'gin', 'brandy'
+                ) THEN 'Beverages'
+                WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
+                    'veg starters', 'non-veg starters', 'starters', 'appetizers', 'snacks'
+                ) THEN 'Starters'
+                WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
+                    'veg main course', 'non-veg main course', 'main course', 'biryani', 'rice', 'curry'
+                ) THEN 'Main Course'
+                WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
+                    'desserts', 'sweets', 'ice cream'
+                ) THEN 'Desserts'
+                WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
+                    'soft drinks', 'juices', 'mocktails', 'shakes', 'coffee', 'tea'
+                ) THEN 'Beverages - Non Alcoholic'
+                ELSE 'Other'
+            END
     """)
 
     # Service sales table

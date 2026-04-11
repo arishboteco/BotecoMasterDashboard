@@ -227,7 +227,7 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
             if row:
                 summary = dict(row)
                 cursor.execute(
-                    "SELECT * FROM category_sales WHERE summary_id = ?",
+                    "SELECT * FROM category_sales_view WHERE summary_id = ?",
                     (summary["id"],),
                 )
                 summary["categories"] = [dict(r) for r in cursor.fetchall()]
@@ -300,7 +300,7 @@ def get_category_mtd_totals(
             cursor.execute(
                 """
                 SELECT cs.category, SUM(cs.amount) AS total
-                FROM category_sales cs
+                FROM category_sales_view cs
                 INNER JOIN daily_summaries ds ON cs.summary_id = ds.id
                 WHERE ds.location_id = ? AND ds.date >= ? AND ds.date < ?
                 GROUP BY cs.category

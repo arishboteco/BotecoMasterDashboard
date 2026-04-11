@@ -10,8 +10,68 @@ import database
 from database_reads import get_all_locations, get_location_settings
 
 
+def _bulk_delete_child_records(supabase, summary_id: int) -> None:
+    """Delete all child records for a summary using raw SQL (single round-trip)."""
+    try:
+        supabase.rpc(
+            "execute_sql",
+            {
+                "query": f"""
+                DELETE FROM item_sales WHERE summary_id = {summary_id};
+                DELETE FROM service_sales WHERE summary_id = {summary_id};
+            """
+            },
+        ).execute()
+    except Exception:
+        # Fallback: delete individually if RPC unavailable
+        supabase.table("item_sales").delete().eq("summary_id", summary_id).execute()
+        supabase.table("service_sales").delete().eq("summary_id", summary_id).execute()
+
+
+def _bulk_upsert_service_sales(supabase, summary_id: int, services: List[Dict]) -> None:
+    """Bulk insert service sales records."""
+    if not services:
+        return
+    svc_records = [
+        {
+            "summary_id": summary_id,
+            "service_type": svc.get("type", ""),
+            "amount": svc.get("amount", 0) if svc.get("amount") is not None else 0,
+        }
+        for svc in services
+    ]
+    supabase.table("service_sales").insert(svc_records).execute()
+
+
+def _bulk_upsert_item_sales(supabase, summary_id: int, items: List[Dict]) -> None:
+    """Bulk insert item sales records with fallback for missing category column."""
+    if not items:
+        return
+    item_records = [
+        {
+            "summary_id": summary_id,
+            "item_name": item.get("item_name", ""),
+            "category": item.get("category", ""),
+            "qty": item.get("qty", 0) if item.get("qty") is not None else 0,
+            "amount": item.get("amount", 0) if item.get("amount") is not None else 0,
+        }
+        for item in items
+    ]
+    try:
+        supabase.table("item_sales").insert(item_records).execute()
+    except Exception as exc:
+        database.logger.warning(
+            "item_sales bulk insert failed, retrying: %s",
+            exc,
+        )
+        item_records_no_cat = [
+            {k: v for k, v in r.items() if k != "category"} for r in item_records
+        ]
+        supabase.table("item_sales").insert(item_records_no_cat).execute()
+
+
 def save_daily_summary(location_id: int, data: Dict) -> int:
-    """Save or update daily summary using INSERT OR REPLACE for atomic upsert."""
+    """Save or update daily summary using upsert pattern for atomic operation."""
     database.logger.info(
         "Saving daily summary for location_id=%s date=%s",
         location_id,
@@ -19,7 +79,6 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
     )
 
     if database.use_supabase():
-        supabase_read = database.get_supabase_client()
         supabase_write = (
             database.get_supabase_admin_client() or database.get_supabase_client()
         )
@@ -55,106 +114,25 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
             "order_count": data.get("order_count"),
         }
 
-        existing = (
-            supabase_read.table("daily_summaries")
-            .select("id")
-            .eq("location_id", location_id)
-            .eq("date", data["date"])
+        # Use upsert with unique constraint on (location_id, date)
+        result = (
+            supabase_write.table("daily_summaries")
+            .upsert(row_data, on_conflict="location_id,date")
             .execute()
         )
+        summary_id = result.data[0]["id"]
 
-        if existing.data:
-            summary_id = existing.data[0]["id"]
-            supabase_write.table("daily_summaries").update(row_data).eq(
-                "id", summary_id
-            ).execute()
-        else:
-            result = supabase_write.table("daily_summaries").insert(row_data).execute()
-            summary_id = result.data[0]["id"]
-
-        if "categories" in data:
-            supabase_write.table("category_sales").delete().eq(
-                "summary_id", summary_id
-            ).execute()
-            if data["categories"]:
-                cat_records = [
-                    {
-                        "summary_id": summary_id,
-                        "category": cat["category"],
-                        "qty": cat.get("qty", 0) if cat.get("qty") is not None else 0,
-                        "amount": cat.get("amount", 0)
-                        if cat.get("amount") is not None
-                        else 0,
-                    }
-                    for cat in data["categories"]
-                ]
-                supabase_write.table("category_sales").insert(cat_records).execute()
-
-        if "super_categories" in data:
-            supabase_write.table("super_category_sales").delete().eq(
-                "summary_id", summary_id
-            ).execute()
-            if data["super_categories"]:
-                scat_records = [
-                    {
-                        "summary_id": summary_id,
-                        "category": cat["category"],
-                        "qty": cat.get("qty", 0) if cat.get("qty") is not None else 0,
-                        "amount": cat.get("amount", 0)
-                        if cat.get("amount") is not None
-                        else 0,
-                    }
-                    for cat in data["super_categories"]
-                ]
-                supabase_write.table("super_category_sales").insert(
-                    scat_records
-                ).execute()
+        # Bulk delete old child records using raw SQL for efficiency
+        if data.get("categories") or data.get("super_categories"):
+            _bulk_delete_child_records(supabase_write, summary_id)
 
         if "services" in data:
-            supabase_write.table("service_sales").delete().eq(
-                "summary_id", summary_id
-            ).execute()
-            if data["services"]:
-                svc_records = [
-                    {
-                        "summary_id": summary_id,
-                        "service_type": svc["type"],
-                        "amount": svc.get("amount", 0)
-                        if svc.get("amount") is not None
-                        else 0,
-                    }
-                    for svc in data["services"]
-                ]
-                supabase_write.table("service_sales").insert(svc_records).execute()
+            _bulk_upsert_service_sales(
+                supabase_write, summary_id, data.get("services", [])
+            )
 
         if "top_items" in data and data["top_items"]:
-            supabase_write.table("item_sales").delete().eq(
-                "summary_id", summary_id
-            ).execute()
-            item_records = [
-                {
-                    "summary_id": summary_id,
-                    "item_name": item.get("item_name", ""),
-                    "category": item.get("category", ""),
-                    "qty": item.get("qty", 0) if item.get("qty") is not None else 0,
-                    "amount": item.get("amount", 0)
-                    if item.get("amount") is not None
-                    else 0,
-                }
-                for item in data["top_items"]
-            ]
-            try:
-                supabase_write.table("item_sales").insert(item_records).execute()
-            except Exception as exc:
-                database.logger.warning(
-                    "item_sales insert failed, retrying without category column: %s",
-                    exc,
-                )
-                item_records_no_cat = [
-                    {k: v for k, v in r.items() if k != "category"}
-                    for r in item_records
-                ]
-                supabase_write.table("item_sales").insert(item_records_no_cat).execute()
+            _bulk_upsert_item_sales(supabase_write, summary_id, data["top_items"])
 
         return summary_id
     else:
@@ -209,44 +187,6 @@ def save_daily_summary(location_id: int, data: Dict) -> int:
                 (location_id, data["date"]),
             )
             summary_id = cursor.fetchone()["id"]
-
-            if "categories" in data:
-                cursor.execute(
-                    "DELETE FROM category_sales WHERE summary_id = ?",
-                    (summary_id,),
-                )
-                for cat in data["categories"]:
-                    cursor.execute(
-                        """
-                        INSERT INTO category_sales (summary_id, category, qty, amount)
-                        VALUES (?, ?, ?, ?)
-                        """,
-                        (
-                            summary_id,
-                            cat["category"],
-                            cat.get("qty", 0),
-                            cat.get("amount", 0),
-                        ),
-                    )
-
-            if "super_categories" in data:
-                cursor.execute(
-                    "DELETE FROM super_category_sales WHERE summary_id = ?",
-                    (summary_id,),
-                )
-                for cat in data["super_categories"]:
-                    cursor.execute(
-                        """
-                        INSERT INTO super_category_sales (summary_id, category, qty, amount)
-                        VALUES (?, ?, ?, ?)
-                        """,
-                        (
-                            summary_id,
-                            cat["category"],
-                            cat.get("qty", 0),
-                            cat.get("amount", 0),
-                        ),
-                    )
 
             if "services" in data:
                 cursor.execute(
@@ -578,16 +518,11 @@ def delete_daily_summary_for_location_date(location_id: int, date: str) -> bool:
             return False
 
         summary_id = result.data[0]["id"]
-        supabase_write.table("category_sales").delete().eq(
-            "summary_id", summary_id
-        ).execute()
-        supabase_write.table("super_category_sales").delete().eq(
+        # Delete child records (item_sales and service_sales still exist)
+        supabase_write.table("item_sales").delete().eq(
             "summary_id", summary_id
         ).execute()
         supabase_write.table("service_sales").delete().eq(
-            "summary_id", summary_id
-        ).execute()
-        supabase_write.table("item_sales").delete().eq(
             "summary_id", summary_id
         ).execute()
         supabase_write.table("daily_summaries").delete().eq("id", summary_id).execute()
@@ -603,17 +538,9 @@ def delete_daily_summary_for_location_date(location_id: int, date: str) -> bool:
             if not row:
                 return False
             summary_id = row["id"]
+            cursor.execute("DELETE FROM item_sales WHERE summary_id = ?", (summary_id,))
             cursor.execute(
-                "DELETE FROM category_sales WHERE summary_id = ?", (summary_id,)
-            )
-            cursor.execute(
-                "DELETE FROM super_category_sales WHERE summary_id = ?", (summary_id,)
-            )
-            cursor.execute(
-                "DELETE FROM service_sales  WHERE summary_id = ?", (summary_id,)
-            )
-            cursor.execute(
-                "DELETE FROM item_sales     WHERE summary_id = ?", (summary_id,)
+                "DELETE FROM service_sales WHERE summary_id = ?", (summary_id,)
             )
             cursor.execute("DELETE FROM daily_summaries WHERE id = ?", (summary_id,))
             conn.commit()
@@ -737,8 +664,6 @@ def wipe_all_data() -> Tuple[Dict[str, int], List[str]]:
             )
         for table in [
             "item_sales",
-            "super_category_sales",
-            "category_sales",
             "service_sales",
             "daily_summaries",
             "upload_history",
@@ -757,8 +682,6 @@ def wipe_all_data() -> Tuple[Dict[str, int], List[str]]:
             cursor = conn.cursor()
             for table in [
                 "item_sales",
-                "super_category_sales",
-                "category_sales",
                 "service_sales",
                 "daily_summaries",
                 "upload_history",

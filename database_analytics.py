@@ -136,7 +136,7 @@ def get_category_mtd_totals_multi(
             cursor.execute(
                 f"""
                 SELECT cs.category, SUM(cs.amount) AS total
-                FROM category_sales cs
+                FROM category_sales_view cs
                 INNER JOIN daily_summaries ds ON cs.summary_id = ds.id
                 WHERE ds.location_id IN ({placeholders}) AND ds.date >= ? AND ds.date < ?
                 GROUP BY cs.category
@@ -263,7 +263,7 @@ def get_category_sales_for_date_range(
                 SELECT cs.category,
                        SUM(cs.amount) AS amount,
                        SUM(cs.qty)    AS qty
-                FROM category_sales cs
+                FROM category_sales_view cs
                 JOIN filtered_days ds ON cs.summary_id = ds.id
                 GROUP BY cs.category
                 ORDER BY amount DESC
@@ -365,7 +365,7 @@ def get_super_category_mtd_totals(
         cursor = conn.cursor()
         cursor.execute(
             """SELECT scs.category, SUM(scs.amount) AS total, SUM(scs.qty) AS total_qty
-            FROM super_category_sales scs
+            FROM super_category_sales_view scs
             INNER JOIN daily_summaries ds ON scs.summary_id = ds.id
             WHERE ds.location_id = ? AND ds.date >= ? AND ds.date < ?
             GROUP BY scs.category""",
@@ -388,7 +388,7 @@ def get_super_category_mtd_totals_multi(
         cursor = conn.cursor()
         cursor.execute(
             f"""SELECT scs.category, SUM(scs.amount) AS total, SUM(scs.qty) AS total_qty
-            FROM super_category_sales scs
+            FROM super_category_sales_view scs
             INNER JOIN daily_summaries ds ON scs.summary_id = ds.id
             WHERE ds.location_id IN ({ph}) AND ds.date >= ? AND ds.date < ?
             GROUP BY scs.category""",
@@ -412,7 +412,7 @@ def get_super_category_sales_for_date_range(
                 SELECT id FROM daily_summaries
                 WHERE location_id IN ({ph}) AND date BETWEEN ? AND ?
             ) SELECT scs.category, SUM(scs.amount) AS amount, SUM(scs.qty) AS qty
-            FROM super_category_sales scs
+            FROM super_category_sales_view scs
             JOIN filtered_days ds ON scs.summary_id = ds.id
             GROUP BY scs.category ORDER BY amount DESC""",
             (*location_ids, start_date, end_date),
