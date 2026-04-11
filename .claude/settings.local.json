@@ -15,7 +15,10 @@
       "Bash(python -c \":*)",
       "Skill(commit-commands:commit-push-pr)",
       "Skill(commit-commands:commit-push-pr:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(python -m pytest tests/ -x -q)",
+      "Bash(python -m pytest tests/test_database.py::TestGetWeeklyFootfallMulti -v)",
+      "Bash(python -m pytest tests/ -q)"
     ]
   }
 }

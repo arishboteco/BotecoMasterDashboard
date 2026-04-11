@@ -615,15 +615,23 @@ def calculate_mtd_metrics(
     year: Optional[int] = None,
     month: Optional[int] = None,
     as_of_date: Optional[str] = None,
+    prefetched_summaries: Optional[List[Dict]] = None,
 ) -> Dict:
-    """MTD for calendar month of the report; optional as_of_date caps at that day (inclusive)."""
+    """MTD for calendar month of the report; optional as_of_date caps at that day (inclusive).
+
+    If *prefetched_summaries* is supplied, the database call is skipped entirely.
+    Pass the full month's summaries to avoid N+1 queries during bulk uploads.
+    """
     from database import get_summaries_for_month
 
     if year is None or month is None:
         t = datetime.now()
         year, month = t.year, t.month
 
-    summaries = get_summaries_for_month(location_id, year, month)
+    if prefetched_summaries is not None:
+        summaries = list(prefetched_summaries)
+    else:
+        summaries = get_summaries_for_month(location_id, year, month)
     if as_of_date:
         cap = str(as_of_date)[:10]
         summaries = [s for s in summaries if str(s.get("date", ""))[:10] <= cap]

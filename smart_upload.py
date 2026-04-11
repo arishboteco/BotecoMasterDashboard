@@ -756,6 +756,17 @@ def save_smart_upload_results(
     weekday_mix = utils.compute_weekday_mix(recent)
     day_targets = utils.compute_day_targets(monthly_target, weekday_mix)
 
+    # Pre-fetch month summaries to avoid N+1 queries during MTD calculation.
+    # Group days by (year, month), fetch once per month, then pass into
+    # calculate_mtd_metrics via prefetched_summaries.
+    _month_cache: Dict[Tuple[int, int], List[Dict]] = {}
+
+    def _get_month_summaries(yr: int, mo: int) -> List[Dict]:
+        key = (yr, mo)
+        if key not in _month_cache:
+            _month_cache[key] = database.get_summaries_for_month(location_id, yr, mo)
+        return _month_cache[key]
+
     for day in days:
         if day.errors:
             skipped += 1
@@ -776,12 +787,14 @@ def save_smart_upload_results(
         merged.pop("seat_count", None)
 
         y_m = [int(x) for x in day.date.split("-")[:2]]
+        month_summaries = _get_month_summaries(y_m[0], y_m[1])
         mtd = pos_parser.calculate_mtd_metrics(
             location_id,
             monthly_target,
             year=y_m[0],
             month=y_m[1],
             as_of_date=day.date,
+            prefetched_summaries=month_summaries,
         )
         merged.update(mtd)
 
