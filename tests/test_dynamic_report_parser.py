@@ -124,13 +124,17 @@ class TestDynamicReportV2Format:
         cats = {c["category"]: c for c in r["categories"]}
         assert "Brazilian Bowls" in cats
         assert cats["Brazilian Bowls"]["qty"] == 1
+        assert cats["Brazilian Bowls"]["amount"] == 0.0
         assert "Tira Gosto" in cats
         assert cats["Tira Gosto"]["qty"] == 2
+        assert cats["Tira Gosto"]["amount"] == 870.0
         items = {i["item_name"]: i for i in r["top_items"]}
         assert "Brazilian Power Bowl" in items
         assert items["Brazilian Power Bowl"]["qty"] == 1
+        assert items["Brazilian Power Bowl"]["amount"] == 0.0
         assert "Chicken Coxinha" in items
         assert items["Chicken Coxinha"]["qty"] == 2
+        assert items["Chicken Coxinha"]["amount"] == 870.0
 
     def test_v2_super_category_mapping(self):
         from dynamic_report_parser import parse_dynamic_report

@@ -452,27 +452,30 @@ def _parse_v2(
         # Collect items and categories from ALL rows in the bill
         for idx in idxs:
             row = df.iloc[idx]
+            item_qty = max(_safe_int(row.get(qty_col, 1) if qty_col else 1), 1)
+            item_amount = _safe_float(row.get(amount_col, 0)) if amount_col else 0.0
             raw_cat = ""
             if cat_col and pd.notna(row.get(cat_col)):
                 raw_cat = str(row.get(cat_col)).strip()
             if raw_cat and raw_cat.lower() not in ("", "nan", "none"):
-                item_qty = max(_safe_int(row.get(qty_col, 1) if qty_col else 1), 1)
                 day["categories"][raw_cat]["qty"] += item_qty
+                day["categories"][raw_cat]["amount"] += item_amount
                 super_cat = _map_to_super_category(raw_cat)
                 if super_cat != raw_cat:
                     day["super_categories"][super_cat]["qty"] += item_qty
+                    day["super_categories"][super_cat]["amount"] += item_amount
 
             item_name = ""
             if item_col and pd.notna(row.get(item_col)):
                 item_name = str(row.get(item_col)).strip()
             if item_name and item_name.lower() not in ("", "nan", "none"):
-                item_qty = max(_safe_int(row.get(qty_col, 1) if qty_col else 1), 1)
                 cat_for_item = (
                     raw_cat
                     if raw_cat and raw_cat.lower() not in ("", "nan", "none")
                     else ""
                 )
                 day["top_items"][item_name]["qty"] += item_qty
+                day["top_items"][item_name]["amount"] += item_amount
                 day["top_items"][item_name]["category"] = cat_for_item
 
         # Complimentary bills: add gross to complimentary, no revenue
