@@ -196,7 +196,7 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
         summary_id = summary["id"]
 
         cat_result = (
-            supabase.table("category_sales_view")
+            supabase.table("category_sales")
             .select("*")
             .eq("summary_id", summary_id)
             .execute()

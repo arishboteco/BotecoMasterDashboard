@@ -293,34 +293,12 @@ def init_database():
         )
     """)
 
-    # Category sales table (deprecated - use VIEW category_sales_view instead)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS category_sales (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            summary_id INTEGER NOT NULL,
-            category TEXT NOT NULL,
-            qty INTEGER DEFAULT 0,
-            amount REAL DEFAULT 0,
-            FOREIGN KEY (summary_id) REFERENCES daily_summaries(id)
-        )
-    """)
+    # Drop deprecated tables (replaced by views derived from item_sales)
+    cursor.execute("DROP TABLE IF EXISTS category_sales")
+    cursor.execute("DROP TABLE IF EXISTS super_category_sales")
 
-    # Create view for category sales derived from item_sales
+    # Create views for category sales derived from item_sales
     cursor.execute(CATEGORY_SALES_VIEW_SQL)
-
-    # Super-category sales table (deprecated - use VIEW super_category_sales_view instead)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS super_category_sales (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            summary_id INTEGER NOT NULL,
-            category TEXT NOT NULL,
-            qty INTEGER DEFAULT 0,
-            amount REAL DEFAULT 0,
-            FOREIGN KEY (summary_id) REFERENCES daily_summaries(id)
-        )
-    """)
-
-    # Create view for super-category sales
     cursor.execute(SUPER_CATEGORY_SALES_VIEW_SQL)
 
     # Service sales table
@@ -379,20 +357,6 @@ def init_database():
     if "category" not in _is_cols:
         cursor.execute("ALTER TABLE item_sales ADD COLUMN category TEXT DEFAULT ''")
 
-    cursor.execute("PRAGMA table_info(super_category_sales)")
-    _scs_exists = cursor.fetchall()
-    if not _scs_exists:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS super_category_sales (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                summary_id INTEGER NOT NULL,
-                category TEXT NOT NULL,
-                qty INTEGER DEFAULT 0,
-                amount REAL DEFAULT 0,
-                FOREIGN KEY (summary_id) REFERENCES daily_summaries(id)
-            )
-        """)
-
     cursor.execute("PRAGMA table_info(locations)")
     _loc_cols = {row[1] for row in cursor.fetchall()}
     if "seat_count" not in _loc_cols:
@@ -429,12 +393,6 @@ def init_database():
     )
     cursor.execute(
         """
-        CREATE INDEX IF NOT EXISTS idx_category_sales_summary_id
-        ON category_sales(summary_id)
-        """
-    )
-    cursor.execute(
-        """
         CREATE INDEX IF NOT EXISTS idx_service_sales_summary_id
         ON service_sales(summary_id)
         """
@@ -443,12 +401,6 @@ def init_database():
         """
         CREATE INDEX IF NOT EXISTS idx_item_sales_summary_id
         ON item_sales(summary_id)
-        """
-    )
-    cursor.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_super_category_sales_summary_id
-        ON super_category_sales(summary_id)
         """
     )
 
@@ -501,14 +453,21 @@ def _migrate_supabase_schema() -> None:
                 "ALTER TABLE item_sales ADD COLUMN category TEXT DEFAULT '';\n"
             )
 
-    # Ensure category/super-category views exist in Supabase
+    # Ensure category/super-category views exist in Supabase.
+    # In Supabase the views are named without the _view suffix (category_sales,
+    # super_category_sales) because the original tables were replaced in-place.
     for view_name, view_sql in [
-        ("category_sales_view", CATEGORY_SALES_VIEW_SQL),
-        ("super_category_sales_view", SUPER_CATEGORY_SALES_VIEW_SQL),
+        ("category_sales", CATEGORY_SALES_VIEW_SQL),
+        ("super_category_sales", SUPER_CATEGORY_SALES_VIEW_SQL),
     ]:
         try:
+            # Rewrite the SQLite view name to match the Supabase convention
             pg_sql = view_sql.replace(
-                "CREATE VIEW IF NOT EXISTS", "CREATE OR REPLACE VIEW"
+                "CREATE VIEW IF NOT EXISTS category_sales_view",
+                f"CREATE OR REPLACE VIEW {view_name}",
+            ).replace(
+                "CREATE VIEW IF NOT EXISTS super_category_sales_view",
+                f"CREATE OR REPLACE VIEW {view_name}",
             )
             supabase.rpc("execute_sql", {"query": pg_sql}).execute()
         except Exception:
