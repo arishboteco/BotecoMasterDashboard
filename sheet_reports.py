@@ -127,7 +127,8 @@ def _collapse_super_category_amounts(rows: List[Dict[str, Any]]) -> Dict[str, fl
     totals: Dict[str, float] = {}
     for row in rows or []:
         name = _to_super_category(str(row.get("category") or ""))
-        totals[name] = totals.get(name, 0.0) + float(row.get("amount") or 0)
+        amt = float(row.get("amount") or row.get("total") or 0)
+        totals[name] = totals.get(name, 0.0) + amt
     return totals
 
 

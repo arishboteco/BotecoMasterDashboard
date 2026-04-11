@@ -46,3 +46,27 @@ class TestCategorySuperCategoryDisplay:
             assert "Hot Beverages" not in text_values
         finally:
             plt.close(fig)
+
+    def test_category_section_accepts_total_key_values(self):
+        fig, ax = plt.subplots(figsize=(8, 6), dpi=120)
+        try:
+            report_data = {
+                "date": "2026-04-08",
+                "categories": [
+                    {"category": "Tira Gosto", "qty": 2, "total": 800.0},
+                ],
+            }
+
+            sheet_reports._section_category(
+                ax,
+                report_data,
+                location_name="All locations",
+                mtd_category={"Tira Gosto": 1800.0},
+                day_lbl="Wed, 8 Apr 2026",
+            )
+
+            text_values = {t.get_text() for t in ax.texts}
+            assert "₹800" in text_values
+            assert "₹1,800" in text_values
+        finally:
+            plt.close(fig)

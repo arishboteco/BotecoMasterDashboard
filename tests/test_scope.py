@@ -65,3 +65,44 @@ def test_daily_report_bundle_uses_detailed_rows_for_services_and_categories(
     assert combined["complimentary"] == 100.0
     assert combined["services"] == [{"type": "Lunch", "amount": 2200.0}]
     assert combined["categories"] == [{"category": "Food", "qty": 22, "amount": 2200.0}]
+
+
+def test_daily_report_bundle_accepts_total_key_for_category_amount(monkeypatch):
+    monkeypatch.setattr(
+        scope.database,
+        "get_summaries_for_date_range_multi",
+        lambda location_ids, start_date, end_date: [
+            {
+                "id": 101,
+                "location_id": 1,
+                "date": "2026-04-08",
+                "net_total": 1000.0,
+                "gross_total": 1100.0,
+                "covers": 10,
+                "complimentary": 0.0,
+                "target": 10000.0,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        scope.database,
+        "get_daily_summary",
+        lambda location_id, date_str: {
+            "services": [{"service_type": "Lunch", "amount": 1000.0}],
+            "categories": [{"category": "Food", "qty": 10, "total": 1000.0}],
+        },
+    )
+    monkeypatch.setattr(
+        scope.database,
+        "get_location_settings",
+        lambda lid: {"name": "Boteco - Indiqube", "target_monthly_sales": 300000},
+    )
+    monkeypatch.setattr(
+        scope, "enrich_summary_for_display", lambda s, *_args, **_kwargs: s
+    )
+
+    outlets, combined = scope.get_daily_report_bundle([1], "2026-04-08")
+
+    assert len(outlets) == 1
+    assert combined is not None
+    assert combined["categories"] == [{"category": "Food", "qty": 10, "amount": 1000.0}]

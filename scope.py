@@ -12,6 +12,35 @@ import pos_parser as parser
 import utils
 
 
+def _normalize_detail_lists(summary: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(summary or {})
+
+    cats = []
+    for c in out.get("categories") or []:
+        cats.append(
+            {
+                "category": c.get("category") or "Other",
+                "qty": int(c.get("qty") or 0),
+                "amount": float(c.get("amount") or c.get("total") or 0),
+            }
+        )
+    if cats or out.get("categories") is not None:
+        out["categories"] = cats
+
+    svcs = []
+    for s in out.get("services") or []:
+        svcs.append(
+            {
+                "type": s.get("type") or s.get("service_type") or "",
+                "amount": float(s.get("amount") or s.get("total") or 0),
+            }
+        )
+    if svcs or out.get("services") is not None:
+        out["services"] = svcs
+
+    return out
+
+
 def sum_location_monthly_targets(location_ids: List[int]) -> float:
     total = 0.0
     for lid in location_ids:
@@ -38,7 +67,9 @@ def aggregate_daily_summaries(
     if not summaries:
         return None
     if len(summaries) == 1:
-        return dict(summaries[0])
+        return _normalize_detail_lists(summaries[0])
+
+    summaries = [_normalize_detail_lists(s) for s in summaries]
 
     numeric_keys = (
         "covers",
