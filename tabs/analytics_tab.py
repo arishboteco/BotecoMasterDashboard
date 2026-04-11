@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
+# Lightweight in-process cache for heavy analytics data (per location set and date range)
+_RAW_SUMMARY_CACHE: dict = {}
+
 import pandas as pd
 import streamlit as st
 
@@ -18,6 +21,27 @@ from tabs.analytics_sections import (
 )
 from tabs import TabContext
 from components.navigation import date_range_nav
+
+
+def clear_analytics_cache() -> None:
+    """Clear cached analytics raw summaries."""
+    _RAW_SUMMARY_CACHE.clear()
+
+
+def _load_raw_summaries_cached(
+    location_ids: List[int], start_str: str, end_str: str
+) -> List[Dict]:
+    key = (tuple(location_ids or []), start_str, end_str)
+    if key in _RAW_SUMMARY_CACHE:
+        return _RAW_SUMMARY_CACHE[key]
+    if not location_ids:
+        raw = []
+    else:
+        raw = database.get_summaries_for_date_range_multi(
+            location_ids, start_str, end_str
+        )
+    _RAW_SUMMARY_CACHE[key] = raw
+    return raw
 
 
 def render(ctx: TabContext) -> None:
@@ -104,11 +128,7 @@ def render(ctx: TabContext) -> None:
                     analytics_loc_ids = [loc["id"]]
                     break
 
-    raw_summaries = database.get_summaries_for_date_range_multi(
-        analytics_loc_ids,
-        start_str,
-        end_str,
-    )
+    raw_summaries = _load_raw_summaries_cached(analytics_loc_ids, start_str, end_str)
     summaries = scope.merge_summaries_by_date(raw_summaries)
     df_raw = pd.DataFrame(raw_summaries) if raw_summaries else pd.DataFrame()
     if multi_analytics and not df_raw.empty:

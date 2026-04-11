@@ -488,9 +488,9 @@ def _parse_v2(
                 summary_row = row
                 break
 
-        # Collect items and categories from ALL rows in the bill (qty only;
-        # amounts are distributed proportionally after we know the bill total).
-        bill_items: List[Tuple[str, str, int]] = []  # (item_name, raw_cat, qty)
+        # Collect line items for the bill (per-row). We'll distribute bill_net across lines
+        # based on per-line Amount when available; otherwise fall back to qty distribution.
+        bill_lines: List[Dict[str, Any]] = []  # each line: name, cat, qty, amount
         for idx in idxs:
             row = df.iloc[idx]
             item_qty = max(_safe_int(row.get(qty_col, 1) if qty_col else 1), 1)
@@ -506,7 +506,15 @@ def _parse_v2(
             if item_name and item_name.lower() in ("", "nan", "none"):
                 item_name = ""
 
-            bill_items.append((item_name, raw_cat, item_qty))
+            amount_line = _safe_float(row.get(amount_col, 0)) if amount_col else 0.0
+            bill_lines.append(
+                {
+                    "name": item_name,
+                    "cat": raw_cat,
+                    "qty": item_qty,
+                    "amount": amount_line,
+                }
+            )
 
         # Complimentary bills: add gross to complimentary, no revenue
         if is_compli:
@@ -546,22 +554,30 @@ def _parse_v2(
             _safe_float(summary_row.get(comp_col, 0)) if comp_col else 0.0
         )
 
-        # Distribute bill net amount proportionally across items/categories by qty
-        total_qty = sum(q for _, _, q in bill_items)
-        for item_name, raw_cat, item_qty in bill_items:
-            share = (bill_net * item_qty / total_qty) if total_qty > 0 else 0.0
-            if raw_cat:
-                day["categories"][raw_cat]["qty"] += item_qty
-                day["categories"][raw_cat]["amount"] += share
-                super_cat = _map_to_super_category(raw_cat)
-                if super_cat != raw_cat:
-                    day["super_categories"][super_cat]["qty"] += item_qty
+        # Distribute bill net amount proportionally across line items by per-line amount.
+        total_amount = sum(lv["amount"] for lv in bill_lines if lv["amount"] > 0)
+        for line in bill_lines:
+            qty = line["qty"]
+            cat = line["cat"]
+            name = line["name"]
+            amount_line = line["amount"]
+            share = (
+                (bill_net * amount_line / total_amount)
+                if (total_amount > 0 and amount_line > 0)
+                else 0.0
+            )
+            if cat:
+                day["categories"][cat]["qty"] += qty
+                day["categories"][cat]["amount"] += share
+                super_cat = _map_to_super_category(cat)
+                if super_cat != cat:
+                    day["super_categories"][super_cat]["qty"] += qty
                     day["super_categories"][super_cat]["amount"] += share
-            if item_name:
-                cat_for_item = raw_cat or ""
-                day["top_items"][item_name]["qty"] += item_qty
-                day["top_items"][item_name]["amount"] += share
-                day["top_items"][item_name]["category"] = cat_for_item
+            if name:
+                cat_for_item = cat or ""
+                day["top_items"][name]["qty"] += qty
+                day["top_items"][name]["amount"] += share
+                day["top_items"][name]["category"] = cat_for_item
 
         # Payment breakdown — use Payment Type to bucket each bill's Gross Sale
         gross_val = _safe_float(summary_row.get(gross_col, 0)) if gross_col else 0.0
