@@ -912,7 +912,7 @@ def _section_category(
     if not cat_order:
         cat_order = []
 
-    row_h = 0.052
+    row_h = 0.038
 
     # Column widths: for multi-outlet add per-outlet daily columns
     if multi:
@@ -1058,7 +1058,7 @@ def _section_service(
         if k not in svc_order:
             svc_order.append(k)
 
-    row_h = 0.052
+    row_h = 0.038
 
     if multi:
         n_data = len(per_outlet) + 1
@@ -1214,7 +1214,7 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
         return
 
     col_w = [0.40, 0.16, 0.16, 0.16]
-    row_h = 0.045
+    row_h = 0.038
     tbl_x = 0.0
 
     cur_y = banner_y - 0.01
@@ -1332,7 +1332,7 @@ def _section_footfall_metrics(
     _label(ax, 0.012, banner_top - 0.045, location_name[:32], size=9.0, color="#8BA3BD")
 
     cur_y = banner_y - 0.015
-    row_h = 0.036
+    row_h = 0.038
 
     # Helper to calculate MoM/WoW % change
     def _calc_pct_change(current: float, previous: float) -> str:
