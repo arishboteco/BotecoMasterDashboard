@@ -18,6 +18,68 @@ DATABASE_PATH = os.path.join(DB_DIR, config.DATABASE_PATH)
 
 os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
 
+# ---------------------------------------------------------------------------
+# View SQL constants (shared between init_database and migration functions)
+# ---------------------------------------------------------------------------
+CATEGORY_SALES_VIEW_SQL = """
+    CREATE VIEW IF NOT EXISTS category_sales_view AS
+    SELECT
+        ds.id AS summary_id,
+        COALESCE(NULLIF(i.category, ''), 'Uncategorized') AS category,
+        SUM(i.qty) AS qty,
+        SUM(i.amount) AS amount
+    FROM daily_summaries ds
+    LEFT JOIN item_sales i ON i.summary_id = ds.id
+    GROUP BY ds.id, COALESCE(NULLIF(i.category, ''), 'Uncategorized')
+"""
+
+SUPER_CATEGORY_SALES_VIEW_SQL = """
+    CREATE VIEW IF NOT EXISTS super_category_sales_view AS
+    SELECT
+        ds.id AS summary_id,
+        CASE
+            WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
+                'beer', 'wine', 'spirits', 'cocktails', 'whisky', 'rum', 'vodka', 'gin', 'brandy'
+            ) THEN 'Beverages'
+            WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
+                'veg starters', 'non-veg starters', 'starters', 'appetizers', 'snacks'
+            ) THEN 'Starters'
+            WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
+                'veg main course', 'non-veg main course', 'main course', 'biryani', 'rice', 'curry'
+            ) THEN 'Main Course'
+            WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
+                'desserts', 'sweets', 'ice cream'
+            ) THEN 'Desserts'
+            WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
+                'soft drinks', 'juices', 'mocktails', 'shakes', 'coffee', 'tea'
+            ) THEN 'Beverages - Non Alcoholic'
+            ELSE 'Other'
+        END AS category,
+        SUM(i.qty) AS qty,
+        SUM(i.amount) AS amount
+    FROM daily_summaries ds
+    LEFT JOIN item_sales i ON i.summary_id = ds.id
+    GROUP BY ds.id,
+        CASE
+            WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
+                'beer', 'wine', 'spirits', 'cocktails', 'whisky', 'rum', 'vodka', 'gin', 'brandy'
+            ) THEN 'Beverages'
+            WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
+                'veg starters', 'non-veg starters', 'starters', 'appetizers', 'snacks'
+            ) THEN 'Starters'
+            WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
+                'veg main course', 'non-veg main course', 'main course', 'biryani', 'rice', 'curry'
+            ) THEN 'Main Course'
+            WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
+                'desserts', 'sweets', 'ice cream'
+            ) THEN 'Desserts'
+            WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
+                'soft drinks', 'juices', 'mocktails', 'shakes', 'coffee', 'tea'
+            ) THEN 'Beverages - Non Alcoholic'
+            ELSE 'Other'
+        END
+"""
+
 
 # Secure password hashing using bcrypt (fallback to salted SHA-256 if bcrypt unavailable)
 def _hash_password(password: str) -> str:
@@ -244,17 +306,7 @@ def init_database():
     """)
 
     # Create view for category sales derived from item_sales
-    cursor.execute("""
-        CREATE VIEW IF NOT EXISTS category_sales_view AS
-        SELECT 
-            ds.id AS summary_id,
-            COALESCE(NULLIF(i.category, ''), 'Uncategorized') AS category,
-            SUM(i.qty) AS qty,
-            SUM(i.amount) AS amount
-        FROM daily_summaries ds
-        LEFT JOIN item_sales i ON i.summary_id = ds.id
-        GROUP BY ds.id, COALESCE(NULLIF(i.category, ''), 'Uncategorized')
-    """)
+    cursor.execute(CATEGORY_SALES_VIEW_SQL)
 
     # Super-category sales table (deprecated - use VIEW super_category_sales_view instead)
     cursor.execute("""
@@ -269,52 +321,7 @@ def init_database():
     """)
 
     # Create view for super-category sales
-    cursor.execute("""
-        CREATE VIEW IF NOT EXISTS super_category_sales_view AS
-        SELECT 
-            ds.id AS summary_id,
-            CASE 
-                WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
-                    'beer', 'wine', 'spirits', 'cocktails', 'whisky', 'rum', 'vodka', 'gin', 'brandy'
-                ) THEN 'Beverages'
-                WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
-                    'veg starters', 'non-veg starters', 'starters', 'appetizers', 'snacks'
-                ) THEN 'Starters'
-                WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
-                    'veg main course', 'non-veg main course', 'main course', 'biryani', 'rice', 'curry'
-                ) THEN 'Main Course'
-                WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
-                    'desserts', 'sweets', 'ice cream'
-                ) THEN 'Desserts'
-                WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
-                    'soft drinks', 'juices', 'mocktails', 'shakes', 'coffee', 'tea'
-                ) THEN 'Beverages - Non Alcoholic'
-                ELSE 'Other'
-            END AS category,
-            SUM(i.qty) AS qty,
-            SUM(i.amount) AS amount
-        FROM daily_summaries ds
-        LEFT JOIN item_sales i ON i.summary_id = ds.id
-        GROUP BY ds.id,
-            CASE 
-                WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
-                    'beer', 'wine', 'spirits', 'cocktails', 'whisky', 'rum', 'vodka', 'gin', 'brandy'
-                ) THEN 'Beverages'
-                WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
-                    'veg starters', 'non-veg starters', 'starters', 'appetizers', 'snacks'
-                ) THEN 'Starters'
-                WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
-                    'veg main course', 'non-veg main course', 'main course', 'biryani', 'rice', 'curry'
-                ) THEN 'Main Course'
-                WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
-                    'desserts', 'sweets', 'ice cream'
-                ) THEN 'Desserts'
-                WHEN LOWER(COALESCE(NULLIF(i.category, ''), 'Uncategorized') || '') IN (
-                    'soft drinks', 'juices', 'mocktails', 'shakes', 'coffee', 'tea'
-                ) THEN 'Beverages - Non Alcoholic'
-                ELSE 'Other'
-            END
-    """)
+    cursor.execute(SUPER_CATEGORY_SALES_VIEW_SQL)
 
     # Service sales table
     cursor.execute("""
@@ -494,6 +501,23 @@ def _migrate_supabase_schema() -> None:
                 "ALTER TABLE item_sales ADD COLUMN category TEXT DEFAULT '';\n"
             )
 
+    # Ensure category/super-category views exist in Supabase
+    for view_name, view_sql in [
+        ("category_sales_view", CATEGORY_SALES_VIEW_SQL),
+        ("super_category_sales_view", SUPER_CATEGORY_SALES_VIEW_SQL),
+    ]:
+        try:
+            pg_sql = view_sql.replace(
+                "CREATE VIEW IF NOT EXISTS", "CREATE OR REPLACE VIEW"
+            )
+            supabase.rpc("execute_sql", {"query": pg_sql}).execute()
+        except Exception:
+            logger.warning(
+                "Could not create %s in Supabase via RPC. "
+                "Create it manually in the Supabase SQL editor.",
+                view_name,
+            )
+
 
 def _migrate_daily_summaries_composite_unique(cursor) -> None:
     """One-time: replace global UNIQUE(date) with UNIQUE(location_id, date). Preserves ids for FK children."""
@@ -569,8 +593,14 @@ def _migrate_daily_summaries_composite_unique(cursor) -> None:
     cursor.execute(
         f"INSERT INTO daily_summaries_new ({cols_csv}) SELECT {cols_csv} FROM daily_summaries"
     )
+    # Drop views that depend on daily_summaries before dropping the table
+    cursor.execute("DROP VIEW IF EXISTS category_sales_view")
+    cursor.execute("DROP VIEW IF EXISTS super_category_sales_view")
     cursor.execute("DROP TABLE daily_summaries")
     cursor.execute("ALTER TABLE daily_summaries_new RENAME TO daily_summaries")
+    # Recreate the views pointing at the renamed table
+    cursor.execute(CATEGORY_SALES_VIEW_SQL)
+    cursor.execute(SUPER_CATEGORY_SALES_VIEW_SQL)
     cursor.execute(
         "INSERT OR REPLACE INTO app_meta (k, v) VALUES (?, ?)",
         ("ds_composite_unique", "1"),

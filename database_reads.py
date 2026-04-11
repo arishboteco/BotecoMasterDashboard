@@ -196,7 +196,7 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
         summary_id = summary["id"]
 
         cat_result = (
-            supabase.table("category_sales")
+            supabase.table("category_sales_view")
             .select("*")
             .eq("summary_id", summary_id)
             .execute()
@@ -456,7 +456,7 @@ def get_mtd_totals_multi(
             cursor.execute(
                 f"""
                 SELECT cs.category, SUM(cs.amount) AS total
-                FROM category_sales cs
+                FROM category_sales_view cs
                 INNER JOIN daily_summaries ds ON cs.summary_id = ds.id
                 WHERE ds.location_id IN ({placeholders}) AND ds.date >= ? AND ds.date < ?
                 GROUP BY cs.category
