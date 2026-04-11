@@ -85,6 +85,17 @@ class TestDynamicReportV2Format:
         )
         return (header + rows_text).encode("utf-8")
 
+    def _make_v2_csv_with_total_col(self, rows_text):
+        header = (
+            "Restaurant,Bill Date,Created Date Time,Bill No,Server Name,Table No,"
+            "Bill Status,Payment Type,Discount Reason,Category Name,Item Name,Item Qty,"
+            "Pax,Total,Discount,Net Amount,RoundOff,CGST (2.5),SGST (2.5),"
+            "Service Charge (10),Gst On Service Charge (5),Gross Sale,NotPaid,"
+            "Cash,Card,Credit,Other Pmt,Wallet,Online,UPI,"
+            "Cancelled Amount,Complementary Amount\n"
+        )
+        return (header + rows_text).encode("utf-8")
+
     def test_v2_parses_single_bill(self):
         from dynamic_report_parser import parse_dynamic_report
 
@@ -135,6 +146,20 @@ class TestDynamicReportV2Format:
         assert "Chicken Coxinha" in items
         assert items["Chicken Coxinha"]["qty"] == 2
         assert items["Chicken Coxinha"]["amount"] == 870.0
+
+    def test_v2_uses_total_column_as_item_amount(self):
+        from dynamic_report_parser import parse_dynamic_report
+
+        csv_content = self._make_v2_csv_with_total_col(
+            "Boteco,2026-04-08,2026-04-8 12:59:29,8875,Lalan,3,SuccessOrder,Card,-,"
+            "Tira Gosto,Chicken Coxinha,2,2,870,0,870,0.15,21.75,21.75,0,0,913,-,"
+            "-,913,-,-,-,-,-,-\n"
+        )
+        records, _ = parse_dynamic_report(csv_content, "test.csv")
+        assert records is not None
+        r = records[0]
+        cats = {c["category"]: c for c in r["categories"]}
+        assert cats["Tira Gosto"]["amount"] == 870.0
 
     def test_v2_super_category_mapping(self):
         from dynamic_report_parser import parse_dynamic_report

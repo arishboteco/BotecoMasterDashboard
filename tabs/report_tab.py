@@ -19,6 +19,32 @@ from tabs import TabContext
 from components import date_nav, divider
 
 
+def _build_mtd_maps(
+    location_ids: List[int], year: int, month: int, as_of_date: str
+) -> Tuple[dict, dict]:
+    start_date = f"{year}-{month:02d}-01"
+    cat_rows = database.get_category_sales_for_date_range(
+        location_ids, start_date, as_of_date
+    )
+    svc_rows = database.get_service_sales_for_date_range(
+        location_ids, start_date, as_of_date
+    )
+
+    mtd_cat = {
+        str(r.get("category") or ""): float(r.get("amount") or r.get("total") or 0)
+        for r in (cat_rows or [])
+        if str(r.get("category") or "").strip()
+    }
+    mtd_svc = {
+        str(r.get("service_type") or r.get("type") or ""): float(
+            r.get("amount") or r.get("total") or 0
+        )
+        for r in (svc_rows or [])
+        if str(r.get("service_type") or r.get("type") or "").strip()
+    }
+    return mtd_cat, mtd_svc
+
+
 def render(ctx: TabContext) -> None:
     """Render the Daily Report tab UI."""
     st.header("Daily Sales Report")
@@ -111,8 +137,8 @@ def render(ctx: TabContext) -> None:
         per_outlet_cat = None
         per_outlet_svc = None
         if len(ctx.report_loc_ids) > 1:
-            mtd_cat, mtd_svc = database.get_mtd_totals_multi(
-                ctx.report_loc_ids, y_m[0], y_m[1]
+            mtd_cat, mtd_svc = _build_mtd_maps(
+                ctx.report_loc_ids, y_m[0], y_m[1], date_str
             )
             _today = datetime.now().date()
             _end = _today.strftime("%Y-%m-%d")
@@ -144,11 +170,8 @@ def render(ctx: TabContext) -> None:
             per_outlet_cat = None
             per_outlet_svc = None
         else:
-            mtd_cat = database.get_category_mtd_totals(
-                ctx.report_loc_ids[0], y_m[0], y_m[1]
-            )
-            mtd_svc = database.get_service_mtd_totals(
-                ctx.report_loc_ids[0], y_m[0], y_m[1]
+            mtd_cat, mtd_svc = _build_mtd_maps(
+                [ctx.report_loc_ids[0]], y_m[0], y_m[1], date_str
             )
             foot_rows = database.get_summaries_for_month(
                 ctx.report_loc_ids[0], y_m[0], y_m[1]
@@ -235,12 +258,12 @@ def render(ctx: TabContext) -> None:
 
                 if len(ctx.report_loc_ids) > 1:
                     _single_outlet_cat = [
-                        (name, database.get_category_mtd_totals(lid, y_m[0], y_m[1]))
+                        (name, _build_mtd_maps([lid], y_m[0], y_m[1], date_str)[0])
                         for lid, name, _ in outlets_bundle
                         if lid == _selected_lid
                     ]
                     _single_outlet_svc = [
-                        (name, database.get_service_mtd_totals(lid, y_m[0], y_m[1]))
+                        (name, _build_mtd_maps([lid], y_m[0], y_m[1], date_str)[1])
                         for lid, name, _ in outlets_bundle
                         if lid == _selected_lid
                     ]
@@ -285,11 +308,8 @@ def render(ctx: TabContext) -> None:
                 _single_outlet_mtd_svc = None
 
                 if len(ctx.report_loc_ids) > 1:
-                    _single_outlet_mtd_cat = database.get_category_mtd_totals(
-                        _selected_lid, y_m[0], y_m[1]
-                    )
-                    _single_outlet_mtd_svc = database.get_service_mtd_totals(
-                        _selected_lid, y_m[0], y_m[1]
+                    _single_outlet_mtd_cat, _single_outlet_mtd_svc = _build_mtd_maps(
+                        [_selected_lid], y_m[0], y_m[1], date_str
                     )
 
                 _single_section_bufs = reports.generate_sheet_style_report_sections(

@@ -917,9 +917,9 @@ def _section_category(
     # Column widths: for multi-outlet add per-outlet daily columns
     if multi:
         n_data = len(per_outlet) + 1  # outlets + combined
-        label_w = 0.20
-        mtd_w = 0.13
-        pct_w = 0.05
+        label_w = 0.19
+        mtd_w = 0.14
+        pct_w = 0.07
         remaining = 1.0 - label_w - mtd_w - pct_w
         data_w = remaining / n_data
         col_w = [label_w] + [data_w] * n_data + [mtd_w, pct_w]
@@ -1062,9 +1062,9 @@ def _section_service(
 
     if multi:
         n_data = len(per_outlet) + 1
-        label_w = 0.20
-        mtd_w = 0.13
-        pct_w = 0.05
+        label_w = 0.19
+        mtd_w = 0.14
+        pct_w = 0.07
         remaining = 1.0 - label_w - mtd_w - pct_w
         data_w = remaining / n_data
         col_w = [label_w] + [data_w] * n_data + [mtd_w, pct_w]
