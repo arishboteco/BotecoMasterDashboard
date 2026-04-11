@@ -12,8 +12,10 @@ import config
 import database
 import file_detector
 import smart_upload
+import tabs.analytics_tab as analytics_tab
 import utils
 from database_reads import clear_location_cache
+import tabs.report_tab as report_tab
 from auth import is_admin
 from tabs import TabContext
 
@@ -206,7 +208,9 @@ def render(ctx: TabContext) -> None:
                         clear_location_cache(lid)
 
                     for msg in all_save_messages:
-                        st.info(msg)
+                    st.info(msg)
+                    # Also clear analytics cache to reflect new data in analytics tab
+                    analytics_tab.clear_analytics_cache()
 
                     note_count = len(upload_result.global_notes)
 
@@ -221,12 +225,14 @@ def render(ctx: TabContext) -> None:
                             st.session_state["report_date"] = latest_date
                             st.session_state["report_date_picker"] = latest_date
 
-                        st.session_state["_import_summary_flash"] = (
-                            total_saved,
-                            total_skipped,
-                            note_count,
-                        )
-                        st.rerun()
+                    st.session_state["_import_summary_flash"] = (
+                        total_saved,
+                        total_skipped,
+                        note_count,
+                    )
+                    # Clear report cache so next render pulls fresh data and then trigger rerun
+                    report_tab.clear_report_cache()
+                    st.rerun()
 
     st.markdown("---")
     st.markdown("### Recent Entries")

@@ -22,8 +22,7 @@ def date_nav(
     nav_col1, nav_col2, nav_col3 = st.columns([1, 4, 1])
     with nav_col1:
         if st.button("\u2190 Prev", key=f"{session_key}_prev", width="stretch"):
-            st.session_state[session_key] -= timedelta(days=1)
-            st.rerun()
+            st.session_state[session_key] = selected_date - timedelta(days=1)
     with nav_col2:
         st.markdown(
             f'<div class="date-display" style="text-align:center;">{date_display}</div>',
@@ -31,21 +30,20 @@ def date_nav(
         )
     with nav_col3:
         if st.button("Next \u2192", key=f"{session_key}_next", width="stretch"):
-            st.session_state[session_key] += timedelta(days=1)
-            st.rerun()
+            st.session_state[session_key] = selected_date + timedelta(days=1)
 
+    # Use a canonical date format for the picker to minimize parsing overhead
     picked = st.date_input(
         label,
         value=selected_date,
         key=f"{session_key}_picker",
         help=help_text,
-        format="DD/MM/YYYY",
+        format="YYYY-MM-DD",
     )
     if picked != selected_date:
         st.session_state[session_key] = picked
-        st.rerun()
 
-    return selected_date
+    return st.session_state[session_key]
 
 
 def date_range_nav(
@@ -67,13 +65,13 @@ def date_range_nav(
         start_date = st.date_input(
             label_start,
             key=session_key_start,
-            format="DD/MM/YYYY",
+            format="YYYY-MM-DD",
         )
     with col_end:
         end_date = st.date_input(
             label_end,
             key=session_key_end,
-            format="DD/MM/YYYY",
+            format="YYYY-MM-DD",
         )
 
     if start_date > end_date:

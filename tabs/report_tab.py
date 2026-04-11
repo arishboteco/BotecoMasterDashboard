@@ -15,6 +15,29 @@ import database
 import scope
 import sheet_reports as reports
 import utils
+
+# Simple in-process cache for expensive per-date report data
+_REPORT_CACHE: dict = {}
+
+
+def clear_report_cache() -> None:
+    """Clear cached per-date report data.
+
+    Called when new data is imported or when a user requests a refresh.
+    """
+    _REPORT_CACHE.clear()
+
+
+def _load_report_bundle_cached(location_ids: List[int], date_str: str):
+    """Load the daily report bundle with in-process cache."""
+    key = (tuple(location_ids), date_str)
+    if key in _REPORT_CACHE:
+        return _REPORT_CACHE[key]
+    outlets_bundle, summary = scope.get_daily_report_bundle(location_ids, date_str)
+    _REPORT_CACHE[key] = (outlets_bundle, summary)
+    return outlets_bundle, summary
+
+
 from tabs import TabContext
 from components import date_nav, divider
 
@@ -45,6 +68,36 @@ def _build_mtd_maps(
     return mtd_cat, mtd_svc
 
 
+# Simple per-dataset caches for heavy read paths
+_MTD_CACHE: dict = {}
+
+
+def _build_mtd_maps_cached(
+    location_ids: List[int], year: int, month: int, as_of_date: str
+) -> Tuple[dict, dict]:
+    key = (tuple(location_ids), year, month, as_of_date)
+    if key in _MTD_CACHE:
+        return _MTD_CACHE[key]
+    res = _build_mtd_maps(location_ids, year, month, as_of_date)
+    _MTD_CACHE[key] = res
+    return res
+
+
+_FOOT_CACHE: dict = {}
+
+
+def _get_foot_rows_cached(location_ids: List[int], year: int, month: int):
+    key = (tuple(location_ids), year, month)
+    if key in _FOOT_CACHE:
+        return _FOOT_CACHE[key]
+    if len(location_ids) > 1:
+        rows = database.get_summaries_for_month_multi(location_ids, year, month)
+    else:
+        rows = database.get_summaries_for_month(location_ids[0], year, month)
+    _FOOT_CACHE[key] = rows
+    return rows
+
+
 def render(ctx: TabContext) -> None:
     """Render the Daily Report tab UI."""
     st.header("Daily Sales Report")
@@ -65,9 +118,18 @@ def render(ctx: TabContext) -> None:
     )
 
     date_str = selected_date.strftime("%Y-%m-%d")
-    outlets_bundle, summary = scope.get_daily_report_bundle(
-        ctx.report_loc_ids, date_str
-    )
+    # Gate heavy rendering behind an explicit Load action to minimize churn
+    load_key = f"report_ready_{date_str}"
+    if not st.session_state.get(load_key, False):
+        if st.button(f"Load Report for {date_str}", key=f"load_report_{date_str}"):
+            st.session_state[load_key] = True
+            st.session_state["report_date_last_loaded"] = date_str
+            st.rerun()
+        else:
+            st.info("Click 'Load Report' to render this date's report.")
+            return
+
+    outlets_bundle, summary = _load_report_bundle_cached(ctx.report_loc_ids, date_str)
 
     if summary:
         y_m = [int(x) for x in date_str.split("-")[:2]]
@@ -137,7 +199,7 @@ def render(ctx: TabContext) -> None:
         per_outlet_cat = None
         per_outlet_svc = None
         if len(ctx.report_loc_ids) > 1:
-            mtd_cat, mtd_svc = _build_mtd_maps(
+            mtd_cat, mtd_svc = _build_mtd_maps_cached(
                 ctx.report_loc_ids, y_m[0], y_m[1], date_str
             )
             _today = datetime.now().date()
@@ -163,19 +225,15 @@ def render(ctx: TabContext) -> None:
                 )
                 for lid, name, _ in outlets_bundle
             ]
-            foot_rows = database.get_summaries_for_month_multi(
-                ctx.report_loc_ids, y_m[0], y_m[1]
-            )
+            foot_rows = _get_foot_rows_cached(ctx.report_loc_ids, y_m[0], y_m[1])
             per_outlet_footfall = None
             per_outlet_cat = None
             per_outlet_svc = None
         else:
-            mtd_cat, mtd_svc = _build_mtd_maps(
+            mtd_cat, mtd_svc = _build_mtd_maps_cached(
                 [ctx.report_loc_ids[0]], y_m[0], y_m[1], date_str
             )
-            foot_rows = database.get_summaries_for_month(
-                ctx.report_loc_ids[0], y_m[0], y_m[1]
-            )
+            foot_rows = _get_foot_rows_cached([ctx.report_loc_ids[0]], y_m[0], y_m[1])
             per_outlet_footfall = None
             per_outlet_footfall_metrics = None
             per_outlet_cat = None
@@ -258,7 +316,10 @@ def render(ctx: TabContext) -> None:
 
                 if len(ctx.report_loc_ids) > 1:
                     _single_outlet_cat = [
-                        (name, _build_mtd_maps([lid], y_m[0], y_m[1], date_str)[0])
+                        (
+                            name,
+                            _build_mtd_maps_cached([lid], y_m[0], y_m[1], date_str)[0],
+                        )
                         for lid, name, _ in outlets_bundle
                         if lid == _selected_lid
                     ]
@@ -300,16 +361,16 @@ def render(ctx: TabContext) -> None:
                         _selected_lid, y_m[0], y_m[1]
                     )
                 else:
-                    foot_rows = database.get_summaries_for_month(
-                        _selected_lid, y_m[0], y_m[1]
-                    )
+                    foot_rows = _get_foot_rows_cached([_selected_lid], y_m[0], y_m[1])
 
                 _single_outlet_mtd_cat = None
                 _single_outlet_mtd_svc = None
 
                 if len(ctx.report_loc_ids) > 1:
-                    _single_outlet_mtd_cat, _single_outlet_mtd_svc = _build_mtd_maps(
-                        [_selected_lid], y_m[0], y_m[1], date_str
+                    _single_outlet_mtd_cat, _single_outlet_mtd_svc = (
+                        _build_mtd_maps_cached(
+                            [_selected_lid], y_m[0], y_m[1], date_str
+                        )
                     )
 
                 _single_section_bufs = reports.generate_sheet_style_report_sections(
