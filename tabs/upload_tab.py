@@ -208,7 +208,7 @@ def render(ctx: TabContext) -> None:
                         clear_location_cache(lid)
 
                     for msg in all_save_messages:
-                    st.info(msg)
+                        st.info(msg)
                     # Also clear analytics cache to reflect new data in analytics tab
                     analytics_tab.clear_analytics_cache()
 
