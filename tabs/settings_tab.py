@@ -427,6 +427,7 @@ def render(ctx: TabContext) -> None:
             key="wipe_all_btn",
         ):
             counts, errors = database.wipe_all_data()
+            st.cache_data.clear()
             total = sum(counts.values())
             if errors:
                 st.warning("Some issues occurred during wipe:")

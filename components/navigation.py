@@ -66,14 +66,12 @@ def date_range_nav(
     with col_start:
         start_date = st.date_input(
             label_start,
-            value=st.session_state[session_key_start],
             key=session_key_start,
             format="DD/MM/YYYY",
         )
     with col_end:
         end_date = st.date_input(
             label_end,
-            value=st.session_state[session_key_end],
             key=session_key_end,
             format="DD/MM/YYYY",
         )

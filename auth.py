@@ -77,28 +77,30 @@ def init_auth_state():
 
     # Attempt cookie-based session restoration.
     # Cookie data arrives from JS asynchronously. The component needs at least
-    # one full render cycle to synchronize. Retry up to 3 times with reruns to
-    # give it time to arrive before we conclude there's no valid session.
-    for attempt in range(3):
+    # one full render cycle to synchronize. Track retries in session state
+    # so we don't restart the counter on every rerun.
+    cookie_retries = st.session_state.get("_cookie_retries", 0)
+    if cookie_retries < 2:
         try:
             token = st.session_state._cm.get(_COOKIE_NAME)
         except (TypeError, AttributeError):
-            break
-        if not token:
-            if attempt < 2:
+            token = None
+        if token:
+            user = database.validate_session_token(token)
+            if user:
+                _apply_user_to_session(user, token)
+                st.session_state.pop("_cookie_retries", None)
+            else:
+                if st.session_state._cm is not None:
+                    try:
+                        st.session_state._cm.remove(_COOKIE_NAME)
+                    except (TypeError, AttributeError):
+                        pass
+                st.session_state.pop("_cookie_retries", None)
                 st.rerun()
-            continue
-        user = database.validate_session_token(token)
-        if user:
-            _apply_user_to_session(user, token)
         else:
-            if st.session_state._cm is not None:
-                try:
-                    st.session_state._cm.remove(_COOKIE_NAME)
-                except (TypeError, AttributeError):
-                    pass
+            st.session_state["_cookie_retries"] = cookie_retries + 1
             st.rerun()
-        break
 
 
 def show_login_form():
