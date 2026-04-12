@@ -499,7 +499,7 @@ def _kpi_tile(ax, x, y, w, h, label, value, sub=None, accent_color=C_BRAND):
 # ── Table row helpers ─────────────────────────────────────────────────────────
 
 
-def _table_header_row(ax, x, y, cols, widths, row_h=0.048, bg=C_HEADER, font_size=None):
+def _table_header_row(ax, x, y, cols, widths, row_h=0.038, bg=C_HEADER, font_size=None):
     """Light header row for a data table."""
     total_w = sum(widths)
     patch = mpatches.Rectangle(
@@ -542,7 +542,7 @@ def _table_data_row(
     y,
     cells,
     widths,
-    row_h=0.042,
+    row_h=0.038,
     bg=C_CARD,
     alt_bg=C_BAND,
     is_alt=False,
@@ -595,7 +595,7 @@ def _table_data_row(
         cx += cw
 
 
-def _table_section_label(ax, x, y, text, w, row_h=0.039, color=C_BRAND):
+def _table_section_label(ax, x, y, text, w, row_h=0.038, color=C_BRAND):
     """A full-width accent-coloured section label inside a table."""
     patch = mpatches.Rectangle(
         (x, y),
