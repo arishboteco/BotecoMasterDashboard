@@ -118,17 +118,6 @@ def render(ctx: TabContext) -> None:
     )
 
     date_str = selected_date.strftime("%Y-%m-%d")
-    # Gate heavy rendering behind an explicit Load action to minimize churn
-    load_key = f"report_ready_{date_str}"
-    if not st.session_state.get(load_key, False):
-        if st.button(f"Load Report for {date_str}", key=f"load_report_{date_str}"):
-            st.session_state[load_key] = True
-            st.session_state["report_date_last_loaded"] = date_str
-            st.rerun()
-        else:
-            st.info("Click 'Load Report' to render this date's report.")
-            return
-
     outlets_bundle, summary = _load_report_bundle_cached(ctx.report_loc_ids, date_str)
 
     if summary:
