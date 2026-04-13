@@ -56,6 +56,12 @@ C_WHITE = "#FFFFFF"  # White
 FONT = "DejaVu Sans"
 DPI = 150
 
+# Fixed pixel targets for consistent row spacing across all sections
+ROW_PX = 48  # pixels per data/header row
+BANNER_PX = 60  # pixels for section banner
+SECTION_GAP_PX = 6  # pixels between banner and table
+BOTTOM_PAD_PX = 30  # pixels below last row
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -499,7 +505,7 @@ def _kpi_tile(ax, x, y, w, h, label, value, sub=None, accent_color=C_BRAND):
 # ── Table row helpers ─────────────────────────────────────────────────────────
 
 
-def _table_header_row(ax, x, y, cols, widths, row_h=0.032, bg=C_HEADER, font_size=None):
+def _table_header_row(ax, x, y, cols, widths, row_h, bg=C_HEADER, font_size=None):
     """Light header row for a data table."""
     total_w = sum(widths)
     patch = mpatches.Rectangle(
@@ -521,7 +527,7 @@ def _table_header_row(ax, x, y, cols, widths, row_h=0.032, bg=C_HEADER, font_siz
         _label(
             ax,
             px,
-            y + row_h - 0.008,
+            y + row_h * 0.5,
             col,
             size=fs,
             color=C_BRAND,
@@ -537,7 +543,7 @@ def _table_data_row(
     y,
     cells,
     widths,
-    row_h=0.032,
+    row_h,
     bg=C_CARD,
     alt_bg=C_BAND,
     is_alt=False,
@@ -575,7 +581,7 @@ def _table_data_row(
         _label(
             ax,
             px,
-            y + row_h - 0.009,
+            y + row_h * 0.5,
             str(cell),
             size=fs,
             color=rc,
@@ -585,7 +591,7 @@ def _table_data_row(
         cx += cw
 
 
-def _table_section_label(ax, x, y, text, w, row_h=0.032, color=C_BRAND):
+def _table_section_label(ax, x, y, text, w, row_h, color=C_BRAND):
     """A full-width accent-coloured section label inside a table."""
     patch = mpatches.Rectangle(
         (x, y),
@@ -599,9 +605,7 @@ def _table_section_label(ax, x, y, text, w, row_h=0.032, color=C_BRAND):
     )
     ax.add_patch(patch)
     _hbar(ax, x, y, 0.006, row_h, color=color)
-    _label(
-        ax, x + 0.012, y + row_h - 0.011, text, size=11.0, color=color, weight="bold"
-    )
+    _label(ax, x + 0.012, y + row_h * 0.5, text, size=11.0, color=color, weight="bold")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -622,6 +626,7 @@ def _section_sales_summary(
     ax,
     r: Dict,
     location_name: str,
+    row_h: float,
     per_outlet: Optional[List[Tuple[str, Dict]]] = None,
     daily_sales_history: Optional[List[Dict]] = None,
 ) -> None:
@@ -644,32 +649,12 @@ def _section_sales_summary(
     ach_color = statuses["target"]["color"]
 
     # ── Header banner (slim) ─────────────────────────────────────────────
-    n_pay = len(
-        [
-            1
-            for k in (
-                "cash_sales",
-                "gpay_sales",
-                "zomato_sales",
-                "card_sales",
-                "other_sales",
-            )
-            if float(r.get(k) or 0) != 0
-        ]
-    )
-    n_tax = len(
-        [
-            1
-            for k in ("cgst", "sgst", "service_charge", "discount", "complimentary")
-            if float(r.get(k) or 0) != 0
-        ]
-    )
-    n_rows = 24 + n_pay + n_tax  # actual rows in this section
-    banner_h = _banner_height(n_rows)
-    banner_top = 0.995
+    banner_h = row_h * BANNER_PX / ROW_PX
+    banner_top = 1.0
     banner_y = banner_top - banner_h
+    gap = row_h * SECTION_GAP_PX / ROW_PX
     _card(ax, 0, banner_y, 1.0, banner_h, color=C_BANNER, border=C_BANNER)
-    _hbar(ax, 0, banner_top, 1.0, h=0.005, color=C_BRAND)
+    _hbar(ax, 0, banner_top, 1.0, h=0.003, color=C_BRAND)
     _label(
         ax,
         0.012,
@@ -708,8 +693,7 @@ def _section_sales_summary(
     )
 
     # ── Column headers ───────────────────────────────────────────────────
-    row_h = 0.032
-    cur_y = banner_y - 0.01
+    cur_y = banner_y - gap - row_h
     if multi:
         headers = (
             [""] + [_short_outlet_name(nm, 16) for nm, _ in per_outlet] + ["Combined"]
@@ -897,13 +881,14 @@ def _section_sales_summary(
 
     _row("Required Daily Run Rate", _required_run_rate, fmt="str")
 
-    ax.set_ylim(cur_y - 0.04, 1.0)
+    # ylim set by _fig_for_section
 
 
 def _section_category(
     ax,
     r: Dict,
     location_name: str,
+    row_h: float,
     mtd_category: Dict[str, float],
     day_lbl: str,
     per_outlet: Optional[List[Tuple[str, Dict]]] = None,
@@ -933,8 +918,6 @@ def _section_category(
     if not cat_order:
         cat_order = []
 
-    row_h = 0.032
-
     # Column widths: for multi-outlet add per-outlet daily columns
     if multi:
         n_data = len(per_outlet) + 1  # outlets + combined
@@ -949,13 +932,13 @@ def _section_category(
 
     tbl_x = 0.0
 
-    # Header banner (slim)
-    n_rows = len(cat_order) + 2  # header + categories + totals
-    banner_h = _banner_height(n_rows)
-    banner_top = 0.995
+    # Header banner (proportional to row_h)
+    banner_h = row_h * BANNER_PX / ROW_PX
+    banner_top = 1.0
     banner_y = banner_top - banner_h
+    gap = row_h * SECTION_GAP_PX / ROW_PX
     _card(ax, 0, banner_y, 1.0, banner_h, color=C_BANNER, border=C_BANNER)
-    _hbar(ax, 0, banner_top, 1.0, h=0.005, color=C_BRAND)
+    _hbar(ax, 0, banner_top, 1.0, h=0.003, color=C_BRAND)
     _label(
         ax,
         0.012,
@@ -967,7 +950,7 @@ def _section_category(
     )
     _label(ax, 0.012, banner_top - banner_h * 0.69, day_lbl, size=9.0, color="#8BA3BD")
 
-    cur_y = banner_y - 0.01
+    cur_y = banner_y - gap - row_h
 
     # Table header
     if multi:
@@ -1040,13 +1023,14 @@ def _section_category(
         text_color=C_WHITE,
     )
 
-    ax.set_ylim(cur_y - 0.04, 1.0)
+    # ylim set by _fig_for_section
 
 
 def _section_service(
     ax,
     r: Dict,
     location_name: str,
+    row_h: float,
     mtd_service: Dict[str, float],
     day_lbl: str,
     per_outlet: Optional[List[Tuple[str, Dict]]] = None,
@@ -1080,8 +1064,6 @@ def _section_service(
         if k not in svc_order:
             svc_order.append(k)
 
-    row_h = 0.032
-
     if multi:
         n_data = len(per_outlet) + 1
         label_w = 0.19
@@ -1095,12 +1077,12 @@ def _section_service(
     tbl_x = 0.0
 
     # Slim header banner
-    n_rows = len(svc_order) + 2  # header + services + totals
-    banner_h = _banner_height(n_rows)
-    banner_top = 0.995
+    banner_h = row_h * BANNER_PX / ROW_PX
+    banner_top = 1.0
     banner_y = banner_top - banner_h
+    gap = row_h * SECTION_GAP_PX / ROW_PX
     _card(ax, 0, banner_y, 1.0, banner_h, color=C_BANNER, border=C_BANNER)
-    _hbar(ax, 0, banner_top, 1.0, h=0.005, color=C_BRAND)
+    _hbar(ax, 0, banner_top, 1.0, h=0.003, color=C_BRAND)
     _label(
         ax,
         0.012,
@@ -1112,7 +1094,7 @@ def _section_service(
     )
     _label(ax, 0.012, banner_top - banner_h * 0.69, day_lbl, size=9.0, color="#8BA3BD")
 
-    cur_y = banner_y - 0.01
+    cur_y = banner_y - gap - row_h
 
     if multi:
         headers = (
@@ -1138,7 +1120,7 @@ def _section_service(
             color=C_MUTED,
             ha="center",
         )
-        ax.set_ylim(cur_y - 0.12, 1.0)
+        # ylim set by _fig_for_section
         return
 
     daily_total = 0.0
@@ -1197,22 +1179,24 @@ def _section_service(
         text_color=C_WHITE,
     )
 
-    ax.set_ylim(cur_y - 0.04, 1.0)
+    # ylim set by _fig_for_section
 
 
-def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -> None:
+def _section_footfall(
+    ax, month_footfall_rows: List[Dict], location_name: str, row_h: float
+) -> None:
     ax.set_xlim(0, 1)
     ax.axis("off")
 
     rows = list(month_footfall_rows or [])
 
-    # Slim header banner (consistent with other sections)
-    n_rows = len(rows) + 3  # header + data rows + totals + average
-    banner_h = _banner_height(n_rows)
-    banner_top = 0.995
+    # Slim header banner
+    banner_h = row_h * BANNER_PX / ROW_PX
+    banner_top = 1.0
     banner_y = banner_top - banner_h
+    gap = row_h * SECTION_GAP_PX / ROW_PX
     _card(ax, 0, banner_y, 1.0, banner_h, color=C_BANNER, border=C_BANNER)
-    _hbar(ax, 0, banner_top, 1.0, h=0.005, color=C_BRAND)
+    _hbar(ax, 0, banner_top, 1.0, h=0.003, color=C_BRAND)
     _label(
         ax,
         0.012,
@@ -1235,20 +1219,19 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
         _label(
             ax,
             0.5,
-            banner_y - 0.06,
+            banner_y - gap,
             "No footfall data for this month",
             size=11.0,
             color=C_MUTED,
             ha="center",
         )
-        ax.set_ylim(banner_y - 0.15, 1.0)
+        # ylim set by _fig_for_section
         return
 
     col_w = [0.40, 0.16, 0.16, 0.16]
-    row_h = 0.032
     tbl_x = 0.0
 
-    cur_y = banner_y - 0.01
+    cur_y = banner_y - gap - row_h
     _table_header_row(
         ax,
         tbl_x,
@@ -1329,7 +1312,7 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
             text_color=C_MUTED,
         )
 
-    ax.set_ylim(cur_y - 0.04, 1.0)
+    # ylim set by _fig_for_section
 
 
 def _section_footfall_metrics(
@@ -1337,6 +1320,7 @@ def _section_footfall_metrics(
     monthly_rows: Optional[List[Dict]],
     weekly_rows: Optional[List[Dict]],
     location_name: str,
+    row_h: float,
 ) -> None:
     """Footfall metrics section with monthly and weekly summary tables."""
     ax.set_xlim(0, 1)
@@ -1346,14 +1330,12 @@ def _section_footfall_metrics(
     weekly = list(weekly_rows or [])
 
     # Slim header banner
-    n_mo_rows = min(len(monthly), 9) if monthly else 0
-    n_wk_rows = min(len(weekly), 4) if weekly else 0
-    n_rows = 2 + n_mo_rows + 2 + n_wk_rows  # labels + headers + data
-    banner_h = _banner_height(n_rows)
-    banner_top = 0.995
+    banner_h = row_h * BANNER_PX / ROW_PX
+    banner_top = 1.0
     banner_y = banner_top - banner_h
+    gap = row_h * SECTION_GAP_PX / ROW_PX
     _card(ax, 0, banner_y, 1.0, banner_h, color=C_BANNER, border=C_BANNER)
-    _hbar(ax, 0, banner_top, 1.0, h=0.005, color=C_BRAND)
+    _hbar(ax, 0, banner_top, 1.0, h=0.003, color=C_BRAND)
     _label(
         ax,
         0.012,
@@ -1372,8 +1354,7 @@ def _section_footfall_metrics(
         color="#8BA3BD",
     )
 
-    cur_y = banner_y - 0.01
-    row_h = 0.032
+    cur_y = banner_y - gap - row_h
 
     # Helper to calculate MoM/WoW % change
     def _calc_pct_change(current: float, previous: float) -> str:
@@ -1607,7 +1588,7 @@ def _section_footfall_metrics(
             ha="center",
         )
 
-    ax.set_ylim(cur_y - 0.04, 1.0)
+    # ylim set by _fig_for_section
 
 
 # ── Short outlet name helper ──────────────────────────────────────────────────
@@ -1659,13 +1640,23 @@ def _section_fig_width(n_outlets: int) -> float:
 
 
 def _fig_for_section(
-    n_rows: int, min_rows: int = 4, cap_h: float = 20.0, w: float = 8.5
-) -> Tuple[plt.Figure, plt.Axes]:
-    h = min(cap_h, 0.4 + 0.33 * max(n_rows, min_rows))
-    fig, ax = plt.subplots(figsize=(w, h), dpi=DPI)
+    n_rows: int, min_rows: int = 3, cap_h: float = 20.0, w: float = 8.5
+) -> Tuple[plt.Figure, plt.Axes, float]:
+    """Create a figure with height computed from fixed pixel targets.
+
+    Returns (fig, ax, row_h) where row_h is in axis units (0-1 range).
+    Each row will be exactly ROW_PX pixels tall regardless of section size.
+    """
+    n = max(n_rows, min_rows)
+    fig_h = min(cap_h, (n * ROW_PX + BANNER_PX + SECTION_GAP_PX + BOTTOM_PAD_PX) / DPI)
+    fig, ax = plt.subplots(figsize=(w, fig_h), dpi=DPI)
     fig.patch.set_facecolor(C_PAGE)
     ax.set_facecolor(C_PAGE)
-    return fig, ax
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+    row_h = ROW_PX / (DPI * fig_h)
+    return fig, ax, row_h
 
 
 @st.cache_data(ttl=600)
@@ -1741,11 +1732,12 @@ def generate_sheet_style_report_sections(
         ]
     )
     est_rows = 10 + n_pay + n_tax + 12  # MTD + forecast rows
-    fig, ax = _fig_for_section(est_rows, min_rows=8, cap_h=36.0, w=fig_w)
+    fig, ax, row_h = _fig_for_section(est_rows, min_rows=8, cap_h=36.0, w=fig_w)
     _section_sales_summary(
         ax,
         r,
         location_name,
+        row_h,
         per_outlet,
         daily_sales_history=daily_sales_history,
     )
@@ -1753,11 +1745,12 @@ def generate_sheet_style_report_sections(
 
     # Category
     n_cat = len(mc) or 3
-    fig, ax = _fig_for_section(n_cat + 4, min_rows=3, cap_h=14.0, w=fig_w)
+    fig, ax, row_h = _fig_for_section(n_cat + 4, min_rows=3, cap_h=14.0, w=fig_w)
     _section_category(
         ax,
         r,
         location_name,
+        row_h,
         mc,
         day_lbl,
         per_outlet=per_outlet,
@@ -1767,11 +1760,12 @@ def generate_sheet_style_report_sections(
 
     # Service
     n_svc = len(ms) or 3
-    fig, ax = _fig_for_section(n_svc + 4, min_rows=3, cap_h=12.0, w=fig_w)
+    fig, ax, row_h = _fig_for_section(n_svc + 4, min_rows=3, cap_h=12.0, w=fig_w)
     _section_service(
         ax,
         r,
         location_name,
+        row_h,
         ms,
         day_lbl,
         per_outlet=per_outlet,
@@ -1784,12 +1778,11 @@ def generate_sheet_style_report_sections(
     if per_outlet_ff_metrics and len(per_outlet_ff_metrics) > 1:
         # Multi-outlet with per-outlet metrics
         for idx, (outlet_name, mo_rows, wk_rows) in enumerate(per_outlet_ff_metrics):
-            # Calculate estimated rows: header + monthly rows + spacing + weekly rows
             n_mo = len(mo_rows) if mo_rows else 0
             n_wk = len(wk_rows) if wk_rows else 0
-            n_ft = 5 + n_mo + n_wk  # header + labels + tables
-            fig, ax = _fig_for_section(n_ft, min_rows=4, cap_h=16.0, w=fig_w)
-            _section_footfall_metrics(ax, mo_rows, wk_rows, outlet_name)
+            n_ft = 5 + n_mo + n_wk
+            fig, ax, row_h = _fig_for_section(n_ft, min_rows=4, cap_h=16.0, w=fig_w)
+            _section_footfall_metrics(ax, mo_rows, wk_rows, outlet_name, row_h)
             outlet_slug = _section_key_slug(outlet_name, default=f"outlet_{idx}")
             out[f"footfall_metrics__{outlet_slug}_{idx}"] = _save_fig(fig)
     elif ff_metrics_mo or ff_metrics_wk:
@@ -1797,23 +1790,25 @@ def generate_sheet_style_report_sections(
         n_mo = len(ff_metrics_mo) if ff_metrics_mo else 0
         n_wk = len(ff_metrics_wk) if ff_metrics_wk else 0
         n_ft = 5 + n_mo + n_wk
-        fig, ax = _fig_for_section(n_ft, min_rows=4, cap_h=16.0, w=fig_w)
-        _section_footfall_metrics(ax, ff_metrics_mo, ff_metrics_wk, location_name)
+        fig, ax, row_h = _fig_for_section(n_ft, min_rows=4, cap_h=16.0, w=fig_w)
+        _section_footfall_metrics(
+            ax, ff_metrics_mo, ff_metrics_wk, location_name, row_h
+        )
         out["footfall_metrics"] = _save_fig(fig)
     elif per_outlet_ff and len(per_outlet_ff) > 1:
         # Fallback to daily footfall for backward compatibility
         for idx, (outlet_name, ff_rows) in enumerate(per_outlet_ff):
             ff_rows = list(ff_rows or [])
             n_ft = len(ff_rows) + 4
-            fig, ax = _fig_for_section(n_ft, min_rows=5, cap_h=33.0, w=fig_w)
-            _section_footfall(ax, ff_rows, outlet_name)
+            fig, ax, row_h = _fig_for_section(n_ft, min_rows=5, cap_h=33.0, w=fig_w)
+            _section_footfall(ax, ff_rows, outlet_name, row_h)
             outlet_slug = _section_key_slug(outlet_name, default=f"outlet_{idx}")
             out[f"footfall__{outlet_slug}_{idx}"] = _save_fig(fig)
     else:
         # Single-outlet daily footfall (legacy)
         n_ft = len(mf) + 4
-        fig, ax = _fig_for_section(n_ft, min_rows=5, cap_h=33.0, w=fig_w)
-        _section_footfall(ax, mf, location_name)
+        fig, ax, row_h = _fig_for_section(n_ft, min_rows=5, cap_h=33.0, w=fig_w)
+        _section_footfall(ax, mf, location_name, row_h)
         out["footfall"] = _save_fig(fig)
 
     return out
