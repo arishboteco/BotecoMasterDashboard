@@ -31,12 +31,10 @@ class TestCategorySuperCategoryDisplay:
             }
             mtd_category = {"Tira Gosto": 1800.0, "Hot Beverages": 600.0}
 
-            row_h = 48 / (120 * 6)  # ROW_PX / (DPI * fig_h)
             sheet_reports._section_category(
                 ax,
                 report_data,
                 location_name="All locations",
-                row_h=row_h,
                 mtd_category=mtd_category,
                 day_lbl="Wed, 8 Apr 2026",
             )
@@ -59,12 +57,10 @@ class TestCategorySuperCategoryDisplay:
                 ],
             }
 
-            row_h = 48 / (120 * 6)  # ROW_PX / (DPI * fig_h)
             sheet_reports._section_category(
                 ax,
                 report_data,
                 location_name="All locations",
-                row_h=row_h,
                 mtd_category={"Tira Gosto": 1800.0},
                 day_lbl="Wed, 8 Apr 2026",
             )
