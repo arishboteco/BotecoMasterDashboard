@@ -57,10 +57,12 @@ FONT = "DejaVu Sans"
 DPI = 150
 
 # Fixed pixel targets for consistent row spacing across all sections
-ROW_PX = 48  # pixels per data/header row
-BANNER_PX = 60  # pixels for section banner
+# Proportional to font sizes: 11pt text at 150 DPI = 23px
+# Row = 1.5x line height, Banner = title(11.5pt) + date(9.5pt) + padding
+ROW_PX = 36  # 11pt font (23px) * 1.5 line-height ≈ 36px
+BANNER_PX = 50  # title(24px) + date(20px) + 6px padding
 SECTION_GAP_PX = 6  # pixels between banner and table
-BOTTOM_PAD_PX = 30  # pixels below last row
+BOTTOM_PAD_PX = 20  # pixels below last row
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
