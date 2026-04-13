@@ -59,20 +59,24 @@ DPI = 150
 # ── Fixed canvas dimensions (inches) ──────────────────────────────────────
 SECTION_WIDTHS = {1: 8.5, 2: 10.0}  # width by outlet count; >=3 capped at 12.0
 SECTION_HEIGHTS = {
-    "sales_summary": 24.0,
-    "category": 6.0,
-    "service": 5.0,
-    "footfall": 14.0,
-    "footfall_metrics": 9.0,
+    "sales_summary": 18.0,
+    "category": 4.5,
+    "service": 4.0,
+    "footfall": 10.5,
+    "footfall_metrics": 7.0,
 }
 
 # ── Fixed layout constants (normalized 0-1 axis units) ───────────────────
-BANNER_H = 0.045  # banner stripe height
-GAP_BELOW = 0.008  # gap between banner bottom and first row
-ROW_H = 0.028  # every data/header row is this tall
+BANNER_H = 0.038  # banner stripe height
+GAP_BELOW = 0.006  # gap between banner bottom and first row
+ROW_H = 0.022  # every data/header row is this tall
 BRAND_BAR_H = 0.003  # thin accent at very top of banner
 TITLE_Y_FRAC = 0.30  # title text Y as fraction of banner height
 SUBTITLE_Y_FRAC = 0.68  # subtitle/date text Y as fraction of banner height
+ROW_FS = 9.5  # default row font size
+HEADER_FS = 9.5  # default header row font size
+BANNER_TITLE_FS = 10.0  # banner title font size
+BANNER_SUB_FS = 8.0  # banner subtitle font size
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -488,7 +492,7 @@ def _label(
     x,
     y,
     text,
-    size=11.0,
+    size=ROW_FS,
     color=C_SLATE,
     weight="normal",
     ha="left",
@@ -554,7 +558,7 @@ def _table_header_row(ax, x, y, cols, widths, row_h=ROW_H, bg=C_HEADER, font_siz
         zorder=2,
     )
     ax.add_patch(patch)
-    fs = font_size if font_size else 11.0
+    fs = font_size if font_size else ROW_FS
     cx = x
     for i, (col, cw) in enumerate(zip(cols, widths)):
         ha = "left" if i == 0 else "right"
@@ -602,7 +606,7 @@ def _table_data_row(
         zorder=2,
     )
     ax.add_patch(patch)
-    fs = font_size if font_size else 11.0
+    fs = font_size if font_size else ROW_FS
     cx = x
     for i, (cell, cw) in enumerate(zip(cells, widths)):
         ha = "left" if i == 0 else "right"
@@ -640,7 +644,9 @@ def _table_section_label(ax, x, y, text, w, row_h=ROW_H, color=C_BRAND):
     )
     ax.add_patch(patch)
     _hbar(ax, x, y, 0.006, row_h, color=color)
-    _label(ax, x + 0.012, y + row_h * 0.5, text, size=11.0, color=color, weight="bold")
+    _label(
+        ax, x + 0.012, y + row_h * 0.5, text, size=ROW_FS, color=color, weight="bold"
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -688,7 +694,7 @@ def _section_sales_summary(
         0.012,
         banner_top - BANNER_H * TITLE_Y_FRAC,
         f"{location_name.upper()}  —  END OF DAY REPORT",
-        size=11.5,
+        size=BANNER_TITLE_FS + 1.5,
         color=C_WHITE,
         weight="bold",
     )
@@ -697,15 +703,14 @@ def _section_sales_summary(
         0.012,
         banner_top - BANNER_H * SUBTITLE_Y_FRAC,
         day_lbl,
-        size=9.5,
-        color=C_DATE_LABEL,
+        size=BANNER_SUB_FS + 1.5,
     )
     _label(
         ax,
         0.988,
         banner_top - BANNER_H * TITLE_Y_FRAC,
         f"{pct_tgt:.0f}% of target",
-        size=11.0,
+        size=BANNER_TITLE_FS,
         color=ach_color,
         weight="bold",
         ha="right",
@@ -715,7 +720,7 @@ def _section_sales_summary(
         0.988,
         banner_top - BANNER_H * SUBTITLE_Y_FRAC,
         _r(r.get("net_total", 0)) + " net",
-        size=9.5,
+        size=BANNER_SUB_FS + 1.5,
         color=C_WHITE,
         ha="right",
     )
@@ -965,7 +970,7 @@ def _section_category(
         0.012,
         banner_top - BANNER_H * TITLE_Y_FRAC,
         f"Category Sales \u2014 {location_name[:28]}",
-        size=11.0,
+        size=BANNER_TITLE_FS,
         color=C_WHITE,
         weight="bold",
     )
@@ -974,7 +979,7 @@ def _section_category(
         0.012,
         banner_top - BANNER_H * SUBTITLE_Y_FRAC,
         day_lbl,
-        size=9.0,
+        size=BANNER_SUB_FS,
         color="#8BA3BD",
     )
 
@@ -1110,7 +1115,7 @@ def _section_service(
         0.012,
         banner_top - BANNER_H * TITLE_Y_FRAC,
         f"Service Sales \u2014 {location_name[:28]}",
-        size=11.0,
+        size=BANNER_TITLE_FS,
         color=C_WHITE,
         weight="bold",
     )
@@ -1119,7 +1124,7 @@ def _section_service(
         0.012,
         banner_top - BANNER_H * SUBTITLE_Y_FRAC,
         day_lbl,
-        size=9.0,
+        size=BANNER_SUB_FS,
         color="#8BA3BD",
     )
 
@@ -1145,7 +1150,7 @@ def _section_service(
             0.5,
             cur_y - 0.05,
             "No service data for this date",
-            size=11.0,
+            size=ROW_FS,
             color=C_MUTED,
             ha="center",
         )
@@ -1224,7 +1229,7 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
         0.012,
         banner_top - BANNER_H * TITLE_Y_FRAC,
         "Daily Footfall — Month to Date",
-        size=11.0,
+        size=BANNER_TITLE_FS,
         color=C_WHITE,
         weight="bold",
     )
@@ -1233,7 +1238,7 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
         0.012,
         banner_top - BANNER_H * SUBTITLE_Y_FRAC,
         location_name[:32],
-        size=9.0,
+        size=BANNER_SUB_FS,
         color="#8BA3BD",
     )
 
@@ -1248,7 +1253,7 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
             0.5,
             cur_y,
             "No footfall data for this month",
-            size=11.0,
+            size=ROW_FS,
             color=C_MUTED,
             ha="center",
         )
@@ -1259,7 +1264,7 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
         cur_y - ROW_H,
         ["Date", "Dinner", "Lunch", "Total"],
         col_w,
-        font_size=10.5,
+        font_size=HEADER_FS,
     )
     cur_y -= ROW_H
 
@@ -1355,7 +1360,7 @@ def _section_footfall_metrics(
         0.012,
         banner_top - BANNER_H * TITLE_Y_FRAC,
         "Footfall Metrics",
-        size=11.0,
+        size=BANNER_TITLE_FS,
         color=C_WHITE,
         weight="bold",
     )
@@ -1364,7 +1369,7 @@ def _section_footfall_metrics(
         0.012,
         banner_top - BANNER_H * SUBTITLE_Y_FRAC,
         location_name[:32],
-        size=9.0,
+        size=BANNER_SUB_FS,
         color="#8BA3BD",
     )
 
@@ -1391,7 +1396,7 @@ def _section_footfall_metrics(
     # ── Monthly Table ─────────────────────────────────────────────────────────
     if monthly:
         cur_y -= ROW_H * 0.2
-        _label(ax, 0.012, cur_y, "Monthly", size=11.0, color=C_BRAND, weight="bold")
+        _label(ax, 0.012, cur_y, "Monthly", size=ROW_FS, color=C_BRAND, weight="bold")
         cur_y -= ROW_H * 0.8
 
         # Header - better distribution, filling more width
@@ -1405,7 +1410,7 @@ def _section_footfall_metrics(
             "% Change",
         ]
         cur_y -= ROW_H
-        _table_header_row(ax, 0.01, cur_y, headers, col_w, font_size=11.0)
+        _table_header_row(ax, 0.01, cur_y, headers, col_w, font_size=HEADER_FS)
 
         # Sort by month descending (most recent first)
         sorted_monthly = sorted(monthly, key=lambda x: x.get("month", ""), reverse=True)
@@ -1486,7 +1491,7 @@ def _section_footfall_metrics(
                 cells,
                 col_w,
                 is_alt=(idx % 2 == 1),
-                font_size=11.0,
+                font_size=ROW_FS,
                 cell_colors=cell_colors,
             )
 
@@ -1495,7 +1500,7 @@ def _section_footfall_metrics(
     # ── Weekly Table ──────────────────────────────────────────────────────────
     if weekly:
         cur_y -= ROW_H * 0.2
-        _label(ax, 0.012, cur_y, "Weekly", size=11.0, color=C_BRAND, weight="bold")
+        _label(ax, 0.012, cur_y, "Weekly", size=ROW_FS, color=C_BRAND, weight="bold")
         cur_y -= ROW_H * 0.8
 
         # Header - better distribution, filling more width
@@ -1509,7 +1514,7 @@ def _section_footfall_metrics(
             "% Change",
         ]
         cur_y -= ROW_H
-        _table_header_row(ax, 0.01, cur_y, headers, col_w, font_size=11.0)
+        _table_header_row(ax, 0.01, cur_y, headers, col_w, font_size=HEADER_FS)
 
         # Sort by week descending (most recent first)
         sorted_weekly = sorted(weekly, key=lambda x: x.get("week", ""), reverse=True)
@@ -1583,7 +1588,7 @@ def _section_footfall_metrics(
                 cells,
                 col_w,
                 is_alt=(idx % 2 == 1),
-                font_size=11.0,
+                font_size=ROW_FS,
                 cell_colors=cell_colors,
             )
 
@@ -1595,7 +1600,7 @@ def _section_footfall_metrics(
             0.5,
             cur_y,
             "No footfall metrics data available",
-            size=11.0,
+            size=ROW_FS,
             color=C_MUTED,
             ha="center",
         )
