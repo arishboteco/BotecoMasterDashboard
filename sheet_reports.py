@@ -425,6 +425,29 @@ def _save_fig(fig) -> BytesIO:
     return buf
 
 
+def _save_section(fig, ax, cur_y: float) -> BytesIO:
+    """Crop axis to content span and save with bbox_inches='tight'.
+
+    After drawing from y=1.0 (banner_top) down to cur_y, sets the
+    axis limits to the content region with a small bottom pad, then
+    saves so the PNG has no wasted space below the last row.
+    """
+    bottom_pad = ROW_H
+    ax.set_ylim(cur_y - bottom_pad, 1.0 + ROW_H * 0.15)
+    buf = BytesIO()
+    fig.savefig(
+        buf,
+        format="png",
+        dpi=DPI,
+        bbox_inches="tight",
+        pad_inches=0.02,
+        facecolor=fig.get_facecolor(),
+    )
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
 # ── Drawing primitives ────────────────────────────────────────────────────────
 
 
@@ -1690,18 +1713,18 @@ def generate_sheet_style_report_sections(
 
     # Sales summary
     fig, ax = _fig_for_section("sales_summary", n_outlets=n_outlets)
-    _section_sales_summary(
+    cur_y = _section_sales_summary(
         ax,
         r,
         location_name,
         per_outlet,
         daily_sales_history=daily_sales_history,
     )
-    out["sales_summary"] = _save_fig(fig)
+    out["sales_summary"] = _save_section(fig, ax, cur_y)
 
     # Category
     fig, ax = _fig_for_section("category", n_outlets=n_outlets)
-    _section_category(
+    cur_y = _section_category(
         ax,
         r,
         location_name,
@@ -1710,11 +1733,11 @@ def generate_sheet_style_report_sections(
         per_outlet=per_outlet,
         per_outlet_category=per_outlet_cat,
     )
-    out["category"] = _save_fig(fig)
+    out["category"] = _save_section(fig, ax, cur_y)
 
     # Service
     fig, ax = _fig_for_section("service", n_outlets=n_outlets)
-    _section_service(
+    cur_y = _section_service(
         ax,
         r,
         location_name,
@@ -1723,7 +1746,7 @@ def generate_sheet_style_report_sections(
         per_outlet=per_outlet,
         per_outlet_service=per_outlet_svc,
     )
-    out["service"] = _save_fig(fig)
+    out["service"] = _save_section(fig, ax, cur_y)
 
     # Footfall
     # Prefer new metrics-based sections if data provided
@@ -1731,26 +1754,30 @@ def generate_sheet_style_report_sections(
         # Multi-outlet with per-outlet metrics
         for idx, (outlet_name, mo_rows, wk_rows) in enumerate(per_outlet_ff_metrics):
             fig, ax = _fig_for_section("footfall_metrics", n_outlets=n_outlets)
-            _section_footfall_metrics(ax, mo_rows, wk_rows, outlet_name)
+            cur_y = _section_footfall_metrics(ax, mo_rows, wk_rows, outlet_name)
             outlet_slug = _section_key_slug(outlet_name, default=f"outlet_{idx}")
-            out[f"footfall_metrics__{outlet_slug}_{idx}"] = _save_fig(fig)
+            out[f"footfall_metrics__{outlet_slug}_{idx}"] = _save_section(
+                fig, ax, cur_y
+            )
     elif ff_metrics_mo or ff_metrics_wk:
         fig, ax = _fig_for_section("footfall_metrics", n_outlets=n_outlets)
-        _section_footfall_metrics(ax, ff_metrics_mo, ff_metrics_wk, location_name)
-        out["footfall_metrics"] = _save_fig(fig)
+        cur_y = _section_footfall_metrics(
+            ax, ff_metrics_mo, ff_metrics_wk, location_name
+        )
+        out["footfall_metrics"] = _save_section(fig, ax, cur_y)
     elif per_outlet_ff and len(per_outlet_ff) > 1:
         # Fallback to daily footfall for backward compatibility
         for idx, (outlet_name, ff_rows) in enumerate(per_outlet_ff):
             ff_rows = list(ff_rows or [])
             fig, ax = _fig_for_section("footfall", n_outlets=n_outlets)
-            _section_footfall(ax, ff_rows, outlet_name)
+            cur_y = _section_footfall(ax, ff_rows, outlet_name)
             outlet_slug = _section_key_slug(outlet_name, default=f"outlet_{idx}")
-            out[f"footfall__{outlet_slug}_{idx}"] = _save_fig(fig)
+            out[f"footfall__{outlet_slug}_{idx}"] = _save_section(fig, ax, cur_y)
     else:
         # Single-outlet daily footfall (legacy)
         fig, ax = _fig_for_section("footfall", n_outlets=n_outlets)
-        _section_footfall(ax, mf, location_name)
-        out["footfall"] = _save_fig(fig)
+        cur_y = _section_footfall(ax, mf, location_name)
+        out["footfall"] = _save_section(fig, ax, cur_y)
 
     return out
 
