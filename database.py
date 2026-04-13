@@ -409,11 +409,10 @@ def init_database():
 
 
 def _migrate_supabase_schema() -> None:
-    """Ensure Supabase tables have all columns that SQLite migrations would have added.
+    """Verify Supabase schema integrity and warn about missing columns/views.
 
-    SQLite init_database() handles migrations via ALTER TABLE. Supabase tables
-    need equivalent migrations. This function introspects the Supabase schema
-    and applies missing columns using the admin client.
+    This is a read-only check — schema fixes must be applied manually in the
+    Supabase SQL editor since the execute_sql RPC is not available.
     """
     if not use_supabase():
         return
@@ -421,59 +420,32 @@ def _migrate_supabase_schema() -> None:
     supabase = get_supabase_admin_client()
     if supabase is None:
         logger.warning(
-            "Supabase admin client unavailable — skipping schema migrations. "
-            "Set SUPABASE_SERVICE_KEY for admin-level access."
+            "Supabase admin client unavailable — skipping schema checks. "
+            "Set SUPABASE_SERVICE_KEY env variable for admin-level access."
         )
         return
 
-    # Check if item_sales has the 'category' column (added as SQLite migration).
-    # The Supabase table may have been created before this migration existed.
     try:
         result = supabase.table("item_sales").select("id").limit(1).execute()
         columns = set(result.data[0].keys()) if result.data else set()
     except Exception:
-        logger.exception("Failed to inspect item_sales schema during migration")
-        columns = set()
+        logger.exception("Failed to inspect item_sales schema")
+        return
 
     if "category" not in columns:
-        logger.info(
-            "Supabase item_sales table missing 'category' column. "
-            "Attempting to add it via raw SQL."
+        logger.warning(
+            "Supabase item_sales table is missing the 'category' column. "
+            "Run this SQL in the Supabase SQL editor to fix:\n\n"
+            "ALTER TABLE item_sales ADD COLUMN category TEXT DEFAULT '';"
         )
-        try:
-            supabase.rpc(
-                "execute_sql",
-                {"query": "ALTER TABLE item_sales ADD COLUMN category TEXT DEFAULT ''"},
-            ).execute()
-        except Exception:
-            logger.warning(
-                "Could not add 'category' to item_sales via RPC. "
-                "The column will be inserted without 'category' as a fallback. "
-                "To fix permanently, run this SQL in the Supabase SQL editor:\n\n"
-                "ALTER TABLE item_sales ADD COLUMN category TEXT DEFAULT '';\n"
-            )
 
-    # Ensure category/super-category views exist in Supabase.
-    # In Supabase the views are named without the _view suffix (category_sales,
-    # super_category_sales) because the original tables were replaced in-place.
-    for view_name, view_sql in [
-        ("category_sales", CATEGORY_SALES_VIEW_SQL),
-        ("super_category_sales", SUPER_CATEGORY_SALES_VIEW_SQL),
-    ]:
+    for view_name in ("category_sales", "super_category_sales"):
         try:
-            # Rewrite the SQLite view name to match the Supabase convention
-            pg_sql = view_sql.replace(
-                "CREATE VIEW IF NOT EXISTS category_sales_view",
-                f"CREATE OR REPLACE VIEW {view_name}",
-            ).replace(
-                "CREATE VIEW IF NOT EXISTS super_category_sales_view",
-                f"CREATE OR REPLACE VIEW {view_name}",
-            )
-            supabase.rpc("execute_sql", {"query": pg_sql}).execute()
+            supabase.table(view_name).select("id").limit(1).execute()
         except Exception:
             logger.warning(
-                "Could not create %s in Supabase via RPC. "
-                "Create it manually in the Supabase SQL editor.",
+                "Supabase view '%s' is missing. "
+                "Run the Supabase migration that creates this view.",
                 view_name,
             )
 
