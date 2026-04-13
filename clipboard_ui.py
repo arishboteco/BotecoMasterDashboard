@@ -2,10 +2,9 @@
 
 import base64
 import hashlib
-import inspect
 import json
 
-import streamlit.components.v1 as components
+import streamlit as st
 
 import ui_theme
 from typing import List, Tuple, Optional
@@ -56,12 +55,8 @@ COPY_ICON_SVG = (
 
 
 def _html(html: str, height: int, component_key: str) -> None:
-    """Call components.html with key only if this Streamlit build supports it."""
-    params = inspect.signature(components.html).parameters
-    if "key" in params:
-        components.html(html, height=height, key=component_key)
-    else:
-        components.html(html, height=height)
+    """Render HTML in an iframe using st.iframe."""
+    st.iframe(html, height=height)
 
 
 def _safe_id(key: str) -> str:

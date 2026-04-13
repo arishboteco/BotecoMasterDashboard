@@ -425,20 +425,6 @@ def _migrate_supabase_schema() -> None:
         )
         return
 
-    try:
-        result = supabase.table("item_sales").select("id").limit(1).execute()
-        columns = set(result.data[0].keys()) if result.data else set()
-    except Exception:
-        logger.exception("Failed to inspect item_sales schema")
-        return
-
-    if "category" not in columns:
-        logger.warning(
-            "Supabase item_sales table is missing the 'category' column. "
-            "Run this SQL in the Supabase SQL editor to fix:\n\n"
-            "ALTER TABLE item_sales ADD COLUMN category TEXT DEFAULT '';"
-        )
-
     for view_name in ("category_sales", "super_category_sales"):
         try:
             supabase.table(view_name).select("id").limit(1).execute()
