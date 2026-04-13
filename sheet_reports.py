@@ -499,7 +499,7 @@ def _kpi_tile(ax, x, y, w, h, label, value, sub=None, accent_color=C_BRAND):
 # ── Table row helpers ─────────────────────────────────────────────────────────
 
 
-def _table_header_row(ax, x, y, cols, widths, row_h=0.038, bg=C_HEADER, font_size=None):
+def _table_header_row(ax, x, y, cols, widths, row_h=0.032, bg=C_HEADER, font_size=None):
     """Light header row for a data table."""
     total_w = sum(widths)
     patch = mpatches.Rectangle(
@@ -513,12 +513,7 @@ def _table_header_row(ax, x, y, cols, widths, row_h=0.038, bg=C_HEADER, font_siz
         zorder=2,
     )
     ax.add_patch(patch)
-    n_cols = len(cols)
-    fs = (
-        font_size
-        if font_size
-        else (10.0 if n_cols > 5 else (10.5 if n_cols > 4 else 11.0))
-    )
+    fs = font_size if font_size else 11.0
     cx = x
     for i, (col, cw) in enumerate(zip(cols, widths)):
         ha = "left" if i == 0 else "right"
@@ -526,7 +521,7 @@ def _table_header_row(ax, x, y, cols, widths, row_h=0.038, bg=C_HEADER, font_siz
         _label(
             ax,
             px,
-            y + row_h - 0.010,
+            y + row_h - 0.008,
             col,
             size=fs,
             color=C_BRAND,
@@ -542,7 +537,7 @@ def _table_data_row(
     y,
     cells,
     widths,
-    row_h=0.038,
+    row_h=0.032,
     bg=C_CARD,
     alt_bg=C_BAND,
     is_alt=False,
@@ -566,12 +561,7 @@ def _table_data_row(
         zorder=2,
     )
     ax.add_patch(patch)
-    n_cols = len(cells)
-    fs = (
-        font_size
-        if font_size
-        else (10.0 if n_cols > 5 else (10.5 if n_cols > 4 else 11.0))
-    )
+    fs = font_size if font_size else 11.0
     cx = x
     for i, (cell, cw) in enumerate(zip(cells, widths)):
         ha = "left" if i == 0 else "right"
@@ -585,7 +575,7 @@ def _table_data_row(
         _label(
             ax,
             px,
-            y + row_h - 0.011,
+            y + row_h - 0.009,
             str(cell),
             size=fs,
             color=rc,
@@ -595,7 +585,7 @@ def _table_data_row(
         cx += cw
 
 
-def _table_section_label(ax, x, y, text, w, row_h=0.038, color=C_BRAND):
+def _table_section_label(ax, x, y, text, w, row_h=0.032, color=C_BRAND):
     """A full-width accent-coloured section label inside a table."""
     patch = mpatches.Rectangle(
         (x, y),
@@ -610,7 +600,7 @@ def _table_section_label(ax, x, y, text, w, row_h=0.038, color=C_BRAND):
     ax.add_patch(patch)
     _hbar(ax, x, y, 0.006, row_h, color=color)
     _label(
-        ax, x + 0.012, y + row_h - 0.0135, text, size=10.0, color=color, weight="bold"
+        ax, x + 0.012, y + row_h - 0.011, text, size=11.0, color=color, weight="bold"
     )
 
 
@@ -688,7 +678,7 @@ def _section_sales_summary(
     )
 
     # ── Column headers ───────────────────────────────────────────────────
-    row_h = 0.038
+    row_h = 0.032
     cur_y = banner_y - 0.01
     if multi:
         headers = (
@@ -913,7 +903,7 @@ def _section_category(
     if not cat_order:
         cat_order = []
 
-    row_h = 0.038
+    row_h = 0.032
 
     # Column widths: for multi-outlet add per-outlet daily columns
     if multi:
@@ -1059,7 +1049,7 @@ def _section_service(
         if k not in svc_order:
             svc_order.append(k)
 
-    row_h = 0.038
+    row_h = 0.032
 
     if multi:
         n_data = len(per_outlet) + 1
@@ -1215,7 +1205,7 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
         return
 
     col_w = [0.40, 0.16, 0.16, 0.16]
-    row_h = 0.038
+    row_h = 0.032
     tbl_x = 0.0
 
     cur_y = banner_y - 0.01
@@ -1333,7 +1323,7 @@ def _section_footfall_metrics(
     _label(ax, 0.012, banner_top - 0.045, location_name[:32], size=9.0, color="#8BA3BD")
 
     cur_y = banner_y - 0.01
-    row_h = 0.038
+    row_h = 0.032
 
     # Helper to calculate MoM/WoW % change
     def _calc_pct_change(current: float, previous: float) -> str:
@@ -1356,7 +1346,7 @@ def _section_footfall_metrics(
     # ── Monthly Table ─────────────────────────────────────────────────────────
     if monthly:
         cur_y -= row_h * 0.2
-        _label(ax, 0.012, cur_y, "Monthly", size=9.0, color=C_BRAND, weight="bold")
+        _label(ax, 0.012, cur_y, "Monthly", size=11.0, color=C_BRAND, weight="bold")
         cur_y -= row_h * 0.8
 
         # Header - better distribution, filling more width
@@ -1370,7 +1360,7 @@ def _section_footfall_metrics(
             "% Change",
         ]
         cur_y -= row_h
-        _table_header_row(ax, 0.01, cur_y, headers, col_w, row_h, font_size=9.0)
+        _table_header_row(ax, 0.01, cur_y, headers, col_w, row_h, font_size=11.0)
 
         # Sort by month descending (most recent first)
         sorted_monthly = sorted(monthly, key=lambda x: x.get("month", ""), reverse=True)
@@ -1452,7 +1442,7 @@ def _section_footfall_metrics(
                 col_w,
                 row_h=row_h,
                 is_alt=(idx % 2 == 1),
-                font_size=9.0,
+                font_size=11.0,
                 cell_colors=cell_colors,
             )
 
@@ -1461,7 +1451,7 @@ def _section_footfall_metrics(
     # ── Weekly Table ──────────────────────────────────────────────────────────
     if weekly:
         cur_y -= row_h * 0.2
-        _label(ax, 0.012, cur_y, "Weekly", size=9.0, color=C_BRAND, weight="bold")
+        _label(ax, 0.012, cur_y, "Weekly", size=11.0, color=C_BRAND, weight="bold")
         cur_y -= row_h * 0.8
 
         # Header - better distribution, filling more width
@@ -1475,7 +1465,7 @@ def _section_footfall_metrics(
             "% Change",
         ]
         cur_y -= row_h
-        _table_header_row(ax, 0.01, cur_y, headers, col_w, row_h, font_size=9.0)
+        _table_header_row(ax, 0.01, cur_y, headers, col_w, row_h, font_size=11.0)
 
         # Sort by week descending (most recent first)
         sorted_weekly = sorted(weekly, key=lambda x: x.get("week", ""), reverse=True)
@@ -1550,7 +1540,7 @@ def _section_footfall_metrics(
                 col_w,
                 row_h=row_h,
                 is_alt=(idx % 2 == 1),
-                font_size=9.0,
+                font_size=11.0,
                 cell_colors=cell_colors,
             )
 
