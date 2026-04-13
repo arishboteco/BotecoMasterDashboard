@@ -58,11 +58,11 @@ DPI = 150
 
 # Fixed pixel targets for consistent row spacing across all sections
 # Proportional to font sizes: 11pt text at 150 DPI = 23px
-# Row = 1.5x line height, Banner = title(11.5pt) + date(9.5pt) + padding
-ROW_PX = 36  # 11pt font (23px) * 1.5 line-height ≈ 36px
-BANNER_PX = 50  # title(24px) + date(20px) + 6px padding
+# Row = font + 17px padding (8 top, 9 bottom), Banner = two text lines + 12px padding
+ROW_PX = 40  # 11pt font (23px) + 17px padding
+BANNER_PX = 56  # title(24px) + date(20px) + 12px padding
 SECTION_GAP_PX = 6  # pixels between banner and table
-BOTTOM_PAD_PX = 20  # pixels below last row
+BOTTOM_PAD_PX = 24  # pixels below last row
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -407,7 +407,7 @@ def _save_fig(fig) -> BytesIO:
         format="png",
         dpi=DPI,
         bbox_inches="tight",
-        pad_inches=0.02,
+        pad_inches=0.05,
         facecolor=fig.get_facecolor(),
     )
     plt.close(fig)
