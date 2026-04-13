@@ -193,15 +193,8 @@ def render(ctx: TabContext) -> None:
             )
             _today = datetime.now().date()
             _end = _today.strftime("%Y-%m-%d")
-            _start_mo = _today.replace(day=1)
-            for _ in range(9):
-                _m = _start_mo.month - 1
-                if _m == 0:
-                    _m = 12
-                    _start_mo = _start_mo.replace(year=_start_mo.year - 1, month=_m)
-                else:
-                    _start_mo = _start_mo.replace(month=_m)
-            _start_mo_str = _start_mo.strftime("%Y-%m-%d")
+            _start_mo_dt = utils.subtract_months(_today, 9)
+            _start_mo_str = _start_mo_dt.strftime("%Y-%m-%d")
             _days_since_monday = _today.weekday()
             _current_week_monday = _today - timedelta(days=_days_since_monday)
             _start_wk = (_current_week_monday - timedelta(weeks=3)).strftime("%Y-%m-%d")
@@ -300,7 +293,6 @@ def render(ctx: TabContext) -> None:
                 _single_outlet_sheet = [(_selected_outlet, _outlet_data)]
                 _single_outlet_cat = None
                 _single_outlet_svc = None
-                _single_outlet_footfall = None
                 _single_outlet_footfall_metrics = None
 
                 if len(ctx.report_loc_ids) > 1:
@@ -313,23 +305,17 @@ def render(ctx: TabContext) -> None:
                         if lid == _selected_lid
                     ]
                     _single_outlet_svc = [
-                        (name, _build_mtd_maps([lid], y_m[0], y_m[1], date_str)[1])
+                        (
+                            name,
+                            _build_mtd_maps_cached([lid], y_m[0], y_m[1], date_str)[1],
+                        )
                         for lid, name, _ in outlets_bundle
                         if lid == _selected_lid
                     ]
                     _today = datetime.now().date()
                     _end = _today.strftime("%Y-%m-%d")
-                    _start_mo = _today
-                    for _ in range(9):
-                        _m = _start_mo.month - 1
-                        if _m == 0:
-                            _m = 12
-                            _start_mo = _start_mo.replace(
-                                year=_start_mo.year - 1, month=_m
-                            )
-                        else:
-                            _start_mo = _start_mo.replace(month=_m)
-                    _start_mo_str = _start_mo.replace(day=1).strftime("%Y-%m-%d")
+                    _start_mo_dt = utils.subtract_months(_today, 9)
+                    _start_mo_str = _start_mo_dt.strftime("%Y-%m-%d")
                     _days_since_monday = _today.weekday()
                     _current_week_monday = _today - timedelta(days=_days_since_monday)
                     _start_wk = (_current_week_monday - timedelta(weeks=3)).strftime(
@@ -371,7 +357,7 @@ def render(ctx: TabContext) -> None:
                     per_outlet_summaries=_single_outlet_sheet,
                     per_outlet_category=_single_outlet_cat,
                     per_outlet_service=_single_outlet_svc,
-                    per_outlet_footfall=_single_outlet_footfall,
+                    per_outlet_footfall=None,
                     per_outlet_footfall_metrics=_single_outlet_footfall_metrics,
                     daily_sales_history=foot_rows,
                 )

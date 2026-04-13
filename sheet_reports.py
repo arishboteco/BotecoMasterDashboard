@@ -645,14 +645,15 @@ def _section_sales_summary(
     ach_color = statuses["target"]["color"]
 
     # ── Header banner (slim) ─────────────────────────────────────────────
-    banner_h = 0.08
-    banner_y = 0.93
+    banner_h = 0.065
+    banner_top = 0.995
+    banner_y = banner_top - banner_h
     _card(ax, 0, banner_y, 1.0, banner_h, color=C_BANNER, border=C_BANNER)
-    _hbar(ax, 0, banner_y + banner_h, 1.0, h=0.005, color=C_BRAND)
+    _hbar(ax, 0, banner_top, 1.0, h=0.005, color=C_BRAND)
     _label(
         ax,
         0.012,
-        banner_y + banner_h - 0.018,
+        banner_top - 0.018,
         f"{location_name.upper()}  —  END OF DAY REPORT",
         size=11.5,
         color=C_WHITE,
@@ -661,7 +662,7 @@ def _section_sales_summary(
     _label(
         ax,
         0.012,
-        banner_y + banner_h - 0.048,
+        banner_top - 0.045,
         day_lbl,
         size=9.5,
         color=C_DATE_LABEL,
@@ -669,7 +670,7 @@ def _section_sales_summary(
     _label(
         ax,
         0.988,
-        banner_y + banner_h - 0.018,
+        banner_top - 0.018,
         f"{pct_tgt:.0f}% of target",
         size=11.0,
         color=ach_color,
@@ -679,7 +680,7 @@ def _section_sales_summary(
     _label(
         ax,
         0.988,
-        banner_y + banner_h - 0.048,
+        banner_top - 0.045,
         _r(r.get("net_total", 0)) + " net",
         size=9.5,
         color=C_WHITE,
@@ -1620,7 +1621,7 @@ def _section_fig_width(n_outlets: int) -> float:
 def _fig_for_section(
     n_rows: int, min_rows: int = 4, cap_h: float = 20.0, w: float = 8.5
 ) -> Tuple[plt.Figure, plt.Axes]:
-    h = min(cap_h, 0.5 + 0.52 * max(n_rows, min_rows))
+    h = min(cap_h, 0.5 + 0.42 * max(n_rows, min_rows))
     fig, ax = plt.subplots(figsize=(w, h), dpi=DPI)
     fig.patch.set_facecolor(C_PAGE)
     ax.set_facecolor(C_PAGE)
@@ -1700,7 +1701,7 @@ def generate_sheet_style_report_sections(
         ]
     )
     est_rows = 10 + n_pay + n_tax + 12  # MTD + forecast rows
-    fig, ax = _fig_for_section(est_rows, min_rows=12, cap_h=36.0, w=fig_w)
+    fig, ax = _fig_for_section(est_rows, min_rows=10, cap_h=36.0, w=fig_w)
     _section_sales_summary(
         ax,
         r,
@@ -1712,7 +1713,7 @@ def generate_sheet_style_report_sections(
 
     # Category
     n_cat = len(mc) or 3
-    fig, ax = _fig_for_section(n_cat + 4, min_rows=6, cap_h=21.0, w=fig_w)
+    fig, ax = _fig_for_section(n_cat + 4, min_rows=4, cap_h=16.0, w=fig_w)
     _section_category(
         ax,
         r,
@@ -1726,7 +1727,7 @@ def generate_sheet_style_report_sections(
 
     # Service
     n_svc = len(ms) or 3
-    fig, ax = _fig_for_section(n_svc + 4, min_rows=5, cap_h=18.0, w=fig_w)
+    fig, ax = _fig_for_section(n_svc + 4, min_rows=4, cap_h=14.0, w=fig_w)
     _section_service(
         ax,
         r,

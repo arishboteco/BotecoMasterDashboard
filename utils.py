@@ -1,6 +1,16 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import List, Dict, Optional
 import config
+
+
+def subtract_months(dt: date, months: int) -> date:
+    """Subtract N months from a date, landing on the first day of the resulting month."""
+    year = dt.year - (months // 12)
+    month = dt.month - (months % 12)
+    if month <= 0:
+        year -= 1
+        month += 12
+    return dt.replace(year=year, month=month, day=1)
 
 
 def format_currency(amount: float) -> str:
