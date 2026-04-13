@@ -812,7 +812,6 @@ def _section_sales_summary(
     _row("Turns", "turns", fmt="float1")
 
     # Payment rows
-    _row(None, None, section_label="Payment")
     pay_keys = [
         ("Cash", "cash_sales"),
         ("GPay", "gpay_sales"),
@@ -830,7 +829,6 @@ def _section_sales_summary(
     _row("EOD Gross Total", "gross_total", bold=True, bg=C_BAND)
 
     # Tax & adjustments
-    _row(None, None, section_label="Tax & Adjustments")
     tax_keys = [
         ("CGST @ 2.5%", "cgst"),
         ("SGST @ 2.5%", "sgst"),
@@ -857,10 +855,6 @@ def _section_sales_summary(
 
     # ── MTD block ────────────────────────────────────────────────────────
     cur_y -= ROW_H * 0.15
-    _table_header_row(
-        ax, 0, cur_y - ROW_H, ["MTD Summary"] + [""] * (len(col_w) - 1), col_w
-    )
-    cur_y -= ROW_H
     row_idx[0] = 0
 
     _row("MTD Total Covers", "mtd_total_covers", fmt="int", bold=True)
@@ -891,8 +885,6 @@ def _section_sales_summary(
 
     _row("Sales Target", "mtd_target", fmt="currency")
     _row("% of Target", "mtd_pct_target", fmt="pct", bold=True, right_color=ach_color)
-
-    _row(None, None, section_label="Forecast")
     _row(
         "Forecast Month-End",
         lambda d: compute_forecast_metrics(d)["forecast_month_end_sales"],
