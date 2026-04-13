@@ -1621,7 +1621,7 @@ def _section_fig_width(n_outlets: int) -> float:
 def _fig_for_section(
     n_rows: int, min_rows: int = 4, cap_h: float = 20.0, w: float = 8.5
 ) -> Tuple[plt.Figure, plt.Axes]:
-    h = min(cap_h, 0.5 + 0.42 * max(n_rows, min_rows))
+    h = min(cap_h, 0.4 + 0.33 * max(n_rows, min_rows))
     fig, ax = plt.subplots(figsize=(w, h), dpi=DPI)
     fig.patch.set_facecolor(C_PAGE)
     ax.set_facecolor(C_PAGE)
@@ -1701,7 +1701,7 @@ def generate_sheet_style_report_sections(
         ]
     )
     est_rows = 10 + n_pay + n_tax + 12  # MTD + forecast rows
-    fig, ax = _fig_for_section(est_rows, min_rows=10, cap_h=36.0, w=fig_w)
+    fig, ax = _fig_for_section(est_rows, min_rows=8, cap_h=36.0, w=fig_w)
     _section_sales_summary(
         ax,
         r,
@@ -1713,7 +1713,7 @@ def generate_sheet_style_report_sections(
 
     # Category
     n_cat = len(mc) or 3
-    fig, ax = _fig_for_section(n_cat + 4, min_rows=4, cap_h=16.0, w=fig_w)
+    fig, ax = _fig_for_section(n_cat + 4, min_rows=3, cap_h=14.0, w=fig_w)
     _section_category(
         ax,
         r,
@@ -1727,7 +1727,7 @@ def generate_sheet_style_report_sections(
 
     # Service
     n_svc = len(ms) or 3
-    fig, ax = _fig_for_section(n_svc + 4, min_rows=4, cap_h=14.0, w=fig_w)
+    fig, ax = _fig_for_section(n_svc + 4, min_rows=3, cap_h=12.0, w=fig_w)
     _section_service(
         ax,
         r,
