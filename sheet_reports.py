@@ -883,7 +883,7 @@ def _section_sales_summary(
 
     _row("Required Daily Run Rate", _required_run_rate, fmt="str")
 
-    # ylim set by _fig_for_section
+    _final_ylim(ax, cur_y, row_h)
 
 
 def _section_category(
@@ -1025,7 +1025,7 @@ def _section_category(
         text_color=C_WHITE,
     )
 
-    # ylim set by _fig_for_section
+    _final_ylim(ax, cur_y, row_h)
 
 
 def _section_service(
@@ -1122,7 +1122,7 @@ def _section_service(
             color=C_MUTED,
             ha="center",
         )
-        # ylim set by _fig_for_section
+        _final_ylim(ax, cur_y, row_h)
         return
 
     daily_total = 0.0
@@ -1181,7 +1181,7 @@ def _section_service(
         text_color=C_WHITE,
     )
 
-    # ylim set by _fig_for_section
+    _final_ylim(ax, cur_y, row_h)
 
 
 def _section_footfall(
@@ -1217,23 +1217,24 @@ def _section_footfall(
         color="#8BA3BD",
     )
 
+    col_w = [0.40, 0.16, 0.16, 0.16]
+    tbl_x = 0.0
+
+    cur_y = banner_y - gap - row_h
+
     if not rows:
         _label(
             ax,
             0.5,
-            banner_y - gap,
+            cur_y,
             "No footfall data for this month",
             size=11.0,
             color=C_MUTED,
             ha="center",
         )
-        # ylim set by _fig_for_section
+        _final_ylim(ax, cur_y, row_h)
         return
 
-    col_w = [0.40, 0.16, 0.16, 0.16]
-    tbl_x = 0.0
-
-    cur_y = banner_y - gap - row_h
     _table_header_row(
         ax,
         tbl_x,
@@ -1314,7 +1315,7 @@ def _section_footfall(
             text_color=C_MUTED,
         )
 
-    # ylim set by _fig_for_section
+    _final_ylim(ax, cur_y, row_h)
 
 
 def _section_footfall_metrics(
@@ -1590,7 +1591,7 @@ def _section_footfall_metrics(
             ha="center",
         )
 
-    # ylim set by _fig_for_section
+    _final_ylim(ax, cur_y, row_h)
 
 
 # ── Short outlet name helper ──────────────────────────────────────────────────
@@ -1655,10 +1656,15 @@ def _fig_for_section(
     fig.patch.set_facecolor(C_PAGE)
     ax.set_facecolor(C_PAGE)
     ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
     ax.axis("off")
     row_h = ROW_PX / (DPI * fig_h)
     return fig, ax, row_h
+
+
+def _final_ylim(ax, cur_y: float, row_h: float):
+    """Set ylim so the axis exactly fits content from banner top to cur_y."""
+    bottom_pad = row_h * 0.5
+    ax.set_ylim(cur_y - bottom_pad, 1.0)
 
 
 @st.cache_data(ttl=600)
