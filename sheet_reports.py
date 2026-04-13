@@ -44,7 +44,9 @@ C_BRAND_DARK = "#174A82"  # Dark blue — hover/pressed
 C_BANNER = "#1A3A5C"  # Dark navy blue — section banners & totals rows
 C_HEADER = "#EEF2F7"  # Light grey — table header row backgrounds
 C_SLATE = "#1E293B"  # Slate 800 (body text)
-C_DATE_LABEL = "#8BA3BD"  # Muted blue-grey — date/location labels in banners
+C_DATE_LABEL = (
+    "#A5BCD2"  # Light blue-grey — date/location labels in banners (WCAG AA on #1A3A5C)
+)
 C_MUTED = "#64748B"  # Slate 500 (muted text — WCAG AA compliant)
 C_BORDER = "#E2E8F0"  # Slate 200 (card borders)
 C_BAND = "#EDF2F7"  # Alternating row band — light blue-grey (distinguishable from page)
@@ -704,6 +706,7 @@ def _section_sales_summary(
         banner_top - BANNER_H * SUBTITLE_Y_FRAC,
         day_lbl,
         size=BANNER_SUB_FS + 1.5,
+        color=C_DATE_LABEL,
     )
     _label(
         ax,
