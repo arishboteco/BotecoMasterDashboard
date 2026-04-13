@@ -609,6 +609,15 @@ def _table_section_label(ax, x, y, text, w, row_h=0.032, color=C_BRAND):
 # ══════════════════════════════════════════════════════════════════════════════
 
 
+def _banner_height(n_rows: int) -> float:
+    """Compute banner height proportional to section content.
+
+    Short sections (few rows) get a smaller banner so the banner-to-content
+    ratio stays consistent across all PNG sections.
+    """
+    return max(0.050, min(0.065, 0.002 + 0.002 * n_rows))
+
+
 def _section_sales_summary(
     ax,
     r: Dict,
@@ -635,7 +644,28 @@ def _section_sales_summary(
     ach_color = statuses["target"]["color"]
 
     # ── Header banner (slim) ─────────────────────────────────────────────
-    banner_h = 0.065
+    n_pay = len(
+        [
+            1
+            for k in (
+                "cash_sales",
+                "gpay_sales",
+                "zomato_sales",
+                "card_sales",
+                "other_sales",
+            )
+            if float(r.get(k) or 0) != 0
+        ]
+    )
+    n_tax = len(
+        [
+            1
+            for k in ("cgst", "sgst", "service_charge", "discount", "complimentary")
+            if float(r.get(k) or 0) != 0
+        ]
+    )
+    n_rows = 24 + n_pay + n_tax  # actual rows in this section
+    banner_h = _banner_height(n_rows)
     banner_top = 0.995
     banner_y = banner_top - banner_h
     _card(ax, 0, banner_y, 1.0, banner_h, color=C_BANNER, border=C_BANNER)
@@ -920,7 +950,8 @@ def _section_category(
     tbl_x = 0.0
 
     # Header banner (slim)
-    banner_h = 0.065
+    n_rows = len(cat_order) + 2  # header + categories + totals
+    banner_h = _banner_height(n_rows)
     banner_top = 0.995
     banner_y = banner_top - banner_h
     _card(ax, 0, banner_y, 1.0, banner_h, color=C_BANNER, border=C_BANNER)
@@ -1064,7 +1095,8 @@ def _section_service(
     tbl_x = 0.0
 
     # Slim header banner
-    banner_h = 0.065
+    n_rows = len(svc_order) + 2  # header + services + totals
+    banner_h = _banner_height(n_rows)
     banner_top = 0.995
     banner_y = banner_top - banner_h
     _card(ax, 0, banner_y, 1.0, banner_h, color=C_BANNER, border=C_BANNER)
@@ -1175,7 +1207,8 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
     rows = list(month_footfall_rows or [])
 
     # Slim header banner (consistent with other sections)
-    banner_h = 0.065
+    n_rows = len(rows) + 3  # header + data rows + totals + average
+    banner_h = _banner_height(n_rows)
     banner_top = 0.995
     banner_y = banner_top - banner_h
     _card(ax, 0, banner_y, 1.0, banner_h, color=C_BANNER, border=C_BANNER)
@@ -1306,7 +1339,10 @@ def _section_footfall_metrics(
     weekly = list(weekly_rows or [])
 
     # Slim header banner
-    banner_h = 0.065
+    n_mo_rows = min(len(monthly), 9) if monthly else 0
+    n_wk_rows = min(len(weekly), 4) if weekly else 0
+    n_rows = 2 + n_mo_rows + 2 + n_wk_rows  # labels + headers + data
+    banner_h = _banner_height(n_rows)
     banner_top = 0.995
     banner_y = banner_top - banner_h
     _card(ax, 0, banner_y, 1.0, banner_h, color=C_BANNER, border=C_BANNER)
