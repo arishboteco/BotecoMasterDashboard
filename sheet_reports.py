@@ -673,7 +673,7 @@ def _section_sales_summary(
     _label(
         ax,
         0.012,
-        banner_top - 0.018,
+        banner_top - banner_h * 0.28,
         f"{location_name.upper()}  —  END OF DAY REPORT",
         size=11.5,
         color=C_WHITE,
@@ -682,7 +682,7 @@ def _section_sales_summary(
     _label(
         ax,
         0.012,
-        banner_top - 0.045,
+        banner_top - banner_h * 0.69,
         day_lbl,
         size=9.5,
         color=C_DATE_LABEL,
@@ -690,7 +690,7 @@ def _section_sales_summary(
     _label(
         ax,
         0.988,
-        banner_top - 0.018,
+        banner_top - banner_h * 0.28,
         f"{pct_tgt:.0f}% of target",
         size=11.0,
         color=ach_color,
@@ -700,7 +700,7 @@ def _section_sales_summary(
     _label(
         ax,
         0.988,
-        banner_top - 0.045,
+        banner_top - banner_h * 0.69,
         _r(r.get("net_total", 0)) + " net",
         size=9.5,
         color=C_WHITE,
@@ -959,13 +959,13 @@ def _section_category(
     _label(
         ax,
         0.012,
-        banner_top - 0.018,
+        banner_top - banner_h * 0.28,
         f"Category Sales \u2014 {location_name[:28]}",
         size=11.0,
         color=C_WHITE,
         weight="bold",
     )
-    _label(ax, 0.012, banner_top - 0.045, day_lbl, size=9.0, color="#8BA3BD")
+    _label(ax, 0.012, banner_top - banner_h * 0.69, day_lbl, size=9.0, color="#8BA3BD")
 
     cur_y = banner_y - 0.01
 
@@ -1104,13 +1104,13 @@ def _section_service(
     _label(
         ax,
         0.012,
-        banner_top - 0.018,
+        banner_top - banner_h * 0.28,
         f"Service Sales \u2014 {location_name[:28]}",
         size=11.0,
         color=C_WHITE,
         weight="bold",
     )
-    _label(ax, 0.012, banner_top - 0.045, day_lbl, size=9.0, color="#8BA3BD")
+    _label(ax, 0.012, banner_top - banner_h * 0.69, day_lbl, size=9.0, color="#8BA3BD")
 
     cur_y = banner_y - 0.01
 
@@ -1216,13 +1216,20 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
     _label(
         ax,
         0.012,
-        banner_top - 0.018,
+        banner_top - banner_h * 0.28,
         "Daily Footfall — Month to Date",
         size=11.0,
         color=C_WHITE,
         weight="bold",
     )
-    _label(ax, 0.012, banner_top - 0.045, location_name[:32], size=9.0, color="#8BA3BD")
+    _label(
+        ax,
+        0.012,
+        banner_top - banner_h * 0.69,
+        location_name[:32],
+        size=9.0,
+        color="#8BA3BD",
+    )
 
     if not rows:
         _label(
@@ -1350,13 +1357,20 @@ def _section_footfall_metrics(
     _label(
         ax,
         0.012,
-        banner_top - 0.018,
+        banner_top - banner_h * 0.28,
         "Footfall Metrics",
         size=11.0,
         color=C_WHITE,
         weight="bold",
     )
-    _label(ax, 0.012, banner_top - 0.045, location_name[:32], size=9.0, color="#8BA3BD")
+    _label(
+        ax,
+        0.012,
+        banner_top - banner_h * 0.69,
+        location_name[:32],
+        size=9.0,
+        color="#8BA3BD",
+    )
 
     cur_y = banner_y - 0.01
     row_h = 0.032
