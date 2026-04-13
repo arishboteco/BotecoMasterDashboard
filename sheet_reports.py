@@ -47,7 +47,7 @@ C_SLATE = "#1E293B"  # Slate 800 (body text)
 C_DATE_LABEL = "#8BA3BD"  # Muted blue-grey — date/location labels in banners
 C_MUTED = "#64748B"  # Slate 500 (muted text — WCAG AA compliant)
 C_BORDER = "#E2E8F0"  # Slate 200 (card borders)
-C_BAND = "#F7FAFC"  # Soft off-white (alternating rows, matches page)
+C_BAND = "#EDF2F7"  # Alternating row band — light blue-grey (distinguishable from page)
 C_GREEN = "#2E7D32"  # Leaf green — positive/achievement (WCAG AA)
 C_AMBER = "#946B00"  # Golden mustard — warning (WCAG AA)
 C_RED = "#DC2626"  # Red — negative/discount (WCAG AA)
@@ -436,7 +436,7 @@ def _save_section(fig, ax, cur_y: float) -> BytesIO:
     axis limits to the content region with a small bottom pad, then
     saves so the PNG has no wasted space below the last row.
     """
-    bottom_pad = ROW_H
+    bottom_pad = ROW_H * 0.5
     ax.set_ylim(cur_y - bottom_pad, 1.0 + ROW_H * 0.15)
     buf = BytesIO()
     fig.savefig(
@@ -853,7 +853,7 @@ def _section_sales_summary(
     )
 
     # ── MTD block ────────────────────────────────────────────────────────
-    cur_y -= ROW_H * 0.3
+    cur_y -= ROW_H * 0.15
     _table_header_row(
         ax, 0, cur_y - ROW_H, ["MTD Summary"] + [""] * (len(col_w) - 1), col_w
     )
@@ -980,7 +980,7 @@ def _section_category(
         banner_top - BANNER_H * SUBTITLE_Y_FRAC,
         day_lbl,
         size=BANNER_SUB_FS,
-        color="#8BA3BD",
+        color=C_DATE_LABEL,
     )
 
     cur_y = banner_y - GAP_BELOW - ROW_H
@@ -1125,7 +1125,7 @@ def _section_service(
         banner_top - BANNER_H * SUBTITLE_Y_FRAC,
         day_lbl,
         size=BANNER_SUB_FS,
-        color="#8BA3BD",
+        color=C_DATE_LABEL,
     )
 
     cur_y = banner_y - GAP_BELOW - ROW_H
@@ -1148,7 +1148,7 @@ def _section_service(
         _label(
             ax,
             0.5,
-            cur_y - 0.05,
+            cur_y - ROW_H,
             "No service data for this date",
             size=ROW_FS,
             color=C_MUTED,
@@ -1239,7 +1239,7 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
         banner_top - BANNER_H * SUBTITLE_Y_FRAC,
         location_name[:32],
         size=BANNER_SUB_FS,
-        color="#8BA3BD",
+        color=C_DATE_LABEL,
     )
 
     col_w = [0.40, 0.16, 0.16, 0.16]
@@ -1370,7 +1370,7 @@ def _section_footfall_metrics(
         banner_top - BANNER_H * SUBTITLE_Y_FRAC,
         location_name[:32],
         size=BANNER_SUB_FS,
-        color="#8BA3BD",
+        color=C_DATE_LABEL,
     )
 
     cur_y = banner_y - GAP_BELOW - ROW_H
@@ -1395,9 +1395,9 @@ def _section_footfall_metrics(
 
     # ── Monthly Table ─────────────────────────────────────────────────────────
     if monthly:
-        cur_y -= ROW_H * 0.2
+        cur_y -= ROW_H * 0.1
         _label(ax, 0.012, cur_y, "Monthly", size=ROW_FS, color=C_BRAND, weight="bold")
-        cur_y -= ROW_H * 0.8
+        cur_y -= ROW_H * 0.9
 
         # Header - better distribution, filling more width
         col_w = [0.20, 0.15, 0.16, 0.14, 0.16, 0.17]
@@ -1495,13 +1495,13 @@ def _section_footfall_metrics(
                 cell_colors=cell_colors,
             )
 
-        cur_y -= ROW_H * 0.5
+        cur_y -= ROW_H * 0.2
 
     # ── Weekly Table ──────────────────────────────────────────────────────────
     if weekly:
-        cur_y -= ROW_H * 0.2
+        cur_y -= ROW_H * 0.1
         _label(ax, 0.012, cur_y, "Weekly", size=ROW_FS, color=C_BRAND, weight="bold")
-        cur_y -= ROW_H * 0.8
+        cur_y -= ROW_H * 0.9
 
         # Header - better distribution, filling more width
         col_w = [0.20, 0.15, 0.16, 0.14, 0.16, 0.17]
