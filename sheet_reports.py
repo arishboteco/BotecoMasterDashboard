@@ -74,29 +74,36 @@ FONT_BOLD = "DejaVuSans-Bold"
 DPI = 150
 
 # ── Layout constants (points) ───────────────────────────────────────────────
-SECTION_WIDTHS = {1: 612, 2: 720}
-PAGE_PAD = 12
+SECTION_WIDTHS = {1: 480, 2: 580}
+PAGE_PAD = 8
 
-BANNER_PAD_TOP = 8
-BANNER_PAD_BOTTOM = 6
-BANNER_PAD_LEFT = 10
-ROW_PAD_TOP = 3
-ROW_PAD_BOTTOM = 3
-CELL_PAD_LEFT = 6
-CELL_PAD_RIGHT = 6
-GAP_BELOW_BANNER = 4
-GAP_ABOVE_SECTION_LABEL = 4
-GAP_ABOVE_SUBSECTION = 6
 
-FONT_SIZE_ROW = 8.5
-FONT_SIZE_HEADER = 8.5
-FONT_SIZE_BANNER_TITLE = 9.5
-FONT_SIZE_BANNER_SUB = 7.5
-FONT_SIZE_BANNER_TITLE_SUMMARY = 10.5
-FONT_SIZE_BANNER_SUB_SUMMARY = 8.5
-FONT_SIZE_SECTION_LABEL = 8.5
-FONT_SIZE_KPI_LABEL = 8.5
-FONT_SIZE_KPI_VALUE = 16
+def _content_width(n_outlets: int = 1) -> float:
+    """Content width inside margins for a given outlet count."""
+    page_w = SECTION_WIDTHS.get(n_outlets, min(580 + (n_outlets - 2) * 100, 720))
+    return page_w - 2 * PAGE_PAD
+
+
+BANNER_PAD_TOP = 10
+BANNER_PAD_BOTTOM = 8
+BANNER_PAD_LEFT = 12
+ROW_PAD_TOP = 4
+ROW_PAD_BOTTOM = 4
+CELL_PAD_LEFT = 8
+CELL_PAD_RIGHT = 8
+GAP_BELOW_BANNER = 6
+GAP_ABOVE_SECTION_LABEL = 6
+GAP_ABOVE_SUBSECTION = 8
+
+FONT_SIZE_ROW = 10
+FONT_SIZE_HEADER = 10
+FONT_SIZE_BANNER_TITLE = 11
+FONT_SIZE_BANNER_SUB = 9
+FONT_SIZE_BANNER_TITLE_SUMMARY = 12
+FONT_SIZE_BANNER_SUB_SUMMARY = 10
+FONT_SIZE_SECTION_LABEL = 10
+FONT_SIZE_KPI_LABEL = 10
+FONT_SIZE_KPI_VALUE = 18
 
 
 def _hex(hx: str) -> colors.HexColor:
@@ -792,8 +799,8 @@ def _build_sales_summary(
     if multi:
         n_outlets = len(per_outlet)
 
-    avail_w = SECTION_WIDTHS.get(n_outlets, min(864, 720 + (n_outlets - 2) * 72))
-    col_w = _outlet_col_widths_pt(n_outlets if multi else 1, avail_w - 2 * PAGE_PAD)
+    avail_w = _content_width(n_outlets if multi else 1)
+    col_w = _outlet_col_widths_pt(n_outlets if multi else 1, avail_w)
 
     iso = str(r.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]
     day_lbl = _sheet_date_label(iso)
@@ -1152,7 +1159,7 @@ def _build_category(
     if multi:
         n_outlets = len(per_outlet)
 
-    avail_w = SECTION_WIDTHS.get(n_outlets, min(864, 720 + (n_outlets - 2) * 72))
+    avail_w = _content_width(n_outlets if multi else 1)
 
     std_cats = ["Food", "Liquor", "Beer", "Soft Beverages", "Coffee", "Tobacco"]
     daily_cat = _collapse_super_category_amounts(r.get("categories") or [])
@@ -1176,7 +1183,7 @@ def _build_category(
         label_w = avail_w * 0.19
         mtd_w = avail_w * 0.14
         pct_w = avail_w * 0.07
-        remaining = avail_w - label_w - mtd_w - pct_w - 2 * PAGE_PAD
+        remaining = avail_w - label_w - mtd_w - pct_w
         data_w = remaining / n_data
         col_w = [label_w] + [data_w] * n_data + [mtd_w, pct_w]
     else:
@@ -1286,7 +1293,7 @@ def _build_service(
     if multi:
         n_outlets = len(per_outlet)
 
-    avail_w = SECTION_WIDTHS.get(n_outlets, min(864, 720 + (n_outlets - 2) * 72))
+    avail_w = _content_width(n_outlets if multi else 1)
     std_svc = ["Breakfast", "Lunch", "Dinner", "Delivery", "Events", "Party"]
 
     daily_svc = {
@@ -1316,7 +1323,7 @@ def _build_service(
         label_w = avail_w * 0.19
         mtd_w = avail_w * 0.14
         pct_w = avail_w * 0.07
-        remaining = avail_w - label_w - mtd_w - pct_w - 2 * PAGE_PAD
+        remaining = avail_w - label_w - mtd_w - pct_w
         data_w = remaining / n_data
         col_w = [label_w] + [data_w] * n_data + [mtd_w, pct_w]
     else:
@@ -1419,7 +1426,7 @@ def _build_footfall(
     month_footfall_rows: List[Dict], location_name: str, n_outlets: int = 1
 ) -> list:
     rows_data = list(month_footfall_rows or [])
-    avail_w = SECTION_WIDTHS.get(n_outlets, min(864, 720 + (n_outlets - 2) * 72))
+    avail_w = _content_width(n_outlets)
 
     elements = []
     elements.append(
@@ -1546,7 +1553,7 @@ def _build_footfall_metrics(
 ) -> list:
     monthly = list(monthly_rows or [])
     weekly = list(weekly_rows or [])
-    avail_w = SECTION_WIDTHS.get(n_outlets, min(864, 720 + (n_outlets - 2) * 72))
+    avail_w = _content_width(n_outlets)
 
     elements = []
     elements.append(
@@ -1846,7 +1853,7 @@ def generate_sheet_style_report_sections(
         per_outlet=per_outlet,
         daily_sales_history=daily_sales_history,
     )
-    width = SECTION_WIDTHS.get(n_outlets, min(864, 720 + (n_outlets - 2) * 72))
+    width = SECTION_WIDTHS.get(n_outlets, min(520 + (n_outlets - 2) * 100, 720))
     out["sales_summary"] = _render_elements_to_png(elements, width)
 
     # Category
