@@ -115,8 +115,8 @@ class TestDynamicReportV2Format:
         assert r["card_sales"] == 1005.0
         assert r["cash_sales"] == 0.0
         assert r["order_count"] == 1
-        assert r["cgst"] == 21.75
-        assert r["sgst"] == 21.75
+        assert r["cgst"] == pytest.approx(23.93, abs=0.01)
+        assert r["sgst"] == pytest.approx(23.93, abs=0.01)
         assert r["service_charge"] == 87.0
 
     def test_v2_parses_categories_and_items(self):
@@ -249,6 +249,62 @@ class TestDynamicReportV2Format:
         )
         records, notes = parse_dynamic_report(csv_content, "test.csv")
         assert any("v2" in n.lower() or "line-item" in n.lower() for n in notes)
+
+    def test_v2_qty_weighted_when_line_amounts_missing(self):
+        from dynamic_report_parser import parse_dynamic_report
+
+        # Two item lines with no Amount; summary row has net 200 (qty weights 1+1+1).
+        csv_content = self._make_v2_csv(
+            "Boteco,2026-04-08,2026-04-8 12:00:00,9000,S,1,SuccessOrder,Cash,-,"
+            "Cat A,Item One,1,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-\n"
+            "Boteco,2026-04-08,2026-04-8 12:00:00,9000,S,1,SuccessOrder,Cash,-,"
+            "Cat A,Item Two,1,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-\n"
+            "Boteco,2026-04-08,2026-04-8 12:00:00,9000,S,1,SuccessOrder,Cash,-,"
+            "Cat A,Item Two,1,2,-,0,200,0,0,0,0,0,220,-,220,-,-,-,-,-,-\n"
+        )
+        records, _ = parse_dynamic_report(csv_content, "test.csv")
+        assert records is not None
+        r = records[0]
+        cats = {c["category"]: c for c in r["categories"]}
+        assert cats["Cat A"]["amount"] == pytest.approx(200.0)
+        assert r["cash_sales"] == 220.0
+
+    def test_v2_part_payment_goes_to_other_sales(self):
+        from dynamic_report_parser import parse_dynamic_report
+
+        csv_content = self._make_v2_csv(
+            "Boteco,2026-04-08,2026-04-8 12:00:00,9001,S,1,SuccessOrder,Part Payment,-,"
+            "Tira Gosto,Chicken,1,2,500,0,500,0,12.5,12.5,0,0,525,-,"
+            "200,200,100,0,0,25,0,-,-\n"
+        )
+        records, _ = parse_dynamic_report(csv_content, "test.csv")
+        assert records is not None
+        r = records[0]
+        assert r["other_sales"] == 525.0
+        assert r["cash_sales"] == 0.0
+        assert r["card_sales"] == 0.0
+        assert r["gpay_sales"] == 0.0
+
+    def test_v2_multi_outlet_one_file_same_date(self):
+        from dynamic_report_parser import parse_dynamic_report
+
+        csv_content = self._make_v2_csv(
+            "Indiqube,2026-04-08,2026-04-8 12:00:00,100,S,1,SuccessOrder,Cash,-,"
+            "Cat A,Item A,1,1,100,0,100,0,0,0,0,0,110,-,110,-,-,-,-,-,-\n"
+            "Bagmane,2026-04-08,2026-04-8 19:00:00,200,S,2,SuccessOrder,Card,-,"
+            "Cat B,Item B,1,2,200,0,200,0,0,0,0,0,220,-,220,-,-,-,-,-,-\n"
+        )
+        records, notes = parse_dynamic_report(csv_content, "test.csv")
+        assert records is not None
+        assert len(records) == 2
+        by_rest = {r["restaurant"]: r for r in records}
+        assert "Indiqube" in by_rest
+        assert "Bagmane" in by_rest
+        assert by_rest["Indiqube"]["net_total"] == 100.0
+        assert by_rest["Indiqube"]["cash_sales"] == 110.0
+        assert by_rest["Bagmane"]["net_total"] == 200.0
+        assert by_rest["Bagmane"]["card_sales"] == 220.0
+        assert any("outlet" in n.lower() for n in notes)
 
     def test_v2_complimentary_bill(self):
         from dynamic_report_parser import parse_dynamic_report

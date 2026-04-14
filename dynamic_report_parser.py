@@ -6,9 +6,16 @@ Supports two format variants:
     (Food, Liquor, Coffee, etc.) and flat payment columns.
 
   v2 (line-items): per-item rows with Category Name, Item Name, Item Qty,
-    and a summary row per bill carrying financial totals (Pax, Amount,
-    Net Amount, Gross Sale, CGST, etc.).  The new format also has
-    UPI, Online, Wallet, Credit, Complementary Amount columns.
+    and a summary row per bill carrying financial totals (Pax, Net Amount,
+    Gross Sale, CGST, SGST, Service Charge, Gst On Service Charge, etc.).
+    **Payment Type** on the summary row drives Cash / Card / GPay / … buckets;
+    per-column Cash, Card, UPI, Wallet, etc. are not used (export duplicates).
+    Line **Amount** is often '-'; category net is split by qty when no line
+    amounts are present.
+
+  One CSV may include multiple **Restaurant** (outlet) values; aggregates are
+  split per outlet and each record carries the matching ``restaurant`` string
+  for routing in smart upload (see ``config.RESTAURANT_NAME_MAP``).
 
 Usage:
     records, notes = parse_dynamic_report(content, filename)
@@ -33,25 +40,44 @@ _PAYMENT_MAP_V1 = {
     "other pmt": "other_sales",
 }
 
-_PAYMENT_TYPE_BUCKET = {
-    "cash": "cash_sales",
-    "card": "card_sales",
-    "other (g  pay)": "gpay_sales",
-    "other (g pay)": "gpay_sales",
-    "other (zomato)": "zomato_sales",
-    "other (boh)": "other_sales",
-    "upi": "gpay_sales",
-}
+def _payment_type_to_sales_field(pay_norm: str) -> Optional[str]:
+    """Map normalized Payment Type text to a daily_summaries payment column.
 
-_PAYMENT_COL_BUCKET = {
-    "cash": "cash_sales",
-    "card": "card_sales",
-    "credit": "other_sales",
-    "other pmt": "other_sales",
-    "wallet": "zomato_sales",
-    "online": "gpay_sales",
-    "upi": "gpay_sales",
-}
+    Per export spec, payment breakdown comes from **Payment Type** only; per-column
+    Cash, Card, UPI, etc. must not drive bucketing (those columns may still hold
+    redundant totals for Part Payment — we do not read them).
+    """
+    if not pay_norm or pay_norm in ("nan", "none", "null"):
+        return None
+    if pay_norm == "part payment":
+        return None
+    s = pay_norm
+    if "zomato" in s or "swiggy" in s:
+        return "zomato_sales"
+    if (
+        "g pay" in s
+        or "gpay" in s
+        or ("google" in s and "pay" in s)
+        or s == "upi"
+        or "upi" in s
+        or "phonepe" in s
+        or "paytm" in s
+        or s in ("online", "qr", "bharat qr")
+    ):
+        return "gpay_sales"
+    if (
+        "card" in s
+        or "credit" in s
+        or "debit" in s
+        or "amex" in s
+        or "visa" in s
+        or "master" in s
+        or "pos" in s
+    ):
+        return "card_sales"
+    if s == "cash":
+        return "cash_sales"
+    return "other_sales"
 
 _CATEGORY_MAP_V1 = {
     "carft beer": "Craft Beer",
@@ -206,6 +232,30 @@ def _norm_pay(val: Any) -> str:
     return re.sub(r"\s+", " ", str(val).strip().lower())
 
 
+def _cell_restaurant(row: pd.Series, rest_col: Optional[str]) -> str:
+    """Strip CSV Restaurant cell; empty if missing."""
+    if not rest_col:
+        return ""
+    val = row.get(rest_col)
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return ""
+    s = str(val).strip()
+    if not s or s.lower() in ("nan", "none"):
+        return ""
+    return s
+
+
+def _file_default_restaurant(df: pd.DataFrame, rest_col: Optional[str]) -> str:
+    """First non-empty Restaurant value in the file (fallback for sparse rows)."""
+    if not rest_col or df.empty:
+        return ""
+    for val in df[rest_col].dropna().head(2000):
+        s = str(val).strip()
+        if s and s.lower() not in ("nan", "none"):
+            return s
+    return ""
+
+
 def _detect_format(col_map: Dict[str, str]) -> str:
     if "category name" in col_map or "item name" in col_map:
         return "v2"
@@ -259,15 +309,22 @@ def _parse_v1(
     sgst_col = col_map.get("sgst (2.5)")
     cdt_col = col_map.get("created date time")
 
-    days: Dict[str, Dict[str, Any]] = {}
+    file_default = _file_default_restaurant(df, rest_col)
+    days: Dict[Tuple[str, str], Dict[str, Any]] = {}
 
     for _, row in df.iterrows():
         date_raw = _normalize_date(row.get(date_col, ""))
         if not date_raw:
             continue
 
-        if date_raw not in days:
-            days[date_raw] = {
+        if rest_col:
+            row_rest = _cell_restaurant(row, rest_col) or file_default
+            day_key: Tuple[str, str] = (date_raw, row_rest)
+        else:
+            day_key = (date_raw, "__single__")
+
+        if day_key not in days:
+            days[day_key] = {
                 "date": date_raw,
                 "covers": 0,
                 "net_total": 0.0,
@@ -287,7 +344,7 @@ def _parse_v1(
                 "meals": {},
             }
 
-        day = days[date_raw]
+        day = days[day_key]
         day["covers"] += _safe_int(row.get(pax_col, 0))
         day["net_total"] += _safe_float(row.get(net_col, 0))
         day["gross_total"] += _safe_float(row.get(gross_col, 0))
@@ -296,9 +353,22 @@ def _parse_v1(
         day["cgst"] += _safe_float(row.get(cgst_col, 0)) if cgst_col else 0.0
         day["sgst"] += _safe_float(row.get(sgst_col, 0)) if sgst_col else 0.0
 
-        for dyn_col, db_field in _PAYMENT_MAP_V1.items():
-            if dyn_col in col_map:
-                day[db_field] += _safe_float(row.get(col_map[dyn_col], 0))
+        pay_type_col_v1 = col_map.get("payment type")
+        if pay_type_col_v1:
+            gross_for_pay = _safe_float(row.get(gross_col, 0))
+            if gross_for_pay <= 0:
+                gross_for_pay = _safe_float(row.get(net_col, 0))
+            pk = _norm_pay(row.get(pay_type_col_v1, ""))
+            if pk == "part payment":
+                day["other_sales"] += gross_for_pay
+            else:
+                b = _payment_type_to_sales_field(pk)
+                if b:
+                    day[b] += gross_for_pay
+        else:
+            for dyn_col, db_field in _PAYMENT_MAP_V1.items():
+                if dyn_col in col_map:
+                    day[db_field] += _safe_float(row.get(col_map[dyn_col], 0))
 
         bill_no = str(row.get(bill_col, "")).strip()
         if bill_no and bill_no != "nan":
@@ -319,8 +389,9 @@ def _parse_v1(
                 day["meals"][meal] = day["meals"].get(meal, 0.0) + net_val
 
     results: List[Dict[str, Any]] = []
-    for date_str in sorted(days.keys()):
-        day = days[date_str]
+    for day_key in sorted(days.keys()):
+        date_str, outlet_key = day_key
+        day = days[day_key]
         bill_count = len(day["bills"])
         categories = [
             {"category": name, "qty": 0, "amount": round(amt, 2)}
@@ -331,6 +402,9 @@ def _parse_v1(
             for k, v in sorted(day["meals"].items(), key=lambda x: -x[1])
             if v > 0
         ]
+        rec_restaurant = (
+            restaurant_name if outlet_key == "__single__" else outlet_key
+        )
         record = {
             "date": date_str,
             "covers": day["covers"],
@@ -350,12 +424,17 @@ def _parse_v1(
             "services": services,
             "top_items": [],
             "file_type": "dynamic_report",
-            "restaurant": restaurant_name,
+            "restaurant": rec_restaurant,
         }
         results.append(record)
 
     total_orders = sum(r["order_count"] for r in results)
     total_covers = sum(r["covers"] for r in results)
+    n_outlets = len({d[1] for d in days}) if days else 0
+    if rest_col and n_outlets > 1:
+        notes.append(
+            f"Split {filename} across {n_outlets} outlet(s) by Restaurant column."
+        )
     notes.append(
         f"Parsed {len(results)} day(s), {total_orders} orders, {total_covers} covers from {filename}"
     )
@@ -409,11 +488,8 @@ def _parse_v2(
 
     is_12h = _detect_12h_format(df, col_map.get("created date time"))
 
-    restaurant_name: Optional[str] = None
-    if rest_col and not df.empty:
-        first_val = str(df[rest_col].iloc[0]).strip()
-        if first_val and first_val.lower() not in ("", "nan", "none"):
-            restaurant_name = first_val
+    file_default = _file_default_restaurant(df, rest_col)
+    restaurant_name: Optional[str] = file_default or None
 
     # Separate complimentary/cancelled rows from success rows
     is_success = pd.Series(True, index=df.index)
@@ -424,9 +500,9 @@ def _parse_v2(
         is_success = status_vals == "SuccessOrder"
         is_complimentary = status_vals.str.lower().str.contains("compli")
 
-    # Build groups: each bill_no on a date has its own group
-    # We'll process success and complimentary separately
-    groups: Dict[Tuple[str, str], List[int]] = defaultdict(list)
+    # Build groups: (date, bill_no) then attach outlet from Restaurant so one file
+    # can contain multiple outlets without merging their totals.
+    groups_raw: Dict[Tuple[str, str], List[int]] = defaultdict(list)
 
     for idx, row in df.iterrows():
         if not is_success.iloc[idx] and not is_complimentary.iloc[idx]:
@@ -437,13 +513,26 @@ def _parse_v2(
         bill_no = str(row.get(bill_col, "")).strip() if bill_col else ""
         if not bill_no or bill_no.lower() in ("", "nan", "none"):
             bill_no = f"row_{idx}"
-        groups[(date_val, bill_no)].append(idx)
+        groups_raw[(date_val, bill_no)].append(idx)
 
-    days: Dict[str, Dict[str, Any]] = {}
+    groups: Dict[Tuple[str, str, str], List[int]] = {}
+    for (date_val, bill_no), idxs in groups_raw.items():
+        bill_rest = ""
+        for idx in idxs:
+            bill_rest = _cell_restaurant(df.iloc[idx], rest_col)
+            if bill_rest:
+                break
+        if not bill_rest:
+            bill_rest = file_default if rest_col else ""
+        outlet_key = bill_rest if bill_rest else "__single__"
+        groups[(date_val, bill_no, outlet_key)] = idxs
 
-    for (date_str, bill_no), idxs in groups.items():
-        if date_str not in days:
-            days[date_str] = {
+    days: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+    for (date_str, bill_no, outlet_key), idxs in groups.items():
+        day_key = (date_str, outlet_key)
+        if day_key not in days:
+            days[day_key] = {
                 "date": date_str,
                 "covers": 0,
                 "net_total": 0.0,
@@ -468,7 +557,7 @@ def _parse_v2(
                 ),
             }
 
-        day = days[date_str]
+        day = days[day_key]
 
         is_compli = any(is_complimentary.iloc[idx] for idx in idxs)
 
@@ -550,22 +639,34 @@ def _parse_v2(
         )
         day["cgst"] += _safe_float(summary_row.get(cgst_col, 0)) if cgst_col else 0.0
         day["sgst"] += _safe_float(summary_row.get(sgst_col, 0)) if sgst_col else 0.0
+        gst_sc_amt = (
+            _safe_float(summary_row.get(gst_sc_col, 0)) if gst_sc_col else 0.0
+        )
+        if gst_sc_amt > 0:
+            day["cgst"] += gst_sc_amt / 2.0
+            day["sgst"] += gst_sc_amt / 2.0
         day["complimentary"] += (
             _safe_float(summary_row.get(comp_col, 0)) if comp_col else 0.0
         )
 
-        # Distribute bill net amount proportionally across line items by per-line amount.
+        # Distribute bill net across lines: by Amount when present; else by Item Qty
+        # (line Amount is often '-' per export spec).
         total_amount = sum(lv["amount"] for lv in bill_lines if lv["amount"] > 0)
+        alloc_lines = [lv for lv in bill_lines if lv["cat"] or lv["name"]]
+        total_qty = sum(max(int(lv["qty"]), 1) for lv in alloc_lines)
+
         for line in bill_lines:
             qty = line["qty"]
             cat = line["cat"]
             name = line["name"]
             amount_line = line["amount"]
-            share = (
-                (bill_net * amount_line / total_amount)
-                if (total_amount > 0 and amount_line > 0)
-                else 0.0
-            )
+            if total_amount > 0 and amount_line > 0:
+                share = bill_net * amount_line / total_amount
+            elif total_amount <= 0 and total_qty > 0 and (cat or name):
+                w = max(int(qty), 1)
+                share = bill_net * (w / total_qty)
+            else:
+                share = 0.0
             if cat:
                 day["categories"][cat]["qty"] += qty
                 day["categories"][cat]["amount"] += share
@@ -592,19 +693,12 @@ def _parse_v2(
         pay_key = _norm_pay(pay_type_raw)
 
         if pay_key == "part payment":
-            # Part Payment: split across individual payment columns
-            for dyn_col, db_field in _PAYMENT_COL_BUCKET.items():
-                if dyn_col in col_map:
-                    val = _safe_float(summary_row.get(col_map[dyn_col], 0))
-                    day[db_field] += val
-        elif pay_key in _PAYMENT_TYPE_BUCKET:
-            bucket = _PAYMENT_TYPE_BUCKET[pay_key]
-            day[bucket] += gross_val
-        elif pay_key in ("", "nan", "none"):
-            pass  # No payment type — leave unbilled
-        else:
-            # Unknown payment type: bucket as other_sales
+            # Spec ignores per-column payment splits; treat as mixed tender.
             day["other_sales"] += gross_val
+        else:
+            bucket = _payment_type_to_sales_field(pay_key)
+            if bucket:
+                day[bucket] += gross_val
 
         # Track unique bills
         day["bills"].add(bill_no)
@@ -618,8 +712,9 @@ def _parse_v2(
 
     # Build output records
     results: List[Dict[str, Any]] = []
-    for date_str in sorted(days.keys()):
-        day = days[date_str]
+    for day_key in sorted(days.keys()):
+        date_str, outlet_key = day_key
+        day = days[day_key]
         bill_count = len(day["bills"])
 
         categories = [
@@ -652,6 +747,10 @@ def _parse_v2(
             if v > 0
         ]
 
+        rec_restaurant = (
+            restaurant_name if outlet_key == "__single__" else outlet_key
+        )
+
         record = {
             "date": date_str,
             "covers": day["covers"],
@@ -673,13 +772,18 @@ def _parse_v2(
             "services": services,
             "top_items": top_items,
             "file_type": "dynamic_report",
-            "restaurant": restaurant_name,
+            "restaurant": rec_restaurant,
         }
         results.append(record)
 
     total_orders = sum(r["order_count"] for r in results)
     total_covers = sum(r["covers"] for r in results)
+    n_outlets = len({d[1] for d in days}) if days else 0
     fmt_note = "line-item" if "category name" in col_map else "column-category"
+    if rest_col and n_outlets > 1:
+        notes.append(
+            f"Split {filename} across {n_outlets} outlet(s) by Restaurant column."
+        )
     notes.append(
         f"Parsed {len(results)} day(s), {total_orders} orders, {total_covers} covers "
         f"from {filename} ({fmt_note} format)"

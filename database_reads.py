@@ -39,6 +39,28 @@ def _sqlite_categories_for_summary(conn, summary_id: int) -> List[Dict]:
     return out
 
 
+def _sqlite_services_for_summary(conn, summary_id: int) -> List[Dict]:
+    """Load Lunch/Dinner (or other) service splits saved in service_sales."""
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT service_type, amount
+        FROM service_sales
+        WHERE summary_id = ?
+        ORDER BY service_type
+        """,
+        (summary_id,),
+    )
+    out: List[Dict] = []
+    for r in cur.fetchall():
+        amt = float(r["amount"] or 0)
+        if amt <= 0:
+            continue
+        st = str(r["service_type"] or "").strip()
+        out.append({"type": st, "amount": amt})
+    return out
+
+
 @st.cache_data(ttl=600)
 def get_all_locations() -> List[Dict]:
     """Get all locations."""
@@ -117,7 +139,9 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
             if not row:
                 return None
             d = dict(row)
-            d["categories"] = _sqlite_categories_for_summary(conn, int(d["id"]))
+            sid = int(d["id"])
+            d["categories"] = _sqlite_categories_for_summary(conn, sid)
+            d["services"] = _sqlite_services_for_summary(conn, sid)
         return d
 
 

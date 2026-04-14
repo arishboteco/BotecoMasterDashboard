@@ -76,5 +76,6 @@ DEFAULT_RESTAURANT_FILTER = "Boteco"
 # Used to auto-detect import location from Dynamic Report CSV files.
 RESTAURANT_NAME_MAP: dict[str, str] = {
     "Boteco": "Boteco - Indiqube",
+    "Boteco - Indiqube": "Boteco - Indiqube",
     "Boteco - Bagmane": "Boteco - Bagmane",
 }

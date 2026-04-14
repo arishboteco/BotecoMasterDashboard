@@ -788,28 +788,35 @@ def save_smart_upload_results(
                 messages.append(f"No data in {fr.filename}")
                 continue
 
-            restaurant_name = (
-                raw_records[0].get("restaurant", "") if raw_records else ""
-            )
-            csv_location_id = db_writes._get_location_id(restaurant_name)
-            effective_location_id = csv_location_id
-
-            if csv_location_id != location_id:
-                messages.append(
-                    f"{fr.filename}: outlet inferred from CSV is location {csv_location_id} "
-                    f"('{restaurant_name}'); summaries and history saved there (not {location_id})."
+            loc_ids_in_file = {
+                db_writes._get_location_id(
+                    (str(r.get("restaurant") or "")).strip() or "Boteco"
                 )
+                for r in raw_records
+            }
+            if len(loc_ids_in_file) > 1:
+                messages.append(
+                    f"{fr.filename}: multi-outlet CSV → saving to location_id(s) "
+                    f"{sorted(loc_ids_in_file)}"
+                )
+            else:
+                only_loc = next(iter(loc_ids_in_file))
+                if only_loc != location_id:
+                    r0 = (str(raw_records[0].get("restaurant") or "")).strip() or "Boteco"
+                    messages.append(
+                        f"{fr.filename}: outlet from CSV is location {only_loc} "
+                        f"({r0!r}); data saved there (not {location_id})."
+                    )
 
-            bill_items_to_save = []
-            dates_processed = set()
-            categories_by_date: Dict[str, Dict[str, Dict]] = defaultdict(
+            bill_items_to_save: List[Dict[str, Any]] = []
+            dates_locs: set = set()
+            categories_by_key: Dict[Tuple[str, int], Dict[str, Dict]] = defaultdict(
                 lambda: {"qty": defaultdict(int), "net_amount": defaultdict(float)}
             )
-            daily_agg: Dict[str, Dict] = defaultdict(
+            daily_agg: Dict[Tuple[str, int], Dict] = defaultdict(
                 lambda: {
                     "gross_total": 0.0,
                     "net_total": 0.0,
-                    "covers": 0,
                     "discount": 0.0,
                     "cgst": 0.0,
                     "sgst": 0.0,
@@ -820,34 +827,47 @@ def save_smart_upload_results(
                     "bill_nos": set(),
                 }
             )
+            bill_pax: Dict[Tuple[str, int], Dict[str, int]] = defaultdict(
+                lambda: defaultdict(int)
+            )
 
             for rec in raw_records:
+                rname = (str(rec.get("restaurant") or "")).strip() or "Boteco"
+                loc = db_writes._get_location_id(rname)
                 bill_date = rec.get("bill_date", "")
+                key: Tuple[str, int] = (bill_date, loc)
+                dates_locs.add(key)
+
                 bill_no = rec.get("bill_no", "")
                 bill_status = rec.get("bill_status", "")
 
-                if bill_status.lower() in ("", "successorder"):
-                    categories_by_date[bill_date]["qty"][
-                        rec.get("category_name", "")
-                    ] += rec.get("item_qty", 0)
-                    categories_by_date[bill_date]["net_amount"][
-                        rec.get("category_name", "")
-                    ] += rec.get("net_amount", 0)
+                if str(bill_status).lower() in ("", "successorder"):
+                    ck = categories_by_key[key]
+                    cat_nm = rec.get("category_name", "")
+                    ck["qty"][cat_nm] += int(rec.get("item_qty") or 0)
+                    ck["net_amount"][cat_nm] += float(rec.get("net_amount") or 0)
 
-                agg = daily_agg[bill_date]
-                agg["gross_total"] += rec.get("gross_amount", 0)
-                agg["net_total"] += rec.get("net_amount", 0)
-                agg["covers"] = rec.get("pax", 0)
-                agg["discount"] += rec.get("discount", 0)
-                agg["cgst"] += rec.get("cgst", 0)
-                agg["sgst"] += rec.get("sgst", 0)
-                agg["service_charge"] += rec.get("service_charge", 0)
-                agg["gst_on_service_charge"] += rec.get("gst_on_service_charge", 0)
-                agg["cancelled_amount"] += rec.get("cancelled_amount", 0)
-                agg["complementary_amount"] += rec.get("complementary_amount", 0)
+                agg = daily_agg[key]
+                agg["gross_total"] += float(rec.get("gross_amount") or 0)
+                agg["net_total"] += float(rec.get("net_amount") or 0)
+                agg["discount"] += float(rec.get("discount") or 0)
+                agg["cgst"] += float(rec.get("cgst") or 0)
+                agg["sgst"] += float(rec.get("sgst") or 0)
+                agg["service_charge"] += float(rec.get("service_charge") or 0)
+                agg["gst_on_service_charge"] += float(
+                    rec.get("gst_on_service_charge") or 0
+                )
+                agg["cancelled_amount"] += float(rec.get("cancelled_amount") or 0)
+                agg["complementary_amount"] += float(
+                    rec.get("complementary_amount") or 0
+                )
                 if bill_no:
                     agg["bill_nos"].add(bill_no)
-                dates_processed.add(bill_date)
+                bn = str(bill_no or "")
+                px = int(rec.get("pax") or 0)
+                if bn and px > 0:
+                    bp = bill_pax[key]
+                    bp[bn] = max(bp.get(bn, 0), px)
 
                 bill_items_to_save.append(rec)
 
@@ -865,14 +885,15 @@ def save_smart_upload_results(
                 messages.append(f"Error saving bill items: {e}")
 
             daily_rows: List[Dict[str, Any]] = []
-            for date_str, agg in sorted(daily_agg.items()):
+            for (date_str, loc_id), agg in sorted(daily_agg.items()):
+                covers = sum(bill_pax.get((date_str, loc_id), {}).values())
                 daily_rows.append(
                     {
-                        "location_id": effective_location_id,
+                        "location_id": loc_id,
                         "date": date_str,
                         "gross_total": round(agg["gross_total"], 2),
                         "net_total": round(agg["net_total"], 2),
-                        "covers": agg["covers"],
+                        "covers": int(covers),
                         "discount": round(agg["discount"], 2),
                         "cgst": round(agg["cgst"], 2),
                         "sgst": round(agg["sgst"], 2),
@@ -896,12 +917,12 @@ def save_smart_upload_results(
                     messages.append(f"Error saving daily summaries: {e}")
 
             cat_records = []
-            for date_str, cat_data in categories_by_date.items():
+            for (date_str, loc_id), cat_data in categories_by_key.items():
                 for cat_name, qty in cat_data["qty"].items():
                     net_amt = cat_data["net_amount"].get(cat_name, 0.0)
                     cat_records.append(
                         {
-                            "location_id": effective_location_id,
+                            "location_id": loc_id,
                             "date": date_str,
                             "category_name": cat_name,
                             "net_amount": round(net_amt, 2),
@@ -920,13 +941,13 @@ def save_smart_upload_results(
 
             upload_batch = [
                 {
-                    "location_id": effective_location_id,
+                    "location_id": loc_id,
                     "date": date_str,
                     "filename": fr.filename,
                     "file_type": "dynamic_report",
                     "uploaded_by": uploaded_by,
                 }
-                for date_str in sorted(dates_processed)
+                for date_str, loc_id in sorted(dates_locs)
             ]
             if upload_batch:
                 try:
@@ -934,9 +955,9 @@ def save_smart_upload_results(
                 except Exception as e:
                     messages.append(f"Error saving upload history: {e}")
 
-            saved += len(dates_processed)
+            saved += len(dates_locs)
             messages.append(
-                f"Processed {len(dates_processed)} day(s) from {fr.filename}"
+                f"Processed {len(dates_locs)} day/location row(s) from {fr.filename}"
             )
 
         except Exception as e:

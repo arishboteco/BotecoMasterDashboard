@@ -12,6 +12,7 @@ logger = get_logger(__name__)
 # Restaurant CSV column value → location_id (Supabase / app convention)
 RESTAURANT_MAP = {
     "Boteco": 1,
+    "Boteco - Indiqube": 1,
     "Boteco - Bagmane": 2,
 }
 
