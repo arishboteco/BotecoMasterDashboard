@@ -958,10 +958,23 @@ def _build_sales_summary(
         ("Card", "card_sales"),
         ("Other / Wallet", "other_sales"),
     ]
+    has_day_sales = float(r.get("gross_total") or 0) > 0 or float(
+        r.get("net_total") or 0
+    ) > 0
+    if multi and per_outlet:
+        has_day_sales = has_day_sales or any(
+            float(od.get("gross_total") or 0) > 0
+            or float(od.get("net_total") or 0) > 0
+            for _, od in per_outlet
+        )
     for lbl, key in pay_keys:
         combined_v = float(r.get(key) or 0)
         outlet_vs = [float(od.get(key) or 0) for _, od in per_outlet] if multi else []
-        if combined_v != 0 or any(v != 0 for v in outlet_vs):
+        if (
+            has_day_sales
+            or combined_v != 0
+            or any(v != 0 for v in outlet_vs)
+        ):
             add_row(lbl, key)
 
     add_row("EOD Gross Total", "gross_total", bold=True, bg=C_BAND)
@@ -976,7 +989,11 @@ def _build_sales_summary(
     for lbl, key in tax_keys:
         combined_v = float(r.get(key) or 0)
         outlet_vs = [float(od.get(key) or 0) for _, od in per_outlet] if multi else []
-        if combined_v != 0 or any(v != 0 for v in outlet_vs):
+        if (
+            has_day_sales
+            or combined_v != 0
+            or any(v != 0 for v in outlet_vs)
+        ):
             disc_color = C_RED if key == "discount" else None
             add_row(lbl, key, right_color=disc_color)
 

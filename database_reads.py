@@ -111,6 +111,49 @@ def peek_daily_net_sales(location_id: int, date: str) -> Optional[float]:
         return float(row["net_total"] or 0)
 
 
+def _detail_lists_for_daily_summary(
+    location_id: int, date: str
+) -> tuple[List[Dict], List[Dict]]:
+    """Build categories + services lists for PNG/report bundle (Supabase schema).
+
+    daily_summary rows do not embed these; they live in category_summary and are
+    derived for services from bill_items.
+    """
+    from database_analytics import (
+        get_category_sales_for_date_range,
+        get_service_sales_for_date_range,
+    )
+
+    cats_out: List[Dict] = []
+    cat_rows = get_category_sales_for_date_range(
+        [location_id], date, date
+    )
+    for r in cat_rows or []:
+        name = str(r.get("category") or "").strip()
+        if not name:
+            continue
+        cats_out.append(
+            {
+                "category": name,
+                "qty": int(r.get("qty") or 0),
+                "amount": float(r.get("amount") or r.get("total") or 0),
+            }
+        )
+
+    svcs_out: List[Dict] = []
+    svc_rows = get_service_sales_for_date_range([location_id], date, date)
+    for s in svc_rows or []:
+        amt = float(s.get("amount") or 0)
+        if amt <= 0:
+            continue
+        label = str(s.get("type") or s.get("service_type") or "").strip()
+        if not label:
+            continue
+        svcs_out.append({"type": label, "amount": amt})
+
+    return cats_out, svcs_out
+
+
 def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
     """Get daily summary for a specific date."""
     import database
@@ -126,7 +169,15 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
         )
         if not result.data:
             return None
-        return result.data[0]
+        d = dict(result.data[0])
+        try:
+            cats, svcs = _detail_lists_for_daily_summary(location_id, date)
+            d["categories"] = cats
+            d["services"] = svcs
+        except Exception:
+            d.setdefault("categories", [])
+            d.setdefault("services", [])
+        return d
     else:
         tbl = _sqlite_daily_table()
         with database.db_connection() as conn:
@@ -142,6 +193,25 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
             sid = int(d["id"])
             d["categories"] = _sqlite_categories_for_summary(conn, sid)
             d["services"] = _sqlite_services_for_summary(conn, sid)
+            if not d["services"]:
+                try:
+                    from database_analytics import get_service_sales_for_date_range
+
+                    svcs = get_service_sales_for_date_range(
+                        [location_id], date, date
+                    )
+                    d["services"] = [
+                        {
+                            "type": str(
+                                s.get("type") or s.get("service_type") or ""
+                            ),
+                            "amount": float(s.get("amount") or 0),
+                        }
+                        for s in (svcs or [])
+                        if float(s.get("amount") or 0) > 0
+                    ]
+                except Exception:
+                    pass
         return d
 
 
