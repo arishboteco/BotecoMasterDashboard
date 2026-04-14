@@ -1040,9 +1040,8 @@ def _build_sales_summary(
     n_header = len(rows)
     n_mtd = len(mtd_data) - 1
 
-    # Add section label row for MTD (hidden)
+    # Combine sales summary + MTD data
     all_rows = list(rows)
-    all_rows.append(["", ""])
     all_rows.extend(mtd_data[1:])
 
     tbl = Table(all_rows, colWidths=col_w)
