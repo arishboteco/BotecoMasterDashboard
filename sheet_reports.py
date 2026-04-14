@@ -936,8 +936,7 @@ def _build_sales_summary(
         right_color=C_WHITE if not multi else None,
     )
 
-    elements.append(Spacer(1, GAP_ABOVE_SECTION_LABEL))
-    elements.append(_SectionLabelFlowable(avail_w, "MTD Sales"))
+    elements.append(Spacer(1, GAP_BELOW_BANNER))
     row_idx = 0
     mtd_rows = (
         [["", ""]]
@@ -1041,9 +1040,9 @@ def _build_sales_summary(
     n_header = len(rows)
     n_mtd = len(mtd_data) - 1
 
-    # Add section label row for MTD
+    # Add section label row for MTD (hidden)
     all_rows = list(rows)
-    all_rows.append(["MTD Sales", ""])
+    all_rows.append(["", ""])
     all_rows.extend(mtd_data[1:])
 
     tbl = Table(all_rows, colWidths=col_w)
