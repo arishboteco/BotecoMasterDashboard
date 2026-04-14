@@ -77,6 +77,9 @@ DPI = 150
 SECTION_WIDTHS = {1: 480, 2: 580}
 PAGE_PAD = 8
 
+# Single horizontal inset for banner text, custom flowable labels, and table cells.
+CONTENT_PAD_X = 12
+
 
 def _content_width(n_outlets: int = 1) -> float:
     """Content width inside margins for a given outlet count."""
@@ -86,11 +89,12 @@ def _content_width(n_outlets: int = 1) -> float:
 
 BANNER_PAD_TOP = 10
 BANNER_PAD_BOTTOM = 8
-BANNER_PAD_LEFT = 12
+BANNER_PAD_LEFT = CONTENT_PAD_X
+BANNER_PAD_RIGHT = CONTENT_PAD_X
 ROW_PAD_TOP = 4
 ROW_PAD_BOTTOM = 4
-CELL_PAD_LEFT = 8
-CELL_PAD_RIGHT = 8
+CELL_PAD_LEFT = CONTENT_PAD_X
+CELL_PAD_RIGHT = CONTENT_PAD_X
 GAP_BELOW_BANNER = 6
 GAP_ABOVE_SECTION_LABEL = 6
 GAP_ABOVE_SUBSECTION = 8
@@ -542,14 +546,16 @@ class _BannerFlowable(Flowable):
         canvas.setFont(FONT_BOLD, FONT_SIZE_BANNER_TITLE_SUMMARY)
         canvas.setFillColor(_hex(C_WHITE))
         canvas.drawString(
-            8, h - BANNER_PAD_TOP - FONT_SIZE_BANNER_TITLE_SUMMARY, self.title
+            BANNER_PAD_LEFT,
+            h - BANNER_PAD_TOP - FONT_SIZE_BANNER_TITLE_SUMMARY,
+            self.title,
         )
 
         # Subtitle (left)
         canvas.setFont(FONT_NAME, FONT_SIZE_BANNER_SUB_SUMMARY)
         canvas.setFillColor(_hex(C_DATE_LABEL))
         canvas.drawString(
-            8,
+            BANNER_PAD_LEFT,
             h
             - BANNER_PAD_TOP
             - FONT_SIZE_BANNER_TITLE_SUMMARY
@@ -563,7 +569,9 @@ class _BannerFlowable(Flowable):
             canvas.setFont(FONT_BOLD, FONT_SIZE_BANNER_TITLE)
             canvas.setFillColor(_hex(self.right_title_color))
             canvas.drawRightString(
-                w - 8, h - BANNER_PAD_TOP - FONT_SIZE_BANNER_TITLE, self.right_title
+                w - BANNER_PAD_RIGHT,
+                h - BANNER_PAD_TOP - FONT_SIZE_BANNER_TITLE,
+                self.right_title,
             )
 
         # Right-aligned subtitle
@@ -571,7 +579,7 @@ class _BannerFlowable(Flowable):
             canvas.setFont(FONT_NAME, FONT_SIZE_BANNER_SUB)
             canvas.setFillColor(_hex(C_WHITE))
             canvas.drawRightString(
-                w - 8,
+                w - BANNER_PAD_RIGHT,
                 h - BANNER_PAD_TOP - FONT_SIZE_BANNER_TITLE - FONT_SIZE_BANNER_SUB - 1,
                 self.right_subtitle,
             )
@@ -603,7 +611,7 @@ class _SectionLabelFlowable(Flowable):
         # Label text
         canvas.setFont(FONT_BOLD, FONT_SIZE_SECTION_LABEL)
         canvas.setFillColor(_hex(self.color))
-        canvas.drawString(10, 2, self.text)
+        canvas.drawString(BANNER_PAD_LEFT, 2, self.text)
 
 
 class _EmptyDataFlowable(Flowable):
@@ -643,7 +651,7 @@ class _SubsectionLabelFlowable(Flowable):
         canvas = self.canv
         canvas.setFont(FONT_BOLD, FONT_SIZE_ROW)
         canvas.setFillColor(_hex(self.color))
-        canvas.drawString(6, 2, self.text)
+        canvas.drawString(BANNER_PAD_LEFT, 2, self.text)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
