@@ -1022,7 +1022,7 @@ def render_target_and_daily(
         # Target achievement drill-down table
         with st.expander("View data"):
             _cols_needed = {"target", "pct_target"}
-            _has_target_cols = (
+_has_target_cols = (
                 multi_analytics
                 and not df_raw.empty
                 and _cols_needed.issubset(df_raw.columns)
@@ -1036,12 +1036,58 @@ def render_target_and_daily(
                     lambda x: f"{float(x or 0):.2f}%"
                 )
             else:
-                _tgt_tbl = target_df[
-                    ["date", "net_total", "target", "achievement"]
-                ].copy()
+                _target_col = "day_target" if "day_target" in target_df.columns else None
+                _cols = ["date", "net_total"]
+                if _target_col:
+                    _cols.extend([_target_col, "achievement"])
+                else:
+                    _cols.append("achievement")
+                _tgt_tbl = target_df[_cols].copy()
                 _tgt_tbl["achievement"] = _tgt_tbl["achievement"].apply(
                     lambda x: f"{float(x or 0):.2f}%"
                 )
+                if _target_col:
+                    _tgt_tbl = _tgt_tbl.rename(columns={_target_col: "target"})
+                _tgt_tbl = _tgt_tbl.rename(columns={"achievement": "pct_target"})
+
+            _rename_cols = {
+                "date": "Date",
+                "net_total": "Net Sales (₹)",
+                "pct_target": "Achievement",
+            }
+            if "target" in _tgt_tbl.columns:
+                _rename_cols["target"] = "Target (₹)"
+            _tgt_tbl = _tgt_tbl.rename(columns=_rename_cols)
+            _tgt_tbl["Net Sales (₹)"] = _tgt_tbl["Net Sales (₹)"].apply(
+                lambda x: utils.format_currency(float(x))
+            )
+            if "Target (₹)" in _tgt_tbl.columns:
+                _tgt_tbl["Target (₹)"] = _tgt_tbl["Target (₹)"].apply(
+                    lambda x: utils.format_currency(float(x))
+                )
+
+            if _has_target_cols:
+                _tgt_tbl = df_raw[
+                    ["date", "Outlet", "net_total", "target", "pct_target"]
+                ].copy()
+                _tgt_tbl["pct_target"] = _tgt_tbl["pct_target"].apply(
+                    lambda x: f"{float(x or 0):.2f}%"
+                )
+            else:
+                _target_col = (
+                    "day_target" if "day_target" in target_df.columns else None
+                )
+                _cols = ["date", "net_total"]
+                if _target_col:
+                    _cols.extend([_target_col, "achievement"])
+                else:
+                    _cols.append("achievement")
+                _tgt_tbl = target_df[_cols].copy()
+                _tgt_tbl["achievement"] = _tgt_tbl["achievement"].apply(
+                    lambda x: f"{float(x or 0):.2f}%"
+                )
+                if _target_col:
+                    _tgt_tbl = _tgt_tbl.rename(columns={_target_col: "target"})
                 _tgt_tbl = _tgt_tbl.rename(columns={"achievement": "pct_target"})
             _tgt_tbl = _tgt_tbl.rename(
                 columns={
