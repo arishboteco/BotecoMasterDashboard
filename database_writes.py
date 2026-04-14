@@ -23,7 +23,7 @@ def ensure_default_locations() -> None:
     from database import get_supabase_client
 
     client = get_supabase_client()
-    existing = client.table("locations").select("id").execute()
+    existing = client.table("locations").select("id,name").execute()
 
     existing_names = {row["name"] for row in existing.data} if existing.data else set()
 
