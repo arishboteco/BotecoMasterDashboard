@@ -24,6 +24,7 @@ import re
 from io import BytesIO
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
+from xml.sax.saxutils import escape
 
 import streamlit as st
 
@@ -36,6 +37,7 @@ from reportlab.platypus import (
     TableStyle,
     Spacer,
     Flowable,
+    Paragraph,
 )
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -791,6 +793,81 @@ def _fmt_cell(v, fmt: str = "currency") -> str:
     return str(v)
 
 
+def _sales_summary_eod_prefix_rows(
+    col_w: List[float],
+    location_name: str,
+    day_lbl: str,
+    pct_tgt: float,
+    net_total: Any,
+    ach_color: str,
+) -> List[List[Any]]:
+    """Two top rows for the sales summary table: title and date/KPI strip."""
+    n_cols = len(col_w)
+    full_w = sum(col_w)
+    inner_w = max(full_w - CELL_PAD_LEFT - CELL_PAD_RIGHT, 1.0)
+
+    title_txt = escape(f"{location_name.upper()}  \u2014  END OF DAY REPORT")
+    sty_title = ParagraphStyle(
+        name="EODSalesTitleRow",
+        fontName=FONT_BOLD,
+        fontSize=FONT_SIZE_BANNER_TITLE_SUMMARY,
+        textColor=_hex(C_WHITE),
+        alignment=TA_CENTER,
+        leading=FONT_SIZE_BANNER_TITLE_SUMMARY + 2,
+    )
+    title_para = Paragraph(title_txt, sty_title)
+
+    sty_date = ParagraphStyle(
+        name="EODSalesDateRow",
+        fontName=FONT_NAME,
+        fontSize=FONT_SIZE_BANNER_SUB_SUMMARY,
+        textColor=_hex(C_DATE_LABEL),
+        alignment=TA_LEFT,
+        leading=FONT_SIZE_BANNER_SUB_SUMMARY + 2,
+    )
+    date_para = Paragraph(escape(day_lbl), sty_date)
+
+    pct_str = f"{pct_tgt:.0f}% of target"
+    net_str = escape(_r(net_total) + " net")
+    kpi_xml = (
+        f'<para alignment="right" leading="{FONT_SIZE_BANNER_SUB + 3}">'
+        f'<font name="{FONT_BOLD}" size="{FONT_SIZE_BANNER_TITLE}" color="{ach_color}">'
+        f"{escape(pct_str)}</font><br/>"
+        f'<font name="{FONT_NAME}" size="{FONT_SIZE_BANNER_SUB}" color="{C_WHITE}">'
+        f"{net_str}</font></para>"
+    )
+    sty_kpi_wrap = ParagraphStyle(
+        name="EODSalesKpiWrap",
+        fontName=FONT_NAME,
+        fontSize=FONT_SIZE_BANNER_SUB,
+        alignment=TA_RIGHT,
+        leading=FONT_SIZE_BANNER_SUB + 1,
+    )
+    kpi_para = Paragraph(kpi_xml, sty_kpi_wrap)
+
+    nested = Table(
+        [[date_para, kpi_para]],
+        colWidths=[inner_w * 0.55, inner_w * 0.45],
+    )
+    nested.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ]
+        )
+    )
+
+    empty_tail = [""] * (n_cols - 1)
+    return [
+        [title_para] + empty_tail,
+        [nested] + empty_tail,
+    ]
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Section builders — each returns a list of Flowables
 # ═══════════════════════════════════════════════════════════════════════════
@@ -817,19 +894,6 @@ def _build_sales_summary(
     ach_color = statuses["target"]["color"]
 
     elements = []
-
-    elements.append(
-        _BannerFlowable(
-            avail_w,
-            title=f"{location_name.upper()}  \u2014  END OF DAY REPORT",
-            subtitle=day_lbl,
-            right_title=f"{pct_tgt:.0f}% of target",
-            right_subtitle=_r(r.get("net_total", 0)) + " net",
-            right_title_color=ach_color,
-        )
-    )
-
-    elements.append(Spacer(1, GAP_BELOW_BANNER))
 
     # Build table data
     headers = (
@@ -944,7 +1008,6 @@ def _build_sales_summary(
         right_color=C_WHITE if not multi else None,
     )
 
-    elements.append(Spacer(1, GAP_BELOW_BANNER))
     row_idx = 0
     mtd_rows = (
         [["", ""]]
@@ -1048,38 +1111,64 @@ def _build_sales_summary(
     n_header = len(rows)
     n_mtd = len(mtd_data) - 1
 
-    # Combine sales summary + MTD data
-    all_rows = list(rows)
+    # Combine EOD title rows + sales summary + MTD data (single table, aligned widths)
+    META_ROWS = 2
+    HEADER_ROW = 2
+    FIRST_BODY_ROW = 3
+    prefix_rows = _sales_summary_eod_prefix_rows(
+        col_w,
+        location_name,
+        day_lbl,
+        pct_tgt,
+        r.get("net_total", 0),
+        ach_color,
+    )
+    all_rows = prefix_rows + list(rows)
     all_rows.extend(mtd_data[1:])
 
     tbl = Table(all_rows, colWidths=col_w)
 
     # Build comprehensive table style
     style_cmds = [
-        ("BACKGROUND", (0, 0), (-1, 0), _hex(C_HEADER)),
-        ("TEXTCOLOR", (0, 0), (-1, 0), _hex(C_BRAND)),
-        ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
-        ("FONTSIZE", (0, 0), (-1, 0), FONT_SIZE_HEADER),
-        ("ALIGN", (0, 0), (0, -1), "LEFT"),
-        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+        ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
+        ("SPAN", (0, 0), (-1, 0)),
+        ("SPAN", (0, 1), (-1, 1)),
+        ("LINEABOVE", (0, 0), (-1, 0), 2.5, _hex(C_BRAND)),
         ("TOPPADDING", (0, 0), (-1, -1), ROW_PAD_TOP),
         ("BOTTOMPADDING", (0, 0), (-1, -1), ROW_PAD_BOTTOM),
         ("LEFTPADDING", (0, 0), (-1, -1), CELL_PAD_LEFT),
         ("RIGHTPADDING", (0, 0), (-1, -1), CELL_PAD_RIGHT),
-        ("FONTNAME", (0, 1), (-1, -1), FONT_NAME),
-        ("FONTSIZE", (0, 1), (-1, -1), FONT_SIZE_ROW),
-        ("TEXTCOLOR", (0, 1), (-1, -1), _hex(C_SLATE)),
-        ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
-        ("LINEBELOW", (0, 0), (-1, 0), 1, _hex(C_BRAND)),
+        # Title row (meta)
+        ("BACKGROUND", (0, 0), (-1, 0), _hex(C_BANNER)),
+        ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
+        ("FONTSIZE", (0, 0), (-1, 0), FONT_SIZE_BANNER_TITLE_SUMMARY),
+        ("TEXTCOLOR", (0, 0), (-1, 0), _hex(C_WHITE)),
+        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+        ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
+        # Date / KPI row (meta)
+        ("BACKGROUND", (0, 1), (-1, 1), _hex(C_BANNER)),
+        ("VALIGN", (0, 1), (-1, 1), "MIDDLE"),
+        # Column header row (outlet names)
+        ("BACKGROUND", (0, HEADER_ROW), (-1, HEADER_ROW), _hex(C_HEADER)),
+        ("TEXTCOLOR", (0, HEADER_ROW), (-1, HEADER_ROW), _hex(C_BRAND)),
+        ("FONTNAME", (0, HEADER_ROW), (-1, HEADER_ROW), FONT_BOLD),
+        ("FONTSIZE", (0, HEADER_ROW), (-1, HEADER_ROW), FONT_SIZE_HEADER),
+        ("LINEBELOW", (0, HEADER_ROW), (-1, HEADER_ROW), 1, _hex(C_BRAND)),
+        ("ALIGN", (0, HEADER_ROW), (0, -1), "LEFT"),
+        ("ALIGN", (1, HEADER_ROW), (-1, HEADER_ROW), "RIGHT"),
+        ("ALIGN", (1, FIRST_BODY_ROW), (-1, -1), "RIGHT"),
+        ("FONTNAME", (0, FIRST_BODY_ROW), (-1, -1), FONT_NAME),
+        ("FONTSIZE", (0, FIRST_BODY_ROW), (-1, -1), FONT_SIZE_ROW),
+        ("TEXTCOLOR", (0, FIRST_BODY_ROW), (-1, -1), _hex(C_SLATE)),
     ]
 
-    # Alternating rows
-    for i in range(1, len(all_rows)):
-        if i % 2 == 0:
+    # Alternating rows (body only; preserves pre-meta striping pattern)
+    for i in range(FIRST_BODY_ROW, len(all_rows)):
+        if (i - FIRST_BODY_ROW) % 2 == 1:
             style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(C_BAND)))
 
     # Net Total row highlight (row before MTD section label)
-    net_total_row = n_header - 1
+    net_total_row = n_header - 1 + META_ROWS
     style_cmds.extend(
         [
             ("BACKGROUND", (0, net_total_row), (-1, net_total_row), _hex(C_BANNER)),
