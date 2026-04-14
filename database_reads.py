@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 import streamlit as st
 
 
@@ -407,10 +407,7 @@ def clear_location_cache(location_id: int) -> None:
     Called after successful upload to ensure subsequent reads
     reflect the new data immediately.
     """
-    import database
-
     get_all_locations.clear()
     get_summaries_for_month.clear(location_id=location_id)
     get_category_mtd_totals.clear(location_id=location_id)
-    get_service_mtd_totals.clear(location_id=location_id)
     get_recent_summaries.clear(location_id=location_id)

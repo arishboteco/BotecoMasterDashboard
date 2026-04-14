@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 import streamlit as st
-import database
 
 
 @st.cache_data(ttl=600)
@@ -16,6 +15,8 @@ def get_monthly_footfall_multi(
     location_ids: List[int], start_date: str, end_date: str
 ) -> List[Dict[str, Any]]:
     """Aggregate covers by month across locations for a date range."""
+    import database
+
     if not location_ids:
         return []
 
@@ -54,6 +55,8 @@ def get_weekly_footfall_multi(
     location_ids: List[int], start_date: str, end_date: str
 ) -> List[Dict[str, Any]]:
     """Aggregate covers by ISO week across locations for a date range."""
+    import database
+
     if not location_ids:
         return []
 
@@ -90,6 +93,8 @@ def get_daily_sales_for_date_range(
     location_ids: List[int], start_date: str, end_date: str
 ) -> List[Dict[str, Any]]:
     """Get daily sales data for a date range."""
+    import database
+
     if database.use_supabase():
         supabase = database.get_supabase_client()
         result = (
@@ -112,6 +117,8 @@ def get_category_sales_for_date_range(
     end_date: str,
 ) -> List[Dict[str, Any]]:
     """Get category sales totals for a date range."""
+    import database
+
     if database.use_supabase():
         supabase = database.get_supabase_client()
         result = (
@@ -146,6 +153,8 @@ def get_service_sales_for_date_range(
     Lunch: 12 PM - 5 PM (12:00 to 16:59)
     Dinner: Everything else
     """
+    import database
+
     if database.use_supabase():
         supabase = database.get_supabase_client()
         result = (
@@ -200,6 +209,8 @@ def get_daily_service_sales_for_date_range(
     end_date: str,
 ) -> List[Dict[str, Any]]:
     """Get daily service period sales."""
+    import database
+
     if database.use_supabase():
         supabase = database.get_supabase_client()
         result = (
@@ -253,6 +264,8 @@ def get_super_category_mtd_totals(
     month: int,
 ) -> Dict[str, float]:
     """Get super category totals for MTD."""
+    import database
+
     start_date = f"{year}-{month:02d}-01"
 
     if database.use_supabase():
@@ -335,6 +348,8 @@ def get_top_items_for_date_range(
     limit: int = 30,
 ) -> List[Dict[str, Any]]:
     """Get top items by sales for a date range."""
+    import database
+
     if database.use_supabase():
         supabase = database.get_supabase_client()
 
@@ -378,6 +393,8 @@ def get_payment_breakdown_for_date_range(
     end_date: str,
 ) -> Dict[str, float]:
     """Get payment type breakdown from bill_items."""
+    import database
+
     if database.use_supabase():
         supabase = database.get_supabase_client()
 

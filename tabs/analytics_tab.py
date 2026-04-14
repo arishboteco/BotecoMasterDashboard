@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from typing import Dict, List
 
 # Lightweight in-process cache for heavy analytics data (per location set and date range)
 _RAW_SUMMARY_CACHE: dict = {}
@@ -10,8 +10,10 @@ _RAW_SUMMARY_CACHE: dict = {}
 import pandas as pd
 import streamlit as st
 
+import config
 import database
 import scope
+import utils
 from tabs.analytics_logic import resolve_period_window
 from tabs.analytics_sections import (
     render_overview,
@@ -26,6 +28,66 @@ from components.navigation import date_range_nav
 def clear_analytics_cache() -> None:
     """Clear cached analytics raw summaries."""
     _RAW_SUMMARY_CACHE.clear()
+
+
+def _add_target_columns(
+    df: pd.DataFrame,
+    all_locs: list,
+    location_ids: list,
+) -> pd.DataFrame:
+    """Add target and pct_target columns to a summaries DataFrame.
+
+    Args:
+        df: DataFrame with 'location_id', 'date', 'net_total' columns
+        all_locs: List of all location dicts from database
+        location_ids: List of location IDs being analyzed
+
+    Returns:
+        DataFrame with added 'target' and 'pct_target' columns
+    """
+    if df.empty:
+        return df
+
+    df = df.copy()
+
+    loc_settings = {loc["id"]: loc for loc in all_locs}
+
+    loc_monthly_target: dict = {}
+    loc_weekday_mix: dict = {}
+    loc_day_targets: dict = {}
+
+    for lid in location_ids:
+        settings = loc_settings.get(lid, {})
+        monthly_target = float(settings.get("target_monthly_sales", 0) or 0)
+        if monthly_target <= 0:
+            monthly_target = float(config.MONTHLY_TARGET)
+        loc_monthly_target[lid] = monthly_target
+
+        recent = database.get_recent_summaries(lid, weeks=8)
+        weekday_mix = utils.compute_weekday_mix(recent)
+        loc_weekday_mix[lid] = weekday_mix
+
+        day_targets = utils.compute_day_targets(monthly_target, weekday_mix)
+        loc_day_targets[lid] = day_targets
+
+    def _get_target_for_row(row):
+        lid = row.get("location_id")
+        date_str = str(row.get("date", ""))[:10]
+        if lid in loc_day_targets:
+            return utils.get_target_for_date(loc_day_targets[lid], date_str)
+        return 0.0
+
+    def _calc_pct_target(row):
+        tgt = float(row.get("target") or 0)
+        net = float(row.get("net_total") or 0)
+        if tgt > 0:
+            return round((net / tgt) * 100, 2)
+        return 0.0
+
+    df["target"] = df.apply(_get_target_for_row, axis=1)
+    df["pct_target"] = df.apply(_calc_pct_target, axis=1)
+
+    return df
 
 
 def _load_raw_summaries_cached(
@@ -129,12 +191,22 @@ def render(ctx: TabContext) -> None:
                     break
 
     raw_summaries = _load_raw_summaries_cached(analytics_loc_ids, start_str, end_str)
-    summaries = scope.merge_summaries_by_date(raw_summaries)
+
+    raw_summaries_with_targets = (
+        _add_target_columns(
+            pd.DataFrame(raw_summaries), ctx.all_locs, analytics_loc_ids
+        ).to_dict("records")
+        if raw_summaries
+        else []
+    )
+
+    summaries = scope.merge_summaries_by_date(raw_summaries_with_targets)
     df_raw = pd.DataFrame(raw_summaries) if raw_summaries else pd.DataFrame()
     if multi_analytics and not df_raw.empty:
         loc_names = {loc["id"]: str(loc["name"]) for loc in ctx.all_locs}
         df_raw = df_raw.copy()
         df_raw["Outlet"] = df_raw["location_id"].map(lambda x: loc_names.get(x, str(x)))
+        df_raw = _add_target_columns(df_raw, ctx.all_locs, analytics_loc_ids)
 
     if summaries:
         df = pd.DataFrame(summaries)
