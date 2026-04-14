@@ -47,6 +47,14 @@ def ensure_default_locations() -> None:
             client.table("locations").upsert(loc, on_conflict="id").execute()
 
 
+def backfill_weekday_weighted_targets() -> Tuple[int, int]:
+    """One-time backfill for weekday-weighted targets. No-op for Supabase."""
+    import config
+
+    _ = config
+    return 0, 0
+
+
 def save_bill_items(supabase, records: List[Dict]) -> None:
     """Bulk insert bill_items records."""
     if not records:
