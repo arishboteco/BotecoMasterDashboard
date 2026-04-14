@@ -41,8 +41,6 @@ class TestCategorySuperCategoryDisplay:
         # Extract text from Table cells to verify super category collapse
         element_texts = []
         for el in elements:
-            if isinstance(el, sheet_reports._BannerFlowable):
-                element_texts.append(el.title)
             if isinstance(el, sheet_reports.Table):
                 for row_data in el._cellvalues:
                     for cell in row_data:

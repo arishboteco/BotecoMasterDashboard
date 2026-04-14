@@ -501,92 +501,6 @@ def _render_elements_to_png(
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-class _BannerFlowable(Flowable):
-    """Full-width banner with brand bar, title, subtitle, right-aligned KPI."""
-
-    def __init__(
-        self,
-        width: float,
-        title: str,
-        subtitle: str,
-        right_title: str = "",
-        right_subtitle: str = "",
-        right_title_color: str = C_WHITE,
-    ):
-        Flowable.__init__(self)
-        self.width = width
-        self.title = title
-        self.subtitle = subtitle
-        self.right_title = right_title
-        self.right_subtitle = right_subtitle
-        self.right_title_color = right_title_color
-        self.height = (
-            BANNER_PAD_TOP
-            + FONT_SIZE_BANNER_TITLE_SUMMARY
-            + FONT_SIZE_BANNER_SUB_SUMMARY
-            + BANNER_PAD_BOTTOM
-            + 6
-        )
-
-    def wrap(self, availWidth, availHeight):
-        return (self.width, self.height)
-
-    def draw(self):
-        canvas = self.canv
-        h = self.height
-        w = self.width
-
-        # Dark navy background
-        canvas.setFillColor(_hex(C_BANNER))
-        canvas.rect(0, 0, w, h, fill=1, stroke=0)
-
-        # Thin brand accent bar at top
-        canvas.setFillColor(_hex(C_BRAND))
-        canvas.rect(0, h - 2.5, w, 2.5, fill=1, stroke=0)
-
-        # Title (left)
-        canvas.setFont(FONT_BOLD, FONT_SIZE_BANNER_TITLE_SUMMARY)
-        canvas.setFillColor(_hex(C_WHITE))
-        canvas.drawString(
-            BANNER_PAD_LEFT,
-            h - BANNER_PAD_TOP - FONT_SIZE_BANNER_TITLE_SUMMARY,
-            self.title,
-        )
-
-        # Subtitle (left)
-        canvas.setFont(FONT_NAME, FONT_SIZE_BANNER_SUB_SUMMARY)
-        canvas.setFillColor(_hex(C_DATE_LABEL))
-        canvas.drawString(
-            BANNER_PAD_LEFT,
-            h
-            - BANNER_PAD_TOP
-            - FONT_SIZE_BANNER_TITLE_SUMMARY
-            - FONT_SIZE_BANNER_SUB_SUMMARY
-            - 1,
-            self.subtitle,
-        )
-
-        # Right-aligned title
-        if self.right_title:
-            canvas.setFont(FONT_BOLD, FONT_SIZE_BANNER_TITLE)
-            canvas.setFillColor(_hex(self.right_title_color))
-            canvas.drawRightString(
-                w - BANNER_PAD_RIGHT,
-                h - BANNER_PAD_TOP - FONT_SIZE_BANNER_TITLE,
-                self.right_title,
-            )
-
-        # Right-aligned subtitle
-        if self.right_subtitle:
-            canvas.setFont(FONT_NAME, FONT_SIZE_BANNER_SUB)
-            canvas.setFillColor(_hex(C_WHITE))
-            canvas.drawRightString(
-                w - BANNER_PAD_RIGHT,
-                h - BANNER_PAD_TOP - FONT_SIZE_BANNER_TITLE - FONT_SIZE_BANNER_SUB - 1,
-                self.right_subtitle,
-            )
-
-
 class _SectionLabelFlowable(Flowable):
     """Full-width section label with a left accent bar."""
 
@@ -865,6 +779,73 @@ def _sales_summary_eod_prefix_rows(
     return [
         [title_para] + empty_tail,
         [nested] + empty_tail,
+    ]
+
+
+def _section_table_prefix_rows(
+    col_w: List[float],
+    title: str,
+    subtitle: str,
+    *,
+    style_tag: str = "SecTbl",
+) -> List[List[Any]]:
+    """Two spanned banner rows (title + subtitle) for category/service/footfall tables."""
+    n_cols = len(col_w)
+    empty_tail = [""] * (n_cols - 1)
+    sty_title = ParagraphStyle(
+        name=f"{style_tag}BannerTitle",
+        fontName=FONT_BOLD,
+        fontSize=FONT_SIZE_BANNER_TITLE_SUMMARY,
+        textColor=_hex(C_WHITE),
+        alignment=TA_CENTER,
+        leading=FONT_SIZE_BANNER_TITLE_SUMMARY + 2,
+    )
+    title_para = Paragraph(escape(title), sty_title)
+    sty_sub = ParagraphStyle(
+        name=f"{style_tag}BannerSub",
+        fontName=FONT_NAME,
+        fontSize=FONT_SIZE_BANNER_SUB_SUMMARY,
+        textColor=_hex(C_DATE_LABEL),
+        alignment=TA_LEFT,
+        leading=FONT_SIZE_BANNER_SUB_SUMMARY + 2,
+    )
+    sub_para = Paragraph(escape(subtitle), sty_sub)
+    return [
+        [title_para] + empty_tail,
+        [sub_para] + empty_tail,
+    ]
+
+
+def _meta_header_table_style_cmds(
+    *,
+    header_row: int = 2,
+    first_body_row: int = 3,
+) -> List[Tuple[Any, ...]]:
+    """Common TableStyle commands after GRID/SPAN/brand line for tables with 2 meta rows."""
+    return [
+        ("TOPPADDING", (0, 0), (-1, -1), ROW_PAD_TOP),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), ROW_PAD_BOTTOM),
+        ("LEFTPADDING", (0, 0), (-1, -1), CELL_PAD_LEFT),
+        ("RIGHTPADDING", (0, 0), (-1, -1), CELL_PAD_RIGHT),
+        ("BACKGROUND", (0, 0), (-1, 0), _hex(C_BANNER)),
+        ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
+        ("FONTSIZE", (0, 0), (-1, 0), FONT_SIZE_BANNER_TITLE_SUMMARY),
+        ("TEXTCOLOR", (0, 0), (-1, 0), _hex(C_WHITE)),
+        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+        ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
+        ("BACKGROUND", (0, 1), (-1, 1), _hex(C_BANNER)),
+        ("VALIGN", (0, 1), (-1, 1), "MIDDLE"),
+        ("BACKGROUND", (0, header_row), (-1, header_row), _hex(C_HEADER)),
+        ("TEXTCOLOR", (0, header_row), (-1, header_row), _hex(C_BRAND)),
+        ("FONTNAME", (0, header_row), (-1, header_row), FONT_BOLD),
+        ("FONTSIZE", (0, header_row), (-1, header_row), FONT_SIZE_HEADER),
+        ("LINEBELOW", (0, header_row), (-1, header_row), 1, _hex(C_BRAND)),
+        ("ALIGN", (0, header_row), (0, -1), "LEFT"),
+        ("ALIGN", (1, header_row), (-1, header_row), "RIGHT"),
+        ("ALIGN", (1, first_body_row), (-1, -1), "RIGHT"),
+        ("FONTNAME", (0, first_body_row), (-1, -1), FONT_NAME),
+        ("FONTSIZE", (0, first_body_row), (-1, -1), FONT_SIZE_ROW),
+        ("TEXTCOLOR", (0, first_body_row), (-1, -1), _hex(C_SLATE)),
     ]
 
 
@@ -1267,14 +1248,14 @@ def _build_category(
         col_w = [avail_w * 0.60, avail_w * 0.20, avail_w * 0.20]
 
     elements = []
-    elements.append(
-        _BannerFlowable(
-            avail_w,
-            title=f"Category Sales \u2014 {location_name[:28]}",
-            subtitle=day_lbl,
-        )
+    HEADER_ROW = 2
+    FIRST_BODY_ROW = 3
+    prefix = _section_table_prefix_rows(
+        col_w,
+        f"Category Sales \u2014 {location_name[:28]}",
+        day_lbl,
+        style_tag="CatSec",
     )
-    elements.append(Spacer(1, GAP_BELOW_BANNER))
 
     headers = (
         ["Category", "Daily", "MTD"]
@@ -1325,31 +1306,27 @@ def _build_category(
         tot_cells = ["Total", _r(daily_total), _r(mtd_total)]
     rows.append(tot_cells)
 
-    tbl = Table(rows, colWidths=col_w)
+    all_rows = prefix + rows
+    tbl = Table(all_rows, colWidths=col_w)
     style_cmds = [
-        ("BACKGROUND", (0, 0), (-1, 0), _hex(C_HEADER)),
-        ("TEXTCOLOR", (0, 0), (-1, 0), _hex(C_BRAND)),
-        ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
-        ("FONTSIZE", (0, 0), (-1, 0), FONT_SIZE_HEADER),
-        ("ALIGN", (0, 0), (0, -1), "LEFT"),
-        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
-        ("TOPPADDING", (0, 0), (-1, -1), ROW_PAD_TOP),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), ROW_PAD_BOTTOM),
-        ("LEFTPADDING", (0, 0), (-1, -1), CELL_PAD_LEFT),
-        ("RIGHTPADDING", (0, 0), (-1, -1), CELL_PAD_RIGHT),
-        ("FONTNAME", (0, 1), (-1, -1), FONT_NAME),
-        ("FONTSIZE", (0, 1), (-1, -1), FONT_SIZE_ROW),
-        ("TEXTCOLOR", (0, 1), (-1, -1), _hex(C_SLATE)),
         ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
-        ("LINEBELOW", (0, 0), (-1, 0), 1, _hex(C_BRAND)),
-        # Totals row
-        ("BACKGROUND", (0, -1), (-1, -1), _hex(C_BANNER)),
-        ("TEXTCOLOR", (0, -1), (-1, -1), _hex(C_WHITE)),
-        ("FONTNAME", (0, -1), (-1, -1), FONT_BOLD),
+        ("SPAN", (0, 0), (-1, 0)),
+        ("SPAN", (0, 1), (-1, 1)),
+        ("LINEABOVE", (0, 0), (-1, 0), 2.5, _hex(C_BRAND)),
     ]
-    for i in range(1, len(rows) - 1):
-        if i % 2 == 0:
+    style_cmds.extend(
+        _meta_header_table_style_cmds(header_row=HEADER_ROW, first_body_row=FIRST_BODY_ROW)
+    )
+    for i in range(FIRST_BODY_ROW, len(all_rows) - 1):
+        if (i - FIRST_BODY_ROW) % 2 == 1:
             style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(C_BAND)))
+    style_cmds.extend(
+        [
+            ("BACKGROUND", (0, -1), (-1, -1), _hex(C_BANNER)),
+            ("TEXTCOLOR", (0, -1), (-1, -1), _hex(C_WHITE)),
+            ("FONTNAME", (0, -1), (-1, -1), FONT_BOLD),
+        ]
+    )
 
     tbl.setStyle(TableStyle(style_cmds))
     elements.append(tbl)
@@ -1405,18 +1382,54 @@ def _build_service(
         col_w = [avail_w * 0.60, avail_w * 0.20, avail_w * 0.20]
 
     elements = []
-    elements.append(
-        _BannerFlowable(
-            avail_w,
-            title=f"Service Sales \u2014 {location_name[:28]}",
-            subtitle=day_lbl,
-        )
-    )
-    elements.append(Spacer(1, GAP_BELOW_BANNER))
+    title_svc = f"Service Sales \u2014 {location_name[:28]}"
+    HEADER_ROW = 2
+    FIRST_BODY_ROW = 3
 
     if not svc_order:
-        elements.append(_EmptyDataFlowable(avail_w, "No service data for this date"))
+        prefix = _section_table_prefix_rows(
+            col_w, title_svc, day_lbl, style_tag="SvcSec"
+        )
+        n_cols = len(col_w)
+        empty_tail = [""] * (n_cols - 1)
+        sty_msg = ParagraphStyle(
+            name="SvcSecEmptyMsg",
+            fontName=FONT_NAME,
+            fontSize=FONT_SIZE_ROW,
+            textColor=_hex(C_MUTED),
+            alignment=TA_CENTER,
+            leading=FONT_SIZE_ROW + 2,
+        )
+        msg_para = Paragraph(escape("No service data for this date"), sty_msg)
+        all_rows = prefix + [[msg_para] + empty_tail]
+        tbl = Table(all_rows, colWidths=col_w)
+        style_cmds = [
+            ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
+            ("SPAN", (0, 0), (-1, 0)),
+            ("SPAN", (0, 1), (-1, 1)),
+            ("SPAN", (0, 2), (-1, 2)),
+            ("LINEABOVE", (0, 0), (-1, 0), 2.5, _hex(C_BRAND)),
+            ("TOPPADDING", (0, 0), (-1, -1), ROW_PAD_TOP),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), ROW_PAD_BOTTOM),
+            ("LEFTPADDING", (0, 0), (-1, -1), CELL_PAD_LEFT),
+            ("RIGHTPADDING", (0, 0), (-1, -1), CELL_PAD_RIGHT),
+            ("BACKGROUND", (0, 0), (-1, 0), _hex(C_BANNER)),
+            ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
+            ("FONTSIZE", (0, 0), (-1, 0), FONT_SIZE_BANNER_TITLE_SUMMARY),
+            ("TEXTCOLOR", (0, 0), (-1, 0), _hex(C_WHITE)),
+            ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+            ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
+            ("BACKGROUND", (0, 1), (-1, 1), _hex(C_BANNER)),
+            ("VALIGN", (0, 1), (-1, 1), "MIDDLE"),
+            ("BACKGROUND", (0, 2), (-1, 2), _hex(C_BAND)),
+            ("ALIGN", (0, 2), (-1, 2), "CENTER"),
+            ("VALIGN", (0, 2), (-1, 2), "MIDDLE"),
+        ]
+        tbl.setStyle(TableStyle(style_cmds))
+        elements.append(tbl)
         return elements
+
+    prefix = _section_table_prefix_rows(col_w, title_svc, day_lbl, style_tag="SvcSec")
 
     headers = (
         ["Service", "Daily", "MTD"]
@@ -1466,30 +1479,27 @@ def _build_service(
         tot_cells = ["Total", _r(daily_total), _r(mtd_total)]
     rows.append(tot_cells)
 
-    tbl = Table(rows, colWidths=col_w)
+    all_rows = prefix + rows
+    tbl = Table(all_rows, colWidths=col_w)
     style_cmds = [
-        ("BACKGROUND", (0, 0), (-1, 0), _hex(C_HEADER)),
-        ("TEXTCOLOR", (0, 0), (-1, 0), _hex(C_BRAND)),
-        ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
-        ("FONTSIZE", (0, 0), (-1, 0), FONT_SIZE_HEADER),
-        ("ALIGN", (0, 0), (0, -1), "LEFT"),
-        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
-        ("TOPPADDING", (0, 0), (-1, -1), ROW_PAD_TOP),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), ROW_PAD_BOTTOM),
-        ("LEFTPADDING", (0, 0), (-1, -1), CELL_PAD_LEFT),
-        ("RIGHTPADDING", (0, 0), (-1, -1), CELL_PAD_RIGHT),
-        ("FONTNAME", (0, 1), (-1, -1), FONT_NAME),
-        ("FONTSIZE", (0, 1), (-1, -1), FONT_SIZE_ROW),
-        ("TEXTCOLOR", (0, 1), (-1, -1), _hex(C_SLATE)),
         ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
-        ("LINEBELOW", (0, 0), (-1, 0), 1, _hex(C_BRAND)),
-        ("BACKGROUND", (0, -1), (-1, -1), _hex(C_BANNER)),
-        ("TEXTCOLOR", (0, -1), (-1, -1), _hex(C_WHITE)),
-        ("FONTNAME", (0, -1), (-1, -1), FONT_BOLD),
+        ("SPAN", (0, 0), (-1, 0)),
+        ("SPAN", (0, 1), (-1, 1)),
+        ("LINEABOVE", (0, 0), (-1, 0), 2.5, _hex(C_BRAND)),
     ]
-    for i in range(1, len(rows) - 1):
-        if i % 2 == 0:
+    style_cmds.extend(
+        _meta_header_table_style_cmds(header_row=HEADER_ROW, first_body_row=FIRST_BODY_ROW)
+    )
+    for i in range(FIRST_BODY_ROW, len(all_rows) - 1):
+        if (i - FIRST_BODY_ROW) % 2 == 1:
             style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(C_BAND)))
+    style_cmds.extend(
+        [
+            ("BACKGROUND", (0, -1), (-1, -1), _hex(C_BANNER)),
+            ("TEXTCOLOR", (0, -1), (-1, -1), _hex(C_WHITE)),
+            ("FONTNAME", (0, -1), (-1, -1), FONT_BOLD),
+        ]
+    )
 
     tbl.setStyle(TableStyle(style_cmds))
     elements.append(tbl)
@@ -1503,20 +1513,56 @@ def _build_footfall(
     avail_w = _content_width(n_outlets)
 
     elements = []
-    elements.append(
-        _BannerFlowable(
-            avail_w,
-            title="Daily Footfall \u2014 Month to Date",
-            subtitle=location_name[:32],
-        )
-    )
-    elements.append(Spacer(1, GAP_BELOW_BANNER))
-
     col_w = [avail_w * 0.40, avail_w * 0.16, avail_w * 0.16, avail_w * 0.16]
+    ff_title = "Daily Footfall \u2014 Month to Date"
+    ff_sub = location_name[:32]
+    HEADER_ROW = 2
+    FIRST_BODY_ROW = 3
 
     if not rows_data:
-        elements.append(_EmptyDataFlowable(avail_w, "No footfall data for this month"))
+        prefix = _section_table_prefix_rows(
+            col_w, ff_title, ff_sub, style_tag="FfSec"
+        )
+        n_cols = len(col_w)
+        empty_tail = [""] * (n_cols - 1)
+        sty_msg = ParagraphStyle(
+            name="FfSecEmptyMsg",
+            fontName=FONT_NAME,
+            fontSize=FONT_SIZE_ROW,
+            textColor=_hex(C_MUTED),
+            alignment=TA_CENTER,
+            leading=FONT_SIZE_ROW + 2,
+        )
+        msg_para = Paragraph(escape("No footfall data for this month"), sty_msg)
+        all_rows = prefix + [[msg_para] + empty_tail]
+        tbl = Table(all_rows, colWidths=col_w)
+        style_cmds = [
+            ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
+            ("SPAN", (0, 0), (-1, 0)),
+            ("SPAN", (0, 1), (-1, 1)),
+            ("SPAN", (0, 2), (-1, 2)),
+            ("LINEABOVE", (0, 0), (-1, 0), 2.5, _hex(C_BRAND)),
+            ("TOPPADDING", (0, 0), (-1, -1), ROW_PAD_TOP),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), ROW_PAD_BOTTOM),
+            ("LEFTPADDING", (0, 0), (-1, -1), CELL_PAD_LEFT),
+            ("RIGHTPADDING", (0, 0), (-1, -1), CELL_PAD_RIGHT),
+            ("BACKGROUND", (0, 0), (-1, 0), _hex(C_BANNER)),
+            ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
+            ("FONTSIZE", (0, 0), (-1, 0), FONT_SIZE_BANNER_TITLE_SUMMARY),
+            ("TEXTCOLOR", (0, 0), (-1, 0), _hex(C_WHITE)),
+            ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+            ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
+            ("BACKGROUND", (0, 1), (-1, 1), _hex(C_BANNER)),
+            ("VALIGN", (0, 1), (-1, 1), "MIDDLE"),
+            ("BACKGROUND", (0, 2), (-1, 2), _hex(C_BAND)),
+            ("ALIGN", (0, 2), (-1, 2), "CENTER"),
+            ("VALIGN", (0, 2), (-1, 2), "MIDDLE"),
+        ]
+        tbl.setStyle(TableStyle(style_cmds))
+        elements.append(tbl)
         return elements
+
+    prefix = _section_table_prefix_rows(col_w, ff_title, ff_sub, style_tag="FfSec")
 
     headers = ["Date", "Dinner", "Lunch", "Total"]
     table_rows = [headers]
@@ -1564,45 +1610,41 @@ def _build_footfall(
             ]
         )
 
-    tbl = Table(table_rows, colWidths=col_w)
+    all_rows = prefix + table_rows
+    tbl = Table(all_rows, colWidths=col_w)
     style_cmds = [
-        ("BACKGROUND", (0, 0), (-1, 0), _hex(C_HEADER)),
-        ("TEXTCOLOR", (0, 0), (-1, 0), _hex(C_BRAND)),
-        ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
-        ("FONTSIZE", (0, 0), (-1, 0), FONT_SIZE_HEADER),
-        ("ALIGN", (0, 0), (0, -1), "LEFT"),
-        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
-        ("TOPPADDING", (0, 0), (-1, -1), ROW_PAD_TOP),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), ROW_PAD_BOTTOM),
-        ("LEFTPADDING", (0, 0), (-1, -1), CELL_PAD_LEFT),
-        ("RIGHTPADDING", (0, 0), (-1, -1), CELL_PAD_RIGHT),
-        ("FONTNAME", (0, 1), (-1, -1), FONT_NAME),
-        ("FONTSIZE", (0, 1), (-1, -1), FONT_SIZE_ROW),
-        ("TEXTCOLOR", (0, 1), (-1, -1), _hex(C_SLATE)),
         ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
-        ("LINEBELOW", (0, 0), (-1, 0), 1, _hex(C_BRAND)),
-        # Total row
-        (
-            "BACKGROUND",
-            (0, -2) if n > 0 else (0, -1),
-            (-1, -2) if n > 0 else (-1, -1),
-            _hex(C_BANNER),
-        ),
-        (
-            "TEXTCOLOR",
-            (0, -2) if n > 0 else (0, -1),
-            (-1, -2) if n > 0 else (-1, -1),
-            _hex(C_WHITE),
-        ),
-        (
-            "FONTNAME",
-            (0, -2) if n > 0 else (0, -1),
-            (-1, -2) if n > 0 else (-1, -1),
-            FONT_BOLD,
-        ),
+        ("SPAN", (0, 0), (-1, 0)),
+        ("SPAN", (0, 1), (-1, 1)),
+        ("LINEABOVE", (0, 0), (-1, 0), 2.5, _hex(C_BRAND)),
     ]
-    for i in range(1, len(table_rows) - (2 if n > 0 else 1)):
-        if i % 2 == 0:
+    style_cmds.extend(
+        _meta_header_table_style_cmds(header_row=HEADER_ROW, first_body_row=FIRST_BODY_ROW)
+    )
+    style_cmds.extend(
+        [
+            (
+                "BACKGROUND",
+                (0, -2) if n > 0 else (0, -1),
+                (-1, -2) if n > 0 else (-1, -1),
+                _hex(C_BANNER),
+            ),
+            (
+                "TEXTCOLOR",
+                (0, -2) if n > 0 else (0, -1),
+                (-1, -2) if n > 0 else (-1, -1),
+                _hex(C_WHITE),
+            ),
+            (
+                "FONTNAME",
+                (0, -2) if n > 0 else (0, -1),
+                (-1, -2) if n > 0 else (-1, -1),
+                FONT_BOLD,
+            ),
+        ]
+    )
+    for i in range(FIRST_BODY_ROW, len(all_rows) - (2 if n > 0 else 1)):
+        if (i - FIRST_BODY_ROW) % 2 == 1:
             style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(C_BAND)))
 
     # Average row styling
@@ -1630,14 +1672,10 @@ def _build_footfall_metrics(
     avail_w = _content_width(n_outlets)
 
     elements = []
-    elements.append(
-        _BannerFlowable(
-            avail_w,
-            title="Footfall Metrics",
-            subtitle=location_name[:32],
-        )
-    )
-    elements.append(Spacer(1, GAP_BELOW_BANNER))
+    HEADER_ROW = 2
+    FIRST_BODY_ROW = 3
+    ffm_title = "Footfall Metrics"
+    ffm_sub = location_name[:32]
 
     def _calc_pct_change(current: float, previous: float) -> str:
         if previous == 0:
@@ -1699,6 +1737,9 @@ def _build_footfall_metrics(
             monthly_best_idx["daily_avg"] = max(valid_avgs, key=lambda x: x[1])[0]
             monthly_worst_idx["daily_avg"] = min(valid_avgs, key=lambda x: x[1])[0]
 
+        prefix = _section_table_prefix_rows(
+            col_w, ffm_title, ffm_sub, style_tag="FfmSec"
+        )
         table_rows = [headers]
         for idx, row in enumerate(sorted_monthly[:9]):
             month = str(row.get("month", ""))
@@ -1734,31 +1775,26 @@ def _build_footfall_metrics(
                 ]
             )
 
-        tbl = Table(table_rows, colWidths=col_w)
+        all_rows = prefix + table_rows
+        tbl = Table(all_rows, colWidths=col_w)
         style_cmds = [
-            ("BACKGROUND", (0, 0), (-1, 0), _hex(C_HEADER)),
-            ("TEXTCOLOR", (0, 0), (-1, 0), _hex(C_BRAND)),
-            ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
-            ("FONTSIZE", (0, 0), (-1, 0), FONT_SIZE_HEADER),
-            ("ALIGN", (0, 0), (0, -1), "LEFT"),
-            ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
-            ("TOPPADDING", (0, 0), (-1, -1), ROW_PAD_TOP),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), ROW_PAD_BOTTOM),
-            ("LEFTPADDING", (0, 0), (-1, -1), CELL_PAD_LEFT),
-            ("RIGHTPADDING", (0, 0), (-1, -1), CELL_PAD_RIGHT),
-            ("FONTNAME", (0, 1), (-1, -1), FONT_NAME),
-            ("FONTSIZE", (0, 1), (-1, -1), FONT_SIZE_ROW),
-            ("TEXTCOLOR", (0, 1), (-1, -1), _hex(C_SLATE)),
             ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
-            ("LINEBELOW", (0, 0), (-1, 0), 1, _hex(C_BRAND)),
+            ("SPAN", (0, 0), (-1, 0)),
+            ("SPAN", (0, 1), (-1, 1)),
+            ("LINEABOVE", (0, 0), (-1, 0), 2.5, _hex(C_BRAND)),
         ]
-        for i in range(1, len(table_rows)):
-            if i % 2 == 0:
+        style_cmds.extend(
+            _meta_header_table_style_cmds(
+                header_row=HEADER_ROW, first_body_row=FIRST_BODY_ROW
+            )
+        )
+        for i in range(FIRST_BODY_ROW, len(all_rows)):
+            if (i - FIRST_BODY_ROW) % 2 == 1:
                 style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(C_BAND)))
 
         # Best/worst highlighting
         for idx in range(len(sorted_monthly[:9])):
-            ri = idx + 1
+            ri = idx + FIRST_BODY_ROW
             if idx == monthly_best_idx.get("footfall"):
                 style_cmds.append(("TEXTCOLOR", (1, ri), (1, ri), _hex(C_GREEN)))
             elif idx == monthly_worst_idx.get("footfall"):
@@ -1806,6 +1842,13 @@ def _build_footfall_metrics(
             weekly_best_idx["daily_avg"] = max(valid_avgs, key=lambda x: x[1])[0]
             weekly_worst_idx["daily_avg"] = min(valid_avgs, key=lambda x: x[1])[0]
 
+        w_prefix = (
+            []
+            if monthly
+            else _section_table_prefix_rows(
+                col_w, ffm_title, ffm_sub, style_tag="FfmWk"
+            )
+        )
         table_rows = [headers]
         for idx, row in enumerate(sorted_weekly[:4]):
             week = str(row.get("week", ""))
@@ -1835,30 +1878,49 @@ def _build_footfall_metrics(
                 ]
             )
 
-        tbl = Table(table_rows, colWidths=col_w)
-        style_cmds = [
-            ("BACKGROUND", (0, 0), (-1, 0), _hex(C_HEADER)),
-            ("TEXTCOLOR", (0, 0), (-1, 0), _hex(C_BRAND)),
-            ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
-            ("FONTSIZE", (0, 0), (-1, 0), FONT_SIZE_HEADER),
-            ("ALIGN", (0, 0), (0, -1), "LEFT"),
-            ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
-            ("TOPPADDING", (0, 0), (-1, -1), ROW_PAD_TOP),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), ROW_PAD_BOTTOM),
-            ("LEFTPADDING", (0, 0), (-1, -1), CELL_PAD_LEFT),
-            ("RIGHTPADDING", (0, 0), (-1, -1), CELL_PAD_RIGHT),
-            ("FONTNAME", (0, 1), (-1, -1), FONT_NAME),
-            ("FONTSIZE", (0, 1), (-1, -1), FONT_SIZE_ROW),
-            ("TEXTCOLOR", (0, 1), (-1, -1), _hex(C_SLATE)),
-            ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
-            ("LINEBELOW", (0, 0), (-1, 0), 1, _hex(C_BRAND)),
-        ]
-        for i in range(1, len(table_rows)):
-            if i % 2 == 0:
-                style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(C_BAND)))
+        all_rows = w_prefix + table_rows
+        tbl = Table(all_rows, colWidths=col_w)
+        if monthly:
+            style_cmds = [
+                ("BACKGROUND", (0, 0), (-1, 0), _hex(C_HEADER)),
+                ("TEXTCOLOR", (0, 0), (-1, 0), _hex(C_BRAND)),
+                ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
+                ("FONTSIZE", (0, 0), (-1, 0), FONT_SIZE_HEADER),
+                ("ALIGN", (0, 0), (0, -1), "LEFT"),
+                ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+                ("TOPPADDING", (0, 0), (-1, -1), ROW_PAD_TOP),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), ROW_PAD_BOTTOM),
+                ("LEFTPADDING", (0, 0), (-1, -1), CELL_PAD_LEFT),
+                ("RIGHTPADDING", (0, 0), (-1, -1), CELL_PAD_RIGHT),
+                ("FONTNAME", (0, 1), (-1, -1), FONT_NAME),
+                ("FONTSIZE", (0, 1), (-1, -1), FONT_SIZE_ROW),
+                ("TEXTCOLOR", (0, 1), (-1, -1), _hex(C_SLATE)),
+                ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
+                ("LINEBELOW", (0, 0), (-1, 0), 1, _hex(C_BRAND)),
+            ]
+            for i in range(1, len(table_rows)):
+                if i % 2 == 0:
+                    style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(C_BAND)))
+            row_base = 1
+        else:
+            style_cmds = [
+                ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
+                ("SPAN", (0, 0), (-1, 0)),
+                ("SPAN", (0, 1), (-1, 1)),
+                ("LINEABOVE", (0, 0), (-1, 0), 2.5, _hex(C_BRAND)),
+            ]
+            style_cmds.extend(
+                _meta_header_table_style_cmds(
+                    header_row=HEADER_ROW, first_body_row=FIRST_BODY_ROW
+                )
+            )
+            for i in range(FIRST_BODY_ROW, len(all_rows)):
+                if (i - FIRST_BODY_ROW) % 2 == 1:
+                    style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(C_BAND)))
+            row_base = FIRST_BODY_ROW
 
         for idx in range(len(sorted_weekly[:4])):
-            ri = idx + 1
+            ri = idx + row_base
             if idx == weekly_best_idx.get("footfall"):
                 style_cmds.append(("TEXTCOLOR", (1, ri), (1, ri), _hex(C_GREEN)))
             elif idx == weekly_worst_idx.get("footfall"):
@@ -1872,9 +1934,48 @@ def _build_footfall_metrics(
         elements.append(tbl)
 
     if not monthly and not weekly:
-        elements.append(
-            _EmptyDataFlowable(avail_w, "No footfall metrics data available")
+        prefix = _section_table_prefix_rows(
+            col_w, ffm_title, ffm_sub, style_tag="FfmEm"
         )
+        n_cols = len(col_w)
+        empty_tail = [""] * (n_cols - 1)
+        sty_msg = ParagraphStyle(
+            name="FfmEmptyMsg",
+            fontName=FONT_NAME,
+            fontSize=FONT_SIZE_ROW,
+            textColor=_hex(C_MUTED),
+            alignment=TA_CENTER,
+            leading=FONT_SIZE_ROW + 2,
+        )
+        msg_para = Paragraph(
+            escape("No footfall metrics data available"), sty_msg
+        )
+        all_empty = prefix + [[msg_para] + empty_tail]
+        tbl_empty = Table(all_empty, colWidths=col_w)
+        empty_cmds = [
+            ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
+            ("SPAN", (0, 0), (-1, 0)),
+            ("SPAN", (0, 1), (-1, 1)),
+            ("SPAN", (0, 2), (-1, 2)),
+            ("LINEABOVE", (0, 0), (-1, 0), 2.5, _hex(C_BRAND)),
+            ("TOPPADDING", (0, 0), (-1, -1), ROW_PAD_TOP),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), ROW_PAD_BOTTOM),
+            ("LEFTPADDING", (0, 0), (-1, -1), CELL_PAD_LEFT),
+            ("RIGHTPADDING", (0, 0), (-1, -1), CELL_PAD_RIGHT),
+            ("BACKGROUND", (0, 0), (-1, 0), _hex(C_BANNER)),
+            ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
+            ("FONTSIZE", (0, 0), (-1, 0), FONT_SIZE_BANNER_TITLE_SUMMARY),
+            ("TEXTCOLOR", (0, 0), (-1, 0), _hex(C_WHITE)),
+            ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+            ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
+            ("BACKGROUND", (0, 1), (-1, 1), _hex(C_BANNER)),
+            ("VALIGN", (0, 1), (-1, 1), "MIDDLE"),
+            ("BACKGROUND", (0, 2), (-1, 2), _hex(C_BAND)),
+            ("ALIGN", (0, 2), (-1, 2), "CENTER"),
+            ("VALIGN", (0, 2), (-1, 2), "MIDDLE"),
+        ]
+        tbl_empty.setStyle(TableStyle(empty_cmds))
+        elements.append(tbl_empty)
 
     return elements
 
