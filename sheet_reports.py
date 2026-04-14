@@ -1188,7 +1188,7 @@ def _build_category(
                 _short_outlet_name(nm, 8 if len(per_outlet) > 2 else 10)
                 for nm, _ in per_outlet
             ]
-            + ["Comb.", "MTD", "%"]
+            + ["Comb.", "MTD"]
         )
     )
 
