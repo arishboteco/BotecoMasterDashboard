@@ -1021,7 +1021,14 @@ def render_target_and_daily(
 
         # Target achievement drill-down table
         with st.expander("View data"):
-            if multi_analytics and not df_raw.empty:
+            _cols_needed = {"target", "pct_target"}
+            _has_target_cols = (
+                multi_analytics
+                and not df_raw.empty
+                and _cols_needed.issubset(df_raw.columns)
+            )
+
+            if _has_target_cols:
                 _tgt_tbl = df_raw[
                     ["date", "Outlet", "net_total", "target", "pct_target"]
                 ].copy()
