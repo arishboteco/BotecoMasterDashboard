@@ -3,7 +3,40 @@
 from __future__ import annotations
 
 from typing import Dict, List, Optional
+
 import streamlit as st
+
+# Must match database_writes._CATEGORY_ROW_PREFIX (avoid importing database_writes here).
+_CATEGORY_ROW_PREFIX = "__category_row:"
+
+
+def _sqlite_daily_table() -> str:
+    """Legacy local schema table name (Supabase uses singular daily_summary)."""
+    return "daily_summaries"
+
+
+def _sqlite_categories_for_summary(conn, summary_id: int) -> List[Dict]:
+    """Rebuild category aggregates saved with synthetic item_sales rows."""
+    cur = conn.cursor()
+    cur.execute(
+        f"""
+        SELECT category, qty, amount
+        FROM item_sales
+        WHERE summary_id = ?
+          AND item_name LIKE ?
+        """,
+        (summary_id, f"{_CATEGORY_ROW_PREFIX}%"),
+    )
+    out: List[Dict] = []
+    for r in cur.fetchall():
+        out.append(
+            {
+                "category": r["category"],
+                "qty": int(r["qty"] or 0),
+                "amount": float(r["amount"] or 0),
+            }
+        )
+    return out
 
 
 @st.cache_data(ttl=600)
@@ -40,11 +73,12 @@ def peek_daily_net_sales(location_id: int, date: str) -> Optional[float]:
             return None
         return float(result.data[0]["net_total"] or 0)
     else:
+        tbl = _sqlite_daily_table()
         with database.db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                """
-                SELECT net_total FROM daily_summary
+                f"""
+                SELECT net_total FROM {tbl}
                 WHERE location_id = ? AND date = ?
                 """,
                 (location_id, date),
@@ -72,14 +106,19 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
             return None
         return result.data[0]
     else:
+        tbl = _sqlite_daily_table()
         with database.db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT * FROM daily_summary WHERE location_id = ? AND date = ?",
+                f"SELECT * FROM {tbl} WHERE location_id = ? AND date = ?",
                 (location_id, date),
             )
             row = cursor.fetchone()
-        return dict(row) if row else None
+            if not row:
+                return None
+            d = dict(row)
+            d["categories"] = _sqlite_categories_for_summary(conn, int(d["id"]))
+        return d
 
 
 def get_summaries_for_date_range(
@@ -149,12 +188,13 @@ def get_summaries_for_date_range_multi(
         )
         return result.data
     else:
+        tbl = _sqlite_daily_table()
         with database.db_connection() as conn:
             cursor = conn.cursor()
             placeholders = ",".join("?" * len(location_ids))
             cursor.execute(
                 f"""
-                SELECT * FROM daily_summary 
+                SELECT * FROM {tbl}
                 WHERE location_id IN ({placeholders}) AND date >= ? AND date <= ?
                 ORDER BY date
                 """,
@@ -184,15 +224,31 @@ def get_category_totals_for_date_range(
         )
         return result.data
     else:
+        tbl = _sqlite_daily_table()
         with database.db_connection() as conn:
             cursor = conn.cursor()
             placeholders = ",".join("?" * len(location_ids))
             cursor.execute(
                 f"""
-                SELECT * FROM category_summary 
-                WHERE location_id IN ({placeholders}) AND date >= ? AND date <= ?
+                SELECT
+                    ds.location_id AS location_id,
+                    ds.date AS date,
+                    i.category AS category_name,
+                    SUM(i.amount) AS net_amount,
+                    SUM(i.qty) AS qty
+                FROM item_sales i
+                INNER JOIN {tbl} ds ON ds.id = i.summary_id
+                WHERE ds.location_id IN ({placeholders})
+                  AND ds.date >= ? AND ds.date <= ?
+                  AND i.item_name LIKE ?
+                GROUP BY ds.location_id, ds.date, i.category
                 """,
-                (*location_ids, start_date, end_date),
+                (
+                    *location_ids,
+                    start_date,
+                    end_date,
+                    f"{_CATEGORY_ROW_PREFIX}%",
+                ),
             )
             rows = cursor.fetchall()
         return [dict(row) for row in rows]
@@ -266,12 +322,13 @@ def get_most_recent_date_with_data(location_ids: List[int]) -> Optional[str]:
             return None
         return result.data[0]["date"]
     else:
+        tbl = _sqlite_daily_table()
         with database.db_connection() as conn:
             cursor = conn.cursor()
             placeholders = ",".join("?" * len(location_ids))
             cursor.execute(
                 f"""
-                SELECT date FROM daily_summary 
+                SELECT date FROM {tbl}
                 WHERE location_id IN ({placeholders})
                 ORDER BY date DESC LIMIT 1
                 """,
@@ -329,6 +386,7 @@ def get_upload_history(location_id: int, limit: int = 50) -> List[Dict]:
         result = (
             supabase.table("upload_history")
             .select("*")
+            .eq("location_id", location_id)
             .order("uploaded_at", desc=True)
             .limit(limit)
             .execute()
@@ -338,8 +396,12 @@ def get_upload_history(location_id: int, limit: int = 50) -> List[Dict]:
         with database.db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT * FROM upload_history ORDER BY uploaded_at DESC LIMIT ?",
-                (limit,),
+                """
+                SELECT * FROM upload_history
+                WHERE location_id = ?
+                ORDER BY uploaded_at DESC LIMIT ?
+                """,
+                (location_id, limit),
             )
             rows = cursor.fetchall()
         return [dict(row) for row in rows]
@@ -377,9 +439,10 @@ def get_all_summaries_for_export(
 
         return result.data
     else:
+        tbl = _sqlite_daily_table()
         with database.db_connection() as conn:
             cursor = conn.cursor()
-            sql = "SELECT * FROM daily_summary WHERE 1=1"
+            sql = f"SELECT * FROM {tbl} WHERE 1=1"
             params = []
 
             if location_ids:

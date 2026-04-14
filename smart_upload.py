@@ -74,7 +74,7 @@ class FileResult:
     importable: bool
     notes: List[str] = field(default_factory=list)
     error: Optional[str] = None
-    content: Optional[bytes] = field(default_factory=None)
+    content: Optional[bytes] = None
 
 
 @dataclass
@@ -792,11 +792,12 @@ def save_smart_upload_results(
                 raw_records[0].get("restaurant", "") if raw_records else ""
             )
             csv_location_id = db_writes._get_location_id(restaurant_name)
+            effective_location_id = csv_location_id
 
             if csv_location_id != location_id:
                 messages.append(
-                    f"{fr.filename}: restaurant '{restaurant_name}' mapped to "
-                    f"location {csv_location_id}, but saving to {location_id}"
+                    f"{fr.filename}: outlet inferred from CSV is location {csv_location_id} "
+                    f"('{restaurant_name}'); summaries and history saved there (not {location_id})."
                 )
 
             bill_items_to_save = []
@@ -877,8 +878,8 @@ def save_smart_upload_results(
                     "complementary_amount": round(agg["complementary_amount"], 2),
                 }
                 try:
-                    db_writes.save_daily_summary(
-                        client, location_id, date_str, daily_data
+                    db_writes.upsert_daily_summary_supabase(
+                        client, effective_location_id, date_str, daily_data
                     )
                 except Exception as e:
                     messages.append(f"Error saving daily summary for {date_str}: {e}")
@@ -889,7 +890,7 @@ def save_smart_upload_results(
                     net_amt = cat_data["net_amount"].get(cat_name, 0.0)
                     cat_records.append(
                         {
-                            "location_id": location_id,
+                            "location_id": effective_location_id,
                             "date": date_str,
                             "category_name": cat_name,
                             "net_amount": round(net_amt, 2),
@@ -910,7 +911,7 @@ def save_smart_upload_results(
                 fnames = fr.filename
                 primary_kind = "dynamic_report"
                 database.save_upload_record(
-                    location_id,
+                    effective_location_id,
                     date_str,
                     fnames,
                     primary_kind,
