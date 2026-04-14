@@ -299,15 +299,15 @@ def build_category_chart(
     else:
         cat_df_chart = major_cats
 
-    fig = px.pie(
+    fig = px.treemap(
         cat_df_chart,
         names="category",
         values="amount",
         title=f"Category revenue mix (Total: {utils.format_currency(total_cat)})",
-        hole=0.4,  # donut
+        color="category",
         color_discrete_sequence=ui_theme.CHART_COLORWAY,
     )
-    fig.update_traces(textposition="inside", textinfo="percent+label")
+    fig.update_traces(textinfo="label+percent entry")
     fig.update_layout(height=ui_theme.CHART_HEIGHT)
 
     return fig

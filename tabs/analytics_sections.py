@@ -695,19 +695,15 @@ def render_revenue_breakdown(
                 showlegend=False,
             )
         else:
-            fig_cat = px.pie(
+            fig_cat = px.treemap(
                 chart_df,
                 names="category",
                 values="amount",
                 title=f"Category revenue mix (Total: {utils.format_rupee_short(total_cat)})",
-                hole=0.4,
                 color="category",
                 color_discrete_sequence=ui_theme.CHART_COLORWAY,
             )
-            fig_cat.update_traces(
-                textposition="inside",
-                textinfo="percent+label",
-            )
+            fig_cat.update_traces(textinfo="label+percent entry")
             fig_cat.update_layout(height=ui_theme.CHART_HEIGHT)
 
         st.plotly_chart(fig_cat, width="stretch")
