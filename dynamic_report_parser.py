@@ -733,3 +733,128 @@ def parse_dynamic_report(
             f"Detected Dynamic Report v1 format (column-category) in {filename}"
         )
         return _parse_v1(df, col_map, filename)
+
+
+def parse_dynamic_report_raw(
+    content: bytes, filename: str
+) -> Tuple[Optional[List[Dict[str, Any]]], List[str]]:
+    """Parse Dynamic Report CSV and return raw bill items for the new schema.
+
+    Returns list of bill_items records ready to insert into the database.
+
+    Args:
+        content: Raw CSV bytes
+        filename: Original filename (for error messages)
+
+    Returns:
+        Tuple of (list of bill_items records, list of notes/warnings)
+    """
+    notes: List[str] = []
+
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        try:
+            text = content.decode("utf-8")
+        except UnicodeDecodeError:
+            return None, [f"Cannot decode {filename}: not valid UTF-8"]
+
+    try:
+        df = pd.read_csv(StringIO(text), dtype=str)
+    except Exception as ex:
+        return None, [f"Cannot parse {filename} as CSV: {ex}"]
+
+    if df.empty:
+        return None, [f"{filename} is empty"]
+
+    df.columns = [c.strip() for c in df.columns]
+
+    bill_items_records: List[Dict[str, Any]] = []
+
+    for _, row in df.iterrows():
+        restaurant = str(row.get("Restaurant", "")).strip()
+        bill_date = str(row.get("Bill Date", "")).strip()
+        bill_no = str(row.get("Bill No", "")).strip()
+        server_name = (
+            str(row.get("Server Name", "")).strip()
+            if pd.notna(row.get("Server Name"))
+            else ""
+        )
+        table_no = (
+            str(row.get("Table No", "")).strip()
+            if pd.notna(row.get("Table No"))
+            else ""
+        )
+        bill_status = (
+            str(row.get("Bill Status", "")).strip()
+            if pd.notna(row.get("Bill Status"))
+            else ""
+        )
+        payment_type = (
+            str(row.get("Payment Type", "")).strip()
+            if pd.notna(row.get("Payment Type"))
+            else ""
+        )
+        category_name = (
+            str(row.get("Category Name", "")).strip()
+            if pd.notna(row.get("Category Name"))
+            else ""
+        )
+        item_name = (
+            str(row.get("Item Name", "")).strip()
+            if pd.notna(row.get("Item Name"))
+            else ""
+        )
+
+        item_qty = _safe_int(row.get("Item Qty", "0"))
+        pax = _safe_int(row.get("Pax", "0"))
+        discount_reason = (
+            str(row.get("Discount Reason", "")).strip()
+            if pd.notna(row.get("Discount Reason"))
+            else ""
+        )
+        created_date_time = (
+            str(row.get("Created Date Time", "")).strip()
+            if pd.notna(row.get("Created Date Time"))
+            else ""
+        )
+
+        net_amount = _safe_float(row.get("Net Amount", "0"))
+        gross_amount = _safe_float(row.get("Gross Sale", "0"))
+        discount = _safe_float(row.get("Discount", "0"))
+        cgst = _safe_float(row.get("CGST (2.5)", "0"))
+        sgst = _safe_float(row.get("SGST (2.5)", "0"))
+        service_charge = _safe_float(row.get("Service Charge (10)", "0"))
+        gst_on_sc = _safe_float(row.get("Gst On Service Charge (5)", "0"))
+        cancelled_amount = _safe_float(row.get("Cancelled Amount", "0"))
+        complementary_amount = _safe_float(row.get("Complementary Amount", "0"))
+
+        bill_items_records.append(
+            {
+                "restaurant": restaurant,
+                "bill_date": bill_date,
+                "bill_no": bill_no,
+                "server_name": server_name or None,
+                "table_no": table_no or None,
+                "bill_status": bill_status,
+                "payment_type": payment_type or None,
+                "category_name": category_name or None,
+                "item_name": item_name or None,
+                "item_qty": item_qty,
+                "pax": pax,
+                "discount_reason": discount_reason or None,
+                "created_date_time": created_date_time or None,
+                "net_amount": net_amount,
+                "gross_amount": gross_amount,
+                "discount": discount,
+                "cgst": cgst,
+                "sgst": sgst,
+                "service_charge": service_charge,
+                "gst_on_service_charge": gst_on_sc,
+                "cancelled_amount": cancelled_amount,
+                "complementary_amount": complementary_amount,
+            }
+        )
+
+    notes.append(f"Parsed {len(bill_items_records)} raw records from {filename}")
+    return bill_items_records, notes

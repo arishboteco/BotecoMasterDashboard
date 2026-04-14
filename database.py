@@ -968,3 +968,36 @@ def wipe_all_data() -> Tuple[Dict[str, int], List[str]]:
     from database_writes import wipe_all_data as _impl
 
     return _impl()
+
+
+# Re-export functions from database_reads for backward compatibility
+from database_reads import (
+    get_all_locations,
+    peek_daily_net_sales,
+    get_all_summaries_for_export,
+    get_daily_summary,
+    get_summaries_for_month,
+    get_category_mtd_totals,
+    get_summaries_for_date_range,
+    get_summaries_for_date_range_multi,
+    get_mtd_totals_multi,
+    get_summaries_for_month_multi,
+    get_most_recent_date_with_data,
+    get_location_settings,
+    get_upload_history,
+    get_recent_summaries,
+    get_category_totals_for_date_range,
+)
+
+# Re-export functions from database_analytics
+from database_analytics import (
+    get_monthly_footfall_multi,
+    get_weekly_footfall_multi,
+    get_daily_sales_for_date_range,
+    get_category_sales_for_date_range,
+    get_service_sales_for_date_range,
+    get_daily_service_sales_for_date_range,
+    get_super_category_mtd_totals,
+    get_top_items_for_date_range,
+    get_payment_breakdown_for_date_range,
+)
