@@ -15,73 +15,95 @@ Design language (Boteco Mango):
   - Golden mustard       (#946B00)
   - Red error            (#DC2626)
 
-The composite PNG is built with matplotlib drawing primitives
-(patches + text), not tables, so every element can be positioned
-and styled independently.
+The composite PNG is built with ReportLab Platypus (Table + Flowables),
+rendered to PDF and converted to PNG via PyMuPDF, then stacked with Pillow.
 """
 
-import math
+import os
 import re
 from io import BytesIO
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 import streamlit as st
-import matplotlib
 
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-from matplotlib.patches import FancyBboxPatch
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Table,
+    TableStyle,
+    Spacer,
+    Flowable,
+)
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+import fitz
+from PIL import Image as PILImage
 
 import config
 
-# -- Palette (Boteco Mango) ---------------------------------------------------
-C_PAGE = "#F7FAFC"  # Main background — soft off-white
-C_CARD = "#FFFFFF"  # Card background — white
-C_BRAND = "#1F5FA8"  # Deep Royal Blue — primary actions, accent bars
-C_BRAND_DARK = "#174A82"  # Dark blue — hover/pressed
-C_BANNER = "#1A3A5C"  # Dark navy blue — section banners & totals rows
-C_HEADER = "#EEF2F7"  # Light grey — table header row backgrounds
-C_SLATE = "#1E293B"  # Slate 800 (body text)
-C_DATE_LABEL = (
-    "#A5BCD2"  # Light blue-grey — date/location labels in banners (WCAG AA on #1A3A5C)
+# ── Font registration ────────────────────────────────────────────────────────
+FONT_DIR = os.path.join(os.path.dirname(__file__), "fonts")
+pdfmetrics.registerFont(TTFont("DejaVuSans", os.path.join(FONT_DIR, "DejaVuSans.ttf")))
+pdfmetrics.registerFont(
+    TTFont("DejaVuSans-Bold", os.path.join(FONT_DIR, "DejaVuSans-Bold.ttf"))
 )
-C_MUTED = "#64748B"  # Slate 500 (muted text — WCAG AA compliant)
-C_BORDER = "#E2E8F0"  # Slate 200 (card borders)
-C_BAND = "#EDF2F7"  # Alternating row band — light blue-grey (distinguishable from page)
-C_GREEN = "#2E7D32"  # Leaf green — positive/achievement (WCAG AA)
-C_AMBER = "#946B00"  # Golden mustard — warning (WCAG AA)
-C_RED = "#DC2626"  # Red — negative/discount (WCAG AA)
-C_WHITE = "#FFFFFF"  # White
 
-FONT = "DejaVu Sans"
+# ── Palette (Boteco Mango) ─────────────────────────────────────────────────
+C_PAGE = "#F7FAFC"
+C_CARD = "#FFFFFF"
+C_BRAND = "#1F5FA8"
+C_BRAND_DARK = "#174A82"
+C_BANNER = "#1A3A5C"
+C_HEADER = "#EEF2F7"
+C_SLATE = "#1E293B"
+C_DATE_LABEL = "#A5BCD2"
+C_MUTED = "#64748B"
+C_BORDER = "#E2E8F0"
+C_BAND = "#EDF2F7"
+C_GREEN = "#2E7D32"
+C_AMBER = "#946B00"
+C_RED = "#DC2626"
+C_WHITE = "#FFFFFF"
+
+FONT_NAME = "DejaVuSans"
+FONT_BOLD = "DejaVuSans-Bold"
 DPI = 150
 
-# ── Fixed canvas dimensions (inches) ──────────────────────────────────────
-SECTION_WIDTHS = {1: 8.5, 2: 10.0}  # width by outlet count; >=3 capped at 12.0
-SECTION_HEIGHTS = {
-    "sales_summary": 18.0,
-    "category": 4.5,
-    "service": 4.0,
-    "footfall": 10.5,
-    "footfall_metrics": 7.0,
-}
+# ── Layout constants (points) ───────────────────────────────────────────────
+SECTION_WIDTHS = {1: 612, 2: 720}
+PAGE_PAD = 12
 
-# ── Fixed layout constants (normalized 0-1 axis units) ───────────────────
-BANNER_H = 0.038  # banner stripe height
-GAP_BELOW = 0.006  # gap between banner bottom and first row
-ROW_H = 0.022  # every data/header row is this tall
-BRAND_BAR_H = 0.003  # thin accent at very top of banner
-TITLE_Y_FRAC = 0.30  # title text Y as fraction of banner height
-SUBTITLE_Y_FRAC = 0.68  # subtitle/date text Y as fraction of banner height
-ROW_FS = 9.5  # default row font size
-HEADER_FS = 9.5  # default header row font size
-BANNER_TITLE_FS = 10.0  # banner title font size
-BANNER_SUB_FS = 8.0  # banner subtitle font size
+BANNER_PAD_TOP = 8
+BANNER_PAD_BOTTOM = 6
+BANNER_PAD_LEFT = 10
+ROW_PAD_TOP = 3
+ROW_PAD_BOTTOM = 3
+CELL_PAD_LEFT = 6
+CELL_PAD_RIGHT = 6
+GAP_BELOW_BANNER = 4
+GAP_ABOVE_SECTION_LABEL = 4
+GAP_ABOVE_SUBSECTION = 6
+
+FONT_SIZE_ROW = 8.5
+FONT_SIZE_HEADER = 8.5
+FONT_SIZE_BANNER_TITLE = 9.5
+FONT_SIZE_BANNER_SUB = 7.5
+FONT_SIZE_BANNER_TITLE_SUMMARY = 10.5
+FONT_SIZE_BANNER_SUB_SUMMARY = 8.5
+FONT_SIZE_SECTION_LABEL = 8.5
+FONT_SIZE_KPI_LABEL = 8.5
+FONT_SIZE_KPI_VALUE = 16
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+def _hex(hx: str) -> colors.HexColor:
+    return colors.HexColor(hx)
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
 
 
 def _r(n) -> str:
@@ -165,10 +187,9 @@ def _collapse_super_category_totals(raw: Dict[str, float]) -> Dict[str, float]:
 
 
 def _format_week_label(week_str: str) -> str:
-    """Return week string as-is (expected format: YYYY-W##)."""
     week_str = str(week_str or "").strip()
     if not week_str:
-        return "—"
+        return "\u2014"
     return week_str
 
 
@@ -191,7 +212,6 @@ def compute_forecast_metrics(
     report_data: Dict[str, Any],
     daily_sales_history: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
-    """Compute blended month-end forecast (run-rate + weekday-weighted)."""
     iso = str(report_data.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]
     try:
         dt = datetime.strptime(iso, "%Y-%m-%d")
@@ -205,17 +225,14 @@ def compute_forecast_metrics(
     mtd_net = _safe_float(report_data.get("mtd_net_sales"))
     mtd_target = _safe_float(report_data.get("mtd_target"))
 
-    # Pure run-rate forecast
     forecast_run_rate = (mtd_net / elapsed) * dim if elapsed > 0 else 0.0
 
-    # Weekday-weighted forecast for remaining days
     forecast_weekday = _weekday_weighted_forecast(
         dt,
         remaining,
         daily_sales_history or [],
     )
 
-    # Blended: 50/50 if enough history, else pure run-rate
     if len(daily_sales_history or []) >= 7:
         forecast = 0.5 * forecast_run_rate + 0.5 * forecast_weekday
     else:
@@ -245,11 +262,8 @@ def _weekday_weighted_forecast(
     remaining_days: int,
     history: List[Dict[str, Any]],
 ) -> float:
-    """Forecast remaining days using weekday averages from history."""
     if not history or remaining_days <= 0:
         return 0.0
-
-    # Group sales by weekday (0=Mon..6=Sun)
     weekday_sums: Dict[int, float] = {}
     weekday_counts: Dict[int, int] = {}
     for row in history:
@@ -264,20 +278,14 @@ def _weekday_weighted_forecast(
         wd = d.weekday()
         weekday_sums[wd] = weekday_sums.get(wd, 0) + net
         weekday_counts[wd] = weekday_counts.get(wd, 0) + 1
-
     if not weekday_counts:
         return 0.0
-
-    # Compute average per weekday
     weekday_avg = {wd: weekday_sums[wd] / weekday_counts[wd] for wd in weekday_counts}
-
-    # Sum forecast for each remaining calendar day
     forecast = 0.0
     for i in range(1, remaining_days + 1):
         future_date = today + timedelta(days=i)
         wd = future_date.weekday()
         forecast += weekday_avg.get(wd, 0.0)
-
     return forecast
 
 
@@ -290,10 +298,8 @@ def status_from_threshold(
     amber_max: Optional[float] = None,
     higher_is_better: bool,
 ) -> Dict[str, Any]:
-    """Map a metric value to red/amber/green or na status."""
     if value is None:
         return {"status": "na", "color": C_MUTED, "label": "N/A"}
-
     v = float(value)
     if higher_is_better:
         if green_min is not None and v >= green_min:
@@ -301,7 +307,6 @@ def status_from_threshold(
         if amber_min is not None and v >= amber_min:
             return {"status": "amber", "color": C_AMBER, "label": "Watch"}
         return {"status": "red", "color": C_RED, "label": "At Risk"}
-
     if green_max is not None and v <= green_max:
         return {"status": "green", "color": C_GREEN, "label": "Healthy"}
     if amber_max is not None and v <= amber_max:
@@ -310,7 +315,6 @@ def status_from_threshold(
 
 
 def build_verbose_daily_summary(report_data: Dict[str, Any]) -> str:
-    """Build a structured day brief for PNG and WhatsApp outputs."""
     r = dict(report_data or {})
     forecast = compute_forecast_metrics(r)
 
@@ -367,7 +371,6 @@ def compute_metric_statuses(
     report_data: Dict[str, Any],
     daily_sales_history: Optional[List[Dict]] = None,
 ) -> Dict[str, Dict[str, Any]]:
-    """Compute status colors for core target/profitability metrics."""
     r = dict(report_data or {})
     forecast = compute_forecast_metrics(r, daily_sales_history=daily_sales_history)
 
@@ -416,355 +419,421 @@ def compute_metric_statuses(
     }
 
 
-def _save_fig(fig) -> BytesIO:
+# ═══════════════════════════════════════════════════════════════════════════
+# PDF → PNG conversion
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _pdf_bytes_to_png(pdf_bytes: BytesIO, dpi: int = DPI) -> BytesIO:
+    """Convert a single-page PDF to a PNG BytesIO at the given DPI."""
+    doc = fitz.open(stream=pdf_bytes.read(), filetype="pdf")
+    page = doc[0]
+    pix = page.get_pixmap(dpi=dpi)
+    img = PILImage.frombytes("RGB", [pix.width, pix.height], pix.samples)
     buf = BytesIO()
-    fig.savefig(
-        buf,
-        format="png",
-        dpi=DPI,
-        bbox_inches=None,
-        pad_inches=0.02,
-        facecolor=fig.get_facecolor(),
-    )
-    plt.close(fig)
+    img.save(buf, format="PNG", optimize=False)
     buf.seek(0)
+    doc.close()
     return buf
 
 
-def _save_section(fig, ax, cur_y: float) -> BytesIO:
-    """Crop axis to content span and save with bbox_inches='tight'.
+def _render_elements_to_png(
+    elements: list,
+    width_pt: float,
+    dpi: int = DPI,
+) -> BytesIO:
+    """Render a list of Platypus Flowables to a PNG BytesIO.
 
-    After drawing from y=1.0 (banner_top) down to cur_y, sets the
-    axis limits to the content region with a small bottom pad, then
-    saves so the PNG has no wasted space below the last row.
+    Creates a single-page PDF with auto-height, then converts to PNG.
     """
-    bottom_pad = ROW_H * 0.5
-    ax.set_ylim(cur_y - bottom_pad, 1.0 + ROW_H * 0.15)
     buf = BytesIO()
-    fig.savefig(
+    page_w = width_pt
+    left_margin = PAGE_PAD
+    right_margin = PAGE_PAD
+    top_margin = PAGE_PAD
+    bottom_margin = PAGE_PAD
+
+    doc = SimpleDocTemplate(
         buf,
-        format="png",
-        dpi=DPI,
-        bbox_inches="tight",
-        pad_inches=0.02,
-        facecolor=fig.get_facecolor(),
+        pagesize=(page_w, 2000),
+        leftMargin=left_margin,
+        rightMargin=right_margin,
+        topMargin=top_margin,
+        bottomMargin=bottom_margin,
     )
-    plt.close(fig)
+
+    story = list(elements)
+
+    doc.build(story, onFirstPage=lambda d, c: None, onLaterPages=lambda d, c: None)
     buf.seek(0)
-    return buf
+
+    pdf_buf = BytesIO(buf.getvalue())
+    png_buf = _pdf_bytes_to_png(pdf_buf, dpi=dpi)
+    return png_buf
 
 
-# ── Drawing primitives ────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════
+# Custom Flowables
+# ═══════════════════════════════════════════════════════════════════════════
 
 
-def _card(ax, x, y, w, h, radius=0.012, color=C_CARD, border=C_BORDER, lw=0.8):
-    """Draw a rounded-corner card."""
-    patch = FancyBboxPatch(
-        (x, y),
-        w,
-        h,
-        boxstyle=f"round,pad=0,rounding_size={radius}",
-        linewidth=lw,
-        edgecolor=border,
-        facecolor=color,
-        transform=ax.transData,
-        clip_on=False,
-        zorder=2,
-    )
-    ax.add_patch(patch)
+class _BannerFlowable(Flowable):
+    """Full-width banner with brand bar, title, subtitle, right-aligned KPI."""
 
-
-def _hbar(ax, x, y, w, h=0.009, color=C_BRAND):
-    """Draw a solid horizontal rule / accent bar."""
-    patch = mpatches.Rectangle(
-        (x, y),
-        w,
-        h,
-        linewidth=0,
-        facecolor=color,
-        transform=ax.transData,
-        clip_on=False,
-        zorder=3,
-    )
-    ax.add_patch(patch)
-
-
-def _label(
-    ax,
-    x,
-    y,
-    text,
-    size=ROW_FS,
-    color=C_SLATE,
-    weight="normal",
-    ha="left",
-    va="top",
-    zorder=4,
-):
-    ax.text(
-        x,
-        y,
-        text,
-        fontsize=size,
-        color=color,
-        fontfamily=FONT,
-        fontweight=weight,
-        ha=ha,
-        va=va,
-        zorder=zorder,
-        clip_on=False,
-    )
-
-
-def _divider(ax, x, y, w, color=C_BORDER, lw=0.5):
-    ax.plot(
-        [x, x + w],
-        [y, y],
-        color=color,
-        linewidth=lw,
-        transform=ax.transData,
-        clip_on=False,
-        zorder=3,
-    )
-
-
-# ── KPI tile ──────────────────────────────────────────────────────────────────
-
-
-def _kpi_tile(ax, x, y, w, h, label, value, sub=None, accent_color=C_BRAND):
-    """A single KPI card: accent top bar → label → big value → optional sub."""
-    _card(ax, x, y, w, h)
-    _hbar(ax, x, y + h - 0.009, w, color=accent_color)
-    _label(ax, x + 0.012, y + h - 0.036, label, size=10.2, color=C_MUTED)
-    _label(
-        ax, x + 0.012, y + h - 0.087, value, size=18.75, color=C_SLATE, weight="bold"
-    )
-    if sub:
-        _label(ax, x + 0.012, y + 0.027, sub, size=9.5, color=C_MUTED)
-
-
-# ── Table row helpers ─────────────────────────────────────────────────────────
-
-
-def _table_header_row(ax, x, y, cols, widths, row_h=ROW_H, bg=C_HEADER, font_size=None):
-    """Light header row for a data table."""
-    total_w = sum(widths)
-    patch = mpatches.Rectangle(
-        (x, y),
-        total_w,
-        row_h,
-        linewidth=0,
-        facecolor=bg,
-        transform=ax.transData,
-        clip_on=False,
-        zorder=2,
-    )
-    ax.add_patch(patch)
-    fs = font_size if font_size else ROW_FS
-    cx = x
-    for i, (col, cw) in enumerate(zip(cols, widths)):
-        ha = "left" if i == 0 else "right"
-        px = cx + 0.006 if ha == "left" else cx + cw - 0.006
-        _label(
-            ax,
-            px,
-            y + row_h * 0.5,
-            col,
-            size=fs,
-            color=C_BRAND,
-            weight="bold",
-            ha=ha,
+    def __init__(
+        self,
+        width: float,
+        title: str,
+        subtitle: str,
+        right_title: str = "",
+        right_subtitle: str = "",
+        right_title_color: str = C_WHITE,
+    ):
+        Flowable.__init__(self)
+        self.width = width
+        self.title = title
+        self.subtitle = subtitle
+        self.right_title = right_title
+        self.right_subtitle = right_subtitle
+        self.right_title_color = right_title_color
+        self.height = (
+            BANNER_PAD_TOP
+            + FONT_SIZE_BANNER_TITLE_SUMMARY
+            + FONT_SIZE_BANNER_SUB_SUMMARY
+            + BANNER_PAD_BOTTOM
+            + 6
         )
-        cx += cw
 
+    def wrap(self, availWidth, availHeight):
+        return (self.width, self.height)
 
-def _table_data_row(
-    ax,
-    x,
-    y,
-    cells,
-    widths,
-    row_h=ROW_H,
-    bg=C_CARD,
-    alt_bg=C_BAND,
-    is_alt=False,
-    bold=False,
-    text_color=C_SLATE,
-    right_color=None,
-    font_size=None,
-    cell_colors=None,
-):
-    """One data row — alternating band if is_alt."""
-    total_w = sum(widths)
-    fill = alt_bg if is_alt else bg
-    patch = mpatches.Rectangle(
-        (x, y),
-        total_w,
-        row_h,
-        linewidth=0,
-        facecolor=fill,
-        transform=ax.transData,
-        clip_on=False,
-        zorder=2,
-    )
-    ax.add_patch(patch)
-    fs = font_size if font_size else ROW_FS
-    cx = x
-    for i, (cell, cw) in enumerate(zip(cells, widths)):
-        ha = "left" if i == 0 else "right"
-        px = cx + 0.006 if ha == "left" else cx + cw - 0.006
-        if cell_colors and i < len(cell_colors) and cell_colors[i]:
-            rc = cell_colors[i]
-        elif right_color and i > 0:
-            rc = right_color
-        else:
-            rc = text_color
-        _label(
-            ax,
-            px,
-            y + row_h * 0.5,
-            str(cell),
-            size=fs,
-            color=rc,
-            weight="bold" if bold else "normal",
-            ha=ha,
+    def draw(self):
+        canvas = self.canv
+        h = self.height
+        w = self.width
+
+        # Dark navy background
+        canvas.setFillColor(_hex(C_BANNER))
+        canvas.rect(0, 0, w, h, fill=1, stroke=0)
+
+        # Thin brand accent bar at top
+        canvas.setFillColor(_hex(C_BRAND))
+        canvas.rect(0, h - 2.5, w, 2.5, fill=1, stroke=0)
+
+        # Title (left)
+        canvas.setFont(FONT_BOLD, FONT_SIZE_BANNER_TITLE_SUMMARY)
+        canvas.setFillColor(_hex(C_WHITE))
+        canvas.drawString(
+            8, h - BANNER_PAD_TOP - FONT_SIZE_BANNER_TITLE_SUMMARY, self.title
         )
-        cx += cw
+
+        # Subtitle (left)
+        canvas.setFont(FONT_NAME, FONT_SIZE_BANNER_SUB_SUMMARY)
+        canvas.setFillColor(_hex(C_DATE_LABEL))
+        canvas.drawString(
+            8,
+            h
+            - BANNER_PAD_TOP
+            - FONT_SIZE_BANNER_TITLE_SUMMARY
+            - FONT_SIZE_BANNER_SUB_SUMMARY
+            - 1,
+            self.subtitle,
+        )
+
+        # Right-aligned title
+        if self.right_title:
+            canvas.setFont(FONT_BOLD, FONT_SIZE_BANNER_TITLE)
+            canvas.setFillColor(_hex(self.right_title_color))
+            canvas.drawRightString(
+                w - 8, h - BANNER_PAD_TOP - FONT_SIZE_BANNER_TITLE, self.right_title
+            )
+
+        # Right-aligned subtitle
+        if self.right_subtitle:
+            canvas.setFont(FONT_NAME, FONT_SIZE_BANNER_SUB)
+            canvas.setFillColor(_hex(C_WHITE))
+            canvas.drawRightString(
+                w - 8,
+                h - BANNER_PAD_TOP - FONT_SIZE_BANNER_TITLE - FONT_SIZE_BANNER_SUB - 1,
+                self.right_subtitle,
+            )
 
 
-def _table_section_label(ax, x, y, text, w, row_h=ROW_H, color=C_BRAND):
-    """A full-width accent-coloured section label inside a table."""
-    patch = mpatches.Rectangle(
-        (x, y),
-        w,
-        row_h,
-        linewidth=0,
-        facecolor=color + "18",  # ~10% alpha via hex
-        transform=ax.transData,
-        clip_on=False,
-        zorder=2,
-    )
-    ax.add_patch(patch)
-    _hbar(ax, x, y, 0.006, row_h, color=color)
-    _label(
-        ax, x + 0.012, y + row_h * 0.5, text, size=ROW_FS, color=color, weight="bold"
-    )
+class _SectionLabelFlowable(Flowable):
+    """Full-width section label with a left accent bar."""
+
+    def __init__(self, width: float, text: str, color: str = C_BRAND):
+        Flowable.__init__(self)
+        self.fwidth = width
+        self.text = text
+        self.color = color
+        self.height = FONT_SIZE_SECTION_LABEL + 6
+
+    def wrap(self, availWidth, availHeight):
+        return (self.fwidth, self.height)
+
+    def draw(self):
+        canvas = self.canv
+        h = self.height
+        w = self.fwidth
+        # Light tinted background
+        canvas.setFillColor(_hex(self.color + "18"))
+        canvas.rect(0, 0, w, h, fill=1, stroke=0)
+        # Left accent bar
+        canvas.setFillColor(_hex(self.color))
+        canvas.rect(0, 0, 5, h, fill=1, stroke=0)
+        # Label text
+        canvas.setFont(FONT_BOLD, FONT_SIZE_SECTION_LABEL)
+        canvas.setFillColor(_hex(self.color))
+        canvas.drawString(10, 2, self.text)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Section builders
-# ══════════════════════════════════════════════════════════════════════════════
+class _EmptyDataFlowable(Flowable):
+    """Centered muted text for empty data states."""
+
+    def __init__(self, width: float, text: str, color: str = C_MUTED):
+        Flowable.__init__(self)
+        self.fwidth = width
+        self.text = text
+        self.color = color
+        self.height = 24
+
+    def wrap(self, availWidth, availHeight):
+        return (self.fwidth, self.height)
+
+    def draw(self):
+        canvas = self.canv
+        canvas.setFont(FONT_NAME, FONT_SIZE_ROW)
+        canvas.setFillColor(_hex(self.color))
+        canvas.drawCentredString(self.fwidth / 2, 6, self.text)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Section builders
-# ══════════════════════════════════════════════════════════════════════════════
+class _SubsectionLabelFlowable(Flowable):
+    """Bold colored label for sub-sections (Monthly, Weekly)."""
+
+    def __init__(self, width: float, text: str, color: str = C_BRAND):
+        Flowable.__init__(self)
+        self.fwidth = width
+        self.text = text
+        self.color = color
+        self.height = FONT_SIZE_ROW + 4
+
+    def wrap(self, availWidth, availHeight):
+        return (self.fwidth, self.height)
+
+    def draw(self):
+        canvas = self.canv
+        canvas.setFont(FONT_BOLD, FONT_SIZE_ROW)
+        canvas.setFillColor(_hex(self.color))
+        canvas.drawString(6, 2, self.text)
 
 
-def _section_sales_summary(
-    ax,
+# ═══════════════════════════════════════════════════════════════════════════
+# Table building helpers
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _make_table_style(
+    data_len: int,
+    col_count: int,
+    *,
+    header_bg: str = C_HEADER,
+    alt_rows: bool = True,
+    highlight_last: bool = False,
+    highlight_last_bg: str = C_BANNER,
+    highlight_last_color: str = C_WHITE,
+    row_style_overrides: Optional[List[Tuple]] = None,
+) -> TableStyle:
+    """Build a TableStyle with standard formatting applied row-by-row."""
+    cmds = [
+        # Header row
+        ("BACKGROUND", (0, 0), (-1, 0), _hex(header_bg)),
+        ("TEXTCOLOR", (0, 0), (-1, 0), _hex(C_BRAND)),
+        ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
+        ("FONTSIZE", (0, 0), (-1, 0), FONT_SIZE_HEADER),
+        # General alignment
+        ("ALIGN", (0, 0), (0, -1), "LEFT"),
+        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+        # Padding
+        ("TOPPADDING", (0, 0), (-1, -1), ROW_PAD_TOP),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), ROW_PAD_BOTTOM),
+        ("LEFTPADDING", (0, 0), (-1, -1), CELL_PAD_LEFT),
+        ("RIGHTPADDING", (0, 0), (-1, -1), CELL_PAD_RIGHT),
+        # Font
+        ("FONTNAME", (0, 1), (-1, -1), FONT_NAME),
+        ("FONTSIZE", (0, 1), (-1, -1), FONT_SIZE_ROW),
+        # Text color
+        ("TEXTCOLOR", (0, 1), (-1, -1), _hex(C_SLATE)),
+        # Grid
+        ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
+        ("LINEBELOW", (0, 0), (-1, 0), 1, _hex(C_BRAND)),
+    ]
+
+    if alt_rows:
+        for i in range(1, data_len + 1):
+            if i % 2 == 0:
+                cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(C_BAND)))
+
+    if highlight_last and data_len > 0:
+        last_row = data_len
+        cmds.extend(
+            [
+                ("BACKGROUND", (0, last_row), (-1, last_row), _hex(highlight_last_bg)),
+                (
+                    "TEXTCOLOR",
+                    (0, last_row),
+                    (-1, last_row),
+                    _hex(highlight_last_color),
+                ),
+                ("FONTNAME", (0, last_row), (-1, last_row), FONT_BOLD),
+            ]
+        )
+
+    if row_style_overrides:
+        cmds.extend(row_style_overrides)
+
+    return TableStyle(cmds)
+
+
+def _row_style_override(
+    row_idx: int,
+    col_start: int,
+    col_end: int,
+    text_color: Optional[str] = None,
+    bold: bool = False,
+    bg_color: Optional[str] = None,
+) -> List[tuple]:
+    """Return TableStyle command tuples for a specific row range."""
+    overrides = []
+    if bg_color:
+        overrides.append(
+            ("BACKGROUND", (col_start, row_idx), (col_end, row_idx), _hex(bg_color))
+        )
+    if text_color:
+        overrides.append(
+            ("TEXTCOLOR", (col_start, row_idx), (col_end, row_idx), _hex(text_color))
+        )
+    if bold:
+        overrides.append(
+            ("FONTNAME", (col_start, row_idx), (col_end, row_idx), FONT_BOLD)
+        )
+    return overrides
+
+
+# ── Short outlet name helper ─────────────────────────────────────────────────
+
+
+def _short_outlet_name(name: str, max_len: int = 18) -> str:
+    name = (name or "").strip()
+    for prefix in ("Boteco - ", "Boteco-", "Boteco "):
+        if name.lower().startswith(prefix.lower()):
+            name = name[len(prefix) :].strip()
+            break
+    return name if len(name) <= max_len else name[: max_len - 1] + "\u2026"
+
+
+def _section_key_slug(value: str, default: str = "outlet") -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower())
+    slug = slug.strip("_")
+    if not slug:
+        slug = default
+    return slug[:22]
+
+
+def _outlet_col_widths_pt(
+    n_outlets: int, total_w: float, label_frac: float = 0.24
+) -> List[float]:
+    """Column widths in points for [Label, Outlet1, ..., OutletN, Combined]."""
+    if n_outlets <= 1:
+        return [total_w * label_frac, total_w * (1 - label_frac)]
+    data_cols = n_outlets + 1
+    data_w = (total_w * (1 - label_frac)) / data_cols
+    return [total_w * label_frac] + [data_w] * data_cols
+
+
+def _fmt_cell(v, fmt: str = "currency") -> str:
+    if fmt == "currency":
+        return _r(v)
+    elif fmt == "int":
+        return f"{int(v or 0):,}"
+    elif fmt == "float1":
+        return f"{float(v or 0):.0f}"
+    elif fmt == "pct":
+        return _pct(v)
+    elif fmt == "str":
+        return str(v or "\u2014")
+    return str(v)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Section builders — each returns a list of Flowables
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _build_sales_summary(
     r: Dict,
     location_name: str,
+    n_outlets: int = 1,
     per_outlet: Optional[List[Tuple[str, Dict]]] = None,
     daily_sales_history: Optional[List[Dict]] = None,
-) -> float:
-    """
-    Compact sales summary table — Google Sheets style.
-    Columns: Metric | (Outlet1 | Outlet2 | ...) Combined/Value
-    """
-    ax.set_xlim(0, 1)
-    ax.axis("off")
-
+) -> list:
     multi = per_outlet and len(per_outlet) >= 2
-    n_outlets = len(per_outlet) if multi else 0
-    col_w = _outlet_col_widths(n_outlets)
+    if multi:
+        n_outlets = len(per_outlet)
+
+    avail_w = SECTION_WIDTHS.get(n_outlets, min(864, 720 + (n_outlets - 2) * 72))
+    col_w = _outlet_col_widths_pt(n_outlets if multi else 1, avail_w - 2 * PAGE_PAD)
 
     iso = str(r.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]
     day_lbl = _sheet_date_label(iso)
     pct_tgt = float(r.get("pct_target") or 0)
     statuses = compute_metric_statuses(r, daily_sales_history=daily_sales_history)
-    forecast = compute_forecast_metrics(r, daily_sales_history=daily_sales_history)
     ach_color = statuses["target"]["color"]
 
-    # ── Header banner ──────────────────────────────────────────────────
-    banner_top = 1.0
-    banner_y = banner_top - BANNER_H
-    _card(ax, 0, banner_y, 1.0, BANNER_H, color=C_BANNER, border=C_BANNER)
-    _hbar(ax, 0, banner_top, 1.0, h=BRAND_BAR_H, color=C_BRAND)
-    _label(
-        ax,
-        0.012,
-        banner_top - BANNER_H * TITLE_Y_FRAC,
-        f"{location_name.upper()}  —  END OF DAY REPORT",
-        size=BANNER_TITLE_FS + 1.5,
-        color=C_WHITE,
-        weight="bold",
-    )
-    _label(
-        ax,
-        0.012,
-        banner_top - BANNER_H * SUBTITLE_Y_FRAC,
-        day_lbl,
-        size=BANNER_SUB_FS + 1.5,
-        color=C_DATE_LABEL,
-    )
-    _label(
-        ax,
-        0.988,
-        banner_top - BANNER_H * TITLE_Y_FRAC,
-        f"{pct_tgt:.0f}% of target",
-        size=BANNER_TITLE_FS,
-        color=ach_color,
-        weight="bold",
-        ha="right",
-    )
-    _label(
-        ax,
-        0.988,
-        banner_top - BANNER_H * SUBTITLE_Y_FRAC,
-        _r(r.get("net_total", 0)) + " net",
-        size=BANNER_SUB_FS + 1.5,
-        color=C_WHITE,
-        ha="right",
+    elements = []
+
+    elements.append(
+        _BannerFlowable(
+            avail_w,
+            title=f"{location_name.upper()}  \u2014  END OF DAY REPORT",
+            subtitle=day_lbl,
+            right_title=f"{pct_tgt:.0f}% of target",
+            right_subtitle=_r(r.get("net_total", 0)) + " net",
+            right_title_color=ach_color,
+        )
     )
 
-    # ── Column headers ───────────────────────────────────────────────────
-    cur_y = banner_y - GAP_BELOW - ROW_H
-    if multi:
-        headers = (
+    elements.append(Spacer(1, GAP_BELOW_BANNER))
+
+    # Build table data
+    headers = (
+        ["", ""]
+        if not multi
+        else (
             [""] + [_short_outlet_name(nm, 16) for nm, _ in per_outlet] + ["Combined"]
         )
-    else:
-        headers = ["", ""]
-    _table_header_row(ax, 0, cur_y - ROW_H, headers, col_w)
-    cur_y -= ROW_H
+    )
 
-    # ── Helper to add a data row ─────────────────────────────────────────
-    row_idx = [0]
+    rows = [headers]
+    row_idx = 0
+    overrides = []
 
-    def _row(
+    def add_row(
         label,
         key_or_fn,
         fmt="currency",
         bold=False,
         bg=None,
-        text_color=C_SLATE,
+        text_color=None,
         right_color=None,
         section_label=None,
     ):
-        nonlocal cur_y
+        nonlocal row_idx
         if section_label:
-            _table_section_label(
-                ax,
-                0,
-                cur_y - ROW_H,
-                section_label,
-                sum(col_w),
-            )
-            cur_y -= ROW_H
-            row_idx[0] = 0
-            return
-        # Gather values
+            elements.append(_SectionLabelFlowable(avail_w, section_label))
+            row_idx = 0
+            return section_label
+
         if callable(key_or_fn):
             combined_val = key_or_fn(r)
             outlet_vals = [key_or_fn(od) for _, od in per_outlet] if multi else []
@@ -774,44 +843,43 @@ def _section_sales_summary(
                 [od.get(key_or_fn, 0) for _, od in per_outlet] if multi else []
             )
 
-        def _fmt(v):
-            if fmt == "currency":
-                return _r(v)
-            elif fmt == "int":
-                return f"{int(v or 0):,}"
-            elif fmt == "float1":
-                return f"{float(v or 0):.0f}"
-            elif fmt == "pct":
-                return _pct(v)
-            elif fmt == "str":
-                return str(v or "—")
-            return str(v)
-
         if multi:
-            cells = [label] + [_fmt(v) for v in outlet_vals] + [_fmt(combined_val)]
+            cells = (
+                [label]
+                + [_fmt_cell(v, fmt) for v in outlet_vals]
+                + [_fmt_cell(combined_val, fmt)]
+            )
         else:
-            cells = [label, _fmt(combined_val)]
+            cells = [label, _fmt_cell(combined_val, fmt)]
 
-        cur_y -= ROW_H
-        _table_data_row(
-            ax,
-            0,
-            cur_y,
-            cells,
-            col_w,
-            bg=bg or C_CARD,
-            is_alt=(bg is None and row_idx[0] % 2 == 1),
-            bold=bold,
-            text_color=text_color,
-            right_color=right_color,
-        )
-        row_idx[0] += 1
+        rows.append(cells)
 
-    # ── Daily sales rows ─────────────────────────────────────────────────
-    _row("Covers", "covers", fmt="int")
-    _row("Turns", "turns", fmt="float1")
+        ri = len(rows) - 1
+        override_list = []
+        if bold:
+            override_list.append(("FONTNAME", (0, ri), (-1, ri), FONT_BOLD))
+        if bg:
+            override_list.append(("BACKGROUND", (0, ri), (-1, ri), _hex(bg)))
+        elif row_idx % 2 == 1:
+            override_list.append(("BACKGROUND", (0, ri), (-1, ri), _hex(C_BAND)))
+        if text_color:
+            override_list.append(("TEXTCOLOR", (0, ri), (-1, ri), _hex(text_color)))
+        if right_color:
+            override_list.append(("TEXTCOLOR", (1, ri), (-1, ri), _hex(right_color)))
 
-    # Payment rows
+        # Per-cell conditional coloring (discount = red, target color, etc.)
+        if key_or_fn == "discount" and not section_label:
+            pass  # right_color handles this
+        if fmt == "pct" and key_or_fn == "pct_target":
+            override_list.append(("TEXTCOLOR", (1, ri), (1, ri), _hex(ach_color)))
+
+        overrides.extend(override_list)
+        row_idx += 1
+        return section_label
+
+    add_row("Covers", "covers", fmt="int")
+    add_row("Turns", "turns", fmt="float1")
+
     pay_keys = [
         ("Cash", "cash_sales"),
         ("GPay", "gpay_sales"),
@@ -823,12 +891,10 @@ def _section_sales_summary(
         combined_v = float(r.get(key) or 0)
         outlet_vs = [float(od.get(key) or 0) for _, od in per_outlet] if multi else []
         if combined_v != 0 or any(v != 0 for v in outlet_vs):
-            _row(lbl, key)
+            add_row(lbl, key)
 
-    # EOD Gross Total
-    _row("EOD Gross Total", "gross_total", bold=True, bg=C_BAND)
+    add_row("EOD Gross Total", "gross_total", bold=True, bg=C_BAND)
 
-    # Tax & adjustments
     tax_keys = [
         ("CGST @ 2.5%", "cgst"),
         ("SGST @ 2.5%", "sgst"),
@@ -841,37 +907,79 @@ def _section_sales_summary(
         outlet_vs = [float(od.get(key) or 0) for _, od in per_outlet] if multi else []
         if combined_v != 0 or any(v != 0 for v in outlet_vs):
             disc_color = C_RED if key == "discount" else None
-            _row(lbl, key, right_color=disc_color)
+            add_row(lbl, key, right_color=disc_color)
 
-    # EOD Net Total highlight
-    _row(
+    add_row(
         "EOD Net Total",
         "net_total",
         bold=True,
-        bg=C_BANNER,
-        text_color=C_WHITE,
-        right_color=C_WHITE,
+        bg=C_BANNER if not multi else C_BAND,
+        text_color=C_WHITE if not multi else C_SLATE,
+        right_color=C_WHITE if not multi else None,
     )
 
-    # ── MTD block ────────────────────────────────────────────────────────
-    cur_y -= ROW_H * 0.15
-    row_idx[0] = 0
+    elements.append(Spacer(1, GAP_ABOVE_SECTION_LABEL))
+    elements.append(_SectionLabelFlowable(avail_w, "MTD Sales"))
+    row_idx = 0
+    mtd_rows = (
+        [["", ""]]
+        if not multi
+        else (
+            [""] + [_short_outlet_name(nm, 16) for nm, _ in per_outlet] + ["Combined"]
+        )
+    )
+    mtd_data = [mtd_rows]
+    mtd_overrides = []
+    mri = 0
 
-    _row("MTD Total Covers", "mtd_total_covers", fmt="int", bold=True)
-    _row("APC (Day)", "apc", fmt="currency", right_color=statuses["apc"]["color"])
+    def add_mtd_row(label, key_or_fn, fmt="currency", bold=False, right_color=None):
+        nonlocal mri
+        if callable(key_or_fn):
+            combined_val = key_or_fn(r)
+            outlet_vals = [key_or_fn(od) for _, od in per_outlet] if multi else []
+        else:
+            combined_val = r.get(key_or_fn, 0)
+            outlet_vals = (
+                [od.get(key_or_fn, 0) for _, od in per_outlet] if multi else []
+            )
+
+        if multi:
+            cells = (
+                [label]
+                + [_fmt_cell(v, fmt) for v in outlet_vals]
+                + [_fmt_cell(combined_val, fmt)]
+            )
+        else:
+            cells = [label, _fmt_cell(combined_val, fmt)]
+
+        mtd_data.append(cells)
+        ri = len(mtd_data) - 1
+        ov = []
+        if bold:
+            ov.append(("FONTNAME", (0, ri), (-1, ri), FONT_BOLD))
+        if mri % 2 == 1:
+            ov.append(("BACKGROUND", (0, ri), (-1, ri), _hex(C_BAND)))
+        if right_color:
+            ov.append(("TEXTCOLOR", (1, ri), (-1, ri), _hex(right_color)))
+        mtd_overrides.extend(ov)
+        mri += 1
+
+    add_mtd_row("MTD Total Covers", "mtd_total_covers", fmt="int", bold=True)
+    add_mtd_row(
+        "APC (Day)", "apc", fmt="currency", right_color=statuses["apc"]["color"]
+    )
 
     def _apc_month(d):
         mtd_net = float(d.get("mtd_net_sales") or 0)
         mtd_cov = int(d.get("mtd_total_covers") or 0)
         return mtd_net / mtd_cov if mtd_cov > 0 else 0.0
 
-    _row("APC (Month)", _apc_month, fmt="currency")
-
-    _row("Complimentary", "complimentary", fmt="currency")
-    _row("MTD Complimentary", "mtd_complimentary", fmt="currency")
-    _row("Daily Avg. Net Sales", "mtd_avg_daily", fmt="currency")
-    _row("MTD Net Sales", "mtd_net_sales", fmt="currency", bold=True)
-    _row(
+    add_mtd_row("APC (Month)", _apc_month, fmt="currency")
+    add_mtd_row("Complimentary", "complimentary", fmt="currency")
+    add_mtd_row("MTD Complimentary", "mtd_complimentary", fmt="currency")
+    add_mtd_row("Daily Avg. Net Sales", "mtd_avg_daily", fmt="currency")
+    add_mtd_row("MTD Net Sales", "mtd_net_sales", fmt="currency", bold=True)
+    add_mtd_row(
         "MTD Discount",
         "mtd_discount",
         fmt="currency",
@@ -881,20 +989,22 @@ def _section_sales_summary(
     def _mtd_net_excl(d):
         return float(d.get("mtd_net_sales") or 0) - float(d.get("mtd_discount") or 0)
 
-    _row("MTD Net (Excl. Disc.)", _mtd_net_excl, fmt="currency", bold=True)
-
-    _row("Sales Target", "mtd_target", fmt="currency")
-    _row("% of Target", "mtd_pct_target", fmt="pct", bold=True, right_color=ach_color)
-    _row(
-        "Forecast Month-End",
-        lambda d: compute_forecast_metrics(d)["forecast_month_end_sales"],
+    add_mtd_row("MTD Net (Excl. Disc.)", _mtd_net_excl, fmt="currency", bold=True)
+    add_mtd_row("Sales Target", "mtd_target", fmt="currency")
+    add_mtd_row(
+        "% of Target", "mtd_pct_target", fmt="pct", bold=True, right_color=ach_color
     )
+
+    def _forecast_end(d):
+        return compute_forecast_metrics(d)["forecast_month_end_sales"]
+
+    add_mtd_row("Forecast Month-End", _forecast_end)
 
     def _forecast_target_pct(d):
         val = compute_forecast_metrics(d)["forecast_target_pct"]
         return _pct(val) if val is not None else "N/A"
 
-    _row(
+    add_mtd_row(
         "Forecast vs Target",
         _forecast_target_pct,
         fmt="str",
@@ -905,26 +1015,135 @@ def _section_sales_summary(
         val = compute_forecast_metrics(d)["required_daily_run_rate"]
         return _r(val) if val is not None else "N/A"
 
-    _row("Required Daily Run Rate", _required_run_rate, fmt="str")
+    add_mtd_row("Required Daily Run Rate", _required_run_rate, fmt="str")
 
-    return cur_y
+    # Build the sales summary table
+    all_data = rows[1:]  # skip header for main section
+    full_data = rows + mtd_data[1:]  # combine
+    n_header = len(rows)
+    n_mtd = len(mtd_data) - 1
+
+    # Add section label row for MTD
+    all_rows = list(rows)
+    all_rows.append(["MTD Sales", ""])
+    all_rows.extend(mtd_data[1:])
+
+    tbl = Table(all_rows, colWidths=col_w)
+
+    # Build comprehensive table style
+    style_cmds = [
+        ("BACKGROUND", (0, 0), (-1, 0), _hex(C_HEADER)),
+        ("TEXTCOLOR", (0, 0), (-1, 0), _hex(C_BRAND)),
+        ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
+        ("FONTSIZE", (0, 0), (-1, 0), FONT_SIZE_HEADER),
+        ("ALIGN", (0, 0), (0, -1), "LEFT"),
+        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+        ("TOPPADDING", (0, 0), (-1, -1), ROW_PAD_TOP),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), ROW_PAD_BOTTOM),
+        ("LEFTPADDING", (0, 0), (-1, -1), CELL_PAD_LEFT),
+        ("RIGHTPADDING", (0, 0), (-1, -1), CELL_PAD_RIGHT),
+        ("FONTNAME", (0, 1), (-1, -1), FONT_NAME),
+        ("FONTSIZE", (0, 1), (-1, -1), FONT_SIZE_ROW),
+        ("TEXTCOLOR", (0, 1), (-1, -1), _hex(C_SLATE)),
+        ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
+        ("LINEBELOW", (0, 0), (-1, 0), 1, _hex(C_BRAND)),
+    ]
+
+    # Alternating rows
+    for i in range(1, len(all_rows)):
+        if i % 2 == 0:
+            style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(C_BAND)))
+
+    # Net Total row highlight (row before MTD section label)
+    net_total_row = n_header - 1
+    style_cmds.extend(
+        [
+            ("BACKGROUND", (0, net_total_row), (-1, net_total_row), _hex(C_BANNER)),
+            ("TEXTCOLOR", (0, net_total_row), (-1, net_total_row), _hex(C_WHITE)),
+            ("FONTNAME", (0, net_total_row), (-1, net_total_row), FONT_BOLD),
+        ]
+    )
+
+    # EOD Gross Total row highlight
+    gross_row_idx = None
+    for i, row in enumerate(all_rows):
+        if row and row[0] == "EOD Gross Total":
+            gross_row_idx = i
+            break
+    if gross_row_idx:
+        style_cmds.extend(
+            [
+                ("BACKGROUND", (0, gross_row_idx), (-1, gross_row_idx), _hex(C_BAND)),
+                ("FONTNAME", (0, gross_row_idx), (-1, gross_row_idx), FONT_BOLD),
+            ]
+        )
+
+    # Discount row - red text
+    for i, row in enumerate(all_rows):
+        if row and row[0] in ("Discount", "MTD Discount"):
+            style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(C_RED)))
+
+    # MTD section label row
+    mtd_label_row = n_header
+    style_cmds.extend(
+        [
+            (
+                "BACKGROUND",
+                (0, mtd_label_row),
+                (-1, mtd_label_row),
+                _hex(C_BRAND + "18"),
+            ),
+            ("TEXTCOLOR", (0, mtd_label_row), (-1, mtd_label_row), _hex(C_BRAND)),
+            ("FONTNAME", (0, mtd_label_row), (-1, mtd_label_row), FONT_BOLD),
+            ("SPAN", (0, mtd_label_row), (-1, mtd_label_row)),
+            ("ALIGN", (0, mtd_label_row), (-1, mtd_label_row), "LEFT"),
+        ]
+    )
+
+    # MTD rows: bold for specific ones
+    for i, row in enumerate(all_rows):
+        if row and row[0] in (
+            "MTD Total Covers",
+            "MTD Net Sales",
+            "MTD Net (Excl. Disc.)",
+            "% of Target",
+        ):
+            style_cmds.append(("FONTNAME", (0, i), (-1, i), FONT_BOLD))
+
+    # APC day color
+    for i, row in enumerate(all_rows):
+        if row and row[0] == "APC (Day)":
+            style_cmds.append(
+                ("TEXTCOLOR", (1, i), (-1, i), _hex(statuses["apc"]["color"]))
+            )
+        if row and row[0] == "% of Target":
+            style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(ach_color)))
+        if row and row[0] == "Forecast vs Target":
+            style_cmds.append(
+                ("TEXTCOLOR", (1, i), (-1, i), _hex(statuses["forecast"]["color"]))
+            )
+
+    tbl.setStyle(TableStyle(style_cmds))
+    elements.append(tbl)
+    return elements
 
 
-def _section_category(
-    ax,
+def _build_category(
     r: Dict,
     location_name: str,
     mtd_category: Dict[str, float],
     day_lbl: str,
+    n_outlets: int = 1,
     per_outlet: Optional[List[Tuple[str, Dict]]] = None,
     per_outlet_category: Optional[List[Tuple[str, Dict[str, float]]]] = None,
-) -> float:
-    ax.set_xlim(0, 1)
-    ax.axis("off")
-
+) -> list:
     multi = per_outlet and len(per_outlet) >= 2
-    std_cats = ["Food", "Liquor", "Beer", "Soft Beverages", "Coffee", "Tobacco"]
+    if multi:
+        n_outlets = len(per_outlet)
 
+    avail_w = SECTION_WIDTHS.get(n_outlets, min(864, 720 + (n_outlets - 2) * 72))
+
+    std_cats = ["Food", "Liquor", "Beer", "Soft Beverages", "Coffee", "Tobacco"]
     daily_cat = _collapse_super_category_amounts(r.get("categories") or [])
     mtd_category = _collapse_super_category_totals(dict(mtd_category or {}))
     total_cat_mtd = sum(mtd_category.values()) or 1.0
@@ -932,57 +1151,40 @@ def _section_category(
     outlet_daily_cats = []
     if multi and per_outlet:
         for _, od in per_outlet:
-            od_cats = _collapse_super_category_amounts(od.get("categories") or [])
-            outlet_daily_cats.append(od_cats)
+            outlet_daily_cats.append(
+                _collapse_super_category_amounts(od.get("categories") or [])
+            )
 
     cat_order = [x for x in std_cats if x in daily_cat or x in mtd_category]
     for k in sorted(mtd_category.keys()):
         if k not in cat_order:
             cat_order.append(k)
-    if not cat_order:
-        cat_order = []
 
     if multi:
         n_data = len(per_outlet) + 1
-        label_w = 0.19
-        mtd_w = 0.14
-        pct_w = 0.07
-        remaining = 1.0 - label_w - mtd_w - pct_w
+        label_w = avail_w * 0.19
+        mtd_w = avail_w * 0.14
+        pct_w = avail_w * 0.07
+        remaining = avail_w - label_w - mtd_w - pct_w - 2 * PAGE_PAD
         data_w = remaining / n_data
         col_w = [label_w] + [data_w] * n_data + [mtd_w, pct_w]
     else:
-        col_w = [0.44, 0.22, 0.22, 0.06]
+        col_w = [avail_w * 0.44, avail_w * 0.22, avail_w * 0.22, avail_w * 0.06]
 
-    tbl_x = 0.0
-
-    # Header banner
-    banner_top = 1.0
-    banner_y = banner_top - BANNER_H
-    _card(ax, 0, banner_y, 1.0, BANNER_H, color=C_BANNER, border=C_BANNER)
-    _hbar(ax, 0, banner_top, 1.0, h=BRAND_BAR_H, color=C_BRAND)
-    _label(
-        ax,
-        0.012,
-        banner_top - BANNER_H * TITLE_Y_FRAC,
-        f"Category Sales \u2014 {location_name[:28]}",
-        size=BANNER_TITLE_FS,
-        color=C_WHITE,
-        weight="bold",
+    elements = []
+    elements.append(
+        _BannerFlowable(
+            avail_w,
+            title=f"Category Sales \u2014 {location_name[:28]}",
+            subtitle=day_lbl,
+        )
     )
-    _label(
-        ax,
-        0.012,
-        banner_top - BANNER_H * SUBTITLE_Y_FRAC,
-        day_lbl,
-        size=BANNER_SUB_FS,
-        color=C_DATE_LABEL,
-    )
+    elements.append(Spacer(1, GAP_BELOW_BANNER))
 
-    cur_y = banner_y - GAP_BELOW - ROW_H
-
-    # Table header
-    if multi:
-        headers = (
+    headers = (
+        ["Category", "Daily", "MTD", "%"]
+        if not multi
+        else (
             ["Category"]
             + [
                 _short_outlet_name(nm, 8 if len(per_outlet) > 2 else 10)
@@ -990,11 +1192,9 @@ def _section_category(
             ]
             + ["Comb.", "MTD", "%"]
         )
-    else:
-        headers = ["Category", "Daily", "MTD", "%"]
-    _table_header_row(ax, tbl_x, cur_y - ROW_H, headers, col_w)
-    cur_y -= ROW_H
+    )
 
+    rows = [headers]
     daily_total = 0.0
     mtd_total = 0.0
     outlet_totals = [0.0] * len(outlet_daily_cats) if multi else []
@@ -1005,9 +1205,10 @@ def _section_category(
         daily_total += d_amt
         mtd_total += m_amt
         pct_lbl = (
-            f"{int(round(100 * m_amt / total_cat_mtd))}%" if total_cat_mtd > 0 else "—"
+            f"{int(round(100 * m_amt / total_cat_mtd))}%"
+            if total_cat_mtd > 0
+            else "\u2014"
         )
-
         if multi:
             outlet_amts = []
             for oi, od_cats in enumerate(outlet_daily_cats):
@@ -1017,19 +1218,9 @@ def _section_category(
             cells = [name] + outlet_amts + [_r(d_amt), _r(m_amt), pct_lbl]
         else:
             cells = [name, _r(d_amt), _r(m_amt), pct_lbl]
-
-        cur_y -= ROW_H
-        _table_data_row(
-            ax,
-            tbl_x,
-            cur_y,
-            cells,
-            col_w,
-            is_alt=(idx % 2 == 1),
-        )
+        rows.append(cells)
 
     # Totals row
-    cur_y -= ROW_H
     if multi:
         tot_cells = (
             ["Total"]
@@ -1038,33 +1229,53 @@ def _section_category(
         )
     else:
         tot_cells = ["Total", _r(daily_total), _r(mtd_total), ""]
-    _table_data_row(
-        ax,
-        tbl_x,
-        cur_y,
-        tot_cells,
-        col_w,
-        bg=C_BANNER,
-        bold=True,
-        text_color=C_WHITE,
-    )
+    rows.append(tot_cells)
 
-    return cur_y
+    tbl = Table(rows, colWidths=col_w)
+    style_cmds = [
+        ("BACKGROUND", (0, 0), (-1, 0), _hex(C_HEADER)),
+        ("TEXTCOLOR", (0, 0), (-1, 0), _hex(C_BRAND)),
+        ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
+        ("FONTSIZE", (0, 0), (-1, 0), FONT_SIZE_HEADER),
+        ("ALIGN", (0, 0), (0, -1), "LEFT"),
+        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+        ("TOPPADDING", (0, 0), (-1, -1), ROW_PAD_TOP),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), ROW_PAD_BOTTOM),
+        ("LEFTPADDING", (0, 0), (-1, -1), CELL_PAD_LEFT),
+        ("RIGHTPADDING", (0, 0), (-1, -1), CELL_PAD_RIGHT),
+        ("FONTNAME", (0, 1), (-1, -1), FONT_NAME),
+        ("FONTSIZE", (0, 1), (-1, -1), FONT_SIZE_ROW),
+        ("TEXTCOLOR", (0, 1), (-1, -1), _hex(C_SLATE)),
+        ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
+        ("LINEBELOW", (0, 0), (-1, 0), 1, _hex(C_BRAND)),
+        # Totals row
+        ("BACKGROUND", (0, -1), (-1, -1), _hex(C_BANNER)),
+        ("TEXTCOLOR", (0, -1), (-1, -1), _hex(C_WHITE)),
+        ("FONTNAME", (0, -1), (-1, -1), FONT_BOLD),
+    ]
+    for i in range(1, len(rows) - 1):
+        if i % 2 == 0:
+            style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(C_BAND)))
+
+    tbl.setStyle(TableStyle(style_cmds))
+    elements.append(tbl)
+    return elements
 
 
-def _section_service(
-    ax,
+def _build_service(
     r: Dict,
     location_name: str,
     mtd_service: Dict[str, float],
     day_lbl: str,
+    n_outlets: int = 1,
     per_outlet: Optional[List[Tuple[str, Dict]]] = None,
     per_outlet_service: Optional[List[Tuple[str, Dict[str, float]]]] = None,
-) -> float:
-    ax.set_xlim(0, 1)
-    ax.axis("off")
-
+) -> list:
     multi = per_outlet and len(per_outlet) >= 2
+    if multi:
+        n_outlets = len(per_outlet)
+
+    avail_w = SECTION_WIDTHS.get(n_outlets, min(864, 720 + (n_outlets - 2) * 72))
     std_svc = ["Breakfast", "Lunch", "Dinner", "Delivery", "Events", "Party"]
 
     daily_svc = {
@@ -1077,11 +1288,12 @@ def _section_service(
     outlet_daily_svcs = []
     if multi and per_outlet:
         for _, od in per_outlet:
-            od_svcs = {
-                s.get("service_type") or s.get("type"): float(s.get("amount") or 0)
-                for s in od.get("services") or []
-            }
-            outlet_daily_svcs.append(od_svcs)
+            outlet_daily_svcs.append(
+                {
+                    s.get("service_type") or s.get("type"): float(s.get("amount") or 0)
+                    for s in od.get("services") or []
+                }
+            )
 
     svc_order = [x for x in std_svc if x in daily_svc or x in mtd_service]
     for k in sorted(mtd_service.keys()):
@@ -1090,43 +1302,33 @@ def _section_service(
 
     if multi:
         n_data = len(per_outlet) + 1
-        label_w = 0.19
-        mtd_w = 0.14
-        pct_w = 0.07
-        remaining = 1.0 - label_w - mtd_w - pct_w
+        label_w = avail_w * 0.19
+        mtd_w = avail_w * 0.14
+        pct_w = avail_w * 0.07
+        remaining = avail_w - label_w - mtd_w - pct_w - 2 * PAGE_PAD
         data_w = remaining / n_data
         col_w = [label_w] + [data_w] * n_data + [mtd_w, pct_w]
     else:
-        col_w = [0.44, 0.22, 0.22, 0.06]
-    tbl_x = 0.0
+        col_w = [avail_w * 0.44, avail_w * 0.22, avail_w * 0.22, avail_w * 0.06]
 
-    # Header banner
-    banner_top = 1.0
-    banner_y = banner_top - BANNER_H
-    _card(ax, 0, banner_y, 1.0, BANNER_H, color=C_BANNER, border=C_BANNER)
-    _hbar(ax, 0, banner_top, 1.0, h=BRAND_BAR_H, color=C_BRAND)
-    _label(
-        ax,
-        0.012,
-        banner_top - BANNER_H * TITLE_Y_FRAC,
-        f"Service Sales \u2014 {location_name[:28]}",
-        size=BANNER_TITLE_FS,
-        color=C_WHITE,
-        weight="bold",
+    elements = []
+    elements.append(
+        _BannerFlowable(
+            avail_w,
+            title=f"Service Sales \u2014 {location_name[:28]}",
+            subtitle=day_lbl,
+        )
     )
-    _label(
-        ax,
-        0.012,
-        banner_top - BANNER_H * SUBTITLE_Y_FRAC,
-        day_lbl,
-        size=BANNER_SUB_FS,
-        color=C_DATE_LABEL,
-    )
+    elements.append(Spacer(1, GAP_BELOW_BANNER))
 
-    cur_y = banner_y - GAP_BELOW - ROW_H
+    if not svc_order:
+        elements.append(_EmptyDataFlowable(avail_w, "No service data for this date"))
+        return elements
 
-    if multi:
-        headers = (
+    headers = (
+        ["Service", "Daily", "MTD", "%"]
+        if not multi
+        else (
             ["Service"]
             + [
                 _short_outlet_name(nm, 8 if len(per_outlet) > 2 else 10)
@@ -1134,23 +1336,9 @@ def _section_service(
             ]
             + ["Comb.", "MTD", "%"]
         )
-    else:
-        headers = ["Service", "Daily", "MTD", "%"]
-    _table_header_row(ax, tbl_x, cur_y - ROW_H, headers, col_w)
-    cur_y -= ROW_H
+    )
 
-    if not svc_order:
-        _label(
-            ax,
-            0.5,
-            cur_y - ROW_H,
-            "No service data for this date",
-            size=ROW_FS,
-            color=C_MUTED,
-            ha="center",
-        )
-        return cur_y
-
+    rows = [headers]
     daily_total = 0.0
     mtd_total = 0.0
     outlet_totals = [0.0] * len(outlet_daily_svcs) if multi else []
@@ -1161,9 +1349,10 @@ def _section_service(
         daily_total += d_amt
         mtd_total += m_amt
         pct_lbl = (
-            f"{int(round(100 * m_amt / total_svc_mtd))}%" if total_svc_mtd > 0 else "—"
+            f"{int(round(100 * m_amt / total_svc_mtd))}%"
+            if total_svc_mtd > 0
+            else "\u2014"
         )
-
         if multi:
             outlet_amts = []
             for oi, od_svcs in enumerate(outlet_daily_svcs):
@@ -1173,19 +1362,8 @@ def _section_service(
             cells = [name] + outlet_amts + [_r(d_amt), _r(m_amt), pct_lbl]
         else:
             cells = [name, _r(d_amt), _r(m_amt), pct_lbl]
+        rows.append(cells)
 
-        cur_y -= ROW_H
-        _table_data_row(
-            ax,
-            tbl_x,
-            cur_y,
-            cells,
-            col_w,
-            is_alt=(idx % 2 == 1),
-        )
-
-    # Totals row
-    cur_y -= ROW_H
     if multi:
         tot_cells = (
             ["Total"]
@@ -1194,77 +1372,65 @@ def _section_service(
         )
     else:
         tot_cells = ["Total", _r(daily_total), _r(mtd_total), ""]
-    _table_data_row(
-        ax,
-        tbl_x,
-        cur_y,
-        tot_cells,
-        col_w,
-        bg=C_BANNER,
-        bold=True,
-        text_color=C_WHITE,
-    )
+    rows.append(tot_cells)
 
-    return cur_y
+    tbl = Table(rows, colWidths=col_w)
+    style_cmds = [
+        ("BACKGROUND", (0, 0), (-1, 0), _hex(C_HEADER)),
+        ("TEXTCOLOR", (0, 0), (-1, 0), _hex(C_BRAND)),
+        ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
+        ("FONTSIZE", (0, 0), (-1, 0), FONT_SIZE_HEADER),
+        ("ALIGN", (0, 0), (0, -1), "LEFT"),
+        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+        ("TOPPADDING", (0, 0), (-1, -1), ROW_PAD_TOP),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), ROW_PAD_BOTTOM),
+        ("LEFTPADDING", (0, 0), (-1, -1), CELL_PAD_LEFT),
+        ("RIGHTPADDING", (0, 0), (-1, -1), CELL_PAD_RIGHT),
+        ("FONTNAME", (0, 1), (-1, -1), FONT_NAME),
+        ("FONTSIZE", (0, 1), (-1, -1), FONT_SIZE_ROW),
+        ("TEXTCOLOR", (0, 1), (-1, -1), _hex(C_SLATE)),
+        ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
+        ("LINEBELOW", (0, 0), (-1, 0), 1, _hex(C_BRAND)),
+        ("BACKGROUND", (0, -1), (-1, -1), _hex(C_BANNER)),
+        ("TEXTCOLOR", (0, -1), (-1, -1), _hex(C_WHITE)),
+        ("FONTNAME", (0, -1), (-1, -1), FONT_BOLD),
+    ]
+    for i in range(1, len(rows) - 1):
+        if i % 2 == 0:
+            style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(C_BAND)))
+
+    tbl.setStyle(TableStyle(style_cmds))
+    elements.append(tbl)
+    return elements
 
 
-def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -> float:
-    ax.set_xlim(0, 1)
-    ax.axis("off")
+def _build_footfall(
+    month_footfall_rows: List[Dict], location_name: str, n_outlets: int = 1
+) -> list:
+    rows_data = list(month_footfall_rows or [])
+    avail_w = SECTION_WIDTHS.get(n_outlets, min(864, 720 + (n_outlets - 2) * 72))
 
-    rows = list(month_footfall_rows or [])
-
-    # Slim header banner
-    banner_top = 1.0
-    banner_y = banner_top - BANNER_H
-    _card(ax, 0, banner_y, 1.0, BANNER_H, color=C_BANNER, border=C_BANNER)
-    _hbar(ax, 0, banner_top, 1.0, h=BRAND_BAR_H, color=C_BRAND)
-    _label(
-        ax,
-        0.012,
-        banner_top - BANNER_H * TITLE_Y_FRAC,
-        "Daily Footfall — Month to Date",
-        size=BANNER_TITLE_FS,
-        color=C_WHITE,
-        weight="bold",
-    )
-    _label(
-        ax,
-        0.012,
-        banner_top - BANNER_H * SUBTITLE_Y_FRAC,
-        location_name[:32],
-        size=BANNER_SUB_FS,
-        color=C_DATE_LABEL,
-    )
-
-    col_w = [0.40, 0.16, 0.16, 0.16]
-    tbl_x = 0.0
-
-    cur_y = banner_y - GAP_BELOW - ROW_H
-
-    if not rows:
-        _label(
-            ax,
-            0.5,
-            cur_y,
-            "No footfall data for this month",
-            size=ROW_FS,
-            color=C_MUTED,
-            ha="center",
+    elements = []
+    elements.append(
+        _BannerFlowable(
+            avail_w,
+            title="Daily Footfall \u2014 Month to Date",
+            subtitle=location_name[:32],
         )
-        return cur_y
-    _table_header_row(
-        ax,
-        tbl_x,
-        cur_y - ROW_H,
-        ["Date", "Dinner", "Lunch", "Total"],
-        col_w,
-        font_size=HEADER_FS,
     )
-    cur_y -= ROW_H
+    elements.append(Spacer(1, GAP_BELOW_BANNER))
+
+    col_w = [avail_w * 0.40, avail_w * 0.16, avail_w * 0.16, avail_w * 0.16]
+
+    if not rows_data:
+        elements.append(_EmptyDataFlowable(avail_w, "No footfall data for this month"))
+        return elements
+
+    headers = ["Date", "Dinner", "Lunch", "Total"]
+    table_rows = [headers]
 
     tot_din = tot_lun = tot_cov = 0
-    for idx, row in enumerate(rows):
+    for row in rows_data:
         ds = str(row.get("date", ""))[:10]
         lc = row.get("lunch_covers")
         dcv = row.get("dinner_covers")
@@ -1279,123 +1445,135 @@ def _section_footfall(ax, month_footfall_rows: List[Dict], location_name: str) -
         tot_din += di
         tot_lun += lu
         tot_cov += tot
-        cur_y -= ROW_H
-        _table_data_row(
-            ax,
-            tbl_x,
-            cur_y,
+        table_rows.append(
             [
                 _sheet_date_label(ds),
-                str(di) if di else "—",
-                str(lu) if lu else "—",
+                str(di) if di else "\u2014",
+                str(lu) if lu else "\u2014",
                 str(tot),
-            ],
-            col_w,
-            is_alt=(idx % 2 == 1),
+            ]
         )
 
     # Totals row
-    cur_y -= ROW_H
-    _table_data_row(
-        ax,
-        tbl_x,
-        cur_y,
-        ["TOTAL", str(tot_din), str(tot_lun), str(tot_cov)],
-        col_w,
-        bg=C_BANNER,
-        bold=True,
-        text_color=C_WHITE,
-    )
+    table_rows.append(["TOTAL", str(tot_din), str(tot_lun), str(tot_cov)])
+
     # Average row
-    n = len(rows)
+    n = len(rows_data)
     if n > 0:
-        cur_y -= ROW_H
         avg_din = tot_din / n
         avg_lun = tot_lun / n
         avg_cov = tot_cov / n
-        _table_data_row(
-            ax,
-            tbl_x,
-            cur_y,
+        table_rows.append(
             [
                 f"Avg / day ({n} days)",
                 f"{avg_din:.0f}",
                 f"{avg_lun:.0f}",
                 f"{avg_cov:.0f}",
-            ],
-            col_w,
-            bg=C_BAND,
-            bold=False,
-            text_color=C_MUTED,
+            ]
         )
 
-    return cur_y
+    tbl = Table(table_rows, colWidths=col_w)
+    style_cmds = [
+        ("BACKGROUND", (0, 0), (-1, 0), _hex(C_HEADER)),
+        ("TEXTCOLOR", (0, 0), (-1, 0), _hex(C_BRAND)),
+        ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
+        ("FONTSIZE", (0, 0), (-1, 0), FONT_SIZE_HEADER),
+        ("ALIGN", (0, 0), (0, -1), "LEFT"),
+        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+        ("TOPPADDING", (0, 0), (-1, -1), ROW_PAD_TOP),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), ROW_PAD_BOTTOM),
+        ("LEFTPADDING", (0, 0), (-1, -1), CELL_PAD_LEFT),
+        ("RIGHTPADDING", (0, 0), (-1, -1), CELL_PAD_RIGHT),
+        ("FONTNAME", (0, 1), (-1, -1), FONT_NAME),
+        ("FONTSIZE", (0, 1), (-1, -1), FONT_SIZE_ROW),
+        ("TEXTCOLOR", (0, 1), (-1, -1), _hex(C_SLATE)),
+        ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
+        ("LINEBELOW", (0, 0), (-1, 0), 1, _hex(C_BRAND)),
+        # Total row
+        (
+            "BACKGROUND",
+            (0, -2) if n > 0 else (0, -1),
+            (-1, -2) if n > 0 else (-1, -1),
+            _hex(C_BANNER),
+        ),
+        (
+            "TEXTCOLOR",
+            (0, -2) if n > 0 else (0, -1),
+            (-1, -2) if n > 0 else (-1, -1),
+            _hex(C_WHITE),
+        ),
+        (
+            "FONTNAME",
+            (0, -2) if n > 0 else (0, -1),
+            (-1, -2) if n > 0 else (-1, -1),
+            FONT_BOLD,
+        ),
+    ]
+    for i in range(1, len(table_rows) - (2 if n > 0 else 1)):
+        if i % 2 == 0:
+            style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(C_BAND)))
+
+    # Average row styling
+    if n > 0:
+        style_cmds.extend(
+            [
+                ("BACKGROUND", (0, -1), (-1, -1), _hex(C_BAND)),
+                ("TEXTCOLOR", (0, -1), (-1, -1), _hex(C_MUTED)),
+            ]
+        )
+
+    tbl.setStyle(TableStyle(style_cmds))
+    elements.append(tbl)
+    return elements
 
 
-def _section_footfall_metrics(
-    ax,
+def _build_footfall_metrics(
     monthly_rows: Optional[List[Dict]],
     weekly_rows: Optional[List[Dict]],
     location_name: str,
-) -> float:
-    """Footfall metrics section with monthly and weekly summary tables."""
-    ax.set_xlim(0, 1)
-    ax.axis("off")
-
+    n_outlets: int = 1,
+) -> list:
     monthly = list(monthly_rows or [])
     weekly = list(weekly_rows or [])
+    avail_w = SECTION_WIDTHS.get(n_outlets, min(864, 720 + (n_outlets - 2) * 72))
 
-    # Slim header banner
-    banner_top = 1.0
-    banner_y = banner_top - BANNER_H
-    _card(ax, 0, banner_y, 1.0, BANNER_H, color=C_BANNER, border=C_BANNER)
-    _hbar(ax, 0, banner_top, 1.0, h=BRAND_BAR_H, color=C_BRAND)
-    _label(
-        ax,
-        0.012,
-        banner_top - BANNER_H * TITLE_Y_FRAC,
-        "Footfall Metrics",
-        size=BANNER_TITLE_FS,
-        color=C_WHITE,
-        weight="bold",
+    elements = []
+    elements.append(
+        _BannerFlowable(
+            avail_w,
+            title="Footfall Metrics",
+            subtitle=location_name[:32],
+        )
     )
-    _label(
-        ax,
-        0.012,
-        banner_top - BANNER_H * SUBTITLE_Y_FRAC,
-        location_name[:32],
-        size=BANNER_SUB_FS,
-        color=C_DATE_LABEL,
-    )
+    elements.append(Spacer(1, GAP_BELOW_BANNER))
 
-    cur_y = banner_y - GAP_BELOW - ROW_H
-
-    # Helper to calculate MoM/WoW % change
     def _calc_pct_change(current: float, previous: float) -> str:
         if previous == 0:
-            return "—"
+            return "\u2014"
         pct = ((current - previous) / previous) * 100
         return f"{pct:+.2f}%"
 
-    # Helper to calculate daily avg % change
     def _calc_avg_pct_change(
         curr_foot: int, curr_days: int, prev_foot: int, prev_days: int
     ) -> str:
         if prev_days == 0 or prev_foot == 0:
-            return "—"
+            return "\u2014"
         curr_avg = curr_foot / curr_days
         prev_avg = prev_foot / prev_days
         pct = ((curr_avg - prev_avg) / prev_avg) * 100
         return f"{pct:+.2f}%"
 
-    # ── Monthly Table ─────────────────────────────────────────────────────────
-    if monthly:
-        cur_y -= ROW_H * 0.1
-        _label(ax, 0.012, cur_y, "Monthly", size=ROW_FS, color=C_BRAND, weight="bold")
-        cur_y -= ROW_H * 0.9
+    col_w = [
+        avail_w * 0.20,
+        avail_w * 0.15,
+        avail_w * 0.16,
+        avail_w * 0.14,
+        avail_w * 0.16,
+        avail_w * 0.17,
+    ]
 
-        # Header - better distribution, filling more width
-        col_w = [0.20, 0.15, 0.16, 0.14, 0.16, 0.17]
+    if monthly:
+        elements.append(_SubsectionLabelFlowable(avail_w, "Monthly"))
         headers = [
             "Month",
             "Footfall",
@@ -1404,13 +1582,10 @@ def _section_footfall_metrics(
             "Daily Avg.",
             "% Change",
         ]
-        cur_y -= ROW_H
-        _table_header_row(ax, 0.01, cur_y, headers, col_w, font_size=HEADER_FS)
 
-        # Sort by month descending (most recent first)
         sorted_monthly = sorted(monthly, key=lambda x: x.get("month", ""), reverse=True)
 
-        # Collect values for conditional formatting (best/worst highlighting)
+        # Precompute best/worst
         monthly_covers = []
         monthly_daily_avgs = []
         for row in sorted_monthly[:9]:
@@ -1420,7 +1595,6 @@ def _section_footfall_metrics(
             monthly_covers.append(covers)
             monthly_daily_avgs.append(daily_avg)
 
-        # Find best/worst indices (only if 2+ rows with data)
         valid_covers = [(i, v) for i, v in enumerate(monthly_covers) if v > 0]
         valid_avgs = [(i, v) for i, v in enumerate(monthly_daily_avgs) if v > 0]
 
@@ -1433,22 +1607,21 @@ def _section_footfall_metrics(
             monthly_best_idx["daily_avg"] = max(valid_avgs, key=lambda x: x[1])[0]
             monthly_worst_idx["daily_avg"] = min(valid_avgs, key=lambda x: x[1])[0]
 
+        table_rows = [headers]
         for idx, row in enumerate(sorted_monthly[:9]):
             month = str(row.get("month", ""))
             covers = int(row.get("covers") or 0)
             total_days = int(row.get("total_days") or 0)
             daily_avg = covers / total_days if total_days > 0 else 0
 
-            # Format month label
             try:
                 dt = datetime.strptime(f"{month}-01", "%Y-%m-%d")
                 month_label = dt.strftime("%b-%Y")
             except ValueError:
                 month_label = month
 
-            # Calculate % changes (compare to previous month in sorted list)
-            foot_pct = "—"
-            avg_pct = "—"
+            foot_pct = "\u2014"
+            avg_pct = "\u2014"
             if idx < len(sorted_monthly) - 1:
                 prev_row = sorted_monthly[idx + 1]
                 prev_covers = int(prev_row.get("covers") or 0)
@@ -1458,48 +1631,57 @@ def _section_footfall_metrics(
                     covers, total_days, prev_covers, prev_days
                 )
 
-            cells = [
-                month_label,
-                f"{covers:,}",
-                foot_pct,
-                str(total_days),
-                f"{daily_avg:.0f}",
-                avg_pct,
-            ]
-
-            # Build per-cell colors for conditional formatting
-            cell_colors = [None] * 6
-            if idx == monthly_best_idx.get("footfall"):
-                cell_colors[1] = C_GREEN
-            elif idx == monthly_worst_idx.get("footfall"):
-                cell_colors[1] = C_RED
-            if idx == monthly_best_idx.get("daily_avg"):
-                cell_colors[4] = C_GREEN
-            elif idx == monthly_worst_idx.get("daily_avg"):
-                cell_colors[4] = C_RED
-
-            cur_y -= ROW_H
-            _table_data_row(
-                ax,
-                0.01,
-                cur_y,
-                cells,
-                col_w,
-                is_alt=(idx % 2 == 1),
-                font_size=ROW_FS,
-                cell_colors=cell_colors,
+            table_rows.append(
+                [
+                    month_label,
+                    f"{covers:,}",
+                    foot_pct,
+                    str(total_days),
+                    f"{daily_avg:.0f}",
+                    avg_pct,
+                ]
             )
 
-        cur_y -= ROW_H * 0.2
+        tbl = Table(table_rows, colWidths=col_w)
+        style_cmds = [
+            ("BACKGROUND", (0, 0), (-1, 0), _hex(C_HEADER)),
+            ("TEXTCOLOR", (0, 0), (-1, 0), _hex(C_BRAND)),
+            ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
+            ("FONTSIZE", (0, 0), (-1, 0), FONT_SIZE_HEADER),
+            ("ALIGN", (0, 0), (0, -1), "LEFT"),
+            ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+            ("TOPPADDING", (0, 0), (-1, -1), ROW_PAD_TOP),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), ROW_PAD_BOTTOM),
+            ("LEFTPADDING", (0, 0), (-1, -1), CELL_PAD_LEFT),
+            ("RIGHTPADDING", (0, 0), (-1, -1), CELL_PAD_RIGHT),
+            ("FONTNAME", (0, 1), (-1, -1), FONT_NAME),
+            ("FONTSIZE", (0, 1), (-1, -1), FONT_SIZE_ROW),
+            ("TEXTCOLOR", (0, 1), (-1, -1), _hex(C_SLATE)),
+            ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
+            ("LINEBELOW", (0, 0), (-1, 0), 1, _hex(C_BRAND)),
+        ]
+        for i in range(1, len(table_rows)):
+            if i % 2 == 0:
+                style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(C_BAND)))
 
-    # ── Weekly Table ──────────────────────────────────────────────────────────
+        # Best/worst highlighting
+        for idx in range(len(sorted_monthly[:9])):
+            ri = idx + 1
+            if idx == monthly_best_idx.get("footfall"):
+                style_cmds.append(("TEXTCOLOR", (1, ri), (1, ri), _hex(C_GREEN)))
+            elif idx == monthly_worst_idx.get("footfall"):
+                style_cmds.append(("TEXTCOLOR", (1, ri), (1, ri), _hex(C_RED)))
+            if idx == monthly_best_idx.get("daily_avg"):
+                style_cmds.append(("TEXTCOLOR", (4, ri), (4, ri), _hex(C_GREEN)))
+            elif idx == monthly_worst_idx.get("daily_avg"):
+                style_cmds.append(("TEXTCOLOR", (4, ri), (4, ri), _hex(C_RED)))
+
+        tbl.setStyle(TableStyle(style_cmds))
+        elements.append(tbl)
+        elements.append(Spacer(1, GAP_ABOVE_SECTION_LABEL))
+
     if weekly:
-        cur_y -= ROW_H * 0.1
-        _label(ax, 0.012, cur_y, "Weekly", size=ROW_FS, color=C_BRAND, weight="bold")
-        cur_y -= ROW_H * 0.9
-
-        # Header - better distribution, filling more width
-        col_w = [0.20, 0.15, 0.16, 0.14, 0.16, 0.17]
+        elements.append(_SubsectionLabelFlowable(avail_w, "Weekly"))
         headers = [
             "Week",
             "Footfall",
@@ -1508,13 +1690,9 @@ def _section_footfall_metrics(
             "Daily Avg.",
             "% Change",
         ]
-        cur_y -= ROW_H
-        _table_header_row(ax, 0.01, cur_y, headers, col_w, font_size=HEADER_FS)
 
-        # Sort by week descending (most recent first)
         sorted_weekly = sorted(weekly, key=lambda x: x.get("week", ""), reverse=True)
 
-        # Collect values for conditional formatting (best/worst highlighting)
         weekly_covers = []
         weekly_daily_avgs = []
         for row in sorted_weekly[:4]:
@@ -1524,7 +1702,6 @@ def _section_footfall_metrics(
             weekly_covers.append(covers)
             weekly_daily_avgs.append(daily_avg)
 
-        # Find best/worst indices (only if 2+ rows with data)
         valid_covers = [(i, v) for i, v in enumerate(weekly_covers) if v > 0]
         valid_avgs = [(i, v) for i, v in enumerate(weekly_daily_avgs) if v > 0]
 
@@ -1537,15 +1714,15 @@ def _section_footfall_metrics(
             weekly_best_idx["daily_avg"] = max(valid_avgs, key=lambda x: x[1])[0]
             weekly_worst_idx["daily_avg"] = min(valid_avgs, key=lambda x: x[1])[0]
 
+        table_rows = [headers]
         for idx, row in enumerate(sorted_weekly[:4]):
             week = str(row.get("week", ""))
             covers = int(row.get("covers") or 0)
             total_days = int(row.get("total_days") or 0)
             daily_avg = covers / total_days if total_days > 0 else 0
 
-            # Calculate % changes (compare to previous week in sorted list)
-            foot_pct = "—"
-            avg_pct = "—"
+            foot_pct = "\u2014"
+            avg_pct = "\u2014"
             if idx < len(sorted_weekly) - 1:
                 prev_row = sorted_weekly[idx + 1]
                 prev_covers = int(prev_row.get("covers") or 0)
@@ -1555,111 +1732,64 @@ def _section_footfall_metrics(
                     covers, total_days, prev_covers, prev_days
                 )
 
-            cells = [
-                _format_week_label(week),
-                f"{covers:,}",
-                foot_pct,
-                str(total_days),
-                f"{daily_avg:.0f}",
-                avg_pct,
-            ]
-
-            # Build per-cell colors for conditional formatting
-            cell_colors = [None] * 6
-            if idx == weekly_best_idx.get("footfall"):
-                cell_colors[1] = C_GREEN
-            elif idx == weekly_worst_idx.get("footfall"):
-                cell_colors[1] = C_RED
-            if idx == weekly_best_idx.get("daily_avg"):
-                cell_colors[4] = C_GREEN
-            elif idx == weekly_worst_idx.get("daily_avg"):
-                cell_colors[4] = C_RED
-
-            cur_y -= ROW_H
-            _table_data_row(
-                ax,
-                0.01,
-                cur_y,
-                cells,
-                col_w,
-                is_alt=(idx % 2 == 1),
-                font_size=ROW_FS,
-                cell_colors=cell_colors,
+            table_rows.append(
+                [
+                    _format_week_label(week),
+                    f"{covers:,}",
+                    foot_pct,
+                    str(total_days),
+                    f"{daily_avg:.0f}",
+                    avg_pct,
+                ]
             )
 
-    # If no data at all
+        tbl = Table(table_rows, colWidths=col_w)
+        style_cmds = [
+            ("BACKGROUND", (0, 0), (-1, 0), _hex(C_HEADER)),
+            ("TEXTCOLOR", (0, 0), (-1, 0), _hex(C_BRAND)),
+            ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
+            ("FONTSIZE", (0, 0), (-1, 0), FONT_SIZE_HEADER),
+            ("ALIGN", (0, 0), (0, -1), "LEFT"),
+            ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+            ("TOPPADDING", (0, 0), (-1, -1), ROW_PAD_TOP),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), ROW_PAD_BOTTOM),
+            ("LEFTPADDING", (0, 0), (-1, -1), CELL_PAD_LEFT),
+            ("RIGHTPADDING", (0, 0), (-1, -1), CELL_PAD_RIGHT),
+            ("FONTNAME", (0, 1), (-1, -1), FONT_NAME),
+            ("FONTSIZE", (0, 1), (-1, -1), FONT_SIZE_ROW),
+            ("TEXTCOLOR", (0, 1), (-1, -1), _hex(C_SLATE)),
+            ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
+            ("LINEBELOW", (0, 0), (-1, 0), 1, _hex(C_BRAND)),
+        ]
+        for i in range(1, len(table_rows)):
+            if i % 2 == 0:
+                style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(C_BAND)))
+
+        for idx in range(len(sorted_weekly[:4])):
+            ri = idx + 1
+            if idx == weekly_best_idx.get("footfall"):
+                style_cmds.append(("TEXTCOLOR", (1, ri), (1, ri), _hex(C_GREEN)))
+            elif idx == weekly_worst_idx.get("footfall"):
+                style_cmds.append(("TEXTCOLOR", (1, ri), (1, ri), _hex(C_RED)))
+            if idx == weekly_best_idx.get("daily_avg"):
+                style_cmds.append(("TEXTCOLOR", (4, ri), (4, ri), _hex(C_GREEN)))
+            elif idx == weekly_worst_idx.get("daily_avg"):
+                style_cmds.append(("TEXTCOLOR", (4, ri), (4, ri), _hex(C_RED)))
+
+        tbl.setStyle(TableStyle(style_cmds))
+        elements.append(tbl)
+
     if not monthly and not weekly:
-        cur_y -= ROW_H * 2
-        _label(
-            ax,
-            0.5,
-            cur_y,
-            "No footfall metrics data available",
-            size=ROW_FS,
-            color=C_MUTED,
-            ha="center",
+        elements.append(
+            _EmptyDataFlowable(avail_w, "No footfall metrics data available")
         )
 
-    return cur_y
+    return elements
 
 
-# ── Short outlet name helper ──────────────────────────────────────────────────
-
-
-def _short_outlet_name(name: str, max_len: int = 18) -> str:
-    name = (name or "").strip()
-    for prefix in ("Boteco - ", "Boteco-", "Boteco "):
-        if name.lower().startswith(prefix.lower()):
-            name = name[len(prefix) :].strip()
-            break
-    return name if len(name) <= max_len else name[: max_len - 1] + "\u2026"
-
-
-def _section_key_slug(value: str, default: str = "outlet") -> str:
-    """Create a compact ascii-safe slug for PNG section keys."""
-    slug = re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower())
-    slug = slug.strip("_")
-    if not slug:
-        slug = default
-    return slug[:22]
-
-
-def _outlet_col_widths(n_outlets: int, label_frac: float = 0.24) -> List[float]:
-    """Compute column widths for [Label, Outlet1, ..., OutletN, Combined].
-
-    When n_outlets <= 1, returns [label_frac, 1 - label_frac] (two columns).
-    When n_outlets >= 2, splits remaining space equally among outlets + combined.
-    """
-    if n_outlets <= 1:
-        return [label_frac, 1.0 - label_frac]
-    data_cols = n_outlets + 1  # per-outlet + combined
-    data_w = (1.0 - label_frac) / data_cols
-    return [label_frac] + [data_w] * data_cols
-
-
-# ══════════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════
 # Public API
-# ══════════════════════════════════════════════════════════════════════════════
-
-
-def _fig_for_section(
-    section_key: str,
-    n_outlets: int = 1,
-) -> Tuple[plt.Figure, plt.Axes]:
-    """Create a fixed-size figure for a report section.
-
-    Returns (fig, ax) with set_xlim(0,1), set_ylim(0,1), axis('off').
-    Row height is the global ROW_H constant.
-    """
-    h = SECTION_HEIGHTS[section_key]
-    fig_w = SECTION_WIDTHS.get(n_outlets, min(12.0, 10.0 + (n_outlets - 2) * 1.0))
-    fig, ax = plt.subplots(figsize=(fig_w, h), dpi=DPI)
-    fig.patch.set_facecolor(C_PAGE)
-    ax.set_facecolor(C_PAGE)
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-    ax.axis("off")
-    return fig, ax
+# ═══════════════════════════════════════════════════════════════════════════
 
 
 @st.cache_data(ttl=600)
@@ -1680,23 +1810,10 @@ def generate_sheet_style_report_sections(
     ] = None,
     daily_sales_history: Optional[List[Dict]] = None,
 ) -> Dict[str, BytesIO]:
-    """Generate section PNG buffers.
-
-    Returns keys:
-      - sales_summary
-      - category
-      - service
-      - footfall (single-outlet/legacy daily footfall)
-      - footfall__{outlet_slug}_{idx} (multi-outlet per-outlet daily footfall)
-      - footfall_metrics (single-outlet metrics)
-      - footfall_metrics__{outlet_slug}_{idx} (multi-outlet per-outlet metrics)
-    """
     r = report_data
     mc = dict(mtd_category or {})
     ms = dict(mtd_service or {})
     mf = list(month_footfall_rows or [])
-    iso = str(r.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]
-    day_lbl = _sheet_date_label(iso)
     per_outlet = list(per_outlet_summaries) if per_outlet_summaries else None
     per_outlet_cat = list(per_outlet_category) if per_outlet_category else None
     per_outlet_svc = list(per_outlet_service) if per_outlet_service else None
@@ -1707,77 +1824,74 @@ def generate_sheet_style_report_sections(
         list(per_outlet_footfall_metrics) if per_outlet_footfall_metrics else None
     )
 
+    n_outlets = len(per_outlet) if per_outlet and len(per_outlet) >= 2 else 1
     out: Dict[str, BytesIO] = {}
 
-    n_outlets = len(per_outlet) if per_outlet and len(per_outlet) >= 2 else 1
-
     # Sales summary
-    fig, ax = _fig_for_section("sales_summary", n_outlets=n_outlets)
-    cur_y = _section_sales_summary(
-        ax,
+    elements = _build_sales_summary(
         r,
         location_name,
-        per_outlet,
+        n_outlets=n_outlets,
+        per_outlet=per_outlet,
         daily_sales_history=daily_sales_history,
     )
-    out["sales_summary"] = _save_section(fig, ax, cur_y)
+    width = SECTION_WIDTHS.get(n_outlets, min(864, 720 + (n_outlets - 2) * 72))
+    out["sales_summary"] = _render_elements_to_png(elements, width)
 
     # Category
-    fig, ax = _fig_for_section("category", n_outlets=n_outlets)
-    cur_y = _section_category(
-        ax,
+    elements = _build_category(
         r,
         location_name,
         mc,
-        day_lbl,
+        _sheet_date_label(
+            str(r.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]
+        ),
+        n_outlets=n_outlets,
         per_outlet=per_outlet,
         per_outlet_category=per_outlet_cat,
     )
-    out["category"] = _save_section(fig, ax, cur_y)
+    out["category"] = _render_elements_to_png(elements, width)
 
     # Service
-    fig, ax = _fig_for_section("service", n_outlets=n_outlets)
-    cur_y = _section_service(
-        ax,
+    elements = _build_service(
         r,
         location_name,
         ms,
-        day_lbl,
+        _sheet_date_label(
+            str(r.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]
+        ),
+        n_outlets=n_outlets,
         per_outlet=per_outlet,
         per_outlet_service=per_outlet_svc,
     )
-    out["service"] = _save_section(fig, ax, cur_y)
+    out["service"] = _render_elements_to_png(elements, width)
 
     # Footfall
-    # Prefer new metrics-based sections if data provided
     if per_outlet_ff_metrics and len(per_outlet_ff_metrics) > 1:
-        # Multi-outlet with per-outlet metrics
         for idx, (outlet_name, mo_rows, wk_rows) in enumerate(per_outlet_ff_metrics):
-            fig, ax = _fig_for_section("footfall_metrics", n_outlets=n_outlets)
-            cur_y = _section_footfall_metrics(ax, mo_rows, wk_rows, outlet_name)
+            elements = _build_footfall_metrics(
+                mo_rows, wk_rows, outlet_name, n_outlets=n_outlets
+            )
             outlet_slug = _section_key_slug(outlet_name, default=f"outlet_{idx}")
-            out[f"footfall_metrics__{outlet_slug}_{idx}"] = _save_section(
-                fig, ax, cur_y
+            out[f"footfall_metrics__{outlet_slug}_{idx}"] = _render_elements_to_png(
+                elements, width
             )
     elif ff_metrics_mo or ff_metrics_wk:
-        fig, ax = _fig_for_section("footfall_metrics", n_outlets=n_outlets)
-        cur_y = _section_footfall_metrics(
-            ax, ff_metrics_mo, ff_metrics_wk, location_name
+        elements = _build_footfall_metrics(
+            ff_metrics_mo, ff_metrics_wk, location_name, n_outlets=n_outlets
         )
-        out["footfall_metrics"] = _save_section(fig, ax, cur_y)
+        out["footfall_metrics"] = _render_elements_to_png(elements, width)
     elif per_outlet_ff and len(per_outlet_ff) > 1:
-        # Fallback to daily footfall for backward compatibility
         for idx, (outlet_name, ff_rows) in enumerate(per_outlet_ff):
             ff_rows = list(ff_rows or [])
-            fig, ax = _fig_for_section("footfall", n_outlets=n_outlets)
-            cur_y = _section_footfall(ax, ff_rows, outlet_name)
+            elements = _build_footfall(ff_rows, outlet_name, n_outlets=n_outlets)
             outlet_slug = _section_key_slug(outlet_name, default=f"outlet_{idx}")
-            out[f"footfall__{outlet_slug}_{idx}"] = _save_section(fig, ax, cur_y)
+            out[f"footfall__{outlet_slug}_{idx}"] = _render_elements_to_png(
+                elements, width
+            )
     else:
-        # Single-outlet daily footfall (legacy)
-        fig, ax = _fig_for_section("footfall", n_outlets=n_outlets)
-        cur_y = _section_footfall(ax, mf, location_name)
-        out["footfall"] = _save_section(fig, ax, cur_y)
+        elements = _build_footfall(mf, location_name, n_outlets=n_outlets)
+        out["footfall"] = _render_elements_to_png(elements, width)
 
     return out
 
@@ -1798,11 +1912,6 @@ def generate_sheet_style_report_image(
         List[Tuple[str, List[Dict], List[Dict]]]
     ] = None,
 ) -> BytesIO:
-    """
-    Composite PNG from generated sections stacked vertically.
-    For multi-outlet inputs this includes one footfall section per outlet,
-    otherwise a single combined footfall section.
-    """
     sections = generate_sheet_style_report_sections(
         report_data,
         location_name,
@@ -1817,10 +1926,6 @@ def generate_sheet_style_report_image(
         footfall_metrics_weekly,
         per_outlet_footfall_metrics,
     )
-
-    # Stack generated sections into one tall image using matplotlib
-    from PIL import Image as PILImage
-    import numpy as np
 
     imgs = []
     for key in ("sales_summary", "category", "service"):
@@ -1847,7 +1952,6 @@ def generate_sheet_style_report_image(
     composite = PILImage.new("RGB", (max_w, total_h), color=(247, 250, 252))
     y_off = 0
     for im in imgs:
-        # centre narrower images
         x_off = (max_w - im.width) // 2
         composite.paste(im, (x_off, y_off))
         y_off += im.height
@@ -1861,7 +1965,6 @@ def generate_sheet_style_report_image(
 def generate_report_image(
     report_data: Dict, location_name: str = "Boteco Bangalore"
 ) -> BytesIO:
-    """Backward-compatible alias."""
     return generate_sheet_style_report_image(
         report_data,
         location_name,
@@ -1871,7 +1974,7 @@ def generate_report_image(
     )
 
 
-# ── WhatsApp text ─────────────────────────────────────────────────────────────
+# ── WhatsApp text ───────────────────────────────────────────────────────────
 
 
 def generate_whatsapp_text(
@@ -1885,7 +1988,7 @@ def generate_whatsapp_text(
     pct_target = float(r.get("pct_target") or 0)
 
     def _pct_of(val):
-        return f"{val / net_total * 100:.0f}%" if net_total > 0 else "—"
+        return f"{val / net_total * 100:.0f}%" if net_total > 0 else "\u2014"
 
     if pct_target >= 100:
         status_emoji, status_text = "\u2705", "Target Achieved!"
