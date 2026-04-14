@@ -444,25 +444,36 @@ def _render_elements_to_png(
 ) -> BytesIO:
     """Render a list of Platypus Flowables to a PNG BytesIO.
 
-    Creates a single-page PDF with auto-height, then converts to PNG.
+    Pre-calculates content height so the PDF page fits tightly,
+    eliminating whitespace below the content.
     """
-    buf = BytesIO()
-    page_w = width_pt
     left_margin = PAGE_PAD
     right_margin = PAGE_PAD
     top_margin = PAGE_PAD
     bottom_margin = PAGE_PAD
+    avail_w = width_pt - left_margin - right_margin
 
+    story = list(elements)
+
+    # Calculate total content height by wrapping each flowable
+    total_height = 0.0
+    for flowable in story:
+        w, h = flowable.wrap(avail_w, 100000)
+        total_height += h
+
+    page_h = total_height + top_margin + bottom_margin + 4
+    if page_h < 100:
+        page_h = 100
+
+    buf = BytesIO()
     doc = SimpleDocTemplate(
         buf,
-        pagesize=(page_w, 2000),
+        pagesize=(width_pt, page_h),
         leftMargin=left_margin,
         rightMargin=right_margin,
         topMargin=top_margin,
         bottomMargin=bottom_margin,
     )
-
-    story = list(elements)
 
     doc.build(story, onFirstPage=lambda d, c: None, onLaterPages=lambda d, c: None)
     buf.seek(0)
