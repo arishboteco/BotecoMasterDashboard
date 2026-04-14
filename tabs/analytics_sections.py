@@ -676,16 +676,24 @@ def render_revenue_breakdown(
         else:
             chart_df = large_cats.copy()
 
-        fig_cat = px.treemap(
-            chart_df,
-            names="category",
-            values="amount",
-            title=f"Category revenue mix (Total: {utils.format_rupee_short(total_cat)})",
-            color="category",
-            color_discrete_sequence=ui_theme.CHART_COLORWAY,
+        fig_cat = go.Figure(
+            go.Treemap(
+                labels=chart_df["category"].tolist(),
+                values=chart_df["amount"].tolist(),
+                parents=[""] * len(chart_df),
+                marker=dict(
+                    colors=[
+                        ui_theme.CHART_COLORWAY[i % len(ui_theme.CHART_COLORWAY)]
+                        for i in range(len(chart_df))
+                    ]
+                ),
+                textinfo="label+percent entry",
+            )
         )
-        fig_cat.update_traces(textinfo="label+percent entry")
-        fig_cat.update_layout(height=ui_theme.CHART_HEIGHT)
+        fig_cat.update_layout(
+            title=f"Category revenue mix (Total: {utils.format_rupee_short(total_cat)})",
+            height=400,
+        )
 
         st.plotly_chart(fig_cat, width="stretch")
 
