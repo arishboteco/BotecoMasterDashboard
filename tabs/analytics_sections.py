@@ -676,35 +676,16 @@ def render_revenue_breakdown(
         else:
             chart_df = large_cats.copy()
 
-        n_categories = len(chart_df)
-
-        if n_categories > 5:
-            fig_cat = px.bar(
-                chart_df.sort_values("amount", ascending=True),
-                y="category",
-                x="amount",
-                orientation="h",
-                title=f"Category revenue (Total: {utils.format_rupee_short(total_cat)})",
-                color="category",
-                color_discrete_sequence=ui_theme.CHART_COLORWAY,
-            )
-            fig_cat.update_layout(
-                yaxis_title="",
-                xaxis_title="Revenue (₹)",
-                height=max(ui_theme.CHART_HEIGHT, 60 * n_categories),
-                showlegend=False,
-            )
-        else:
-            fig_cat = px.treemap(
-                chart_df,
-                names="category",
-                values="amount",
-                title=f"Category revenue mix (Total: {utils.format_rupee_short(total_cat)})",
-                color="category",
-                color_discrete_sequence=ui_theme.CHART_COLORWAY,
-            )
-            fig_cat.update_traces(textinfo="label+percent entry")
-            fig_cat.update_layout(height=ui_theme.CHART_HEIGHT)
+        fig_cat = px.treemap(
+            chart_df,
+            names="category",
+            values="amount",
+            title=f"Category revenue mix (Total: {utils.format_rupee_short(total_cat)})",
+            color="category",
+            color_discrete_sequence=ui_theme.CHART_COLORWAY,
+        )
+        fig_cat.update_traces(textinfo="label+percent entry")
+        fig_cat.update_layout(height=ui_theme.CHART_HEIGHT)
 
         st.plotly_chart(fig_cat, width="stretch")
 
