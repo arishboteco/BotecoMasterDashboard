@@ -157,52 +157,46 @@ def render(ctx: TabContext) -> None:
                             st.error(f"**{fr.filename}**: {fr.error}")
 
                     uploaded_by = st.session_state.get("username") or "user"
-                    total_saved = 0
-                    total_skipped = 0
-                    all_save_messages: list = []
+                    loc_settings = database.get_location_settings(ctx.location_id)
+                    monthly_tgt = (
+                        loc_settings.get(
+                            "target_monthly_sales", config.MONTHLY_TARGET
+                        )
+                        if loc_settings
+                        else config.MONTHLY_TARGET
+                    )
+                    daily_tgt = (
+                        loc_settings.get("target_daily_sales", config.DAILY_TARGET)
+                        if loc_settings
+                        else config.DAILY_TARGET
+                    )
+                    sc_setting = (
+                        loc_settings.get("seat_count") if loc_settings else None
+                    )
 
-                    for lid, days in upload_result.location_results.items():
-                        loc_settings = database.get_location_settings(lid)
-                        monthly_tgt = (
-                            loc_settings.get(
-                                "target_monthly_sales", config.MONTHLY_TARGET
-                            )
-                            if loc_settings
-                            else config.MONTHLY_TARGET
+                    # One save pass: Dynamic Report outlet comes from CSV; calling once
+                    # per location_results key used to re-parse and re-insert all rows.
+                    saved_days, skipped_validation, save_messages = (
+                        smart_upload.save_smart_upload_results(
+                            upload_result,
+                            ctx.location_id,
+                            uploaded_by,
+                            monthly_target=float(monthly_tgt),
+                            daily_target=float(daily_tgt),
+                            seat_count=(int(sc_setting) if sc_setting else None),
                         )
-                        daily_tgt = (
-                            loc_settings.get("target_daily_sales", config.DAILY_TARGET)
-                            if loc_settings
-                            else config.DAILY_TARGET
-                        )
-                        sc_setting = (
-                            loc_settings.get("seat_count") if loc_settings else None
-                        )
-
-                        # Build a per-location SmartUploadResult for save function
-                        loc_result = smart_upload.SmartUploadResult(
-                            files=upload_result.files,
-                            days=days,
-                            global_notes=[],
-                            location_results={lid: days},
-                        )
-                        saved_days, skipped_validation, save_messages = (
-                            smart_upload.save_smart_upload_results(
-                                loc_result,
-                                lid,
-                                uploaded_by,
-                                monthly_target=float(monthly_tgt),
-                                daily_target=float(daily_tgt),
-                                seat_count=(int(sc_setting) if sc_setting else None),
-                            )
-                        )
-                        total_saved += saved_days
-                        total_skipped += skipped_validation
-                        ovr_name = loc_name_map.get(lid, str(lid))
-                        all_save_messages.append(
-                            f"**{ovr_name}:** {saved_days} day(s) saved, "
-                            f"{skipped_validation} day(s) skipped."
-                        )
+                    )
+                    total_saved = saved_days
+                    total_skipped = skipped_validation
+                    outlets = ", ".join(
+                        loc_name_map.get(lid, str(lid))
+                        for lid in upload_result.location_results
+                    )
+                    all_save_messages = [
+                        f"**Outlets:** {outlets} — {saved_days} day(s) saved, "
+                        f"{skipped_validation} day(s) skipped."
+                    ]
+                    all_save_messages.extend(save_messages)
 
                     for lid in upload_result.location_results:
                         clear_location_cache(lid)

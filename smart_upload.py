@@ -864,25 +864,36 @@ def save_smart_upload_results(
             except Exception as e:
                 messages.append(f"Error saving bill items: {e}")
 
+            daily_rows: List[Dict[str, Any]] = []
             for date_str, agg in sorted(daily_agg.items()):
-                daily_data = {
-                    "gross_total": round(agg["gross_total"], 2),
-                    "net_total": round(agg["net_total"], 2),
-                    "covers": agg["covers"],
-                    "discount": round(agg["discount"], 2),
-                    "cgst": round(agg["cgst"], 2),
-                    "sgst": round(agg["sgst"], 2),
-                    "service_charge": round(agg["service_charge"], 2),
-                    "gst_on_service_charge": round(agg["gst_on_service_charge"], 2),
-                    "cancelled_amount": round(agg["cancelled_amount"], 2),
-                    "complementary_amount": round(agg["complementary_amount"], 2),
-                }
+                daily_rows.append(
+                    {
+                        "location_id": effective_location_id,
+                        "date": date_str,
+                        "gross_total": round(agg["gross_total"], 2),
+                        "net_total": round(agg["net_total"], 2),
+                        "covers": agg["covers"],
+                        "discount": round(agg["discount"], 2),
+                        "cgst": round(agg["cgst"], 2),
+                        "sgst": round(agg["sgst"], 2),
+                        "service_charge": round(agg["service_charge"], 2),
+                        "gst_on_service_charge": round(
+                            agg["gst_on_service_charge"], 2
+                        ),
+                        "cancelled_amount": round(agg["cancelled_amount"], 2),
+                        "complementary_amount": round(
+                            agg["complementary_amount"], 2
+                        ),
+                    }
+                )
+            if daily_rows:
                 try:
-                    db_writes.upsert_daily_summary_supabase(
-                        client, effective_location_id, date_str, daily_data
+                    db_writes.upsert_daily_summaries_supabase_batch(client, daily_rows)
+                    messages.append(
+                        f"Saved {len(daily_rows)} daily summary row(s) from {fr.filename}"
                     )
                 except Exception as e:
-                    messages.append(f"Error saving daily summary for {date_str}: {e}")
+                    messages.append(f"Error saving daily summaries: {e}")
 
             cat_records = []
             for date_str, cat_data in categories_by_date.items():
@@ -907,16 +918,21 @@ def save_smart_upload_results(
                 except Exception as e:
                     messages.append(f"Error saving category summaries: {e}")
 
-            for date_str in sorted(dates_processed):
-                fnames = fr.filename
-                primary_kind = "dynamic_report"
-                database.save_upload_record(
-                    effective_location_id,
-                    date_str,
-                    fnames,
-                    primary_kind,
-                    uploaded_by,
-                )
+            upload_batch = [
+                {
+                    "location_id": effective_location_id,
+                    "date": date_str,
+                    "filename": fr.filename,
+                    "file_type": "dynamic_report",
+                    "uploaded_by": uploaded_by,
+                }
+                for date_str in sorted(dates_processed)
+            ]
+            if upload_batch:
+                try:
+                    db_writes.save_upload_records_batch(upload_batch)
+                except Exception as e:
+                    messages.append(f"Error saving upload history: {e}")
 
             saved += len(dates_processed)
             messages.append(

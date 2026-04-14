@@ -23,6 +23,9 @@ LOCATION_ID_TO_RESTAURANT = {
 # Prefix for synthetic item_sales rows that represent category aggregates (SQLite only).
 _CATEGORY_ROW_PREFIX = "__category_row:"
 
+# PostgREST performs best with modest payload sizes; large CSVs are split across requests.
+_SUPABASE_ROW_CHUNK = 500
+
 
 def _get_location_id(restaurant: str) -> int:
     """Map restaurant name from Dynamic Report CSV to location_id."""
@@ -108,6 +111,19 @@ def upsert_daily_summary_supabase(
         .execute()
     )
     return int(result.data[0]["id"])
+
+
+def upsert_daily_summaries_supabase_batch(
+    supabase: Any, rows: List[Dict[str, Any]]
+) -> None:
+    """Bulk upsert daily_summary rows (one HTTP round-trip per chunk)."""
+    if not rows:
+        return
+    for i in range(0, len(rows), _SUPABASE_ROW_CHUNK):
+        chunk = rows[i : i + _SUPABASE_ROW_CHUNK]
+        supabase.table("daily_summary").upsert(
+            chunk, on_conflict="location_id,date"
+        ).execute()
 
 
 def save_daily_summary(location_id: int, data: Dict[str, Any]) -> int:
@@ -276,10 +292,11 @@ def _save_daily_summary_sqlite(
 
 
 def save_bill_items(supabase: Any, records: List[Dict[str, Any]]) -> None:
-    """Bulk insert bill_items records (Supabase only)."""
+    """Bulk insert bill_items records (Supabase only), chunked to avoid timeouts."""
     if not records:
         return
-    supabase.table("bill_items").insert(records).execute()
+    for i in range(0, len(records), _SUPABASE_ROW_CHUNK):
+        supabase.table("bill_items").insert(records[i : i + _SUPABASE_ROW_CHUNK]).execute()
 
 
 def save_category_summary(
@@ -304,19 +321,23 @@ def save_category_summary(
 
 
 def save_category_summary_batch(supabase: Any, records: List[Dict[str, Any]]) -> None:
-    """Bulk upsert category_summary records (Supabase)."""
+    """Bulk upsert category_summary records (Supabase), chunked."""
     if not records:
         return
-    for r in records:
+    normalized = [
+        {
+            "location_id": r["location_id"],
+            "date": r["date"],
+            "category_name": r["category_name"],
+            "net_amount": round(float(r["net_amount"]), 2),
+            "qty": int(r["qty"]),
+        }
+        for r in records
+    ]
+    for i in range(0, len(normalized), _SUPABASE_ROW_CHUNK):
+        chunk = normalized[i : i + _SUPABASE_ROW_CHUNK]
         supabase.table("category_summary").upsert(
-            {
-                "location_id": r["location_id"],
-                "date": r["date"],
-                "category_name": r["category_name"],
-                "net_amount": round(float(r["net_amount"]), 2),
-                "qty": int(r["qty"]),
-            },
-            on_conflict="location_id,date,category_name",
+            chunk, on_conflict="location_id,date,category_name"
         ).execute()
 
 
@@ -421,6 +442,38 @@ def save_upload_record(
             VALUES (?, ?, ?, ?, ?)
             """,
             (location_id, date, filename, file_type, uploaded_by),
+        )
+        conn.commit()
+
+
+def save_upload_records_batch(rows: List[Dict[str, Any]]) -> None:
+    """Insert multiple upload_history rows in few round-trips."""
+    if not rows:
+        return
+    if database.use_supabase():
+        client = database.get_supabase_client()
+        if client is None:
+            raise RuntimeError("Supabase client not available")
+        for i in range(0, len(rows), _SUPABASE_ROW_CHUNK):
+            client.table("upload_history").insert(rows[i : i + _SUPABASE_ROW_CHUNK]).execute()
+        return
+
+    with database.db_connection() as conn:
+        conn.executemany(
+            """
+            INSERT INTO upload_history (location_id, date, filename, file_type, uploaded_by)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    int(r["location_id"]),
+                    r["date"],
+                    r["filename"],
+                    r["file_type"],
+                    r["uploaded_by"],
+                )
+                for r in rows
+            ],
         )
         conn.commit()
 
