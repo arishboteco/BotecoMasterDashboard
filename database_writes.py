@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Tuple
 import database
 
 
@@ -16,6 +16,35 @@ RESTAURANT_MAP = {
 def _get_location_id(restaurant: str) -> int:
     """Map restaurant name to location_id."""
     return RESTAURANT_MAP.get(restaurant, 1)
+
+
+def ensure_default_locations() -> None:
+    """Ensure Boteco - Indiqube and Boteco - Bagmane exist in Supabase."""
+    from database import get_supabase_client
+
+    client = get_supabase_client()
+    existing = client.table("locations").select("id").execute()
+
+    existing_names = {row["name"] for row in existing.data} if existing.data else set()
+
+    defaults = [
+        {
+            "id": 1,
+            "name": "Boteco - Indiqube",
+            "target_monthly_sales": 5000000.0,
+            "target_daily_sales": 166666.66666666666,
+        },
+        {
+            "id": 2,
+            "name": "Boteco - Bagmane",
+            "target_monthly_sales": 5000000.0,
+            "target_daily_sales": 166666.66666666666,
+        },
+    ]
+
+    for loc in defaults:
+        if loc["name"] not in existing_names:
+            client.table("locations").upsert(loc, on_conflict="id").execute()
 
 
 def save_bill_items(supabase, records: List[Dict]) -> None:
