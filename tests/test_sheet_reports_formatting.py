@@ -49,11 +49,11 @@ class TestCategorySuperCategoryDisplay:
                         if cell is not None:
                             element_texts.append(str(cell))
 
-        assert "Food" in element_texts, (
-            f"Expected 'Food' in output, got: {element_texts}"
+        assert "Food (" in str(element_texts), (
+            f"Expected 'Food (xx%)' in output, got: {element_texts}"
         )
-        assert "Coffee" in element_texts, (
-            f"Expected 'Coffee' in output, got: {element_texts}"
+        assert "Coffee (" in str(element_texts), (
+            f"Expected 'Coffee (xx%)' in output, got: {element_texts}"
         )
 
     def test_category_section_accepts_total_key_values(self):

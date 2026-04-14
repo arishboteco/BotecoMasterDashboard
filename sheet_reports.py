@@ -1178,14 +1178,13 @@ def _build_category(
 
     if multi:
         n_data = len(per_outlet) + 1
-        label_w = avail_w * 0.19
-        mtd_w = avail_w * 0.14
-        pct_w = avail_w * 0.07
-        remaining = avail_w - label_w - mtd_w - pct_w
+        label_w = avail_w * 0.22
+        mtd_w = avail_w * 0.16
+        remaining = avail_w - label_w - mtd_w
         data_w = remaining / n_data
-        col_w = [label_w] + [data_w] * n_data + [mtd_w, pct_w]
+        col_w = [label_w] + [data_w] * n_data + [mtd_w]
     else:
-        col_w = [avail_w * 0.44, avail_w * 0.22, avail_w * 0.22, avail_w * 0.06]
+        col_w = [avail_w * 0.48, avail_w * 0.26, avail_w * 0.26]
 
     elements = []
     elements.append(
@@ -1198,7 +1197,7 @@ def _build_category(
     elements.append(Spacer(1, GAP_BELOW_BANNER))
 
     headers = (
-        ["Category", "Daily", "MTD", "%"]
+        ["Category", "Daily", "MTD"]
         if not multi
         else (
             ["Category"]
@@ -1220,20 +1219,19 @@ def _build_category(
         m_amt = float(mtd_category.get(name, 0) or 0)
         daily_total += d_amt
         mtd_total += m_amt
-        pct_lbl = (
-            f"{int(round(100 * m_amt / total_cat_mtd))}%"
-            if total_cat_mtd > 0
-            else "\u2014"
+        pct = (
+            f"({int(round(100 * m_amt / total_cat_mtd))}%)" if total_cat_mtd > 0 else ""
         )
+        name_with_pct = f"{name} {pct}" if pct else name
         if multi:
             outlet_amts = []
             for oi, od_cats in enumerate(outlet_daily_cats):
                 ov = od_cats.get(name, 0.0)
                 outlet_totals[oi] += ov
                 outlet_amts.append(_r(ov))
-            cells = [name] + outlet_amts + [_r(d_amt), _r(m_amt), pct_lbl]
+            cells = [name_with_pct] + outlet_amts + [_r(d_amt), _r(m_amt)]
         else:
-            cells = [name, _r(d_amt), _r(m_amt), pct_lbl]
+            cells = [name_with_pct, _r(d_amt), _r(m_amt)]
         rows.append(cells)
 
     # Totals row
@@ -1241,10 +1239,10 @@ def _build_category(
         tot_cells = (
             ["Total"]
             + [_r(t) for t in outlet_totals]
-            + [_r(daily_total), _r(mtd_total), ""]
+            + [_r(daily_total), _r(mtd_total)]
         )
     else:
-        tot_cells = ["Total", _r(daily_total), _r(mtd_total), ""]
+        tot_cells = ["Total", _r(daily_total), _r(mtd_total)]
     rows.append(tot_cells)
 
     tbl = Table(rows, colWidths=col_w)
@@ -1318,14 +1316,13 @@ def _build_service(
 
     if multi:
         n_data = len(per_outlet) + 1
-        label_w = avail_w * 0.19
-        mtd_w = avail_w * 0.14
-        pct_w = avail_w * 0.07
-        remaining = avail_w - label_w - mtd_w - pct_w
+        label_w = avail_w * 0.22
+        mtd_w = avail_w * 0.16
+        remaining = avail_w - label_w - mtd_w
         data_w = remaining / n_data
-        col_w = [label_w] + [data_w] * n_data + [mtd_w, pct_w]
+        col_w = [label_w] + [data_w] * n_data + [mtd_w]
     else:
-        col_w = [avail_w * 0.44, avail_w * 0.22, avail_w * 0.22, avail_w * 0.06]
+        col_w = [avail_w * 0.48, avail_w * 0.26, avail_w * 0.26]
 
     elements = []
     elements.append(
@@ -1342,7 +1339,7 @@ def _build_service(
         return elements
 
     headers = (
-        ["Service", "Daily", "MTD", "%"]
+        ["Service", "Daily", "MTD"]
         if not multi
         else (
             ["Service"]
@@ -1350,7 +1347,7 @@ def _build_service(
                 _short_outlet_name(nm, 8 if len(per_outlet) > 2 else 10)
                 for nm, _ in per_outlet
             ]
-            + ["Comb.", "MTD", "%"]
+            + ["Comb.", "MTD"]
         )
     )
 
@@ -1364,30 +1361,29 @@ def _build_service(
         m_amt = float(mtd_service.get(name, 0) or 0)
         daily_total += d_amt
         mtd_total += m_amt
-        pct_lbl = (
-            f"{int(round(100 * m_amt / total_svc_mtd))}%"
-            if total_svc_mtd > 0
-            else "\u2014"
+        pct = (
+            f"({int(round(100 * m_amt / total_svc_mtd))}%)" if total_svc_mtd > 0 else ""
         )
+        name_with_pct = f"{name} {pct}" if pct else name
         if multi:
             outlet_amts = []
             for oi, od_svcs in enumerate(outlet_daily_svcs):
                 ov = od_svcs.get(name, 0.0)
                 outlet_totals[oi] += ov
                 outlet_amts.append(_r(ov))
-            cells = [name] + outlet_amts + [_r(d_amt), _r(m_amt), pct_lbl]
+            cells = [name_with_pct] + outlet_amts + [_r(d_amt), _r(m_amt)]
         else:
-            cells = [name, _r(d_amt), _r(m_amt), pct_lbl]
+            cells = [name_with_pct, _r(d_amt), _r(m_amt)]
         rows.append(cells)
 
     if multi:
         tot_cells = (
             ["Total"]
             + [_r(t) for t in outlet_totals]
-            + [_r(daily_total), _r(mtd_total), ""]
+            + [_r(daily_total), _r(mtd_total)]
         )
     else:
-        tot_cells = ["Total", _r(daily_total), _r(mtd_total), ""]
+        tot_cells = ["Total", _r(daily_total), _r(mtd_total)]
     rows.append(tot_cells)
 
     tbl = Table(rows, colWidths=col_w)
