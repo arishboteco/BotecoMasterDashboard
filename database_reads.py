@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 import streamlit as st
-import database
 
 
 @st.cache_data(ttl=600)
 def get_all_locations() -> List[Dict]:
     """Get all locations."""
+    import database
+
     if database.use_supabase():
         supabase = database.get_supabase_client()
         result = supabase.table("locations").select("*").order("name").execute()
@@ -24,6 +25,8 @@ def get_all_locations() -> List[Dict]:
 
 def peek_daily_net_sales(location_id: int, date: str) -> Optional[float]:
     """Return saved net_total for a day if a row exists."""
+    import database
+
     if database.use_supabase():
         supabase = database.get_supabase_client()
         result = (
@@ -54,6 +57,8 @@ def peek_daily_net_sales(location_id: int, date: str) -> Optional[float]:
 
 def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
     """Get daily summary for a specific date."""
+    import database
+
     if database.use_supabase():
         supabase = database.get_supabase_client()
         result = (
@@ -83,6 +88,8 @@ def get_summaries_for_date_range(
     end_date: str,
 ) -> List[Dict]:
     """Get daily summaries for a date range."""
+    import database
+
     if database.use_supabase():
         supabase = database.get_supabase_client()
         result = (
@@ -127,6 +134,8 @@ def get_summaries_for_date_range_multi(
     end_date: str,
 ) -> List[Dict]:
     """Get daily summaries for multiple locations."""
+    import database
+
     if database.use_supabase():
         supabase = database.get_supabase_client()
         result = (
@@ -161,6 +170,8 @@ def get_category_totals_for_date_range(
     end_date: str,
 ) -> List[Dict]:
     """Get category totals for a date range."""
+    import database
+
     if database.use_supabase():
         supabase = database.get_supabase_client()
         result = (
@@ -239,6 +250,8 @@ def get_summaries_for_month_multi(
 
 def get_most_recent_date_with_data(location_ids: List[int]) -> Optional[str]:
     """Get the most recent date that has data."""
+    import database
+
     if database.use_supabase():
         supabase = database.get_supabase_client()
         result = (
@@ -270,6 +283,8 @@ def get_most_recent_date_with_data(location_ids: List[int]) -> Optional[str]:
 
 def get_recent_summaries(location_id: int, weeks: int = 8) -> List[Dict]:
     """Get summaries for the most recent N weeks."""
+    import database
+
     if database.use_supabase():
         supabase = database.get_supabase_client()
         result = (
@@ -307,6 +322,8 @@ def get_location_settings(location_id: int) -> Optional[Dict]:
 
 def get_upload_history(location_id: int, limit: int = 50) -> List[Dict]:
     """Get upload history for a location."""
+    import database
+
     if database.use_supabase():
         supabase = database.get_supabase_client()
         result = (
@@ -334,6 +351,8 @@ def get_all_summaries_for_export(
     end_date: Optional[str] = None,
 ) -> List[Dict]:
     """Return daily summary rows for CSV/Excel export."""
+    import database
+
     if database.use_supabase():
         supabase = database.get_supabase_client()
 
@@ -380,3 +399,18 @@ def get_all_summaries_for_export(
 
             cursor.execute(sql, params)
             return [dict(row) for row in cursor.fetchall()]
+
+
+def clear_location_cache(location_id: int) -> None:
+    """Clear all @st.cache_data caches for a specific location.
+
+    Called after successful upload to ensure subsequent reads
+    reflect the new data immediately.
+    """
+    import database
+
+    get_all_locations.clear()
+    get_summaries_for_month.clear(location_id=location_id)
+    get_category_mtd_totals.clear(location_id=location_id)
+    get_service_mtd_totals.clear(location_id=location_id)
+    get_recent_summaries.clear(location_id=location_id)
