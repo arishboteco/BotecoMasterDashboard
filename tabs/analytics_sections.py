@@ -1022,7 +1022,7 @@ def render_target_and_daily(
         # Target achievement drill-down table
         with st.expander("View data"):
             _cols_needed = {"target", "pct_target"}
-_has_target_cols = (
+            _has_target_cols = (
                 multi_analytics
                 and not df_raw.empty
                 and _cols_needed.issubset(df_raw.columns)
@@ -1036,7 +1036,9 @@ _has_target_cols = (
                     lambda x: f"{float(x or 0):.2f}%"
                 )
             else:
-                _target_col = "day_target" if "day_target" in target_df.columns else None
+                _target_col = (
+                    "day_target" if "day_target" in target_df.columns else None
+                )
                 _cols = ["date", "net_total"]
                 if _target_col:
                     _cols.extend([_target_col, "achievement"])
