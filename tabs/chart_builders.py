@@ -299,15 +299,23 @@ def build_category_chart(
     else:
         cat_df_chart = major_cats
 
-    fig = px.treemap(
-        cat_df_chart,
-        names="category",
-        values="amount",
-        title=f"Category revenue mix (Total: {utils.format_currency(total_cat)})",
-        color="category",
-        color_discrete_sequence=ui_theme.CHART_COLORWAY,
+    fig = go.Figure(
+        go.Treemap(
+            labels=cat_df_chart["category"].tolist(),
+            values=cat_df_chart["amount"].tolist(),
+            parents=[""] * len(cat_df_chart),
+            marker=dict(
+                colors=[
+                    ui_theme.CHART_COLORWAY[i % len(ui_theme.CHART_COLORWAY)]
+                    for i in range(len(cat_df_chart))
+                ]
+            ),
+            textinfo="label+percent entry",
+        )
     )
-    fig.update_traces(textinfo="label+percent entry")
-    fig.update_layout(height=ui_theme.CHART_HEIGHT)
+    fig.update_layout(
+        title=f"Category revenue mix (Total: {utils.format_currency(total_cat)})",
+        height=ui_theme.CHART_HEIGHT,
+    )
 
     return fig
