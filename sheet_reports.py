@@ -1161,13 +1161,13 @@ def _build_category(
 
     if multi:
         n_data = len(per_outlet) + 1
-        label_w = avail_w * 0.38
+        label_w = avail_w * 0.42
         mtd_w = avail_w * 0.12
         remaining = avail_w - label_w - mtd_w
         data_w = remaining / n_data
         col_w = [label_w] + [data_w] * n_data + [mtd_w]
     else:
-        col_w = [avail_w * 0.55, avail_w * 0.22, avail_w * 0.22]
+        col_w = [avail_w * 0.60, avail_w * 0.20, avail_w * 0.20]
 
     elements = []
     elements.append(
@@ -1299,13 +1299,13 @@ def _build_service(
 
     if multi:
         n_data = len(per_outlet) + 1
-        label_w = avail_w * 0.38
+        label_w = avail_w * 0.42
         mtd_w = avail_w * 0.12
         remaining = avail_w - label_w - mtd_w
         data_w = remaining / n_data
         col_w = [label_w] + [data_w] * n_data + [mtd_w]
     else:
-        col_w = [avail_w * 0.55, avail_w * 0.22, avail_w * 0.22]
+        col_w = [avail_w * 0.60, avail_w * 0.20, avail_w * 0.20]
 
     elements = []
     elements.append(
