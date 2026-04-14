@@ -1099,23 +1099,6 @@ def _build_sales_summary(
         if row and row[0] in ("Discount", "MTD Discount"):
             style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(C_RED)))
 
-    # MTD section label row
-    mtd_label_row = n_header
-    style_cmds.extend(
-        [
-            (
-                "BACKGROUND",
-                (0, mtd_label_row),
-                (-1, mtd_label_row),
-                _hex(C_BRAND + "18"),
-            ),
-            ("TEXTCOLOR", (0, mtd_label_row), (-1, mtd_label_row), _hex(C_BRAND)),
-            ("FONTNAME", (0, mtd_label_row), (-1, mtd_label_row), FONT_BOLD),
-            ("SPAN", (0, mtd_label_row), (-1, mtd_label_row)),
-            ("ALIGN", (0, mtd_label_row), (-1, mtd_label_row), "LEFT"),
-        ]
-    )
-
     # MTD rows: bold for specific ones
     for i, row in enumerate(all_rows):
         if row and row[0] in (
