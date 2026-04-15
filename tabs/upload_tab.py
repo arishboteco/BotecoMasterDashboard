@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import calendar
 import hashlib
 import logging
 from datetime import datetime
@@ -190,10 +191,14 @@ def render(ctx: TabContext) -> None:
                         if loc_settings
                         else config.MONTHLY_TARGET
                     )
+                    _now = datetime.now()
+                    _fallback_daily = utils.compute_daily_target(
+                        float(monthly_tgt), _now.year, _now.month
+                    )
                     daily_tgt = (
-                        loc_settings.get("target_daily_sales", config.DAILY_TARGET)
+                        loc_settings.get("target_daily_sales", _fallback_daily)
                         if loc_settings
-                        else config.DAILY_TARGET
+                        else _fallback_daily
                     )
                     sc_setting = (
                         loc_settings.get("seat_count") if loc_settings else None
@@ -227,6 +232,22 @@ def render(ctx: TabContext) -> None:
 
                     for msg in all_save_messages:
                         st.info(msg)
+
+                    # Show data quality warnings from validation
+                    for lid, day_results in upload_result.location_results.items():
+                        for day_result in day_results:
+                            for w in (day_result.warnings or []):
+                                st.warning(f"⚠️ {day_result.date}: {w}")
+                            # Inform when Item Report fallback parser was used (50/50 CGST/SGST split)
+                            if (
+                                "item_order_details" in (day_result.source_kinds or [])
+                                and "dynamic_report" not in (day_result.source_kinds or [])
+                            ):
+                                st.info(
+                                    "ℹ️ Tax split estimated as 50/50 CGST/SGST for "
+                                    f"{day_result.date}. For exact breakdown, upload the Dynamic Report CSV."
+                                )
+
                     # Also clear analytics cache to reflect new data in analytics tab
                     analytics_tab.clear_analytics_cache()
 

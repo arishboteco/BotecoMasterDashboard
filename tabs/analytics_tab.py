@@ -4,12 +4,10 @@ from __future__ import annotations
 
 from typing import Dict, List
 
-# Lightweight in-process cache for heavy analytics data (per location set and date range)
-_RAW_SUMMARY_CACHE: dict = {}
-
 import pandas as pd
 import streamlit as st
 
+import cache_manager
 import config
 import database
 import scope
@@ -24,10 +22,13 @@ from tabs.analytics_sections import (
 from tabs import TabContext
 from components.navigation import date_range_nav
 
+# In-process cache registered with cache_manager for coordinated invalidation
+_RAW_SUMMARY_CACHE: dict = cache_manager.register("analytics_raw")
+
 
 def clear_analytics_cache() -> None:
     """Clear cached analytics raw summaries."""
-    _RAW_SUMMARY_CACHE.clear()
+    cache_manager.invalidate("analytics_raw")
 
 
 def _add_target_columns(

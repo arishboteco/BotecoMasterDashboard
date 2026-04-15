@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import calendar
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import database
@@ -592,7 +594,9 @@ def create_location(
     name = (name or "").strip()
     if not name:
         return False, "Name is required"
-    daily = float(monthly_target) / 30.0 if monthly_target else 166667.0
+    _now = datetime.now()
+    _days = calendar.monthrange(_now.year, _now.month)[1]
+    daily = float(monthly_target) / _days if monthly_target else float(5_000_000) / _days
 
     if database.use_supabase():
         client = database.get_supabase_client()

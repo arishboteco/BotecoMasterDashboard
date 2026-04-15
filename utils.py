@@ -1,6 +1,17 @@
+import calendar
 from datetime import date, datetime, timedelta
 from typing import List, Dict, Optional
 import config
+
+
+def compute_daily_target(monthly_target: float, year: int, month: int) -> float:
+    """Compute daily target using the actual number of days in the given month.
+
+    Replaces the old ``config.DAILY_TARGET = MONTHLY_TARGET / 30`` constant which
+    gave February targets that were 3.3% too high and 31-day months 3.3% too low.
+    """
+    days = calendar.monthrange(year, month)[1]
+    return monthly_target / days if monthly_target else 0.0
 
 
 def subtract_months(dt: date, months: int) -> date:
@@ -416,19 +427,21 @@ def compute_weekday_mix(summaries: List[Dict]) -> Dict[str, float]:
 def compute_day_targets(
     monthly_target: float,
     weekday_mix: Dict[str, float],
+    days_in_month: int = 30,
 ) -> Dict[str, float]:
     """Derive per-day targets using relative weekday performance vs the uniform baseline.
 
-    The baseline is monthly_target / 30 (a rough per-day average). Each weekday's
-    historical average is expressed as a ratio to the overall average, then that ratio
-    is applied to the baseline to produce the day-specific target.
+    The baseline is monthly_target / days_in_month. Each weekday's historical average
+    is expressed as a ratio to the overall average, then applied to the baseline to
+    produce the day-specific target.
 
-    This keeps total monthly targets achievable regardless of the lookback period's
-    absolute volume, while still weighting by each day's relative strength.
+    Pass days_in_month=calendar.monthrange(year, month)[1] for accurate targets;
+    the default of 30 is kept for backward-compatibility when the date context is unknown.
 
     Args:
         monthly_target: Total monthly sales target.
         weekday_mix: Dict of {weekday_name: average_daily_sales_from_history}.
+        days_in_month: Actual days in the target month (use calendar.monthrange).
 
     Returns:
         Dict of {weekday_name: daily_target_amount}
@@ -436,11 +449,11 @@ def compute_day_targets(
     total_avg = sum(weekday_mix.values())
     num_days = sum(1 for v in weekday_mix.values() if v > 0)
     if total_avg <= 0 or num_days == 0:
-        baseline = monthly_target / 30.0
+        baseline = monthly_target / days_in_month
         return {day: baseline for day in WEEKDAY_NAMES}
 
     overall_avg = total_avg / num_days
-    baseline = monthly_target / 30.0
+    baseline = monthly_target / days_in_month
 
     return {
         day: baseline * (avg / overall_avg) if overall_avg > 0 else baseline

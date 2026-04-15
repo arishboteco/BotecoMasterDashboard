@@ -145,18 +145,42 @@ _supabase_admin_client = None
 _use_supabase_override: bool | None = None
 
 
+def _create_supabase_client():
+    """Create a fresh Supabase client instance. Returns None if not configured."""
+    if not config.SUPABASE_URL or not config.SUPABASE_KEY:
+        return None
+    try:
+        from supabase import create_client
+        return create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
+    except ImportError:
+        logger.warning("supabase package not installed")
+        return None
+    except Exception as e:
+        logger.error("Failed to create Supabase client: %s", e)
+        return None
+
+
 def get_supabase_client():
-    """Get or create Supabase client (anon key, subject to RLS)."""
+    """Get or create Supabase client (anon key, subject to RLS).
+
+    Lazily initialises on first call. Use reset_supabase_client() to force
+    re-creation after a connection failure.
+    """
     global _supabase_client
     if _supabase_client is None:
-        try:
-            from supabase import create_client
-
-            _supabase_client = create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
-        except ImportError:
-            logger.warning("supabase package not installed")
-            return None
+        _supabase_client = _create_supabase_client()
     return _supabase_client
+
+
+def reset_supabase_client() -> None:
+    """Force re-creation of the Supabase client on the next access.
+
+    Call this after catching a connection error so that the next
+    database operation gets a fresh client instead of a stale one.
+    """
+    global _supabase_client
+    _supabase_client = None
+    logger.info("Supabase client reset — will reconnect on next access")
 
 
 def get_supabase_admin_client():
@@ -185,7 +209,10 @@ def use_supabase() -> bool:
     """Check if Supabase is configured and available."""
     if _use_supabase_override is not None:
         return _use_supabase_override
-    return bool(config.SUPABASE_KEY and get_supabase_client())
+    if not config.SUPABASE_KEY:
+        logger.debug("Supabase not configured — using SQLite")
+        return False
+    return bool(get_supabase_client())
 
 
 def init_database():

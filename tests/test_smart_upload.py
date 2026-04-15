@@ -19,6 +19,16 @@ class TestSaveSmartUploadResults:
         monkeypatch.setattr(smart_upload.database, "use_supabase", lambda: True)
         monkeypatch.setattr(smart_upload.database, "get_supabase_client", lambda: object())
 
+        _day = DayResult(
+            date="2026-04-02",
+            merged={
+                "date": "2026-04-02",
+                "gross_total": 1000.0,
+                "net_total": 1000.0,
+            },
+            source_kinds=["order_summary_csv", "flash_report"],
+            errors=[],
+        )
         result = SmartUploadResult(
             files=[
                 FileResult(
@@ -28,18 +38,8 @@ class TestSaveSmartUploadResults:
                     importable=True,
                 ),
             ],
-            days=[
-                DayResult(
-                    date="2026-04-02",
-                    merged={
-                        "date": "2026-04-02",
-                        "gross_total": 1000.0,
-                        "net_total": 1000.0,
-                    },
-                    source_kinds=["order_summary_csv", "flash_report"],
-                    errors=[],
-                )
-            ],
+            days=[_day],
+            location_results={7: [_day]},
         )
 
         saved, skipped, messages = smart_upload.save_smart_upload_results(
@@ -145,7 +145,7 @@ class TestProcessSmartUpload:
             lambda frags: dict(frags[0]),
         )
         monkeypatch.setattr(
-            smart_upload.pos_parser, "validate_data", lambda data: (True, [])
+            smart_upload.pos_parser, "validate_data", lambda data: (True, [], [])
         )
         monkeypatch.setattr(
             smart_upload.database,

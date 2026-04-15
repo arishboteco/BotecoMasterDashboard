@@ -85,6 +85,7 @@ class DayResult:
     merged: Dict[str, Any]
     source_kinds: List[str] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -402,6 +403,9 @@ def process_smart_upload(
         SmartUploadResult with per-file results, per-day results, and
         parse/save notes for the upload batch.
     """
+    import time
+    _t0 = time.monotonic()
+
     file_results: List[FileResult] = []
     global_notes: List[str] = []
 
@@ -410,6 +414,7 @@ def process_smart_upload(
     for fname, content in files:
         kind, label = file_detector.detect_and_describe(content, fname)
         importable = file_detector.is_importable(kind)
+        logger.info("File detected: name=%s type=%s importable=%s", fname, kind, importable)
         fr = FileResult(
             filename=fname,
             kind=kind,
@@ -648,19 +653,28 @@ def process_smart_upload(
                         for s in matched_timing["services"]
                     ]
 
-            # Basic validation / coercion
+            # Basic validation / coercion (log when we fill in missing values)
             if not merged.get("net_total") and merged.get("gross_total"):
+                logger.warning(
+                    "net_total missing for %s — defaulting to gross_total (\u20b9%s)", d, merged["gross_total"]
+                )
                 merged["net_total"] = float(merged["gross_total"])
             if not merged.get("gross_total") and merged.get("net_total"):
+                logger.warning(
+                    "gross_total missing for %s — defaulting to net_total (\u20b9%s)", d, merged["net_total"]
+                )
                 merged["gross_total"] = float(merged["net_total"])
 
-            ok, verr = pos_parser.validate_data(merged)
+            ok, verr, vwarn = pos_parser.validate_data(merged)
+            if vwarn:
+                logger.warning("Validation warnings for %s: %s", d, "; ".join(vwarn))
             day_results.append(
                 DayResult(
                     date=d,
                     merged=merged,
                     source_kinds=source_kinds,
                     errors=(verr if not ok else []),
+                    warnings=vwarn,
                 )
             )
 
@@ -696,17 +710,26 @@ def process_smart_upload(
                     ]
 
             if not merged.get("net_total") and merged.get("gross_total"):
+                logger.warning(
+                    "net_total missing for %s — defaulting to gross_total (\u20b9%s)", d, merged["gross_total"]
+                )
                 merged["net_total"] = float(merged["gross_total"])
             if not merged.get("gross_total") and merged.get("net_total"):
+                logger.warning(
+                    "gross_total missing for %s — defaulting to net_total (\u20b9%s)", d, merged["net_total"]
+                )
                 merged["gross_total"] = float(merged["net_total"])
 
-            ok, verr = pos_parser.validate_data(merged)
+            ok, verr, vwarn = pos_parser.validate_data(merged)
+            if vwarn:
+                logger.warning("Validation warnings for %s: %s", d, "; ".join(vwarn))
             day_results.append(
                 DayResult(
                     date=d,
                     merged=merged,
                     source_kinds=source_kinds,
                     errors=(verr if not ok else []),
+                    warnings=vwarn,
                 )
             )
 
@@ -718,12 +741,22 @@ def process_smart_upload(
             # No dynamic report and no fallback — use a sentinel key so data isn't lost
             location_results[location_id] = day_results
 
-    return SmartUploadResult(
+    result = SmartUploadResult(
         files=file_results,
         days=[],  # deprecated; use location_results
         global_notes=global_notes,
         location_results=location_results,
     )
+    _elapsed = time.monotonic() - _t0
+    total_days = sum(len(days) for days in location_results.values())
+    logger.info(
+        "Upload processing complete: files=%d locations=%d days=%d elapsed=%.2fs",
+        len(files),
+        len(location_results),
+        total_days,
+        _elapsed,
+    )
+    return result
 
 
 def save_smart_upload_results(
@@ -747,6 +780,9 @@ def save_smart_upload_results(
 
     Returns (saved_count, skipped_count, messages).
     """
+    import time
+    _save_t0 = time.monotonic()
+
     from database import use_supabase, get_supabase_client
     import database_writes as db_writes
 
@@ -784,6 +820,14 @@ def save_smart_upload_results(
 
             merged = day_result.merged
             date_str = str(merged.get("date", day_result.date))
+
+            if is_supabase and "dynamic_report" not in (day_result.source_kinds or []):
+                skipped += 1
+                messages.append(
+                    f"No Dynamic Report for {date_str} — Supabase save requires Dynamic Report CSV data."
+                )
+                continue
+
             dates_locs.add((date_str, loc_id))
 
             if is_supabase:
@@ -922,4 +966,6 @@ def save_smart_upload_results(
             messages.append(f"Error saving upload history: {e}")
 
     messages.append(f"Processed {saved} day/location row(s), {skipped} skipped")
+    _elapsed = time.monotonic() - _save_t0
+    logger.info("Upload save complete: days_saved=%d elapsed=%.2fs", saved, _elapsed)
     return saved, skipped, messages

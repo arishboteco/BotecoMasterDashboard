@@ -4,7 +4,8 @@ import os
 
 # Default Settings
 MONTHLY_TARGET = 5_000_000
-DAILY_TARGET = MONTHLY_TARGET / 30
+# DAILY_TARGET removed — daily targets are now date-aware.
+# Use utils.compute_daily_target(monthly_target, year, month) instead.
 SERVICE_CHARGE_RATE = 0.10
 GST_RATE = 0.025
 
@@ -12,13 +13,9 @@ GST_RATE = 0.025
 DATABASE_PATH = "data/boteco.db"
 
 # Supabase (when using cloud database)
-SUPABASE_URL = os.environ.get(
-    "SUPABASE_URL", "https://qhuyklkussmzopahtpri.supabase.co"
-)
-SUPABASE_KEY = os.environ.get(
-    "SUPABASE_KEY",
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFodXlrbGt1c3Ntem9wYWh0cHJpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTM3MTgsImV4cCI6MjA5MTIyOTcxOH0.FCL6juxXUJZEG11PvioESbREEChadlhaCo2jPSbcZhc",
-)
+# Credentials must be set via environment variables — no hardcoded fallbacks.
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 
 # App Settings

@@ -46,6 +46,7 @@ import fitz
 from PIL import Image as PILImage
 
 import config
+from exceptions import ReportGenerationError
 
 # ── Font registration ────────────────────────────────────────────────────────
 FONT_DIR = os.path.join(os.path.dirname(__file__), "fonts")
@@ -127,7 +128,10 @@ def _r(n) -> str:
 
 
 def _pct(n) -> str:
-    return f"{float(n or 0):.0f}%"
+    val = float(n or 0)
+    if 0 < abs(val) < 1:
+        return f"{val:.1f}%"
+    return f"{val:.0f}%"
 
 
 def _sheet_date_label(iso_date: str) -> str:
@@ -2175,13 +2179,18 @@ def generate_sheet_style_report_image(
 def generate_report_image(
     report_data: Dict, location_name: str = "Boteco Bangalore"
 ) -> BytesIO:
-    return generate_sheet_style_report_image(
-        report_data,
-        location_name,
-        mtd_category={},
-        mtd_service={},
-        month_footfall_rows=[],
-    )
+    try:
+        return generate_sheet_style_report_image(
+            report_data,
+            location_name,
+            mtd_category={},
+            mtd_service={},
+            month_footfall_rows=[],
+        )
+    except ReportGenerationError:
+        raise
+    except Exception as e:
+        raise ReportGenerationError(f"Failed to generate PNG report: {e}") from e
 
 
 # ── WhatsApp text ───────────────────────────────────────────────────────────
@@ -2215,7 +2224,7 @@ def generate_whatsapp_text(
         cat_lines = (
             "\n".join(
                 f"  \u2022 {c.get('category', '?')}: "
-                f"{int(c.get('amount', 0) / cat_total_divisor * 100)}% "
+                f"{c.get('amount', 0) / cat_total_divisor * 100:.1f}% "
                 f"({config.CURRENCY_FORMAT.format(c.get('amount', 0))})"
                 for c in categories
                 if c.get("amount", 0) > 0
@@ -2228,7 +2237,7 @@ def generate_whatsapp_text(
             "\n".join(
                 f"  \u2022 {c.get('category', '?')}: "
                 f"{c.get('qty', 0)} items "
-                f"({int(c.get('qty', 0) / cat_qty_total * 100)}%)"
+                f"({c.get('qty', 0) / cat_qty_total * 100:.1f}%)"
                 for c in categories
                 if c.get("qty", 0) > 0
             )
@@ -2256,6 +2265,8 @@ def generate_whatsapp_text(
         if float(v or 0) > 0
     )
 
+    _turns_val = r.get("turns")
+    _turns_display = "N/A" if _turns_val is None else f"{float(_turns_val):.1f}x"
     report = (
         f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
         f"\U0001f942 {location_name.upper()}\n"
@@ -2264,7 +2275,7 @@ def generate_whatsapp_text(
         f"\U0001f4b0 SALES SUMMARY\n"
         f"  \u2022 Gross: {config.CURRENCY_FORMAT.format(r.get('gross_total', 0))}\n"
         f"  \u2022 Net:   {config.CURRENCY_FORMAT.format(net_total)}\n"
-        f"  \u2022 Covers: {int(r.get('covers') or 0):,}  |  Turns: {float(r.get('turns') or 0):.0f}x\n"
+        f"  \u2022 Covers: {int(r.get('covers') or 0):,}  |  Turns: {_turns_display}\n"
         f"  \u2022 APC: {config.CURRENCY_FORMAT.format(r.get('apc', 0))}\n\n"
         f"\U0001f4b3 PAYMENT BREAKDOWN\n"
         f"{pay_lines}\n\n"
@@ -2284,7 +2295,7 @@ def generate_whatsapp_text(
         f"  \u2022 Total Covers: {int(r.get('mtd_total_covers') or 0):,}\n"
         f"  \u2022 Net Sales: {config.CURRENCY_FORMAT.format(r.get('mtd_net_sales', 0))}\n"
         f"  \u2022 Avg Daily: {config.CURRENCY_FORMAT.format(r.get('mtd_avg_daily', 0))}\n"
-        f"  \u2022 % of Target: {float(r.get('mtd_pct_target') or 0):.0f}%\n"
+        f"  \u2022 Pace vs Target: {float(r.get('mtd_pct_target') or 0):.0f}%\n"
     )
 
     if per_outlet and len(per_outlet) >= 2:

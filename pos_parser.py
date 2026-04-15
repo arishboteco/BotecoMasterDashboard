@@ -1,3 +1,4 @@
+import calendar
 import re
 import streamlit as st
 from collections import defaultdict
@@ -648,7 +649,12 @@ def calculate_mtd_metrics(
     days_counted = len([s for s in summaries if (s.get("net_total", 0) or 0) > 0])
 
     avg_daily = total_sales / days_counted if days_counted > 0 else 0
-    pct_target = (total_sales / target_monthly) * 100 if target_monthly > 0 else 0
+
+    # Prorate target to days elapsed so the % shows "on pace" rather than raw % of monthly target
+    days_in_month = calendar.monthrange(year, month)[1]
+    days_elapsed = int(str(as_of_date)[:10][8:10]) if as_of_date else days_in_month
+    prorated_target = target_monthly * (days_elapsed / days_in_month) if target_monthly > 0 else 0
+    pct_target = (total_sales / prorated_target) * 100 if prorated_target > 0 else 0
 
     return {
         "mtd_total_covers": total_covers,
@@ -681,8 +687,6 @@ def calculate_mtd_metrics_multi(
     if as_of_date:
         cap = str(as_of_date)[:10]
         summaries = [s for s in summaries if str(s.get("date", ""))[:10] <= cap]
-        cap = str(as_of_date)[:10]
-        summaries = [s for s in summaries if str(s.get("date", ""))[:10] <= cap]
 
     total_covers = sum(s.get("covers", 0) or 0 for s in summaries)
     total_sales = sum(s.get("net_total", 0) or 0 for s in summaries)
@@ -691,7 +695,12 @@ def calculate_mtd_metrics_multi(
     days_counted = len([s for s in summaries if (s.get("net_total", 0) or 0) > 0])
 
     avg_daily = total_sales / days_counted if days_counted > 0 else 0
-    pct_target = (total_sales / target_monthly) * 100 if target_monthly > 0 else 0
+
+    # Prorate target to days elapsed so the % shows "on pace" rather than raw % of monthly target
+    days_in_month = calendar.monthrange(year, month)[1]
+    days_elapsed = int(str(as_of_date)[:10][8:10]) if as_of_date else days_in_month
+    prorated_target = target_monthly * (days_elapsed / days_in_month) if target_monthly > 0 else 0
+    pct_target = (total_sales / prorated_target) * 100 if prorated_target > 0 else 0
 
     return {
         "mtd_total_covers": total_covers,
@@ -718,7 +727,7 @@ def calculate_derived_metrics(data: Dict) -> Dict:
     if seats > 0:
         out["turns"] = round(covers / seats, 2)
     elif "turns" not in out or out.get("turns") is None:
-        out["turns"] = round(covers / 100, 1) if covers else 0.0
+        out["turns"] = None  # Seat count not configured — turns cannot be calculated meaningfully
 
     tgt = float(out.get("target") or 0)
     if tgt > 0:
@@ -729,17 +738,49 @@ def calculate_derived_metrics(data: Dict) -> Dict:
     return out
 
 
-def validate_data(data: Dict) -> Tuple[bool, List[str]]:
-    errors = []
+def validate_data(data: Dict) -> Tuple[bool, List[str], List[str]]:
+    """Validate a merged day record.
+
+    Returns:
+        (ok, errors, warnings)
+        errors: blocking — day will not be saved
+        warnings: non-blocking — day is saved but user is notified
+    """
+    errors: List[str] = []
+    warnings: List[str] = []
+
     if not data.get("date"):
         errors.append("Date is required")
+
     gross = float(data.get("gross_total") or 0)
     net = float(data.get("net_total") or 0)
+
     if gross <= 0:
         errors.append("Gross total should be greater than 0")
     if net <= 0:
         errors.append("Net total should be greater than 0")
-    return len(errors) == 0, errors
+
+    # Non-blocking warnings — data is saved but flagged for review
+    if net > gross > 0:
+        warnings.append(
+            f"Net total (\u20b9{net:,.0f}) exceeds gross total (\u20b9{gross:,.0f}) — check discount/tax data"
+        )
+
+    payment_fields = ["cash_sales", "card_sales", "gpay_sales", "zomato_sales", "other_sales"]
+    for field in payment_fields:
+        val = float(data.get(field, 0) or 0)
+        if val < 0:
+            warnings.append(f"{field} is negative (\u20b9{val:,.0f})")
+
+    payment_sum = sum(float(data.get(f, 0) or 0) for f in payment_fields)
+    if payment_sum > 0 and net > 0:
+        diff_pct = abs(payment_sum - net) / net * 100
+        if diff_pct > 2.0:
+            warnings.append(
+                f"Payment sum (\u20b9{payment_sum:,.0f}) differs from net total (\u20b9{net:,.0f}) by {diff_pct:.1f}%"
+            )
+
+    return len(errors) == 0, errors, warnings
 
 
 # Public API aliases for helper functions used by other modules (smart_upload.py).

@@ -10,14 +10,15 @@ from urllib.parse import quote_plus
 import streamlit as st
 
 
+import cache_manager
 import clipboard_ui
 import database
 import scope
 import sheet_reports as reports
 import utils
 
-# Simple in-process cache for expensive per-date report data
-_REPORT_CACHE: dict = {}
+# In-process caches registered with cache_manager for coordinated invalidation
+_REPORT_CACHE: dict = cache_manager.register("report")
 
 
 def clear_report_cache() -> None:
@@ -25,7 +26,7 @@ def clear_report_cache() -> None:
 
     Called when new data is imported or when a user requests a refresh.
     """
-    _REPORT_CACHE.clear()
+    cache_manager.invalidate("report")
 
 
 def _load_report_bundle_cached(location_ids: List[int], date_str: str):
@@ -68,8 +69,7 @@ def _build_mtd_maps(
     return mtd_cat, mtd_svc
 
 
-# Simple per-dataset caches for heavy read paths
-_MTD_CACHE: dict = {}
+_MTD_CACHE: dict = cache_manager.register("mtd")
 
 
 def _build_mtd_maps_cached(
@@ -83,7 +83,7 @@ def _build_mtd_maps_cached(
     return res
 
 
-_FOOT_CACHE: dict = {}
+_FOOT_CACHE: dict = cache_manager.register("foot")
 
 
 def _get_foot_rows_cached(location_ids: List[int], year: int, month: int):
