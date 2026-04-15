@@ -107,16 +107,24 @@ def show_login_form():
     """Show login form."""
     st.markdown(styles.get_login_css(), unsafe_allow_html=True)
 
-    st.title("Boteco Dashboard")
-    st.markdown("### Restaurant Sales Management")
-    st.caption("Internal use — your session is protected by login.")
-
-    with st.form("login_form"):
-        username = st.text_input("Username", placeholder="Enter username")
-        password = st.text_input(
-            "Password", type="password", placeholder="Enter password"
+    # Centered login card with logo and branding
+    col_l, col_c, col_r = st.columns([1, 2, 1])
+    with col_c:
+        st.markdown('<div class="login-card">', unsafe_allow_html=True)
+        st.image("logo.png", width=160)
+        st.markdown(
+            '<div class="login-title">Boteco Dashboard</div>'
+            '<div class="login-subtitle">Restaurant Sales Management</div>',
+            unsafe_allow_html=True,
         )
-        submit = st.form_submit_button("Login")
+        st.markdown('<div class="login-form-wrap">', unsafe_allow_html=True)
+
+        with st.form("login_form"):
+            username = st.text_input("Username", placeholder="Enter username")
+            password = st.text_input(
+                "Password", type="password", placeholder="Enter password"
+            )
+            submit = st.form_submit_button("Sign In", use_container_width=True)
 
         if submit:
             if username and password:
@@ -156,6 +164,13 @@ def show_login_form():
                         st.error("Invalid username or password")
             else:
                 st.warning("Please enter both username and password")
+
+        st.markdown('</div>', unsafe_allow_html=True)  # login-form-wrap
+        st.markdown(
+            '<div class="login-footer">Internal use only · Session secured with cookie auth</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown('</div>', unsafe_allow_html=True)  # login-card
 
 
 def show_setup_form():

@@ -27,14 +27,28 @@ def empty_state(
     hint: Optional[str] = None,
     action_label: Optional[str] = None,
     action_callback: Optional[Callable] = None,
+    icon: str = "inbox",
 ) -> None:
-    """Render an empty state with optional hint and CTA."""
+    """Render an empty state with icon, message, optional hint and CTA.
+
+    Args:
+        message: Primary empty state message.
+        hint: Secondary hint text shown below the message.
+        action_label: Label for the CTA button.
+        action_callback: Callback invoked when the CTA button is clicked.
+        icon: Material Symbols icon name (default: 'inbox').
+    """
+    hint_html = f'<div class="empty-state-desc">{hint}</div>' if hint else ""
     st.markdown(
-        f'<div class="empty-upload-hint">{message}</div>',
+        f'<div class="empty-state">'
+        f'<span class="empty-state-icon material-symbols-outlined">{icon}</span>'
+        f'<div class="empty-state-title">{message}</div>'
+        f'{hint_html}'
+        f'</div>',
         unsafe_allow_html=True,
     )
-    if hint:
-        st.caption(hint)
     if action_label and action_callback:
-        if st.button(action_label, key=f"empty_state_action_{hash(message)}"):
-            action_callback()
+        _, btn_col, _ = st.columns([1, 2, 1])
+        with btn_col:
+            if st.button(action_label, key=f"empty_state_action_{hash(message)}", use_container_width=True):
+                action_callback()

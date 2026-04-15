@@ -64,6 +64,7 @@ with database.db_connection() as conn:
 # Page configuration
 st.set_page_config(
     page_title="Boteco Dashboard",
+    page_icon="logo.png",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -110,19 +111,22 @@ else:
     st.sidebar.divider()
 
     # Account section with user badge
-    st.sidebar.markdown("##### Account")
     username = st.session_state.username or "User"
     initials = username[:2].upper() if username else "U"
+    role = st.session_state.user_role or "user"
+    location_name = st.session_state.location_name or "Default"
     st.sidebar.markdown(
-        f'<div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.25rem;">'
-        f'<span style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.2);'
-        f"display:inline-flex;align-items:center;justify-content:center;font-size:0.8rem;"
-        f'font-weight:600;color:#fff;">{initials}</span>'
-        f'<span style="font-weight:500;color:#fff;">{username}</span></div>',
+        f'<div class="sidebar-account-section">'
+        f'<div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.6rem;">'
+        f'<span class="sidebar-user-initials">{initials}</span>'
+        f'<div><div style="font-weight:600;color:#fff;font-size:0.9rem;line-height:1.2;">{username}</div>'
+        f'<div style="font-size:0.72rem;color:rgba(255,255,255,0.6);text-transform:uppercase;letter-spacing:0.06em;">{role}</div></div>'
+        f'</div>'
+        f'<div style="font-size:0.78rem;color:rgba(255,255,255,0.75);display:flex;align-items:center;gap:0.35rem;">'
+        f'<span style="opacity:0.6;">📍</span>{location_name}</div>'
+        f'</div>',
         unsafe_allow_html=True,
     )
-    st.sidebar.caption(f"**Role:** {st.session_state.user_role}")
-    st.sidebar.caption(f"**Location:** {st.session_state.location_name or 'Default'}")
     report_loc_ids = auth.get_report_location_ids()
     report_display_name = auth.get_report_display_name()
     all_locs = database.get_all_locations()
@@ -132,6 +136,13 @@ else:
     st.sidebar.divider()
     if st.sidebar.button("Logout", key="sidebar_logout_btn", width="stretch"):
         auth.logout()
+
+    st.sidebar.markdown(
+        '<div style="position:absolute;bottom:1rem;left:0;right:0;text-align:center;">'
+        '<span style="font-size:0.68rem;color:rgba(255,255,255,0.3);letter-spacing:0.04em;">Boteco Dashboard · v1.0</span>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
     # Build shared context
     import_loc_id = int(st.session_state.location_id)
@@ -148,7 +159,7 @@ else:
     )
 
     # Tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["Upload", "Report", "Analytics", "Settings"])
+    tab1, tab2, tab3, tab4 = st.tabs(["⬆ Upload", "📊 Report", "📈 Analytics", "⚙ Settings"])
 
     with tab1:
         render_upload(ctx)
