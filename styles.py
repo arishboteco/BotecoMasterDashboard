@@ -972,6 +972,156 @@ def get_css() -> str:
             white-space: nowrap;
         }
     }
+
+    /* ── Page load animations ─────────────────────────────── */
+    @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(12px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+    }
+    @keyframes scaleIn {
+        from { opacity: 0; transform: scale(0.97); }
+        to   { opacity: 1; transform: scale(1); }
+    }
+
+    /* Staggered tab content entrance */
+    [data-testid="stTabsContent"] > div {
+        animation: fadeInUp 0.3s ease-out both;
+    }
+
+    /* Metric container entrance */
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        animation: scaleIn 0.25s ease-out both;
+    }
+
+    /* Main block fade in */
+    .main .block-container {
+        animation: fadeIn 0.2s ease-out both;
+    }
+
+    /* Chart containers */
+    [data-testid="stPlotlyChart"] {
+        animation: fadeInUp 0.35s ease-out both;
+    }
+
+    /* ── Reduced motion — disable all animations ──────────── */
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+        }
+    }
+
+    /* ── Subtle background texture ────────────────────────── */
+    .main {
+        background:
+            radial-gradient(ellipse at 0% 0%, rgba(31,95,168,0.03) 0%, transparent 50%),
+            radial-gradient(ellipse at 100% 100%, rgba(63,167,163,0.03) 0%, transparent 50%),
+            #FFFFFF;
+    }
+
+    /* ── Sidebar gradient refinement ──────────────────────── */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(
+            175deg,
+            #1F5FA8 0%,
+            #174A82 60%,
+            #133F70 100%
+        ) !important;
+    }
+
+    /* ── Section headers — refined styling ────────────────── */
+    h3 {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding-left: 0.75rem !important;
+        border-left: 3px solid var(--brand) !important;
+        margin-top: 1.25rem !important;
+    }
+
+    /* ── Tab bar refinement ────────────────────────────────── */
+    button[data-baseweb="tab"] {
+        letter-spacing: 0.01em !important;
+    }
+    [data-testid="stTabs"] [role="tablist"] {
+        border-bottom: 2px solid var(--border-subtle) !important;
+        padding-bottom: 0 !important;
+        margin-bottom: 1rem;
+        gap: 0.25rem !important;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] {
+        background-color: var(--brand-soft) !important;
+        border-radius: var(--radius-sm) var(--radius-sm) 0 0 !important;
+    }
+
+    /* ── Improved form inputs ──────────────────────────────── */
+    .stTextInput input,
+    .stNumberInput input,
+    .stSelectbox [data-baseweb="select"] {
+        border-radius: var(--radius-sm) !important;
+        border-color: var(--border-medium) !important;
+        transition: border-color var(--transition-normal) ease,
+                    box-shadow var(--transition-normal) ease !important;
+    }
+    .stTextInput input:hover,
+    .stNumberInput input:hover {
+        border-color: var(--brand-light) !important;
+    }
+
+    /* ── Dataframe refinement ─────────────────────────────── */
+    [data-testid="stDataFrame"] {
+        box-shadow: var(--shadow-sm) !important;
+    }
+
+    /* ── Print styles ─────────────────────────────────────── */
+    @media print {
+        [data-testid="stSidebar"],
+        [data-testid="stHeader"],
+        [data-testid="stDecoration"],
+        [data-testid="stToolbar"],
+        [data-testid="stTabs"] [role="tablist"],
+        .stButton,
+        .stFileUploader,
+        .stDateInput,
+        [data-testid="stExpander"] {
+            display: none !important;
+        }
+        .main .block-container {
+            padding: 0 !important;
+            max-width: 100% !important;
+        }
+        [data-testid="stAppViewContainer"] {
+            background: #fff !important;
+        }
+        h1, h2, h3 {
+            color: #000 !important;
+        }
+        [data-testid="stDataFrame"] {
+            overflow: visible !important;
+        }
+        @page {
+            margin: 1.5cm;
+            size: A4 landscape;
+        }
+    }
+
+    /* ── Comprehensive focus indicators ───────────────────── */
+    a:focus-visible,
+    button:focus-visible,
+    [tabindex]:focus-visible {
+        outline: 2px solid var(--brand) !important;
+        outline-offset: 2px !important;
+        border-radius: var(--radius-sm) !important;
+    }
+    .stButton > button:focus-visible {
+        outline: 2px solid var(--brand) !important;
+        outline-offset: 3px !important;
+    }
 </style>
 """
 
@@ -984,51 +1134,125 @@ def get_login_css() -> str:
     :root {
         --brand: #1F5FA8;
         --brand-dark: #174A82;
-        --login-surface: #FFFFFF;
-        --login-border: #E2E8F0;
+        --brand-light: #2A6BB3;
         --text: #1E293B;
+        --text-muted: #64748B;
     }
+
+    /* ── Login page background ────────────────────────── */
     .stApp {
-        background: #FFFFFF !important;
+        background:
+            radial-gradient(ellipse at 20% 50%, rgba(31,95,168,0.06) 0%, transparent 60%),
+            radial-gradient(ellipse at 80% 20%, rgba(63,167,163,0.05) 0%, transparent 55%),
+            radial-gradient(ellipse at 60% 80%, rgba(244,180,0,0.04) 0%, transparent 50%),
+            #F7FAFC !important;
     }
-    .login-container {
-        max-width: 400px;
-        margin: 100px auto;
-        padding: 2.5rem;
-        background: var(--login-surface);
-        border-radius: 14px;
-        border: 1px solid var(--login-border);
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+
+    /* ── Login card ───────────────────────────────────── */
+    .login-card {
+        background: #FFFFFF;
+        border-radius: 20px;
+        border: 1px solid #E2E8F0;
+        box-shadow:
+            0 4px 6px -1px rgba(0,0,0,0.07),
+            0 20px 40px -8px rgba(31,95,168,0.12);
+        padding: 2.5rem 2rem 2rem;
+        margin-top: 4rem;
+        animation: loginFadeUp 0.4s ease-out both;
+        text-align: center;
     }
-    .stButton > button {
-        width: 100%;
-        background-color: var(--brand);
-        color: #FFFFFF;
-        border: none;
-        padding: 0.75rem;
-        border-radius: 10px;
-        font-weight: 600;
+    @keyframes loginFadeUp {
+        from { opacity: 0; transform: translateY(16px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Login branding ───────────────────────────────── */
+    .login-title {
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-size: 1.6rem;
+        font-weight: 800;
+        color: var(--brand);
+        letter-spacing: -0.02em;
+        margin-top: 1rem;
+        margin-bottom: 0.2rem;
+    }
+    .login-subtitle {
         font-family: 'Inter', sans-serif;
-        transition: all 0.2s ease;
+        font-size: 0.88rem;
+        color: var(--text-muted);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        margin-bottom: 1.5rem;
+    }
+
+    /* ── Login form wrapper ───────────────────────────── */
+    .login-form-wrap {
+        text-align: left;
+    }
+    .login-footer {
+        margin-top: 1.25rem;
+        font-family: 'Inter', sans-serif;
+        font-size: 0.73rem;
+        color: #94A3B8;
+        text-align: center;
+        letter-spacing: 0.02em;
+    }
+
+    /* ── Override button for login page ──────────────── */
+    .stButton > button {
+        background-color: var(--brand) !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        padding: 0.7rem !important;
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+        font-family: 'Inter', sans-serif !important;
+        font-size: 0.95rem !important;
+        transition: all 0.2s ease !important;
+        letter-spacing: 0.01em;
     }
     .stButton > button:hover {
-        background-color: var(--brand-dark);
-        box-shadow: 0 4px 6px rgba(31, 95, 168, 0.2);
+        background-color: var(--brand-dark) !important;
+        box-shadow: 0 4px 12px rgba(31, 95, 168, 0.3) !important;
+        transform: translateY(-1px) !important;
     }
+
+    /* ── Input focus ──────────────────────────────────── */
     .stTextInput input:focus {
         border-color: var(--brand) !important;
-        box-shadow: 0 0 0 3px rgba(63, 167, 163, 0.25) !important;
+        box-shadow: 0 0 0 3px rgba(31, 95, 168, 0.15) !important;
     }
-    h1 {
-        font-family: 'Plus Jakarta Sans', sans-serif !important;
-        color: var(--brand) !important;
-    }
-    h3 {
+    .stTextInput label {
         font-family: 'Inter', sans-serif !important;
-        color: #475569 !important;
         font-weight: 500 !important;
-        border-left: none !important;
-        padding-left: 0 !important;
+        font-size: 0.85rem !important;
+        color: #374151 !important;
+    }
+
+    /* ── Hide Streamlit chrome on login page ─────────── */
+    [data-testid="stHeader"] { display: none !important; }
+    [data-testid="stDecoration"] { display: none !important; }
+    #MainMenu { visibility: hidden !important; }
+    footer { visibility: hidden !important; }
+
+    /* ── Image centering ──────────────────────────────── */
+    .login-card [data-testid="stImage"] {
+        display: flex;
+        justify-content: center;
+    }
+    .login-card img {
+        border-radius: 12px;
+        padding: 6px;
+        background: #F1F5F9;
+    }
+
+    /* ── Responsive ───────────────────────────────────── */
+    @media (max-width: 640px) {
+        .login-card {
+            margin-top: 1.5rem;
+            padding: 1.75rem 1.25rem 1.5rem;
+        }
     }
 </style>
 """
