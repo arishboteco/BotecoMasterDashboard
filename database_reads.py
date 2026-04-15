@@ -251,6 +251,7 @@ def get_summaries_for_date_range(
         return [dict(row) for row in rows]
 
 
+@st.cache_data(ttl=600)
 def get_summaries_for_month(location_id: int, year: int, month: int) -> List[Dict]:
     """Get daily summaries for a specific month."""
     start_date = f"{year}-{month:02d}-01"
@@ -349,6 +350,7 @@ def get_category_totals_for_date_range(
         return [dict(row) for row in rows]
 
 
+@st.cache_data(ttl=600)
 def get_category_mtd_totals(
     location_ids: List[int],
     year: int,
@@ -433,6 +435,7 @@ def get_most_recent_date_with_data(location_ids: List[int]) -> Optional[str]:
         return row["date"] if row else None
 
 
+@st.cache_data(ttl=600)
 def get_recent_summaries(location_id: int, weeks: int = 8) -> List[Dict]:
     """Get summaries for the most recent N weeks."""
     import database
@@ -567,6 +570,6 @@ def clear_location_cache(location_id: int) -> None:
     reflect the new data immediately.
     """
     get_all_locations.clear()
-    get_summaries_for_month.clear(location_id=location_id)
-    get_category_mtd_totals.clear(location_id=location_id)
-    get_recent_summaries.clear(location_id=location_id)
+    get_summaries_for_month.clear()
+    get_category_mtd_totals.clear()
+    get_recent_summaries.clear()
