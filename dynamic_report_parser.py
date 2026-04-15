@@ -460,13 +460,16 @@ def _parse_v2(
     pax_col = col_map.get("pax")
     net_col = col_map.get("net amount")
     gross_col = col_map.get("gross sale")
-    # Per export spec, "Amount" column must be ignored — it holds the bill-level
-    # total on the summary row and "-" on item rows, which breaks per-item
-    # distribution.  Only use a true per-item amount column if present.
+    # Prefer a true per-item amount column ("Item Total", "Line Total", etc.)
+    # when present.  Fall back to "Amount" — in Petpooja v2 exports this column
+    # is "-" on item rows and holds the bill total on the summary row, so the
+    # distribution formula naturally assigns 100 % of bill_net to the summary
+    # row's category, matching what a raw CSV pivot would show.
     amount_col = (
         col_map.get("item total")
         or col_map.get("line total")
         or col_map.get("final amount")
+        or col_map.get("amount")
     )
     disc_col = col_map.get("discount")
     sc_col = col_map.get("service charge (10)")
