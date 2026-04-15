@@ -56,7 +56,10 @@ COPY_ICON_SVG = (
 
 def _html(html: str, height: int, component_key: str) -> None:
     """Render HTML in an iframe using st.iframe."""
-    st.iframe(html, height=height)
+    # Reset browser default body margins so content doesn't overflow the iframe height,
+    # which would cause a spurious scrollbar thumb to appear.
+    reset = '<style>html,body{margin:0;padding:0;overflow:hidden;background:transparent;}</style>'
+    st.iframe(reset + html, height=height)
 
 
 def _safe_id(key: str) -> str:

@@ -22,7 +22,11 @@ def date_nav(
     nav_col1, nav_col2, nav_col3 = st.columns([1, 4, 1])
     with nav_col1:
         if st.button("\u2190 Prev", key=f"{session_key}_prev", width="stretch"):
-            st.session_state[session_key] = selected_date - timedelta(days=1)
+            new_date = selected_date - timedelta(days=1)
+            st.session_state[session_key] = new_date
+            # Keep the date_input picker widget in sync so its value doesn't
+            # overwrite the button navigation on the next render.
+            st.session_state[f"{session_key}_picker"] = new_date
     with nav_col2:
         st.markdown(
             f'<div class="date-display" style="text-align:center;">{date_display}</div>',
@@ -30,7 +34,10 @@ def date_nav(
         )
     with nav_col3:
         if st.button("Next \u2192", key=f"{session_key}_next", width="stretch"):
-            st.session_state[session_key] = selected_date + timedelta(days=1)
+            new_date = selected_date + timedelta(days=1)
+            st.session_state[session_key] = new_date
+            # Keep the date_input picker widget in sync.
+            st.session_state[f"{session_key}_picker"] = new_date
 
     # Use a canonical date format for the picker to minimize parsing overhead
     picked = st.date_input(
