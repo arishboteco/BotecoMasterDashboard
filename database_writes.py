@@ -370,6 +370,39 @@ def delete_category_summary(supabase: Any, date: str, location_id: int) -> None:
     ).execute()
 
 
+def delete_bill_items_by_dates_locs(
+    supabase: Any, dates_locs: set
+) -> None:
+    """Delete bill_items for multiple (date, location_id) pairs in few queries.
+
+    Groups by restaurant to minimise round-trips (one query per restaurant).
+    """
+    by_restaurant: Dict[str, List[str]] = {}
+    for date_str, loc_id in dates_locs:
+        restaurant = LOCATION_ID_TO_RESTAURANT.get(loc_id, "Boteco")
+        by_restaurant.setdefault(restaurant, []).append(date_str)
+    for restaurant, date_list in by_restaurant.items():
+        supabase.table("bill_items").delete().in_(
+            "bill_date", date_list
+        ).eq("restaurant", restaurant).execute()
+
+
+def delete_category_summary_batch(
+    supabase: Any, dates_locs: set
+) -> None:
+    """Delete category_summary for multiple (date, location_id) pairs in few queries.
+
+    Groups by location_id to minimise round-trips (one query per location).
+    """
+    by_loc: Dict[int, List[str]] = {}
+    for date_str, loc_id in dates_locs:
+        by_loc.setdefault(loc_id, []).append(date_str)
+    for loc_id, date_list in by_loc.items():
+        supabase.table("category_summary").delete().in_(
+            "date", date_list
+        ).eq("location_id", loc_id).execute()
+
+
 def clear_all_data(supabase: Any) -> None:
     """Clear operational tables (Supabase)."""
     supabase.table("category_summary").delete().neq("id", 0).execute()

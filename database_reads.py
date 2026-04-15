@@ -111,6 +111,47 @@ def peek_daily_net_sales(location_id: int, date: str) -> Optional[float]:
         return float(row["net_total"] or 0)
 
 
+def peek_existing_net_sales_batch(
+    location_id: int, dates: List[str]
+) -> Dict[str, float]:
+    """Return {date: net_total} for dates that already have data.
+
+    Single query instead of one per date — used by upload overlap detection.
+    """
+    import database
+
+    if not dates:
+        return {}
+
+    if database.use_supabase():
+        supabase = database.get_supabase_client()
+        result = (
+            supabase.table("daily_summary")
+            .select("date,net_total")
+            .eq("location_id", location_id)
+            .in_("date", dates)
+            .execute()
+        )
+        return {
+            row["date"]: float(row["net_total"] or 0)
+            for row in result.data
+        }
+    else:
+        tbl = _sqlite_daily_table()
+        placeholders = ",".join("?" for _ in dates)
+        with database.db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"SELECT date, net_total FROM {tbl} "
+                f"WHERE location_id = ? AND date IN ({placeholders})",
+                [location_id] + list(dates),
+            )
+            return {
+                row["date"]: float(row["net_total"] or 0)
+                for row in cursor.fetchall()
+            }
+
+
 def _detail_lists_for_daily_summary(
     location_id: int, date: str
 ) -> tuple[List[Dict], List[Dict]]:

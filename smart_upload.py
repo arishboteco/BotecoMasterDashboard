@@ -866,13 +866,12 @@ def save_smart_upload_results(
 
         if cat_records:
             try:
-                # Delete existing category_summary for affected dates/locations
+                # Batch-delete existing category_summary for affected dates/locations
                 # before upsert to clear stale categories that no longer appear
-                for date_str, loc_id in dates_locs:
-                    try:
-                        db_writes.delete_category_summary(client, date_str, loc_id)
-                    except Exception:
-                        pass
+                try:
+                    db_writes.delete_category_summary_batch(client, dates_locs)
+                except Exception:
+                    pass
                 db_writes.save_category_summary_batch(client, cat_records)
                 messages.append(f"Saved {len(cat_records)} category summary records")
             except Exception as e:
@@ -901,12 +900,11 @@ def save_smart_upload_results(
                     loc = db_writes._get_location_id(rname)
                     file_dates_locs.add((rec.get("bill_date", ""), loc))
 
-                # Delete existing bill_items for these dates/locations (idempotent re-upload)
-                for date_str, loc_id in file_dates_locs:
-                    try:
-                        db_writes.delete_bill_items_by_date(client, date_str, loc_id)
-                    except Exception:
-                        pass
+                # Batch-delete existing bill_items for these dates/locations (idempotent re-upload)
+                try:
+                    db_writes.delete_bill_items_by_dates_locs(client, file_dates_locs)
+                except Exception:
+                    pass
 
                 db_writes.save_bill_items(client, raw_records)
                 messages.append(

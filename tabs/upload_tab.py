@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from datetime import datetime
 
@@ -14,12 +15,21 @@ import file_detector
 import smart_upload
 import tabs.analytics_tab as analytics_tab
 import utils
-from database_reads import clear_location_cache
+from database_reads import clear_location_cache, peek_existing_net_sales_batch
 import tabs.report_tab as report_tab
 from auth import is_admin
 from tabs import TabContext
 
 logger = logging.getLogger("boteco")
+
+
+def _files_fingerprint(uploaded_files) -> str:
+    """Hash file names + sizes to detect when the file set changes."""
+    h = hashlib.md5()
+    for f in sorted(uploaded_files, key=lambda x: x.name):
+        h.update(f.name.encode())
+        h.update(str(f.size).encode())
+    return h.hexdigest()
 
 
 def render(ctx: TabContext) -> None:
@@ -63,6 +73,9 @@ def render(ctx: TabContext) -> None:
     )
 
     if not uploaded_files:
+        # Clear cached result when files are removed
+        st.session_state.pop("_upload_result", None)
+        st.session_state.pop("_upload_fingerprint", None)
         st.markdown(
             '<div class="empty-upload-hint">'
             "No files selected. Download your reports from Petpooja and "
@@ -93,10 +106,22 @@ def render(ctx: TabContext) -> None:
             )
 
         if importable_count > 0:
-            upload_result = smart_upload.process_smart_upload(
-                files_payload,
-                ctx.location_id,
-            )
+            # Cache process_smart_upload in session_state to avoid re-parsing
+            # on every Streamlit rerun (checkbox toggle, widget interaction, etc.)
+            fp = _files_fingerprint(uploaded_files)
+            if (
+                st.session_state.get("_upload_fingerprint") != fp
+                or "_upload_result" not in st.session_state
+            ):
+                with st.spinner("Parsing files..."):
+                    upload_result = smart_upload.process_smart_upload(
+                        files_payload,
+                        ctx.location_id,
+                    )
+                st.session_state["_upload_result"] = upload_result
+                st.session_state["_upload_fingerprint"] = fp
+            else:
+                upload_result = st.session_state["_upload_result"]
 
             loc_name_map = {loc["id"]: loc["name"] for loc in ctx.all_locs}
 
@@ -108,21 +133,21 @@ def render(ctx: TabContext) -> None:
                 ]
                 st.info(f"Auto-detected outlets: **{'**, **'.join(outlet_names)}**")
 
-            # Collect overlaps across all locations
+            # Collect overlaps — one batch query per location instead of per-day
             overlap_rows: list = []
             for lid, days in upload_result.location_results.items():
-                for day in days:
-                    if day.errors:
-                        continue
-                    prev_net = database.peek_daily_net_sales(lid, day.date)
-                    if prev_net is not None:
-                        ovr_name = loc_name_map.get(lid, str(lid))
-                        overlap_rows.append((ovr_name, day.date, prev_net))
+                valid_dates = [day.date for day in days if not day.errors]
+                if not valid_dates:
+                    continue
+                existing = peek_existing_net_sales_batch(lid, valid_dates)
+                ovr_name = loc_name_map.get(lid, str(lid))
+                for date_str, net_val in existing.items():
+                    overlap_rows.append((ovr_name, date_str, net_val))
 
             must_confirm_replace = len(overlap_rows) > 0
             if overlap_rows:
                 lines = "\n".join(
-                    f"- **{n}** — **{d}** — saved net sales {utils.format_currency(v)}"
+                    f"- **{n}** \u2014 **{d}** \u2014 saved net sales {utils.format_currency(v)}"
                     for n, d, v in overlap_rows
                 )
                 st.warning(
@@ -174,18 +199,17 @@ def render(ctx: TabContext) -> None:
                         loc_settings.get("seat_count") if loc_settings else None
                     )
 
-                    # One save pass: Dynamic Report outlet comes from CSV; calling once
-                    # per location_results key used to re-parse and re-insert all rows.
-                    saved_days, skipped_validation, save_messages = (
-                        smart_upload.save_smart_upload_results(
-                            upload_result,
-                            ctx.location_id,
-                            uploaded_by,
-                            monthly_target=float(monthly_tgt),
-                            daily_target=float(daily_tgt),
-                            seat_count=(int(sc_setting) if sc_setting else None),
+                    with st.spinner("Saving to database..."):
+                        saved_days, skipped_validation, save_messages = (
+                            smart_upload.save_smart_upload_results(
+                                upload_result,
+                                ctx.location_id,
+                                uploaded_by,
+                                monthly_target=float(monthly_tgt),
+                                daily_target=float(daily_tgt),
+                                seat_count=(int(sc_setting) if sc_setting else None),
+                            )
                         )
-                    )
                     total_saved = saved_days
                     total_skipped = skipped_validation
                     outlets = ", ".join(
@@ -193,7 +217,7 @@ def render(ctx: TabContext) -> None:
                         for lid in upload_result.location_results
                     )
                     all_save_messages = [
-                        f"**Outlets:** {outlets} — {saved_days} day(s) saved, "
+                        f"**Outlets:** {outlets} \u2014 {saved_days} day(s) saved, "
                         f"{skipped_validation} day(s) skipped."
                     ]
                     all_save_messages.extend(save_messages)
@@ -205,6 +229,10 @@ def render(ctx: TabContext) -> None:
                         st.info(msg)
                     # Also clear analytics cache to reflect new data in analytics tab
                     analytics_tab.clear_analytics_cache()
+
+                    # Clear cached upload result so it's not stale after save
+                    st.session_state.pop("_upload_result", None)
+                    st.session_state.pop("_upload_fingerprint", None)
 
                     note_count = len(upload_result.global_notes)
 
