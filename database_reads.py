@@ -236,11 +236,12 @@ def get_summaries_for_date_range(
         )
         return result.data
     else:
+        tbl = _sqlite_daily_table()
         with database.db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                """
-                SELECT * FROM daily_summary 
+                f"""
+                SELECT * FROM {tbl}
                 WHERE location_id = ? AND date >= ? AND date <= ?
                 ORDER BY date
                 """,
@@ -448,11 +449,12 @@ def get_recent_summaries(location_id: int, weeks: int = 8) -> List[Dict]:
         )
         return result.data
     else:
+        tbl = _sqlite_daily_table()
         with database.db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                """
-                SELECT * FROM daily_summary 
+                f"""
+                SELECT * FROM {tbl}
                 WHERE location_id = ?
                 ORDER BY date DESC LIMIT ?
                 """,

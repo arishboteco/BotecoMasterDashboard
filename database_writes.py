@@ -105,6 +105,12 @@ def upsert_daily_summary_supabase(
         "gst_on_service_charge": data.get("gst_on_service_charge", 0),
         "cancelled_amount": data.get("cancelled_amount", 0),
         "complementary_amount": data.get("complementary_amount", 0),
+        "cash_sales": data.get("cash_sales", 0),
+        "card_sales": data.get("card_sales", 0),
+        "gpay_sales": data.get("gpay_sales", 0),
+        "zomato_sales": data.get("zomato_sales", 0),
+        "other_sales": data.get("other_sales", 0),
+        "order_count": data.get("order_count", 0),
     }
     result = (
         supabase.table("daily_summary")

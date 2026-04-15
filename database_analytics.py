@@ -624,44 +624,38 @@ def get_payment_breakdown_for_date_range(
     start_date: str,
     end_date: str,
 ) -> Dict[str, float]:
-    """Get payment type breakdown from bill_items."""
+    """Get payment type breakdown for a date range.
+
+    Reads pre-aggregated payment columns from daily_summary (populated during
+    upload from the correctly-parsed Dynamic Report data).
+    """
     import database
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        restaurants = _restaurants_for_location_ids(location_ids)
-
         result = (
-            supabase.table("bill_items")
-            .select("bill_no,net_amount,payment_type,bill_status")
-            .in_("restaurant", restaurants)
-            .gte("bill_date", start_date)
-            .lte("bill_date", end_date)
+            supabase.table("daily_summary")
+            .select("cash_sales,card_sales,gpay_sales,zomato_sales,other_sales")
+            .in_("location_id", location_ids)
+            .gte("date", start_date)
+            .lte("date", end_date)
             .execute()
         )
 
-        bill_totals = {}
+        totals = {
+            "Cash": 0.0,
+            "Card": 0.0,
+            "GPay": 0.0,
+            "Zomato": 0.0,
+            "Other": 0.0,
+        }
         for row in result.data:
-            if not _bill_items_success(row.get("bill_status")):
-                continue
-            bill_no = row.get("bill_no")
-            net = row.get("net_amount", 0) or 0
-            if net <= 0:
-                continue
-            if bill_no not in bill_totals:
-                bill_totals[bill_no] = {
-                    "payment_type": row.get("payment_type") or "Unknown",
-                    "net_amount": net,
-                }
-
-        payments = {}
-        for bill in bill_totals.values():
-            ptype = bill["payment_type"]
-            if ptype not in payments:
-                payments[ptype] = 0.0
-            payments[ptype] += bill["net_amount"]
-
-        return payments
+            totals["Cash"] += float(row.get("cash_sales", 0) or 0)
+            totals["Card"] += float(row.get("card_sales", 0) or 0)
+            totals["GPay"] += float(row.get("gpay_sales", 0) or 0)
+            totals["Zomato"] += float(row.get("zomato_sales", 0) or 0)
+            totals["Other"] += float(row.get("other_sales", 0) or 0)
+        return totals
     else:
         if not location_ids:
             return {}

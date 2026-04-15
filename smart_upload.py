@@ -734,22 +734,19 @@ def save_smart_upload_results(
     daily_target: float = 0.0,
     seat_count: Optional[int] = None,
 ) -> Tuple[int, int, List[str]]:
-    """
-    Save data using the new simplified schema:
-    - Raw bill_items stored in bill_items table
-    - Aggregates derived at query time into daily_summary and category_summary
+    """Save parsed upload data to the database.
 
-    Args:
-        result: SmartUploadResult from process_smart_upload
-        location_id: Target location ID
-        uploaded_by: Username who uploaded
-        monthly_target: Monthly sales target (optional)
-        daily_target: Daily sales target (optional)
-        seat_count: Number of seats (optional)
+    Uses the already-correct ``location_results`` from ``process_smart_upload``
+    for daily_summary and category_summary (these contain properly distributed
+    category amounts and filtered financials from ``_parse_v2``).
+
+    Raw bill_items from Dynamic Report CSVs are additionally stored in Supabase
+    for granular analytics (line-item queries, service period derivation, etc.).
+
+    Works with both Supabase and SQLite backends.
 
     Returns (saved_count, skipped_count, messages).
     """
-    from collections import defaultdict
     from database import use_supabase, get_supabase_client
     import database_writes as db_writes
 
@@ -757,212 +754,174 @@ def save_smart_upload_results(
     skipped = 0
     messages: List[str] = []
 
-    if not use_supabase():
-        return 0, 0, ["Supabase not configured - cannot save data"]
+    if not result.location_results:
+        return 0, 0, ["No parsed data to save"]
 
-    client = get_supabase_client()
-    if client is None:
+    is_supabase = use_supabase()
+    client = get_supabase_client() if is_supabase else None
+    if is_supabase and client is None:
         return 0, 0, ["Could not connect to Supabase"]
 
-    dynamic_files = [
-        fr for fr in result.files if fr.kind == "dynamic_report" and fr.content
-    ]
-    if not dynamic_files:
-        return 0, 1, ["No Dynamic Report files found to save"]
+    # ── Step 1: Save daily_summary + category_summary from location_results ──
+    # These come from process_smart_upload → _parse_v2 which correctly:
+    #   - distributes bill_net across items by amount/qty ratio
+    #   - filters out cancelled/non-SuccessOrder bills
+    #   - separates complimentary bills
+    #   - buckets payments by Payment Type
 
-    for fr in dynamic_files:
-        if fr.error:
-            skipped += 1
-            messages.append(f"Skipped {fr.filename}: {fr.error}")
-            continue
+    daily_rows: List[Dict[str, Any]] = []
+    cat_records: List[Dict[str, Any]] = []
+    upload_batch: List[Dict[str, Any]] = []
+    dates_locs: set = set()
 
-        try:
-            raw_records, parse_notes = dynamic_report_parser.parse_dynamic_report_raw(
-                fr.content, fr.filename
-            )
-            for note in parse_notes:
-                messages.append(note)
-
-            if not raw_records:
+    for loc_id, day_results in result.location_results.items():
+        for day_result in day_results:
+            if day_result.errors:
                 skipped += 1
-                messages.append(f"No data in {fr.filename}")
+                for err in day_result.errors:
+                    messages.append(f"Skipped {day_result.date}: {err}")
                 continue
 
-            loc_ids_in_file = {
-                db_writes._get_location_id(
-                    (str(r.get("restaurant") or "")).strip() or "Boteco"
-                )
-                for r in raw_records
-            }
-            if len(loc_ids_in_file) > 1:
-                messages.append(
-                    f"{fr.filename}: multi-outlet CSV → saving to location_id(s) "
-                    f"{sorted(loc_ids_in_file)}"
-                )
-            else:
-                only_loc = next(iter(loc_ids_in_file))
-                if only_loc != location_id:
-                    r0 = (str(raw_records[0].get("restaurant") or "")).strip() or "Boteco"
-                    messages.append(
-                        f"{fr.filename}: outlet from CSV is location {only_loc} "
-                        f"({r0!r}); data saved there (not {location_id})."
-                    )
+            merged = day_result.merged
+            date_str = str(merged.get("date", day_result.date))
+            dates_locs.add((date_str, loc_id))
 
-            bill_items_to_save: List[Dict[str, Any]] = []
-            dates_locs: set = set()
-            categories_by_key: Dict[Tuple[str, int], Dict[str, Dict]] = defaultdict(
-                lambda: {"qty": defaultdict(int), "net_amount": defaultdict(float)}
-            )
-            daily_agg: Dict[Tuple[str, int], Dict] = defaultdict(
-                lambda: {
-                    "gross_total": 0.0,
-                    "net_total": 0.0,
-                    "discount": 0.0,
-                    "cgst": 0.0,
-                    "sgst": 0.0,
-                    "service_charge": 0.0,
-                    "gst_on_service_charge": 0.0,
-                    "cancelled_amount": 0.0,
-                    "complementary_amount": 0.0,
-                    "bill_nos": set(),
-                }
-            )
-            bill_pax: Dict[Tuple[str, int], Dict[str, int]] = defaultdict(
-                lambda: defaultdict(int)
-            )
-
-            for rec in raw_records:
-                rname = (str(rec.get("restaurant") or "")).strip() or "Boteco"
-                loc = db_writes._get_location_id(rname)
-                bill_date = rec.get("bill_date", "")
-                key: Tuple[str, int] = (bill_date, loc)
-                dates_locs.add(key)
-
-                bill_no = rec.get("bill_no", "")
-                bill_status = rec.get("bill_status", "")
-
-                if str(bill_status).lower() in ("", "successorder"):
-                    ck = categories_by_key[key]
-                    cat_nm = rec.get("category_name", "")
-                    ck["qty"][cat_nm] += int(rec.get("item_qty") or 0)
-                    ck["net_amount"][cat_nm] += float(rec.get("net_amount") or 0)
-
-                agg = daily_agg[key]
-                agg["gross_total"] += float(rec.get("gross_amount") or 0)
-                agg["net_total"] += float(rec.get("net_amount") or 0)
-                agg["discount"] += float(rec.get("discount") or 0)
-                agg["cgst"] += float(rec.get("cgst") or 0)
-                agg["sgst"] += float(rec.get("sgst") or 0)
-                agg["service_charge"] += float(rec.get("service_charge") or 0)
-                agg["gst_on_service_charge"] += float(
-                    rec.get("gst_on_service_charge") or 0
-                )
-                agg["cancelled_amount"] += float(rec.get("cancelled_amount") or 0)
-                agg["complementary_amount"] += float(
-                    rec.get("complementary_amount") or 0
-                )
-                if bill_no:
-                    agg["bill_nos"].add(bill_no)
-                bn = str(bill_no or "")
-                px = int(rec.get("pax") or 0)
-                if bn and px > 0:
-                    bp = bill_pax[key]
-                    bp[bn] = max(bp.get(bn, 0), px)
-
-                bill_items_to_save.append(rec)
-
-            bill_items_to_save = [
-                {k: v for k, v in rec.items() if k != "pax"}
-                for rec in bill_items_to_save
-            ]
-
-            try:
-                db_writes.save_bill_items(client, bill_items_to_save)
-                messages.append(
-                    f"Saved {len(bill_items_to_save)} bill items from {fr.filename}"
-                )
-            except Exception as e:
-                messages.append(f"Error saving bill items: {e}")
-
-            daily_rows: List[Dict[str, Any]] = []
-            for (date_str, loc_id), agg in sorted(daily_agg.items()):
-                covers = sum(bill_pax.get((date_str, loc_id), {}).values())
+            if is_supabase:
+                # Build daily_summary row from correctly-parsed merged data
                 daily_rows.append(
                     {
                         "location_id": loc_id,
                         "date": date_str,
-                        "gross_total": round(agg["gross_total"], 2),
-                        "net_total": round(agg["net_total"], 2),
-                        "covers": int(covers),
-                        "discount": round(agg["discount"], 2),
-                        "cgst": round(agg["cgst"], 2),
-                        "sgst": round(agg["sgst"], 2),
-                        "service_charge": round(agg["service_charge"], 2),
-                        "gst_on_service_charge": round(
-                            agg["gst_on_service_charge"], 2
-                        ),
-                        "cancelled_amount": round(agg["cancelled_amount"], 2),
-                        "complementary_amount": round(
-                            agg["complementary_amount"], 2
-                        ),
+                        "gross_total": round(float(merged.get("gross_total", 0) or 0), 2),
+                        "net_total": round(float(merged.get("net_total", 0) or 0), 2),
+                        "covers": int(merged.get("covers", 0) or 0),
+                        "discount": round(float(merged.get("discount", 0) or 0), 2),
+                        "cgst": round(float(merged.get("cgst", 0) or 0), 2),
+                        "sgst": round(float(merged.get("sgst", 0) or 0), 2),
+                        "service_charge": round(float(merged.get("service_charge", 0) or 0), 2),
+                        "gst_on_service_charge": 0,  # already folded into cgst/sgst by parser
+                        "cancelled_amount": 0,  # cancelled bills excluded by parser
+                        "complementary_amount": round(float(merged.get("complimentary", 0) or 0), 2),
+                        "cash_sales": round(float(merged.get("cash_sales", 0) or 0), 2),
+                        "card_sales": round(float(merged.get("card_sales", 0) or 0), 2),
+                        "gpay_sales": round(float(merged.get("gpay_sales", 0) or 0), 2),
+                        "zomato_sales": round(float(merged.get("zomato_sales", 0) or 0), 2),
+                        "other_sales": round(float(merged.get("other_sales", 0) or 0), 2),
+                        "order_count": int(merged.get("order_count", 0) or 0),
                     }
                 )
-            if daily_rows:
-                try:
-                    db_writes.upsert_daily_summaries_supabase_batch(client, daily_rows)
-                    messages.append(
-                        f"Saved {len(daily_rows)} daily summary row(s) from {fr.filename}"
-                    )
-                except Exception as e:
-                    messages.append(f"Error saving daily summaries: {e}")
 
-            cat_records = []
-            for (date_str, loc_id), cat_data in categories_by_key.items():
-                for cat_name, qty in cat_data["qty"].items():
-                    net_amt = cat_data["net_amount"].get(cat_name, 0.0)
+                # Build category_summary rows from correctly-distributed categories
+                for cat in merged.get("categories") or []:
+                    cat_name = str(cat.get("category", "") or "").strip()
+                    if not cat_name:
+                        continue
                     cat_records.append(
                         {
                             "location_id": loc_id,
                             "date": date_str,
                             "category_name": cat_name,
-                            "net_amount": round(net_amt, 2),
-                            "qty": qty,
+                            "net_amount": round(float(cat.get("amount", 0) or 0), 2),
+                            "qty": int(cat.get("qty", 0) or 0),
                         }
                     )
-
-            if cat_records:
+            else:
+                # SQLite path: save_daily_summary handles item_sales + service_sales
                 try:
-                    db_writes.save_category_summary_batch(client, cat_records)
-                    messages.append(
-                        f"Saved {len(cat_records)} category summary records"
-                    )
+                    database.save_daily_summary(loc_id, merged)
                 except Exception as e:
-                    messages.append(f"Error saving category summaries: {e}")
+                    messages.append(f"Error saving {date_str} to SQLite: {e}")
+                    skipped += 1
+                    continue
 
-            upload_batch = [
+            # Build file-type-specific source info for upload history
+            source_kinds = day_result.source_kinds
+            primary_kind = source_kinds[0] if source_kinds else "dynamic_report"
+            # Find filename that contributed to this day
+            source_filename = None
+            for fr in result.files:
+                if fr.kind == primary_kind and fr.importable:
+                    source_filename = fr.filename
+                    break
+            upload_batch.append(
                 {
                     "location_id": loc_id,
                     "date": date_str,
-                    "filename": fr.filename,
-                    "file_type": "dynamic_report",
+                    "filename": source_filename or "unknown",
+                    "file_type": primary_kind,
                     "uploaded_by": uploaded_by,
                 }
-                for date_str, loc_id in sorted(dates_locs)
-            ]
-            if upload_batch:
-                try:
-                    db_writes.save_upload_records_batch(upload_batch)
-                except Exception as e:
-                    messages.append(f"Error saving upload history: {e}")
-
-            saved += len(dates_locs)
-            messages.append(
-                f"Processed {len(dates_locs)} day/location row(s) from {fr.filename}"
             )
 
-        except Exception as e:
-            skipped += 1
-            messages.append(f"Error processing {fr.filename}: {e}")
-            logger.exception("Failed to save smart upload result")
+            saved += 1
 
+    # ── Step 2: Supabase batch upserts ──
+    if is_supabase and client:
+        if daily_rows:
+            try:
+                db_writes.upsert_daily_summaries_supabase_batch(client, daily_rows)
+                messages.append(f"Saved {len(daily_rows)} daily summary row(s)")
+            except Exception as e:
+                messages.append(f"Error saving daily summaries: {e}")
+
+        if cat_records:
+            try:
+                # Delete existing category_summary for affected dates/locations
+                # before upsert to clear stale categories that no longer appear
+                for date_str, loc_id in dates_locs:
+                    try:
+                        db_writes.delete_category_summary(client, date_str, loc_id)
+                    except Exception:
+                        pass
+                db_writes.save_category_summary_batch(client, cat_records)
+                messages.append(f"Saved {len(cat_records)} category summary records")
+            except Exception as e:
+                messages.append(f"Error saving category summaries: {e}")
+
+    # ── Step 3: Raw bill_items from Dynamic Report CSVs (Supabase only) ──
+    if is_supabase and client:
+        dynamic_files = [
+            fr for fr in result.files if fr.kind == "dynamic_report" and fr.content and not fr.error
+        ]
+        for fr in dynamic_files:
+            try:
+                raw_records, parse_notes = dynamic_report_parser.parse_dynamic_report_raw(
+                    fr.content, fr.filename
+                )
+                for note in parse_notes:
+                    messages.append(note)
+
+                if not raw_records:
+                    continue
+
+                # Determine which (date, location) pairs are in this file
+                file_dates_locs: set = set()
+                for rec in raw_records:
+                    rname = (str(rec.get("restaurant") or "")).strip() or "Boteco"
+                    loc = db_writes._get_location_id(rname)
+                    file_dates_locs.add((rec.get("bill_date", ""), loc))
+
+                # Delete existing bill_items for these dates/locations (idempotent re-upload)
+                for date_str, loc_id in file_dates_locs:
+                    try:
+                        db_writes.delete_bill_items_by_date(client, date_str, loc_id)
+                    except Exception:
+                        pass
+
+                db_writes.save_bill_items(client, raw_records)
+                messages.append(
+                    f"Saved {len(raw_records)} bill items from {fr.filename}"
+                )
+            except Exception as e:
+                messages.append(f"Error saving bill items from {fr.filename}: {e}")
+                logger.exception("Failed to save bill_items for %s", fr.filename)
+
+    # ── Step 4: Upload history ──
+    if upload_batch:
+        try:
+            db_writes.save_upload_records_batch(upload_batch)
+        except Exception as e:
+            messages.append(f"Error saving upload history: {e}")
+
+    messages.append(f"Processed {saved} day/location row(s), {skipped} skipped")
     return saved, skipped, messages

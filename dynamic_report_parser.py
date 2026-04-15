@@ -460,10 +460,11 @@ def _parse_v2(
     pax_col = col_map.get("pax")
     net_col = col_map.get("net amount")
     gross_col = col_map.get("gross sale")
+    # Per export spec, "Amount" column must be ignored — it holds the bill-level
+    # total on the summary row and "-" on item rows, which breaks per-item
+    # distribution.  Only use a true per-item amount column if present.
     amount_col = (
-        col_map.get("amount")
-        or col_map.get("total")
-        or col_map.get("item total")
+        col_map.get("item total")
         or col_map.get("line total")
         or col_map.get("final amount")
     )
