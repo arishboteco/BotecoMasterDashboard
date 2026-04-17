@@ -1107,9 +1107,9 @@ def render_target_and_daily(
             na_rep="",
         )
         # Bold the total row
-        _total_row_idx = len(dv_display) - 1
+        _total_row_idx_multi = len(dv_display) - 1
         styler = styler.set_properties(
-            subset=pd.IndexSlice[_total_row_idx, :],
+            subset=pd.IndexSlice[_total_row_idx_multi, :],
             **{"font-weight": "bold"},
         )
         st.dataframe(styler, width="stretch", hide_index=True)
@@ -1154,3 +1154,88 @@ def render_target_and_daily(
             **{"font-weight": "bold"},
         )
         st.dataframe(styler, width="stretch", hide_index=True)
+
+
+def render_payment_reconciliation(
+    report_loc_ids: list[int],
+    start_str: str,
+    end_str: str,
+) -> None:
+    """Render per-provider payment breakdown for ops team reconciliation."""
+    from io import BytesIO
+
+    import database_analytics
+
+    st.markdown("### Payment Reconciliation")
+    st.caption(
+        "Per-provider breakdown for reconciling against Paytm / PhonePe / GPay settlement "
+        "statements. Live data shows raw Payment Type labels; local mode shows the 5-bucket summary."
+    )
+
+    data = database_analytics.get_payment_provider_breakdown(
+        report_loc_ids, start_str, end_str
+    )
+
+    if not data:
+        st.caption("No payment data for this period.")
+        return
+
+    recon_df = pd.DataFrame(data)
+    total_gross = float(recon_df["gross_amount"].sum())
+    recon_df["% of Total"] = recon_df["gross_amount"].apply(
+        lambda x: f"{x / total_gross * 100:.1f}%" if total_gross > 0 else "0%"
+    )
+
+    has_txn_count = recon_df["txn_count"].notna().any()
+
+    display_df = recon_df.copy()
+    display_df["Gross Amount (₹)"] = display_df["gross_amount"].apply(
+        lambda x: utils.format_currency(float(x))
+    )
+    display_df = display_df.rename(columns={"provider": "Provider"})
+
+    cols_to_show = ["Provider", "Gross Amount (₹)", "% of Total"]
+    if has_txn_count:
+        display_df = display_df.rename(columns={"txn_count": "Bills"})
+        display_df["Bills"] = display_df["Bills"].fillna(0).astype(int)
+        cols_to_show = ["Provider", "Bills", "Gross Amount (₹)", "% of Total"]
+
+    st.dataframe(display_df[cols_to_show], width="stretch", hide_index=True)
+
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.metric("Total Gross (period)", utils.format_currency(total_gross))
+    if has_txn_count:
+        with col_b:
+            st.metric("Total Bills", f"{int(recon_df['txn_count'].sum()):,}")
+
+    export_df = recon_df[["provider", "txn_count", "gross_amount", "% of Total"]].copy()
+    export_df = export_df.rename(
+        columns={
+            "provider": "Provider",
+            "txn_count": "Bill Count",
+            "gross_amount": "Gross Amount",
+        }
+    )
+    c1, c2 = st.columns(2)
+    with c1:
+        csv_bytes = export_df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="Download CSV",
+            data=csv_bytes,
+            file_name=f"payment_recon_{start_str}_{end_str}.csv",
+            mime="text/csv",
+            key="recon_csv_btn",
+        )
+    with c2:
+        excel_buf = BytesIO()
+        with pd.ExcelWriter(excel_buf, engine="openpyxl") as writer:
+            export_df.to_excel(writer, index=False, sheet_name="Payment Reconciliation")
+        excel_buf.seek(0)
+        st.download_button(
+            label="Download Excel",
+            data=excel_buf.getvalue(),
+            file_name=f"payment_recon_{start_str}_{end_str}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="recon_excel_btn",
+        )

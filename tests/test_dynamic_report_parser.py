@@ -269,7 +269,7 @@ class TestDynamicReportV2Format:
         assert cats["Cat A"]["amount"] == pytest.approx(200.0)
         assert r["cash_sales"] == 220.0
 
-    def test_v2_part_payment_goes_to_other_sales(self):
+    def test_v2_part_payment_splits_across_buckets(self):
         from dynamic_report_parser import parse_dynamic_report
 
         csv_content = self._make_v2_csv(
@@ -280,10 +280,12 @@ class TestDynamicReportV2Format:
         records, _ = parse_dynamic_report(csv_content, "test.csv")
         assert records is not None
         r = records[0]
-        assert r["other_sales"] == 525.0
-        assert r["cash_sales"] == 0.0
-        assert r["card_sales"] == 0.0
-        assert r["gpay_sales"] == 0.0
+        # Columns: Cash=200, Card=200, Credit=100, Online=25 (total=525)
+        # Credit maps to card_sales -> card=300, Online maps to gpay_sales.
+        assert r["cash_sales"] == pytest.approx(200.0)
+        assert r["card_sales"] == pytest.approx(300.0)
+        assert r["gpay_sales"] == pytest.approx(25.0)
+        assert r["other_sales"] == 0.0
 
     def test_v2_multi_outlet_one_file_same_date(self):
         from dynamic_report_parser import parse_dynamic_report
@@ -319,3 +321,93 @@ class TestDynamicReportV2Format:
         r = records[0]
         assert r["complimentary"] == 525.0
         assert r["net_total"] == 0
+
+    def test_v2_fallback_when_payment_type_blank(self):
+        from dynamic_report_parser import parse_dynamic_report
+
+        # Payment Type empty; Cash column carries the full amount.
+        csv_content = self._make_v2_csv(
+            "Boteco,2026-04-08,2026-04-8 12:00:00,9100,S,1,SuccessOrder,,-,"
+            "Tira Gosto,Chicken,1,2,500,0,500,0,12.5,12.5,0,0,525,-,"
+            "525,-,-,-,-,-,-,-,-\n"
+        )
+        records, notes = parse_dynamic_report(csv_content, "test.csv")
+        assert records is not None
+        r = records[0]
+        assert r["cash_sales"] == pytest.approx(525.0)
+        assert r["other_sales"] == 0.0
+        assert any("fallback applied to 1" in n for n in notes)
+
+    def test_v2_fallback_when_payment_type_unknown(self):
+        from dynamic_report_parser import parse_dynamic_report
+
+        # Payment Type text that classifier cannot map; Wallet column carries amount.
+        csv_content = self._make_v2_csv(
+            "Boteco,2026-04-08,2026-04-8 12:00:00,9101,S,1,SuccessOrder,CustomTender,-,"
+            "Tira Gosto,Chicken,1,2,500,0,500,0,12.5,12.5,0,0,525,-,"
+            "-,-,-,-,525,-,-,-,-\n"
+        )
+        records, _ = parse_dynamic_report(csv_content, "test.csv")
+        r = records[0]
+        assert r["gpay_sales"] == pytest.approx(525.0)
+        assert r["other_sales"] == 0.0
+
+    def test_v2_explicit_zomato_not_overridden(self):
+        from dynamic_report_parser import parse_dynamic_report
+
+        # Payment Type "Zomato" classifies cleanly; Online column should not override.
+        csv_content = self._make_v2_csv(
+            "Boteco,2026-04-08,2026-04-8 12:00:00,9102,S,1,SuccessOrder,Zomato,-,"
+            "Tira Gosto,Chicken,1,2,500,0,500,0,12.5,12.5,0,0,525,-,"
+            "-,-,-,-,-,525,-,-,-\n"
+        )
+        records, _ = parse_dynamic_report(csv_content, "test.csv")
+        r = records[0]
+        assert r["zomato_sales"] == pytest.approx(525.0)
+        assert r["gpay_sales"] == 0.0
+        assert r["other_sales"] == 0.0
+
+    def test_v2_notpaid_column_ignored(self):
+        from dynamic_report_parser import parse_dynamic_report
+
+        # Payment Type empty; only NotPaid has a value. NotPaid is not revenue —
+        # no mapped column carries a positive amount, so falls through to other_sales.
+        csv_content = self._make_v2_csv(
+            "Boteco,2026-04-08,2026-04-8 12:00:00,9103,S,1,SuccessOrder,,-,"
+            "Tira Gosto,Chicken,1,2,500,0,500,0,12.5,12.5,0,0,525,525,"
+            "-,-,-,-,-,-,-,-,-\n"
+        )
+        records, _ = parse_dynamic_report(csv_content, "test.csv")
+        r = records[0]
+        assert r["other_sales"] == pytest.approx(525.0)
+        assert r["cash_sales"] == 0.0
+        assert r["gpay_sales"] == 0.0
+
+    def test_v2_other_pmt_stays_other(self):
+        from dynamic_report_parser import parse_dynamic_report
+
+        # Payment Type blank; Other Pmt column is mapped to other_sales so the
+        # value is preserved in the Others bucket (explicit Other stays Other).
+        csv_content = self._make_v2_csv(
+            "Boteco,2026-04-08,2026-04-8 12:00:00,9104,S,1,SuccessOrder,,-,"
+            "Tira Gosto,Chicken,1,2,500,0,500,0,12.5,12.5,0,0,525,-,"
+            "-,-,-,525,-,-,-,-,-\n"
+        )
+        records, _ = parse_dynamic_report(csv_content, "test.csv")
+        r = records[0]
+        assert r["other_sales"] == pytest.approx(525.0)
+        assert r["cash_sales"] == 0.0
+
+    def test_v2_totally_unclassifiable_bill_lands_in_other(self):
+        from dynamic_report_parser import parse_dynamic_report
+
+        # Payment Type empty AND no per-column payment amount at all —
+        # last-resort fallback sends gross to other_sales.
+        csv_content = self._make_v2_csv(
+            "Boteco,2026-04-08,2026-04-8 12:00:00,9105,S,1,SuccessOrder,,-,"
+            "Tira Gosto,Chicken,1,2,500,0,500,0,12.5,12.5,0,0,525,-,"
+            "-,-,-,-,-,-,-,-,-\n"
+        )
+        records, _ = parse_dynamic_report(csv_content, "test.csv")
+        r = records[0]
+        assert r["other_sales"] == pytest.approx(525.0)

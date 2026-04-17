@@ -619,6 +619,141 @@ def get_top_items_for_date_range(
         ]
 
 
+def _normalize_provider(raw: str) -> str:
+    """Map a raw Payment Type cell to a human-readable provider label.
+
+    More granular than the bucket classifier: GPay, UPI, Paytm, PhonePe,
+    Wallet, Bharat QR, Zomato, Swiggy, Cash, Card, Online, Part Payment.
+    Unrecognised values return "Other".
+    """
+    s = str(raw or "").strip().lower()
+    if not s or s in ("nan", "none", "null", "-"):
+        return "Other"
+    if "zomato" in s:
+        return "Zomato"
+    if "swiggy" in s:
+        return "Swiggy"
+    if "paytm" in s:
+        return "Paytm"
+    if "phonepe" in s or "phone pe" in s:
+        return "PhonePe"
+    if "gpay" in s or "g pay" in s or ("google" in s and "pay" in s):
+        return "GPay"
+    if "bharat qr" in s:
+        return "Bharat QR"
+    if s == "qr":
+        return "Bharat QR"
+    if s == "upi" or "upi" in s:
+        return "UPI"
+    if "online" in s:
+        return "Online"
+    if "wallet" in s:
+        return "Wallet"
+    if s == "cash":
+        return "Cash"
+    if (
+        "card" in s
+        or "credit" in s
+        or "debit" in s
+        or "amex" in s
+        or "visa" in s
+        or "master" in s
+        or "pos" in s
+    ):
+        return "Card"
+    if "part payment" in s:
+        return "Part Payment"
+    return "Other"
+
+
+@st.cache_data(ttl=300)
+def get_payment_provider_breakdown(
+    location_ids: List[int],
+    start_date: str,
+    end_date: str,
+) -> List[Dict[str, Any]]:
+    """Aggregate gross_amount and txn count by payment provider across a date range.
+
+    Supabase: reads bill_items.payment_type per bill (summary rows only — rows
+    with gross_amount > 0) and groups by normalized provider label.
+    SQLite: falls back to daily_summaries payment columns (5-bucket precision).
+
+    Returns list of {provider, txn_count, gross_amount} sorted by gross_amount desc.
+    """
+    import database
+
+    if database.use_supabase():
+        supabase = database.get_supabase_client()
+        restaurants = _restaurants_for_location_ids(location_ids)
+        result = (
+            supabase.table("bill_items")
+            .select("payment_type,gross_amount,bill_no,bill_status")
+            .in_("restaurant", restaurants)
+            .gte("bill_date", start_date)
+            .lte("bill_date", end_date)
+            .execute()
+        )
+
+        # Aggregate at bill level (one row per bill_no that has gross_amount > 0)
+        seen_bills: set = set()
+        totals: Dict[str, Dict[str, Any]] = {}
+        for row in result.data:
+            if not _bill_items_success(row.get("bill_status")):
+                continue
+            gross = float(row.get("gross_amount") or 0)
+            if gross <= 0:
+                continue
+            bill_no = row.get("bill_no", "")
+            if bill_no in seen_bills:
+                continue
+            seen_bills.add(bill_no)
+
+            provider = _normalize_provider(row.get("payment_type", ""))
+            if provider not in totals:
+                totals[provider] = {"provider": provider, "txn_count": 0, "gross_amount": 0.0}
+            totals[provider]["txn_count"] += 1
+            totals[provider]["gross_amount"] += gross
+
+        return sorted(totals.values(), key=lambda x: -x["gross_amount"])
+
+    else:
+        if not location_ids:
+            return []
+        with database.db_connection() as conn:
+            cur = conn.cursor()
+            placeholders = ",".join("?" * len(location_ids))
+            cur.execute(
+                f"""
+                SELECT
+                    COALESCE(SUM(cash_sales), 0)   AS cash,
+                    COALESCE(SUM(card_sales), 0)   AS card,
+                    COALESCE(SUM(gpay_sales), 0)   AS gpay,
+                    COALESCE(SUM(zomato_sales), 0) AS zomato,
+                    COALESCE(SUM(other_sales), 0)  AS other,
+                    COUNT(*) AS days
+                FROM daily_summaries
+                WHERE location_id IN ({placeholders})
+                  AND date >= ? AND date <= ?
+                """,
+                (*location_ids, start_date, end_date),
+            )
+            row = cur.fetchone()
+        if not row:
+            return []
+        buckets = [
+            ("Cash", float(row["cash"] or 0)),
+            ("Card", float(row["card"] or 0)),
+            ("GPay / UPI", float(row["gpay"] or 0)),
+            ("Zomato / Swiggy", float(row["zomato"] or 0)),
+            ("Others", float(row["other"] or 0)),
+        ]
+        return [
+            {"provider": lbl, "txn_count": None, "gross_amount": amt}
+            for lbl, amt in buckets
+            if amt > 0
+        ]
+
+
 def get_payment_breakdown_for_date_range(
     location_ids: List[int],
     start_date: str,

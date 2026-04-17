@@ -40,6 +40,16 @@ _PAYMENT_MAP_V1 = {
     "other pmt": "other_sales",
 }
 
+_PAYMENT_COLUMN_MAP: Dict[str, str] = {
+    "cash": "cash_sales",
+    "card": "card_sales",
+    "credit": "card_sales",
+    "online": "gpay_sales",
+    "upi": "gpay_sales",
+    "wallet": "gpay_sales",
+    "other pmt": "other_sales",
+}
+
 def _payment_type_to_sales_field(pay_norm: str) -> Optional[str]:
     """Map normalized Payment Type text to a daily_summaries payment column.
 
@@ -78,6 +88,27 @@ def _payment_type_to_sales_field(pay_norm: str) -> Optional[str]:
     if s == "cash":
         return "cash_sales"
     return "other_sales"
+
+
+def _buckets_from_payment_columns(
+    row: pd.Series, col_map: Dict[str, str]
+) -> Dict[str, float]:
+    """Read per-column payment amounts on a summary row.
+
+    Returns {bucket: amount} for every mapped column that carries a positive
+    numeric value. Used as a backup when the Payment Type cell cannot classify
+    the bill, and to proportionally split Part Payment bills across buckets.
+    """
+    out: Dict[str, float] = defaultdict(float)
+    for col_lower, bucket in _PAYMENT_COLUMN_MAP.items():
+        orig = col_map.get(col_lower)
+        if not orig:
+            continue
+        amt = _safe_float(row.get(orig))
+        if amt > 0:
+            out[bucket] += amt
+    return dict(out)
+
 
 _CATEGORY_MAP_V1 = {
     "carft beer": "Craft Beer",
@@ -267,6 +298,7 @@ def _parse_v1(
 ) -> Tuple[Optional[List[Dict[str, Any]]], List[str]]:
     """Parse v1 format: per-bill rows with category-amount columns."""
     notes: List[str] = []
+    fallback_count = 0
 
     required = ["bill date", "bill no", "pax", "net amount", "gross sale"]
     missing = [r for r in required if r not in col_map]
@@ -359,12 +391,20 @@ def _parse_v1(
             if gross_for_pay <= 0:
                 gross_for_pay = _safe_float(row.get(net_col, 0))
             pk = _norm_pay(row.get(pay_type_col_v1, ""))
-            if pk == "part payment":
-                day["other_sales"] += gross_for_pay
+            b = None if pk == "part payment" else _payment_type_to_sales_field(pk)
+            if b and b != "other_sales":
+                day[b] += gross_for_pay
             else:
-                b = _payment_type_to_sales_field(pk)
-                if b:
+                col_buckets = _buckets_from_payment_columns(row, col_map)
+                col_total = sum(col_buckets.values())
+                if col_total > 0:
+                    for bk, amt in col_buckets.items():
+                        day[bk] += gross_for_pay * (amt / col_total)
+                    fallback_count += 1
+                elif b:
                     day[b] += gross_for_pay
+                else:
+                    day["other_sales"] += gross_for_pay
         else:
             for dyn_col, db_field in _PAYMENT_MAP_V1.items():
                 if dyn_col in col_map:
@@ -438,6 +478,10 @@ def _parse_v1(
     notes.append(
         f"Parsed {len(results)} day(s), {total_orders} orders, {total_covers} covers from {filename}"
     )
+    if fallback_count:
+        notes.append(
+            f"Payment column fallback applied to {fallback_count} bill(s) in {filename}"
+        )
     return results, notes
 
 
@@ -454,6 +498,7 @@ def _parse_v2(
     Categories and items are extracted from every row.
     """
     notes: List[str] = []
+    fallback_count = 0
 
     date_col = col_map.get("bill date")
     bill_col = col_map.get("bill no")
@@ -684,7 +729,10 @@ def _parse_v2(
                 day["top_items"][name]["amount"] += share
                 day["top_items"][name]["category"] = cat_for_item
 
-        # Payment breakdown — use Payment Type to bucket each bill's Gross Sale
+        # Payment breakdown — Payment Type is the source of truth; per-column
+        # payment headers (Cash, Card, Credit, Wallet, Online, UPI, Other Pmt)
+        # are a strict backup when Payment Type cannot classify, and drive the
+        # proportional split for Part Payment bills.
         gross_val = _safe_float(summary_row.get(gross_col, 0)) if gross_col else 0.0
         if gross_val <= 0:
             net_val_pay = _safe_float(summary_row.get(net_col, 0)) if net_col else 0.0
@@ -693,16 +741,25 @@ def _parse_v2(
         pay_type_raw = ""
         if paytype_col and pd.notna(summary_row.get(paytype_col)):
             pay_type_raw = str(summary_row.get(paytype_col)).strip()
-
         pay_key = _norm_pay(pay_type_raw)
 
-        if pay_key == "part payment":
-            # Spec ignores per-column payment splits; treat as mixed tender.
-            day["other_sales"] += gross_val
+        bucket = (
+            None if pay_key == "part payment" else _payment_type_to_sales_field(pay_key)
+        )
+
+        if bucket and bucket != "other_sales":
+            day[bucket] += gross_val
         else:
-            bucket = _payment_type_to_sales_field(pay_key)
-            if bucket:
+            col_buckets = _buckets_from_payment_columns(summary_row, col_map)
+            col_total = sum(col_buckets.values())
+            if col_total > 0:
+                for b, amt in col_buckets.items():
+                    day[b] += gross_val * (amt / col_total)
+                fallback_count += 1
+            elif bucket:
                 day[bucket] += gross_val
+            else:
+                day["other_sales"] += gross_val
 
         # Track unique bills
         day["bills"].add(bill_no)
@@ -792,6 +849,10 @@ def _parse_v2(
         f"Parsed {len(results)} day(s), {total_orders} orders, {total_covers} covers "
         f"from {filename} ({fmt_note} format)"
     )
+    if fallback_count:
+        notes.append(
+            f"Payment column fallback applied to {fallback_count} bill(s) in {filename}"
+        )
     return results, notes
 
 

@@ -15,6 +15,7 @@ import utils
 from tabs.analytics_logic import resolve_period_window
 from tabs.analytics_sections import (
     render_overview,
+    render_payment_reconciliation,
     render_revenue_breakdown,
     render_sales_performance,
     render_target_and_daily,
@@ -264,6 +265,7 @@ def render(ctx: TabContext) -> None:
             multi_analytics,
             analysis_period=analysis_period,
         )
+        render_payment_reconciliation(analytics_loc_ids, start_str, end_str)
 
     else:
         st.markdown(
