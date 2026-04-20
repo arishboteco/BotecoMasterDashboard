@@ -124,7 +124,35 @@ def show_login_form():
             password = st.text_input(
                 "Password", type="password", placeholder="Enter password"
             )
+            st.markdown(
+                '<div id="login-caps-hint" class="login-caps-hint">'
+                '⚠ Caps Lock is ON</div>',
+                unsafe_allow_html=True,
+            )
+            remember = st.checkbox("Remember me for 30 days", value=True)
             submit = st.form_submit_button("Sign In", use_container_width=True)
+
+        # Caps-lock hint: listen to keydown/keyup on password input
+        st.markdown(
+            """
+            <script>
+            (function() {
+                const hint = window.parent.document.getElementById('login-caps-hint');
+                const pw = window.parent.document.querySelector('input[type="password"]');
+                if (!hint || !pw) return;
+                const update = (e) => {
+                    const on = e.getModifierState && e.getModifierState('CapsLock');
+                    hint.classList.toggle('active', !!on);
+                };
+                pw.addEventListener('keydown', update);
+                pw.addEventListener('keyup', update);
+                pw.addEventListener('focus', (e) => update(e));
+                pw.addEventListener('blur', () => hint.classList.remove('active'));
+            })();
+            </script>
+            """,
+            unsafe_allow_html=True,
+        )
 
         if submit:
             if username and password:
@@ -138,18 +166,21 @@ def show_login_form():
                 user = database.verify_user(username, password)
                 if user:
                     database.clear_failed_login(username)
+                    # "Remember me" unchecked → session cookie (no expires);
+                    # checked → persistent cookie for _COOKIE_EXPIRY_DAYS
+                    session_days = _COOKIE_EXPIRY_DAYS if remember else 1
                     token = database.create_user_session(
-                        user["id"], days=_COOKIE_EXPIRY_DAYS
+                        user["id"], days=session_days
                     )
                     cm = _get_cookie_manager()
                     if cm is not None:
                         try:
-                            cm.set(
-                                _COOKIE_NAME,
-                                token,
-                                expires=datetime.now()
-                                + timedelta(days=_COOKIE_EXPIRY_DAYS),
-                            )
+                            cookie_kwargs = {}
+                            if remember:
+                                cookie_kwargs["expires"] = (
+                                    datetime.now() + timedelta(days=session_days)
+                                )
+                            cm.set(_COOKIE_NAME, token, **cookie_kwargs)
                         except TypeError:
                             pass
                     _apply_user_to_session(user, token)

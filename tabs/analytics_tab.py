@@ -21,6 +21,7 @@ from tabs.analytics_sections import (
     render_target_and_daily,
 )
 from tabs import TabContext
+from components.feedback import empty_state
 from components.navigation import date_range_nav
 
 # In-process cache registered with cache_manager for coordinated invalidation
@@ -110,7 +111,7 @@ def _load_raw_summaries_cached(
 
 def render(ctx: TabContext) -> None:
     """Render the Analytics tab UI with charts and period analysis."""
-    st.header("Sales Analytics")
+    st.markdown("### Sales Analytics")
     st.divider()
 
     # ── Period selector ──────────────────────────────────────────
@@ -268,16 +269,13 @@ def render(ctx: TabContext) -> None:
         render_payment_reconciliation(analytics_loc_ids, start_str, end_str)
 
     else:
-        st.markdown(
-            '<div class="empty-state">'
-            '<div class="empty-state-icon material-symbols-outlined">insights</div>'
-            '<div class="empty-state-title">No data available</div>'
-            '<div class="empty-state-desc">'
-            "This period has no sales data yet. "
-            "Upload POS files from the **Upload** tab or select a different time range."
-            "<br><br>"
-            "<strong>Tip:</strong> Try selecting 'Last Month' or 'Last 30 Days' to see recent data."
-            "</div>"
-            "</div>",
-            unsafe_allow_html=True,
+        empty_state(
+            message="No data available",
+            hint=(
+                "This period has no sales data yet. "
+                "Upload POS files from the <strong>Upload</strong> tab or select a different time range."
+                "<br><br>"
+                "<strong>Tip:</strong> Try selecting &lsquo;Last Month&rsquo; or &lsquo;Last 30 Days&rsquo; to see recent data."
+            ),
+            icon="insights",
         )

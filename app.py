@@ -95,12 +95,27 @@ st.markdown(styles.get_css(), unsafe_allow_html=True)
 # Initialize authentication
 auth.init_auth_state()
 
-# Show first-run admin password exactly once
+# Show first-run admin password exactly once — render as a critical alert
+# with a copy-to-clipboard button. Password shown exactly once; stored
+# nowhere else accessible to the UI.
 if "_first_run_password" in st.session_state:
-    st.warning(
-        f"🔐 **First-run admin password:** `{st.session_state['_first_run_password']}`\n\n"
-        "Change this immediately in **Settings > Change Password**. "
-        "This message will not appear again."
+    _pw = st.session_state["_first_run_password"]
+    st.markdown(
+        f'<div class="critical-alert" role="alert">'
+        f'<div class="critical-alert-title">🔐 First-run admin password</div>'
+        f'<div class="critical-alert-body">'
+        f'Your one-time password is: <code id="first-run-pw">{_pw}</code>'
+        f'<br><br>'
+        f'<strong>Copy and save it now</strong> — this message will not appear again. '
+        f'Change it immediately in <strong>Settings &rsaquo; Change Password</strong>.'
+        f'</div>'
+        f'<div class="critical-alert-actions">'
+        f'<button class="critical-alert-copy" type="button" '
+        f'onclick="navigator.clipboard.writeText(\'{_pw}\').then(()=>{{this.textContent=\'Copied!\';setTimeout(()=>this.textContent=\'Copy password\',1500)}});">'
+        f'Copy password</button>'
+        f'</div>'
+        f'</div>',
+        unsafe_allow_html=True,
     )
     del st.session_state["_first_run_password"]
 
@@ -108,6 +123,43 @@ if not auth.check_authentication():
     auth.show_login_form()
 else:
     st.sidebar.image("logo.png", width=180)
+
+    # ── Theme toggle ─────────────────────────────────────────────
+    if "theme" not in st.session_state:
+        st.session_state.theme = "light"
+
+    def _cycle_theme() -> None:
+        order = ["light", "dark", "system"]
+        idx = order.index(st.session_state.get("theme", "light"))
+        st.session_state.theme = order[(idx + 1) % len(order)]
+
+    _theme_labels = {"light": "☀ Light", "dark": "🌙 Dark", "system": "🖥 System"}
+    st.sidebar.button(
+        _theme_labels.get(st.session_state.theme, "☀ Light"),
+        key="sidebar_theme_btn",
+        on_click=_cycle_theme,
+        width="stretch",
+        help="Click to cycle between Light / Dark / System theme",
+    )
+
+    # Apply the theme attribute to <html> on each render
+    _theme = st.session_state.theme
+    if _theme == "system":
+        # Remove attribute so @media (prefers-color-scheme) applies
+        _js = (
+            "<script>document.documentElement.removeAttribute('data-theme');</script>"
+        )
+    else:
+        _js = f"<script>document.documentElement.setAttribute('data-theme', '{_theme}');</script>"
+    st.markdown(_js, unsafe_allow_html=True)
+
+    # Switch Plotly template to match UI theme (system → light for Plotly;
+    # dark-mode Plotly is opt-in via explicit dark selection)
+    import plotly.io as _pio
+    _pio.templates.default = ui_theme.plotly_template_for_theme(
+        "dark" if _theme == "dark" else "light"
+    )
+
     st.sidebar.divider()
 
     # Account section with user badge
@@ -117,19 +169,66 @@ else:
     location_name = st.session_state.location_name or "Default"
     st.sidebar.markdown(
         f'<div class="sidebar-account-section">'
-        f'<div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.6rem;">'
+        f'<div class="sidebar-account-row">'
         f'<span class="sidebar-user-initials">{initials}</span>'
-        f'<div><div style="font-weight:600;color:#fff;font-size:0.9rem;line-height:1.2;">{username}</div>'
-        f'<div style="font-size:0.72rem;color:rgba(255,255,255,0.6);text-transform:uppercase;letter-spacing:0.06em;">{role}</div></div>'
+        f'<div><div class="user-name">{username}</div>'
+        f'<div class="role-label">{role}</div></div>'
         f'</div>'
-        f'<div style="font-size:0.78rem;color:rgba(255,255,255,0.75);display:flex;align-items:center;gap:0.35rem;">'
-        f'<span style="opacity:0.6;">📍</span>{location_name}</div>'
+        f'<div class="location-row">'
+        f'<span class="location-pin">📍</span>{location_name}</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
     report_loc_ids = auth.get_report_location_ids()
     report_display_name = auth.get_report_display_name()
     all_locs = database.get_all_locations()
+
+    # ── Admin outlet quick-switcher ──────────────────────────────
+    if auth.is_admin() and all_locs and len(all_locs) > 1:
+        st.sidebar.markdown("##### Outlet")
+        _outlet_options = ["all"] + [
+            str(_loc["id"]) for _loc in sorted(all_locs, key=lambda x: x["name"])
+        ]
+
+        def _outlet_label(k: str) -> str:
+            if k == "all":
+                return "All outlets"
+            for _loc in all_locs:
+                if str(_loc["id"]) == k:
+                    return str(_loc["name"])
+            return k
+
+        _current = st.session_state.get("view_scope") or "all"
+        if _current not in _outlet_options:
+            _current = "all"
+        _idx = _outlet_options.index(_current)
+
+        def _on_outlet_change():
+            _new = st.session_state["sidebar_outlet_switcher"]
+            st.session_state.view_scope = _new
+            if _new != "all":
+                try:
+                    _nid = int(_new)
+                    st.session_state.location_id = _nid
+                    for _loc in all_locs:
+                        if _loc["id"] == _nid:
+                            st.session_state.location_name = _loc["name"]
+                            break
+                except (TypeError, ValueError):
+                    pass
+
+        st.sidebar.selectbox(
+            "Outlet",
+            options=_outlet_options,
+            index=_idx,
+            format_func=_outlet_label,
+            key="sidebar_outlet_switcher",
+            on_change=_on_outlet_change,
+            label_visibility="collapsed",
+        )
+        # Refresh derived values after potential change
+        report_loc_ids = auth.get_report_location_ids()
+        report_display_name = auth.get_report_display_name()
 
     location_id = st.session_state.location_id
 
@@ -138,8 +237,8 @@ else:
         auth.logout()
 
     st.sidebar.markdown(
-        '<div style="position:absolute;bottom:1rem;left:0;right:0;text-align:center;">'
-        '<span style="font-size:0.68rem;color:rgba(255,255,255,0.3);letter-spacing:0.04em;">Boteco Dashboard · v1.0</span>'
+        '<div class="sidebar-footer">'
+        '<span class="sidebar-footer-text">Boteco Dashboard · v1.0</span>'
         '</div>',
         unsafe_allow_html=True,
     )

@@ -64,44 +64,61 @@ def _safe_id(key: str) -> str:
 
 
 def _btn_style(*, primary: bool = True) -> str:
-    """Generate inline button styles with proper overflow handling."""
-    c = ui_theme.BRAND_PRIMARY
+    """Generate inline button styles with proper overflow handling.
+
+    Colors interpolated from ui_theme Python constants — these styles render
+    inside a Streamlit iframe whose sandboxed document cannot inherit CSS
+    variables from the parent.
+    """
+    brand = ui_theme.BRAND_PRIMARY
+    surface = ui_theme.SURFACE_ELEVATED
+    border = ui_theme.BORDER_SUBTLE
+    text = ui_theme.TEXT_PRIMARY
+    shadow = ui_theme.SHADOW_SM
     if primary:
         return (
             f"padding:0.5rem 1rem;cursor:pointer;border-radius:6px;border:none;"
-            f"background:{c};color:#FFFFFF;font-weight:600;font-size:0.85rem;"
+            f"background:{brand};color:{surface};font-weight:600;font-size:0.85rem;"
             f"font-family:'Inter',sans-serif;"
-            f"box-shadow:0 1px 2px rgba(0,0,0,0.05);"
+            f"box-shadow:{shadow};"
             f"display:inline-flex;align-items:center;gap:0.4rem;"
             f"min-height:40px;line-height:1.3;transition:all 0.15s ease;"
             f"outline:none;"
         )
     return (
-        "padding:0.5rem 1rem;cursor:pointer;border-radius:6px;border:1px solid #E2E8F0;"
-        "background:#FFFFFF;color:#0F172A;font-weight:500;font-size:0.85rem;"
-        "font-family:'Inter',sans-serif;"
-        "display:inline-flex;align-items:center;gap:0.4rem;"
-        "min-height:40px;line-height:1.3;transition:all 0.15s ease;"
-        "outline:none;"
+        f"padding:0.5rem 1rem;cursor:pointer;border-radius:6px;border:1px solid {border};"
+        f"background:{surface};color:{text};font-weight:500;font-size:0.85rem;"
+        f"font-family:'Inter',sans-serif;"
+        f"display:inline-flex;align-items:center;gap:0.4rem;"
+        f"min-height:40px;line-height:1.3;transition:all 0.15s ease;"
+        f"outline:none;"
     )
 
 
 def _icon_btn_style(*, primary: bool = True) -> str:
-    """Generate square icon button styles (40x40px)."""
-    c = ui_theme.BRAND_PRIMARY
+    """Generate square icon button styles (40x40px).
+
+    Colors interpolated from ui_theme constants — iframe sandbox cannot
+    inherit parent CSS variables.
+    """
+    brand = ui_theme.BRAND_PRIMARY
+    surface = ui_theme.SURFACE_ELEVATED
+    border = ui_theme.BORDER_SUBTLE
+    text = ui_theme.TEXT_PRIMARY
+    shadow = ui_theme.SHADOW_SM
     if primary:
         return (
             f"display:inline-flex;align-items:center;justify-content:center;"
             f"width:40px;height:40px;padding:0;border-radius:6px;border:none;"
-            f"background:{c};color:#FFFFFF;cursor:pointer;"
-            f"box-shadow:0 1px 2px rgba(0,0,0,0.05);"
+            f"background:{brand};color:{surface};cursor:pointer;"
+            f"box-shadow:{shadow};"
             f"transition:all 0.15s ease;"
             f"outline:none;"
         )
     return (
         f"display:inline-flex;align-items:center;justify-content:center;"
         f"width:40px;height:40px;padding:0;border-radius:6px;"
-        f"border:1px solid #E2E8F0;background:#FFFFFF;color:#0F172A;cursor:pointer;"
+        f"border:1px solid {border};background:{surface};color:{text};cursor:pointer;"
         f"transition:all 0.15s ease;"
         f"outline:none;"
     )
@@ -120,6 +137,16 @@ def render_image_action_row(
     fallback_url_json = json.dumps(fallback_url)
     share_text_json = json.dumps(share_text)
 
+    # NOTE: The Material Symbols <link> below is intentional — this HTML
+    # renders inside st.iframe whose sandbox has no inherited fonts.
+    # Do not remove, even though the same font is loaded in styles.py.
+    tray_bg = ui_theme.SURFACE_BASE
+    border = ui_theme.BORDER_SUBTLE
+    icon_default = ui_theme.TEXT_SECONDARY
+    hover_bg = ui_theme.BRAND_SOFT
+    hover_fg = ui_theme.BRAND_PRIMARY
+    success_color = ui_theme.BRAND_GREEN
+
     html = f"""
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..24,400,0,0&display=swap" rel="stylesheet">
 <style>
@@ -133,8 +160,8 @@ def render_image_action_row(
   display: inline-flex;
   align-items: center;
   gap: 0;
-  background: #F7FAFC;
-  border: 1px solid #E2E8F0;
+  background: {tray_bg};
+  border: 1px solid {border};
   border-radius: 6px;
   padding: 4px;
 }}
@@ -150,17 +177,21 @@ def render_image_action_row(
   transition: all 0.15s ease;
   border: none;
   background: transparent;
-  color: #475569;
+  color: {icon_default};
   font-family: 'Material Symbols Outlined', sans-serif;
   font-size: 20px;
   line-height: 1;
 }}
 .action-btn-row .action-btn:hover {{
-  background: #E6F4F3;
-  color: #1F5FA8;
+  background: {hover_bg};
+  color: {hover_fg};
+}}
+.action-btn-row .action-btn:focus-visible {{
+  outline: 2px solid {hover_fg};
+  outline-offset: 2px;
 }}
 .action-btn-row .action-btn + .action-btn {{
-  border-left: 1px solid #E2E8F0;
+  border-left: 1px solid {border};
 }}
 </style>
 <div class="action-btn-row" id="{uid}_row" role="toolbar" aria-label="Image actions">
@@ -168,7 +199,7 @@ def render_image_action_row(
   <button class="action-btn" id="{uid}_wa" title="Share this section via WhatsApp" aria-label="Share via WhatsApp" type="button">{WHATSAPP_ICON_SVG}</button>
   <button class="action-btn" id="{uid}_dl" title="Download this section as PNG" aria-label="Download image" type="button">&#xe2c4;</button>
 </div>
-<span id="{uid}_msg" style="font-size:0.75rem;margin-left:0.5rem;color:#6DBE45;"></span>
+<span id="{uid}_msg" style="font-size:0.75rem;margin-left:0.5rem;color:{success_color};"></span>
 <script>
 (function() {{
   const b64 = "{b64}";
@@ -176,16 +207,37 @@ def render_image_action_row(
   const fallbackUrl = {fallback_url_json};
   const msgEl = document.getElementById("{uid}_msg");
 
-  // Copy button
-  document.getElementById("{uid}_copy").onclick = async function() {{
+  // Material Symbols codepoints for icon swap
+  const ICON_COPY  = "\ue14d";   // content_copy
+  const ICON_CHECK = "\ue5ca";   // check
+  const ICON_ERROR = "\ue000";   // error
+
+  // Copy button — icon swap on success, inline error on failure
+  const copyBtn = document.getElementById("{uid}_copy");
+  copyBtn.onclick = async function() {{
+    const restore = () => {{
+      copyBtn.innerHTML = ICON_COPY;
+      copyBtn.style.color = "";
+      copyBtn.disabled = false;
+    }};
+    copyBtn.disabled = true;
     try {{
       const dataUrl = "data:image/png;base64," + b64;
       const blob = await (await fetch(dataUrl)).blob();
       await navigator.clipboard.write([new ClipboardItem({{"image/png": blob}})]);
+      // Success: swap icon → check for 1.5s, then revert
+      copyBtn.innerHTML = ICON_CHECK;
+      copyBtn.style.color = "{success_color}";
       msgEl.textContent = "Copied";
-      setTimeout(() => {{ msgEl.textContent = ""; }}, 2000);
+      msgEl.style.color = "{success_color}";
+      setTimeout(() => {{ msgEl.textContent = ""; restore(); }}, 1500);
     }} catch (e) {{
-      alert("Copy failed. Try Chrome/Edge over HTTPS.");
+      // Failure: inline error, do not alert
+      copyBtn.innerHTML = ICON_ERROR;
+      copyBtn.style.color = "{ui_theme.BRAND_ERROR}";
+      msgEl.textContent = "Clipboard denied — try Download";
+      msgEl.style.color = "{ui_theme.BRAND_ERROR}";
+      setTimeout(() => {{ msgEl.textContent = ""; restore(); }}, 3000);
     }}
   }};
 

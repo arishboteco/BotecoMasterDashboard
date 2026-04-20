@@ -14,6 +14,7 @@ import database
 import scope
 import ui_theme
 import utils
+from components import KpiMetric, kpi_row
 from tabs.chart_builders import _hex_to_rgba, _period_supports_trend_analysis
 from tabs.analytics_logic import build_daily_view_table
 from tabs.forecasting import (
@@ -144,39 +145,39 @@ def render_overview(
         st.markdown("### Period Summary")
         with st.container(border=True):
             show_projection = analysis_period == "This Month"
-            ncols = 5 if show_projection else 4
-            kpi_cols = st.columns(ncols)
 
             def _delta_str(current, prior):
                 if prior is None or prior == 0:
                     return None
                 return utils.format_delta(current, prior)
 
-            with kpi_cols[0]:
-                st.metric(
-                    "Total Sales",
-                    utils.format_rupee_short(total_sales),
+            cov_delta = None
+            if prior_covers is not None and prior_covers > 0:
+                g = utils.calculate_growth(total_covers, prior_covers)
+                sign = "+" if g["change"] >= 0 else ""
+                cov_delta = f"{sign}{int(g['change']):,} ({sign}{utils.format_percent(g['percentage'])})"
+
+            metrics = [
+                KpiMetric(
+                    label="Total Sales",
+                    value=utils.format_rupee_short(total_sales),
                     delta=_delta_str(total_sales, prior_total),
-                )
-            with kpi_cols[1]:
-                cov_delta = None
-                if prior_covers is not None and prior_covers > 0:
-                    g = utils.calculate_growth(total_covers, prior_covers)
-                    sign = "+" if g["change"] >= 0 else ""
-                    cov_delta = f"{sign}{int(g['change']):,} ({sign}{utils.format_percent(g['percentage'])})"
-                st.metric(
-                    "Total Covers",
-                    f"{total_covers:,}",
+                ),
+                KpiMetric(
+                    label="Total Covers",
+                    value=f"{total_covers:,}",
                     delta=cov_delta,
-                )
-            with kpi_cols[2]:
-                st.metric(
-                    "Avg Daily Sales",
-                    utils.format_rupee_short(avg_daily),
+                ),
+                KpiMetric(
+                    label="Avg Daily Sales",
+                    value=utils.format_rupee_short(avg_daily),
                     delta=_delta_str(avg_daily, prior_avg),
-                )
-            with kpi_cols[3]:
-                st.metric("Days with Data", days_with_data)
+                ),
+                KpiMetric(
+                    label="Days with Data",
+                    value=str(days_with_data),
+                ),
+            ]
 
             if show_projection:
                 days_in_mo = utils.get_days_in_month(start_date.year, start_date.month)
@@ -185,12 +186,15 @@ def render_overview(
                     days_with_data,
                     days_in_mo,
                 )
-                with kpi_cols[4]:
-                    st.metric(
-                        "Projected Month-End",
-                        utils.format_rupee_short(projected),
+                metrics.append(
+                    KpiMetric(
+                        label="Projected Month-End",
+                        value=utils.format_rupee_short(projected),
                         help="Based on current run rate extrapolated to end of month.",
                     )
+                )
+
+            kpi_row(metrics)
 
 
 def render_sales_performance(
@@ -1202,12 +1206,20 @@ def render_payment_reconciliation(
 
     st.dataframe(display_df[cols_to_show], width="stretch", hide_index=True)
 
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.metric("Total Gross (period)", utils.format_currency(total_gross))
+    recon_metrics = [
+        KpiMetric(
+            label="Total Gross (period)",
+            value=utils.format_currency(total_gross),
+        ),
+    ]
     if has_txn_count:
-        with col_b:
-            st.metric("Total Bills", f"{int(recon_df['txn_count'].sum()):,}")
+        recon_metrics.append(
+            KpiMetric(
+                label="Total Bills",
+                value=f"{int(recon_df['txn_count'].sum()):,}",
+            )
+        )
+    kpi_row(recon_metrics)
 
     export_df = recon_df[["provider", "txn_count", "gross_amount", "% of Total"]].copy()
     export_df = export_df.rename(

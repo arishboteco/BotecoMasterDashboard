@@ -35,7 +35,7 @@ def _files_fingerprint(uploaded_files) -> str:
 
 def render(ctx: TabContext) -> None:
     """Render the Upload tab UI and handle import logic."""
-    st.header("Upload POS Data")
+    st.markdown("### Upload POS Data")
 
     st.caption(
         "Drop **any** Petpooja exports below — the system auto-detects file types "

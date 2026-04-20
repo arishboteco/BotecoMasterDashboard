@@ -75,6 +75,7 @@ def build_sales_trend_chart(
             fillcolor=_hex_to_rgba(ui_theme.BRAND_PRIMARY, 0.15),
             line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
             marker=dict(size=4),
+            hovertemplate="<b>₹%{y:,.0f}</b><br>%{x|%a, %d %b}<extra></extra>",
         )
     )
 
@@ -92,15 +93,17 @@ def build_sales_trend_chart(
                     name="7-day Avg",
                     line=dict(color=ui_theme.BRAND_WARN, width=2, dash="dot"),
                     opacity=0.8,
+                    hovertemplate="<b>₹%{y:,.0f}</b> (7-day avg)<br>%{x|%a, %d %b}<extra></extra>",
                 )
             )
 
     fig.update_layout(
-        xaxis_title="Date",
-        yaxis_title="Net Sales (₹)",
+        xaxis_title="",
+        yaxis_title="Net Sales",
         hovermode="x unified",
         height=ui_theme.CHART_HEIGHT,
     )
+    fig.update_yaxes(tickprefix="₹", tickformat=",")
 
     return fig
 
@@ -126,9 +129,11 @@ def build_apc_chart(df: pd.DataFrame) -> go.Figure | None:
         x="date",
         y="apc",
         markers=True,
-        title="APC over time",
     )
-    fig.update_traces(line_color=ui_theme.BRAND_PRIMARY)
+    fig.update_traces(
+        line_color=ui_theme.BRAND_PRIMARY,
+        hovertemplate="<b>₹%{y:,.1f}</b> APC<br>%{x|%a, %d %b}<extra></extra>",
+    )
 
     # Add average line
     avg_apc = float(apc_df["apc"].mean())
@@ -142,11 +147,13 @@ def build_apc_chart(df: pd.DataFrame) -> go.Figure | None:
 
     # Set Y-axis to start at 0 with 10% buffer at top
     max_apc = max(apc_values)
-    fig.update_yaxes(range=[0, max_apc * 1.1])
+    fig.update_yaxes(
+        range=[0, max_apc * 1.1], tickprefix="₹", tickformat=",.0f"
+    )
 
     fig.update_layout(
-        xaxis_title="Date",
-        yaxis_title="APC (₹)",
+        xaxis_title="",
+        yaxis_title="APC",
         hovermode="x unified",
         height=ui_theme.CHART_HEIGHT,
     )
@@ -216,6 +223,7 @@ def build_weekday_chart(df: pd.DataFrame, daily_target: float) -> go.Figure:
                 y=wd_agg["avg_sales"],
                 marker_color=colors,
                 name="Avg Sales",
+                hovertemplate="<b>₹%{y:,.0f}</b><br>%{x}<extra></extra>",
             )
         ]
     )
@@ -251,12 +259,12 @@ def build_weekday_chart(df: pd.DataFrame, daily_target: float) -> go.Figure:
     )
 
     fig.update_layout(
-        title="Average net sales by day of week",
         xaxis_title="",
-        yaxis_title="Avg Net Sales (₹)",
+        yaxis_title="Avg Net Sales",
         height=ui_theme.CHART_HEIGHT,
         showlegend=False,
     )
+    fig.update_yaxes(tickprefix="₹", tickformat=",")
 
     return fig
 
@@ -299,6 +307,11 @@ def build_category_chart(
     else:
         cat_df_chart = major_cats
 
+    # Sort descending by value for consistent visual scan pattern
+    cat_df_chart = cat_df_chart.sort_values("amount", ascending=False).reset_index(
+        drop=True
+    )
+
     fig = go.Figure(
         go.Treemap(
             labels=cat_df_chart["category"].tolist(),
@@ -311,11 +324,12 @@ def build_category_chart(
                 ]
             ),
             textinfo="label+percent entry",
+            hovertemplate="<b>%{label}</b><br>₹%{value:,.0f}<br>%{percentEntry}<extra></extra>",
         )
     )
     fig.update_layout(
-        title=f"Category revenue mix (Total: {utils.format_currency(total_cat)})",
         height=ui_theme.CHART_HEIGHT,
+        margin=dict(l=0, r=0, t=10, b=0),
     )
 
     return fig
