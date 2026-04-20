@@ -19,7 +19,7 @@ from components.navigation import date_range_nav
 
 def render(ctx: TabContext) -> None:
     """Render the Settings tab UI for admins and account display."""
-    st.header("Settings")
+    st.markdown("### Settings")
     st.caption("Outlets, users, targets, and data export.")
     st.divider()
 

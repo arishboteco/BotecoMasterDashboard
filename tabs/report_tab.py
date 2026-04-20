@@ -16,6 +16,7 @@ import database
 import scope
 import sheet_reports as reports
 import utils
+from components.feedback import empty_state
 
 # In-process caches registered with cache_manager for coordinated invalidation
 _REPORT_CACHE: dict = cache_manager.register("report")
@@ -100,7 +101,7 @@ def _get_foot_rows_cached(location_ids: List[int], year: int, month: int):
 
 def render(ctx: TabContext) -> None:
     """Render the Daily Report tab UI."""
-    st.header("Daily Sales Report")
+    st.markdown("### Daily Sales Report")
     # Date selector with Prev/Next navigation
     if "report_date" not in st.session_state:
         most_recent_date = database.get_most_recent_date_with_data(ctx.report_loc_ids)
@@ -481,14 +482,11 @@ def render(ctx: TabContext) -> None:
                         fallback_url=f"https://wa.me/?text={quote_plus(_wa_text)}",
                     )
     else:
-        st.markdown(
-            '<div class="empty-state">'
-            '<div class="empty-state-icon material-symbols-outlined">insights</div>'
-            '<div class="empty-state-title">No data for this date</div>'
-            '<div class="empty-state-desc">'
-            f"No saved data for **{selected_date.strftime('%d %b %Y')}**. "
-            "Go to the **Upload** tab and import POS files for that date."
-            "</div>"
-            "</div>",
-            unsafe_allow_html=True,
+        empty_state(
+            message="No data for this date",
+            hint=(
+                f"No saved data for <strong>{selected_date.strftime('%d %b %Y')}</strong>. "
+                "Go to the <strong>Upload</strong> tab and import POS files for that date."
+            ),
+            icon="insights",
         )

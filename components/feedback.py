@@ -22,6 +22,32 @@ def toast(
         st.info(message)
 
 
+def skeleton_chart() -> None:
+    """Render a chart-shaped skeleton placeholder (380px tall)."""
+    st.markdown(
+        '<div class="skeleton skeleton-chart"></div>', unsafe_allow_html=True
+    )
+
+
+def skeleton_metric_row(count: int = 4) -> None:
+    """Render a row of metric-shaped skeleton placeholders."""
+    cols = st.columns(count)
+    for col in cols:
+        with col:
+            st.markdown(
+                '<div class="skeleton skeleton-metric"></div>',
+                unsafe_allow_html=True,
+            )
+
+
+def skeleton_table(rows: int = 5) -> None:
+    """Render a skeleton table of `rows` placeholder lines."""
+    parts = ''.join(
+        '<div class="skeleton skeleton-table-row"></div>' for _ in range(rows)
+    )
+    st.markdown(parts, unsafe_allow_html=True)
+
+
 def empty_state(
     message: str,
     hint: Optional[str] = None,
