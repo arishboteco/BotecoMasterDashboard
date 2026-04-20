@@ -42,24 +42,14 @@ with database.db_connection() as conn:
 
     if user_count == 0:
         import bcrypt
-        import secrets
 
-        generated_pw = secrets.token_urlsafe(16)
-        hashed = bcrypt.hashpw(generated_pw.encode("utf-8"), bcrypt.gensalt())
+        default_pw = "admin"
+        hashed = bcrypt.hashpw(default_pw.encode("utf-8"), bcrypt.gensalt())
         cursor.execute(
             "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
             ("admin", hashed.decode("utf-8"), "admin"),
         )
         conn.commit()
-
-        # Set session state for admin (will get location from Settings)
-        st.session_state.authenticated = True
-        st.session_state.username = "admin"
-        st.session_state.user_role = "admin"
-        st.session_state.location_id = 1
-        st.session_state.location_name = None
-        st.session_state.view_scope = "all"
-        st.session_state["_first_run_password"] = generated_pw
 
 # Page configuration
 st.set_page_config(
@@ -95,29 +85,6 @@ st.markdown(styles.get_css(), unsafe_allow_html=True)
 # Initialize authentication
 auth.init_auth_state()
 
-# Show first-run admin password exactly once — render as a critical alert
-# with a copy-to-clipboard button. Password shown exactly once; stored
-# nowhere else accessible to the UI.
-if "_first_run_password" in st.session_state:
-    _pw = st.session_state["_first_run_password"]
-    st.markdown(
-        f'<div class="critical-alert" role="alert">'
-        f'<div class="critical-alert-title">🔐 First-run admin password</div>'
-        f'<div class="critical-alert-body">'
-        f'Your one-time password is: <code id="first-run-pw">{_pw}</code>'
-        f'<br><br>'
-        f'<strong>Copy and save it now</strong> — this message will not appear again. '
-        f'Change it immediately in <strong>Settings &rsaquo; Change Password</strong>.'
-        f'</div>'
-        f'<div class="critical-alert-actions">'
-        f'<button class="critical-alert-copy" type="button" '
-        f'onclick="navigator.clipboard.writeText(\'{_pw}\').then(()=>{{this.textContent=\'Copied!\';setTimeout(()=>this.textContent=\'Copy password\',1500)}});">'
-        f'Copy password</button>'
-        f'</div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-    del st.session_state["_first_run_password"]
 
 if not auth.check_authentication():
     auth.show_login_form()
