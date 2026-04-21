@@ -66,6 +66,11 @@ TEXT_MUTED_DARK = "#94A3B8"  # slate 400
 BORDER_SUBTLE_DARK = "#334155"  # slate 700
 BORDER_MEDIUM_DARK = "#475569"  # slate 600
 
+# -- Dark mode message colors for iframe toolbar ---------------------------------
+MSG_SUCCESS_DARK = "#86EFAC"  # green (matches --success-text in dark)
+MSG_WARNING_DARK = "#FBBF24"  # amber (matches --accent-amber in dark)
+MSG_ERROR_DARK = "#FCA5A5"  # red (matches --error-text in dark)
+
 # -- Shared hovertemplate fragments -------------------------------------------
 # Bold metric value + de-emphasized label. `%{` placeholders are escaped for f-strings.
 HOVERTEMPLATE_SALES = "<b>₹%{y:,.0f}</b><br><span style='color:#64748B'>%{x}</span><extra></extra>"

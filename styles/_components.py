@@ -239,7 +239,7 @@ DATA_TABLES = r"""    /* ── Data tables ────────────
         font-size: 0.8rem !important;
         text-transform: uppercase !important;
         letter-spacing: 0.04em !important;
-        color: var(--brand) !important;
+        color: var(--text-secondary) !important;
         background-color: var(--table-header-bg) !important;
         border-bottom: none !important;
     }
@@ -472,31 +472,12 @@ SECTION_DIVIDERS = r"""    /* ── Section dividers ────────�
 
 """
 
-DANGER_BUTTON_STYLING = r"""    /* ── Danger button styling ─────────────────────────────── */
-    .stButton > button.danger-btn {
-        background-color: transparent !important;
-        color: #dc2626 !important;
-        border: 1.5px solid #fca5a5 !important;
-        font-weight: 500 !important;
-    }
-    .stButton > button.danger-btn:hover {
-        background-color: #fef2f2 !important;
-        border-color: #dc2626 !important;
-        color: #b91c1c !important;
-    }
-    .stButton > button.danger-btn-danger:hover {
-        background-color: #dc2626 !important;
-        color: #fff !important;
-    }
-
-"""
-
 SECTION_LABELS = r"""    /* ── Section labels ───────────────────────────────────── */
     .section-label {
         font-family: var(--font-display);
         font-size: 1rem;
         font-weight: 600;
-        color: #374151;
+        color: var(--text);
         padding-bottom: 0.5rem;
         margin-bottom: 0.75rem;
         border-bottom: 1px solid var(--border-subtle);

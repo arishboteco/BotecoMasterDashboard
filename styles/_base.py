@@ -51,6 +51,18 @@ BASE_TYPOGRAPHY = r"""    /* ── Base typography ─────────�
         font-family: var(--font-body) !important;
     }
 
+    /* Dark mode: brighten tab hover/selected foreground for AA compliance */
+    :root[data-theme="dark"] button[data-baseweb="tab"]:hover,
+    :root[data-theme="dark"] button[data-baseweb="tab"][aria-selected="true"] {
+        color: var(--brand-light) !important;
+    }
+    @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) button[data-baseweb="tab"]:hover,
+        :root:not([data-theme="light"]) button[data-baseweb="tab"][aria-selected="true"] {
+            color: var(--brand-light) !important;
+        }
+    }
+
 """
 
 BRANDED_HEADER = r"""    /* ── Branded header ─────────────────────────────────────── */
