@@ -29,7 +29,7 @@ SURFACE_ELEVATED = "#FFFFFF"  # Cards — white
 SURFACE_RAISED = "#FFFFFF"  # Modals, tooltips
 TEXT_PRIMARY = "#1E293B"  # Primary text — slate 800
 TEXT_SECONDARY = "#475569"  # Secondary text — slate 600
-TEXT_MUTED = "#64748B"  # Muted text — slate 500 (WCAG AA compliant)
+TEXT_MUTED = "#475569"  # Muted text — slate 600 (WCAG AA compliant, was 500 which failed)
 BORDER_SUBTLE = "#E2E8F0"  # Light borders — slate 200
 BORDER_MEDIUM = "#CBD5E1"  # Medium borders — slate 300
 
@@ -73,9 +73,9 @@ MSG_ERROR_DARK = "#FCA5A5"  # red (matches --error-text in dark)
 
 # -- Shared hovertemplate fragments -------------------------------------------
 # Bold metric value + de-emphasized label. `%{` placeholders are escaped for f-strings.
-HOVERTEMPLATE_SALES = "<b>₹%{y:,.0f}</b><br><span style='color:#64748B'>%{x}</span><extra></extra>"
-HOVERTEMPLATE_APC = "<b>₹%{y:,.1f}</b><br><span style='color:#64748B'>%{x}</span><extra></extra>"
-HOVERTEMPLATE_COUNT = "<b>%{y:,d}</b><br><span style='color:#64748B'>%{x}</span><extra></extra>"
+HOVERTEMPLATE_SALES = "<b>₹%{y:,.0f}</b><br><span style='color:#475569'>%{x}</span><extra></extra>"
+HOVERTEMPLATE_APC = "<b>₹%{y:,.1f}</b><br><span style='color:#475569'>%{x}</span><extra></extra>"
+HOVERTEMPLATE_COUNT = "<b>%{y:,d}</b><br><span style='color:#475569'>%{x}</span><extra></extra>"
 
 
 def apply_plotly_theme() -> None:

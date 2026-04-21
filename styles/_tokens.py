@@ -20,7 +20,7 @@ TOKEN_SYSTEM = r"""    /* ── Token system ───────────�
         /* Text palette */
         --text: #1E293B;
         --text-secondary: #475569;
-        --text-muted: #64748B;
+        --text-muted: #475569;
 
         /* Border palette */
         --border-subtle: #E2E8F0;

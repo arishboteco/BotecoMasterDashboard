@@ -8,7 +8,7 @@ LOGIN_CSS = r"""
         --brand-dark: #174A82;
         --brand-light: #2A6BB3;
         --text: #1E293B;
-        --text-muted: #64748B;
+        --text-muted: #475569;
     }
 
     /* ── Login page background ────────────────────────── */
