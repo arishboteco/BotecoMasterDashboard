@@ -573,6 +573,20 @@ DATAFRAME_REFINEMENT = r"""    /* ── Dataframe refinement ──────
 
 """
 
+DANGER_BUTTON_STYLING = r"""    /* ── Danger button styling ────────────────────────────── */
+    .stButton > button.dangerous {
+        background-color: var(--error-bg) !important;
+        color: var(--error-text) !important;
+        border: 1.5px solid var(--error-border) !important;
+    }
+    .stButton > button.dangerous:hover {
+        background-color: var(--error-text) !important;
+        color: #fff !important;
+        border-color: var(--error-text) !important;
+    }
+
+"""
+
 CRITICAL_ALERT = r"""    /* ── Critical alert (first-run password, etc.) ───────── */
     .critical-alert {
         position: relative;

@@ -1,12 +1,4 @@
-"""
-Centralized logging configuration for Boteco Dashboard.
-
-Usage:
-    from boteco_logger import get_logger
-    log = get_logger(__name__)
-    log.info("Something happened")
-    log.error("Something went wrong", exc_info=True)
-"""
+"""Centralized logging configuration for Boteco Dashboard."""
 
 import logging
 import os
