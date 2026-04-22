@@ -47,7 +47,6 @@ def get_css() -> str:
         _base.LAYOUT_SPACING,
         _base.SCROLLBAR_STYLING,
         _base.FOCUS_RINGS,
-        _components.DANGER_BUTTON_STYLING,
         _components.SECTION_LABELS,
         _components.EMPTY_STATE,
         _sidebar.SIDEBAR_IMPROVEMENTS,

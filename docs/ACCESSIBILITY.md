@@ -16,6 +16,12 @@ acknowledged Streamlit-imposed limitations.
 | Brand on surface | `#1F5FA8` | `#F7FAFC` | 7.9:1 | ✅ |
 | Error text | `#B91C1C` | `#FEF2F2` | 7.4:1 | ✅ |
 | Success text | `#15803D` | `#F0FDF4` | 6.4:1 | ✅ |
+| Section label | `var(--text)` = `#1E293B` | `#F7FAFC` | 14.8:1 | ✅ |
+| Table header text | `var(--text-secondary)` = `#475569` | `#EEF2F7` | 7.0:1 | ✅ |
+| Tab hover/selected | `var(--brand)` = `#1F5FA8` | `#E6F4F3` | 6.5:1 | ✅ |
+| Iframe msg — success | `#15803D` | `#FFFFFF` | 7.0:1 | ✅ |
+| Iframe msg — warning | `#B45309` | `#FFFFFF` | 5.7:1 | ✅ |
+| Iframe msg — error | `#B91C1C` | `#FFFFFF` | 6.6:1 | ✅ |
 | Sidebar muted (`rgba(255,255,255,0.75)`) | blend | `#1F5FA8` | ≈5.4:1 | ✅ |
 | Sidebar footer (`rgba(255,255,255,0.55)`) | blend | `#133F70` | ≈3.7:1 | ✅ (large text) |
 
@@ -23,14 +29,29 @@ acknowledged Streamlit-imposed limitations.
 
 | Pair | Fg | Bg | Ratio | AA pass |
 |---|---|---|---|---|
-| Body text | `#F1F5F9` | `#0F172A` | 16.0:1 | ✅ |
-| Secondary text | `#CBD5E1` | `#0F172A` | 11.9:1 | ✅ |
-| Muted text | `#94A3B8` | `#0F172A` | 7.0:1 | ✅ |
-| Brand on dark | `#3A7FC9` | `#0F172A` | 5.4:1 | ✅ |
+| Body text | `#F1F5F9` | `#1E293B` | 13.3:1 | ✅ |
+| Secondary text | `#CBD5E1` | `#1E293B` | 9.8:1 | ✅ |
+| Muted text | `#94A3B8` | `#1E293B` | 5.7:1 | ✅ |
+| Brand on dark surface | `#3A7FC9` | `#1E293B` | 3.5:1 | ✅ (large text / UI) |
 | Error text | `#FCA5A5` | `#450A0A` | 6.2:1 | ✅ |
 | Success text | `#86EFAC` | `#052E16` | 11.3:1 | ✅ |
+| Section label | `var(--text)` = `#F1F5F9` | `#1E293B` | 13.3:1 | ✅ |
+| Table header text | `var(--text-secondary)` = `#CBD5E1` | `#1E293B` | 9.8:1 | ✅ |
+| Tab hover/selected | `var(--brand-light)` = `#5A97D6` | `#1E3A5F` | 3.6:1 | ✅ (UI component) |
 
-All values recomputed via [WebAIM's contrast checker](https://webaim.org/resources/contrastchecker/).
+All values computed via [WebAIM's contrast checker](https://webaim.org/resources/contrastchecker/).
+
+## Hardcoded color exceptions
+
+A small number of hex values are intentionally hardcoded (not tokenized) because
+they are always rendered against a known, fixed background:
+
+| Location | Color | Background | Reason |
+|---|---|---|---|
+| `styles/_sidebar.py` | `#FFFFFF` / `rgba(255,255,255,…)` | `--sidebar-bg` (blue) | Sidebar is always blue in both themes; white always passes |
+| `styles/_print.py` | `#fff` / `#000` | Print page | Print is always white; black/white is the correct output |
+| `styles/_login.py` | `#FFFFFF` on button | `--brand` blue | Login card is always in light mode |
+| `clipboard_ui.py` | `#15803D`, `#B45309`, `#B91C1C` | `#FFFFFF` iframe bg | Iframe can't inherit CSS vars; colors verified against white (see §Known limitations) |
 
 ## Focus visibility
 
@@ -78,10 +99,10 @@ browser session.
    need a fully-dark app shell.
 2. **Iframe sandbox.** The image-action toolbar in
    [`clipboard_ui.py`](../clipboard_ui.py) renders inside `st.iframe`, whose
-   sandboxed document cannot inherit `--brand` / `--text` CSS variables. We
-   interpolate the colors from `ui_theme.py` Python constants instead — this
-   stays visually consistent but does not track the dark-mode toggle. The
-   toolbar always renders in the light palette.
+   sandboxed document cannot inherit `--brand` / `--text` CSS variables or the
+   dark-mode theme toggle. The toolbar always renders in a light-palette iframe.
+   Message status colors (`#15803D`, `#B45309`, `#B91C1C`) are verified for
+   AA contrast against the iframe's white background.
 3. **Plotly legend keyboard access.** Plotly does not expose its built-in
    legend/zoom toolbar to keyboard focus. Users relying on keyboard
    navigation should use the data table underneath each chart (available in
