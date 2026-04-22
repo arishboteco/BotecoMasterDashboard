@@ -161,7 +161,7 @@ TOKEN_SYSTEM = r"""    /* ── Token system ───────────�
 
     /* System-preference fallback when no explicit data-theme is set */
     @media (prefers-color-scheme: dark) {
-        :root:not([data-theme="light"]):not([data-theme="dark"]) {
+        :root:not([data-theme="light"]) {
             --brand: #3A7FC9;
             --brand-dark: #2A6BB3;
             --brand-darker: #174A82;

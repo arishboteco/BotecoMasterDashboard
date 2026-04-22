@@ -4,3 +4,10 @@ backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F1F3F7"
 textColor = "#1E293B"
 font = "sans serif"
+
+[theme.dark]
+primaryColor = "#3A7FC9"
+backgroundColor = "#0F172A"
+secondaryBackgroundColor = "#1E293B"
+textColor = "#F1F5F9"
+font = "sans serif"

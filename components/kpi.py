@@ -18,25 +18,11 @@ class KpiMetric:
     delta_color: str = "normal"
     help: Optional[str] = None
 
-
-_ACCENT_CLASSES = [
-    "metric-accent-coral",
-    "metric-accent-teal",
-    "metric-accent-amber",
-    "metric-accent-indigo",
-    "metric-accent-slate",
-]
-
-
 def kpi_row(
     metrics: List[KpiMetric],
     columns: Optional[int] = None,
 ) -> None:
     """Render a row of KPI metrics with consistent styling.
-
-    Each metric is wrapped in a rotating accent class so the colored
-    left-border rules in styles._components apply. Order of accents:
-    coral → teal → amber → indigo → slate → (cycle).
 
     Args:
         metrics: List of KpiMetric dataclasses to render.
@@ -48,12 +34,8 @@ def kpi_row(
     ncols = columns or len(metrics)
     cols = st.columns(ncols)
 
-    for i, (col, metric) in enumerate(zip(cols, metrics)):
-        accent = _ACCENT_CLASSES[i % len(_ACCENT_CLASSES)]
+    for col, metric in zip(cols, metrics):
         with col:
-            # Open accent wrapper — closed below. Must be its own markdown
-            # call so Streamlit doesn't strip the trailing </div>.
-            st.markdown(f'<div class="{accent}">', unsafe_allow_html=True)
             st.metric(
                 label=metric.label,
                 value=metric.value,
@@ -61,4 +43,3 @@ def kpi_row(
                 delta_color=metric.delta_color,
                 help=metric.help,
             )
-            st.markdown("</div>", unsafe_allow_html=True)

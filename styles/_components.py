@@ -117,30 +117,6 @@ COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ─�
 
 """
 
-METRIC_ACCENT_CLASSES_REPLACES_FRAGILE_NTH_CHILD = r"""    /* ── Metric accent classes (replaces fragile nth-child) ── */
-    .metric-accent-coral .stMetric,
-    [data-testid="stVerticalBlockBorderWrapper"] .metric-accent-coral [data-testid="stMetric"] {
-        border-left: 4px solid var(--accent-coral) !important;
-    }
-    .metric-accent-teal .stMetric,
-    [data-testid="stVerticalBlockBorderWrapper"] .metric-accent-teal [data-testid="stMetric"] {
-        border-left: 4px solid var(--accent-teal) !important;
-    }
-    .metric-accent-amber .stMetric,
-    [data-testid="stVerticalBlockBorderWrapper"] .metric-accent-amber [data-testid="stMetric"] {
-        border-left: 4px solid var(--accent-amber) !important;
-    }
-    .metric-accent-indigo .stMetric,
-    [data-testid="stVerticalBlockBorderWrapper"] .metric-accent-indigo [data-testid="stMetric"] {
-        border-left: 4px solid var(--accent-indigo) !important;
-    }
-    .metric-accent-slate .stMetric,
-    [data-testid="stVerticalBlockBorderWrapper"] .metric-accent-slate [data-testid="stMetric"] {
-        border-left: 4px solid var(--accent-slate) !important;
-    }
-
-"""
-
 METRIC_CARDS_CONTAINERS = r"""    /* ── Metric cards & containers ──────────────────────────── */
     /* Shared elevated-surface base (merged from .metric-card + stMetric wrapper) */
     .metric-card,

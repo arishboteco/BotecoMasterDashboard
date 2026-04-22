@@ -91,38 +91,22 @@ if not auth.check_authentication():
 else:
     st.sidebar.image("logo.png", width=180)
 
-    # ── Theme toggle ─────────────────────────────────────────────
-    if "theme" not in st.session_state:
-        st.session_state.theme = "light"
+    st.sidebar.caption("Theme: use ⋮ -> Settings -> Theme")
 
-    def _cycle_theme() -> None:
-        order = ["light", "dark", "system"]
-        idx = order.index(st.session_state.get("theme", "light"))
-        st.session_state.theme = order[(idx + 1) % len(order)]
-
-    _theme_labels = {"light": "☀ Light", "dark": "🌙 Dark", "system": "🖥 System"}
-    st.sidebar.button(
-        _theme_labels.get(st.session_state.theme, "☀ Light"),
-        key="sidebar_theme_btn",
-        on_click=_cycle_theme,
-        width="stretch",
-        help="Click to cycle between Light / Dark / System theme",
-    )
-
-    # Apply the theme attribute to <html> on each render
-    _theme = st.session_state.theme
-    if _theme == "system":
-        # Remove attribute so @media (prefers-color-scheme) applies
-        _js = (
-            "<script>document.documentElement.removeAttribute('data-theme');</script>"
-        )
+    # Switch Plotly template to match active Streamlit theme.
+    _theme = "light"
+    _context = getattr(st, "context", None)
+    _context_theme = getattr(_context, "theme", None)
+    _context_theme_type = getattr(_context_theme, "type", None)
+    if _context_theme_type in {"light", "dark"}:
+        _theme = _context_theme_type
     else:
-        _js = f"<script>document.documentElement.setAttribute('data-theme', '{_theme}');</script>"
-    st.markdown(_js, unsafe_allow_html=True)
+        _query_theme = st.query_params.get("theme")
+        if _query_theme in {"light", "dark"}:
+            _theme = _query_theme
 
-    # Switch Plotly template to match UI theme (system → light for Plotly;
-    # dark-mode Plotly is opt-in via explicit dark selection)
     import plotly.io as _pio
+
     _pio.templates.default = ui_theme.plotly_template_for_theme(
         "dark" if _theme == "dark" else "light"
     )

@@ -32,7 +32,6 @@ def get_css() -> str:
         _components.BUTTON_SYSTEM,
         _components.KPI_METRIC_VALUES,
         _components.COMPACT_KPIS_FOR_REPORT_TAB,
-        _components.METRIC_ACCENT_CLASSES_REPLACES_FRAGILE_NTH_CHILD,
         _components.METRIC_CARDS_CONTAINERS,
         _components.ALERT_STATUS_BOXES,
         _components.UPLOAD_ZONE,
