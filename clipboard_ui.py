@@ -580,22 +580,22 @@ def render_share_images_button(
           text: shareText
         }});
         msgEl.textContent = "Shared!";
-        msgEl.style.color = "#6DBE45";
+        msgEl.style.color = "#15803D";
       }} else {{
         if (fallbackUrl) {{
           try {{
             const blob = await b64ToBlob(filesData[0].b64, "image/png");
             await navigator.clipboard.write([new ClipboardItem({{"image/png": blob}})]);
             msgEl.textContent = "Image copied — paste in WhatsApp";
-            msgEl.style.color = "#6DBE45";
+            msgEl.style.color = "#15803D";
           }} catch (clipErr) {{
             msgEl.textContent = "Open WhatsApp — attach image manually";
-            msgEl.style.color = "#F4B400";
+            msgEl.style.color = "#B45309";
           }}
           window.open(fallbackUrl, "_blank");
         }} else {{
           msgEl.textContent = "Use download (ZIP/PNG)";
-          msgEl.style.color = "#F4B400";
+          msgEl.style.color = "#B45309";
         }}
       }}
     }} catch (e) {{
@@ -609,19 +609,19 @@ def render_share_images_button(
             const blob = await b64ToBlob(filesData[0].b64, "image/png");
             await navigator.clipboard.write([new ClipboardItem({{"image/png": blob}})]);
             msgEl.textContent = "Image copied — paste in WhatsApp";
-            msgEl.style.color = "#6DBE45";
+            msgEl.style.color = "#15803D";
           }} catch (clipErr) {{
             msgEl.textContent = "Open WhatsApp — attach image manually";
-            msgEl.style.color = "#F4B400";
+            msgEl.style.color = "#B45309";
           }}
           window.open(fallbackUrl, "_blank");
         }} else {{
           msgEl.textContent = "Use download (ZIP/PNG)";
-          msgEl.style.color = "#F4B400";
+          msgEl.style.color = "#B45309";
         }}
       }} else {{
         msgEl.textContent = "Share failed";
-        msgEl.style.color = "#EF4444";
+        msgEl.style.color = "#B91C1C";
       }}
     }}
   }};

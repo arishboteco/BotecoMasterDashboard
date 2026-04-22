@@ -7,20 +7,27 @@ BASE_TYPOGRAPHY = r"""    /* ── Base typography ─────────�
     .stNumberInput input {
         font-family: var(--font-body) !important;
     }
-    h1, h2, h3, h4 {
+    h1, h2, h3, h4,
+    .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4,
+    [data-testid="stMarkdown"] h1, [data-testid="stMarkdown"] h2,
+    [data-testid="stMarkdown"] h3, [data-testid="stMarkdown"] h4,
+    [data-testid="stMarkdownContainer"] h1, [data-testid="stMarkdownContainer"] h2,
+    [data-testid="stMarkdownContainer"] h3, [data-testid="stMarkdownContainer"] h4 {
         font-family: var(--font-display) !important;
         color: var(--text) !important;
         margin-bottom: 0.5em !important;
     }
-    h1 { font-size: 1.85rem !important; font-weight: 700 !important; letter-spacing: -0.02em !important; }
-    h2 { font-size: 1.4rem !important; font-weight: 600 !important; letter-spacing: -0.01em !important; }
-    h3 { font-size: 1.15rem !important; font-weight: 600 !important; }
+    h1, .stMarkdown h1, [data-testid="stMarkdownContainer"] h1 { font-size: 1.85rem !important; font-weight: 700 !important; letter-spacing: -0.02em !important; }
+    h2, .stMarkdown h2, [data-testid="stMarkdownContainer"] h2 { font-size: 1.4rem !important; font-weight: 600 !important; letter-spacing: -0.01em !important; }
+    h3, .stMarkdown h3, [data-testid="stMarkdownContainer"] h3 { font-size: 1.15rem !important; font-weight: 600 !important; }
     /* Accent left-border for section headers (applies to h2 and h3 alike) */
-    h2, h3 {
+    h2, h3,
+    .stMarkdown h2, .stMarkdown h3,
+    [data-testid="stMarkdownContainer"] h2, [data-testid="stMarkdownContainer"] h3 {
         padding-left: 0.75rem !important;
         border-left: 3px solid var(--brand) !important;
     }
-    h4 { font-size: 1.05rem !important; font-weight: 600 !important; }
+    h4, .stMarkdown h4, [data-testid="stMarkdownContainer"] h4 { font-size: 1.05rem !important; font-weight: 600 !important; }
     button[data-baseweb="tab"] {
         font-family: var(--font-body) !important;
         font-size: 0.95rem !important;
@@ -145,7 +152,9 @@ SUBTLE_BACKGROUND_TEXTURE = r"""    /* ── Subtle background texture ──�
 """
 
 SECTION_HEADERS_REFINED_STYLING = r"""    /* ── Section headers — refined styling (h2, h3) ─────── */
-    h2, h3 {
+    h2, h3,
+    .stMarkdown h2, .stMarkdown h3,
+    [data-testid="stMarkdownContainer"] h2, [data-testid="stMarkdownContainer"] h3 {
         display: flex;
         align-items: center;
         gap: 0.5rem;
@@ -169,6 +178,18 @@ TAB_BAR_REFINEMENT = r"""    /* ── Tab bar refinement ───────�
     button[data-baseweb="tab"][aria-selected="true"] {
         background-color: var(--brand-soft) !important;
         border-radius: var(--radius-sm) var(--radius-sm) 0 0 !important;
+    }
+    /* Dark-mode: --brand (#3A7FC9) on --brand-soft (#1E3A5F) is 2.77:1 which
+       fails WCAG UI-component 3:1. Brighten the text to --brand-light. */
+    :root[data-theme="dark"] button[data-baseweb="tab"]:hover,
+    :root[data-theme="dark"] button[data-baseweb="tab"][aria-selected="true"] {
+        color: var(--brand-light) !important;
+    }
+    @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]):not([data-theme="dark"]) button[data-baseweb="tab"]:hover,
+        :root:not([data-theme="light"]):not([data-theme="dark"]) button[data-baseweb="tab"][aria-selected="true"] {
+            color: var(--brand-light) !important;
+        }
     }
 
 """
