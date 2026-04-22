@@ -6,6 +6,7 @@ Uses the new simplified schema.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Set
 
 import streamlit as st
@@ -24,11 +25,13 @@ def _restaurants_for_location_ids(location_ids: List[int]) -> List[str]:
     return [LOCATION_ID_TO_RESTAURANT.get(int(lid), "Boteco") for lid in location_ids]
 
 
-@st.cache_data(ttl=600)
-def get_monthly_footfall_multi(
-    location_ids: List[int], start_date: str, end_date: str
+def _fetch_daily_summary_rows(
+    location_ids: List[int],
+    start_date: str,
+    end_date: str,
+    columns: tuple[str, ...],
 ) -> List[Dict[str, Any]]:
-    """Aggregate covers by month across locations for a date range."""
+    """Fetch daily summary rows for SQLite or Supabase with shared filtering."""
     import database
 
     if not location_ids:
@@ -38,74 +41,131 @@ def get_monthly_footfall_multi(
         supabase = database.get_supabase_client()
         result = (
             supabase.table("daily_summary")
-            .select("date,covers,net_total,gross_total")
+            .select(",".join(columns))
             .in_("location_id", location_ids)
             .gte("date", start_date)
             .lte("date", end_date)
+            .order("date")
             .execute()
         )
+        return [dict(row) for row in (result.data or [])]
 
-        monthly = {}
-        days_per_month: Dict[str, Set[str]] = {}
-        for row in result.data:
-            month = row["date"][:7]
-            if month not in monthly:
-                monthly[month] = {
-                    "month": month,
-                    "covers": 0,
-                    "net_total": 0.0,
-                    "gross_total": 0.0,
-                }
-                days_per_month[month] = set()
-            monthly[month]["covers"] += row.get("covers", 0) or 0
-            monthly[month]["net_total"] += row.get("net_total", 0) or 0
-            monthly[month]["gross_total"] += row.get("gross_total", 0) or 0
-            days_per_month[month].add(row["date"])
+    placeholders = ",".join("?" * len(location_ids))
+    with database.db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""
+            SELECT {", ".join(columns)}
+            FROM daily_summaries
+            WHERE location_id IN ({placeholders})
+              AND date >= ? AND date <= ?
+            ORDER BY date
+            """,
+            (*location_ids, start_date, end_date),
+        )
+        rows = cur.fetchall()
+    return [dict(row) for row in rows]
 
-        out = []
-        for m in sorted(monthly.keys()):
-            row = dict(monthly[m])
-            row["total_days"] = len(days_per_month.get(m, set()))
-            out.append(row)
-        return out
-    else:
-        with database.db_connection() as conn:
-            cur = conn.cursor()
-            placeholders = ",".join("?" * len(location_ids))
-            cur.execute(
-                f"""
-                SELECT date, covers, net_total, gross_total
-                FROM daily_summaries
-                WHERE location_id IN ({placeholders})
-                  AND date >= ? AND date <= ?
-                ORDER BY date
-                """,
-                (*location_ids, start_date, end_date),
-            )
-            rows = cur.fetchall()
-        monthly: Dict[str, Dict[str, Any]] = {}
-        days_per_month: Dict[str, Set[str]] = {}
-        for row in rows:
-            d = str(row["date"])
-            month = d[:7]
-            if month not in monthly:
-                monthly[month] = {
-                    "month": month,
-                    "covers": 0,
-                    "net_total": 0.0,
-                    "gross_total": 0.0,
-                }
-                days_per_month[month] = set()
-            monthly[month]["covers"] += int(row["covers"] or 0)
-            monthly[month]["net_total"] += float(row["net_total"] or 0)
-            monthly[month]["gross_total"] += float(row["gross_total"] or 0)
-            days_per_month[month].add(d)
-        out = []
-        for m in sorted(monthly.keys()):
-            r = dict(monthly[m])
-            r["total_days"] = len(days_per_month.get(m, set()))
-            out.append(r)
-        return out
+
+def _week_key(date_str: str) -> str:
+    """Return Monday-based week key, matching existing app output."""
+    date = datetime.strptime(date_str, "%Y-%m-%d")
+    monday = date - timedelta(days=date.weekday())
+    return monday.strftime("%Y-W%W")
+
+
+def _aggregate_monthly(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Aggregate daily rows to month buckets for footfall trends."""
+    monthly: Dict[str, Dict[str, Any]] = {}
+    days_per_month: Dict[str, Set[str]] = {}
+
+    for row in rows:
+        date_str = str(row.get("date") or "")
+        if not date_str:
+            continue
+        month = date_str[:7]
+        if month not in monthly:
+            monthly[month] = {
+                "month": month,
+                "covers": 0,
+                "net_total": 0.0,
+                "gross_total": 0.0,
+            }
+            days_per_month[month] = set()
+
+        monthly[month]["covers"] += int(row.get("covers") or 0)
+        monthly[month]["net_total"] += float(row.get("net_total") or 0)
+        monthly[month]["gross_total"] += float(row.get("gross_total") or 0)
+        days_per_month[month].add(date_str)
+
+    out: List[Dict[str, Any]] = []
+    for month in sorted(monthly.keys()):
+        agg_row = dict(monthly[month])
+        agg_row["total_days"] = len(days_per_month.get(month, set()))
+        out.append(agg_row)
+    return out
+
+
+def _aggregate_weekly(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Aggregate daily rows to ISO-like Monday week keys for trends."""
+    weekly: Dict[str, Dict[str, Any]] = {}
+    days_per_week: Dict[str, Set[str]] = {}
+
+    for row in rows:
+        date_str = str(row.get("date") or "")
+        if not date_str:
+            continue
+        week = _week_key(date_str)
+        if week not in weekly:
+            weekly[week] = {
+                "week": week,
+                "covers": 0,
+                "net_total": 0.0,
+            }
+            days_per_week[week] = set()
+
+        weekly[week]["covers"] += int(row.get("covers") or 0)
+        weekly[week]["net_total"] += float(row.get("net_total") or 0)
+        days_per_week[week].add(date_str)
+
+    out: List[Dict[str, Any]] = []
+    for week in sorted(weekly.keys()):
+        agg_row = dict(weekly[week])
+        agg_row["total_days"] = len(days_per_week.get(week, set()))
+        out.append(agg_row)
+    return out
+
+
+def _sum_payment_buckets(rows: List[Dict[str, Any]]) -> Dict[str, float]:
+    """Sum payment columns into standard app payment buckets."""
+    totals = {
+        "Cash": 0.0,
+        "Card": 0.0,
+        "GPay": 0.0,
+        "Zomato": 0.0,
+        "Other": 0.0,
+    }
+    for row in rows:
+        totals["Cash"] += float(row.get("cash_sales") or 0)
+        totals["Card"] += float(row.get("card_sales") or 0)
+        totals["GPay"] += float(row.get("gpay_sales") or 0)
+        totals["Zomato"] += float(row.get("zomato_sales") or 0)
+        totals["Other"] += float(row.get("other_sales") or 0)
+    return totals
+
+
+@st.cache_data(ttl=600)
+def get_monthly_footfall_multi(
+    location_ids: List[int], start_date: str, end_date: str
+) -> List[Dict[str, Any]]:
+    """Aggregate covers by month across locations for a date range."""
+    rows = _fetch_daily_summary_rows(
+        location_ids,
+        start_date,
+        end_date,
+        ("date", "covers", "net_total", "gross_total"),
+    )
+    return _aggregate_monthly(rows)
 
 
 @st.cache_data(ttl=600)
@@ -113,80 +173,13 @@ def get_weekly_footfall_multi(
     location_ids: List[int], start_date: str, end_date: str
 ) -> List[Dict[str, Any]]:
     """Aggregate covers by ISO week across locations for a date range."""
-    import database
-
-    if not location_ids:
-        return []
-
-    if database.use_supabase():
-        supabase = database.get_supabase_client()
-        result = (
-            supabase.table("daily_summary")
-            .select("date,covers,net_total")
-            .in_("location_id", location_ids)
-            .gte("date", start_date)
-            .lte("date", end_date)
-            .execute()
-        )
-
-        weekly = {}
-        days_per_week: Dict[str, Set[str]] = {}
-        for row in result.data:
-            from datetime import datetime, timedelta
-
-            date = datetime.strptime(row["date"], "%Y-%m-%d")
-            monday = date - timedelta(days=date.weekday())
-            week_key = monday.strftime("%Y-W%W")
-            if week_key not in weekly:
-                weekly[week_key] = {"week": week_key, "covers": 0, "net_total": 0.0}
-                days_per_week[week_key] = set()
-            weekly[week_key]["covers"] += row.get("covers", 0) or 0
-            weekly[week_key]["net_total"] += row.get("net_total", 0) or 0
-            days_per_week[week_key].add(row["date"])
-
-        out = []
-        for wk in sorted(weekly.keys()):
-            r = dict(weekly[wk])
-            r["total_days"] = len(days_per_week.get(wk, set()))
-            out.append(r)
-        return out
-    else:
-        if not location_ids:
-            return []
-        with database.db_connection() as conn:
-            cur = conn.cursor()
-            placeholders = ",".join("?" * len(location_ids))
-            cur.execute(
-                f"""
-                SELECT date, covers, net_total
-                FROM daily_summaries
-                WHERE location_id IN ({placeholders})
-                  AND date >= ? AND date <= ?
-                ORDER BY date
-                """,
-                (*location_ids, start_date, end_date),
-            )
-            rows = cur.fetchall()
-        weekly = {}
-        days_per_week: Dict[str, Set[str]] = {}
-        for row in rows:
-            from datetime import datetime, timedelta
-
-            date = datetime.strptime(str(row["date"]), "%Y-%m-%d")
-            monday = date - timedelta(days=date.weekday())
-            week_key = monday.strftime("%Y-W%W")
-            if week_key not in weekly:
-                weekly[week_key] = {"week": week_key, "covers": 0, "net_total": 0.0}
-                days_per_week[week_key] = set()
-            weekly[week_key]["covers"] += int(row["covers"] or 0)
-            weekly[week_key]["net_total"] += float(row["net_total"] or 0)
-            days_per_week[week_key].add(str(row["date"]))
-        out = []
-        for wk in sorted(weekly.keys()):
-            r = dict(weekly[wk])
-            r["total_days"] = len(days_per_week.get(wk, set()))
-            out.append(r)
-        return out
+    rows = _fetch_daily_summary_rows(
+        location_ids,
+        start_date,
+        end_date,
+        ("date", "covers", "net_total"),
+    )
+    return _aggregate_weekly(rows)
 
 
 @st.cache_data(ttl=600)
@@ -194,38 +187,12 @@ def get_daily_sales_for_date_range(
     location_ids: List[int], start_date: str, end_date: str
 ) -> List[Dict[str, Any]]:
     """Get daily sales data for a date range."""
-    import database
-
-    if database.use_supabase():
-        supabase = database.get_supabase_client()
-        result = (
-            supabase.table("daily_summary")
-            .select("date,location_id,net_total,gross_total,covers,discount")
-            .in_("location_id", location_ids)
-            .gte("date", start_date)
-            .lte("date", end_date)
-            .order("date")
-            .execute()
-        )
-        return result.data
-    else:
-        if not location_ids:
-            return []
-        with database.db_connection() as conn:
-            cur = conn.cursor()
-            placeholders = ",".join("?" * len(location_ids))
-            cur.execute(
-                f"""
-                SELECT date, location_id, net_total, gross_total, covers, discount
-                FROM daily_summaries
-                WHERE location_id IN ({placeholders})
-                  AND date >= ? AND date <= ?
-                ORDER BY date
-                """,
-                (*location_ids, start_date, end_date),
-            )
-            rows = cur.fetchall()
-        return [dict(r) for r in rows]
+    return _fetch_daily_summary_rows(
+        location_ids,
+        start_date,
+        end_date,
+        ("date", "location_id", "net_total", "gross_total", "covers", "discount"),
+    )
 
 
 def get_category_sales_for_date_range(
@@ -764,60 +731,12 @@ def get_payment_breakdown_for_date_range(
     Reads pre-aggregated payment columns from daily_summary (populated during
     upload from the correctly-parsed Dynamic Report data).
     """
-    import database
-
-    if database.use_supabase():
-        supabase = database.get_supabase_client()
-        result = (
-            supabase.table("daily_summary")
-            .select("cash_sales,card_sales,gpay_sales,zomato_sales,other_sales")
-            .in_("location_id", location_ids)
-            .gte("date", start_date)
-            .lte("date", end_date)
-            .execute()
-        )
-
-        totals = {
-            "Cash": 0.0,
-            "Card": 0.0,
-            "GPay": 0.0,
-            "Zomato": 0.0,
-            "Other": 0.0,
-        }
-        for row in result.data:
-            totals["Cash"] += float(row.get("cash_sales", 0) or 0)
-            totals["Card"] += float(row.get("card_sales", 0) or 0)
-            totals["GPay"] += float(row.get("gpay_sales", 0) or 0)
-            totals["Zomato"] += float(row.get("zomato_sales", 0) or 0)
-            totals["Other"] += float(row.get("other_sales", 0) or 0)
-        return totals
-    else:
-        if not location_ids:
-            return {}
-        with database.db_connection() as conn:
-            cur = conn.cursor()
-            placeholders = ",".join("?" * len(location_ids))
-            cur.execute(
-                f"""
-                SELECT
-                    COALESCE(SUM(cash_sales), 0) AS cash_sales,
-                    COALESCE(SUM(card_sales), 0) AS card_sales,
-                    COALESCE(SUM(gpay_sales), 0) AS gpay_sales,
-                    COALESCE(SUM(zomato_sales), 0) AS zomato_sales,
-                    COALESCE(SUM(other_sales), 0) AS other_sales
-                FROM daily_summaries
-                WHERE location_id IN ({placeholders})
-                  AND date >= ? AND date <= ?
-                """,
-                (*location_ids, start_date, end_date),
-            )
-            row = cur.fetchone()
-        if not row:
-            return {}
-        return {
-            "Cash": float(row["cash_sales"] or 0),
-            "Card": float(row["card_sales"] or 0),
-            "GPay": float(row["gpay_sales"] or 0),
-            "Zomato": float(row["zomato_sales"] or 0),
-            "Other": float(row["other_sales"] or 0),
-        }
+    rows = _fetch_daily_summary_rows(
+        location_ids,
+        start_date,
+        end_date,
+        ("cash_sales", "card_sales", "gpay_sales", "zomato_sales", "other_sales"),
+    )
+    if not rows:
+        return {}
+    return _sum_payment_buckets(rows)

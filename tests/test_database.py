@@ -6,36 +6,101 @@ import database
 
 
 class TestGetMonthlyFootfallMulti:
-    def test_returns_empty_for_no_data(self):
+    def test_returns_empty_for_no_data(self, initialized_db):
         result = database.get_monthly_footfall_multi([1], "2025-01-01", "2025-12-31")
         assert result == []
 
-    def test_aggregates_covers_by_month(self):
-        # This test assumes test DB setup — verify query returns correct shape
-        # At minimum, verify the function exists and returns a list
-        result = database.get_monthly_footfall_multi([1], "2025-01-01", "2025-01-31")
-        assert isinstance(result, list)
-        if result:
-            row = result[0]
-            assert "month" in row
-            assert "covers" in row
-            assert "total_days" in row
+    def test_aggregates_covers_by_month(self, initialized_db):
+        with database.db_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO daily_summaries (location_id, date, covers, net_total, gross_total)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (1, "2025-01-01", 10, 1000.0, 1200.0),
+            )
+            conn.execute(
+                """
+                INSERT INTO daily_summaries (location_id, date, covers, net_total, gross_total)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (1, "2025-01-02", 20, 1800.0, 2000.0),
+            )
+            conn.execute(
+                """
+                INSERT INTO daily_summaries (location_id, date, covers, net_total, gross_total)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (1, "2025-02-01", 5, 600.0, 700.0),
+            )
+            conn.commit()
+
+        result = database.get_monthly_footfall_multi([1], "2025-01-01", "2025-02-28")
+
+        assert result == [
+            {
+                "month": "2025-01",
+                "covers": 30,
+                "net_total": 2800.0,
+                "gross_total": 3200.0,
+                "total_days": 2,
+            },
+            {
+                "month": "2025-02",
+                "covers": 5,
+                "net_total": 600.0,
+                "gross_total": 700.0,
+                "total_days": 1,
+            },
+        ]
 
 
 class TestGetWeeklyFootfallMulti:
-    def test_returns_empty_for_no_data(self):
+    def test_returns_empty_for_no_data(self, initialized_db):
         result = database.get_weekly_footfall_multi([1], "2025-01-01", "2025-12-31")
         assert result == []
 
-    def test_aggregates_covers_by_week(self):
-        # Verify function exists and returns correct shape
+    def test_aggregates_covers_by_week(self, initialized_db):
+        with database.db_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO daily_summaries (location_id, date, covers, net_total)
+                VALUES (?, ?, ?, ?)
+                """,
+                (1, "2025-01-01", 10, 1000.0),
+            )
+            conn.execute(
+                """
+                INSERT INTO daily_summaries (location_id, date, covers, net_total)
+                VALUES (?, ?, ?, ?)
+                """,
+                (1, "2025-01-02", 15, 1500.0),
+            )
+            conn.execute(
+                """
+                INSERT INTO daily_summaries (location_id, date, covers, net_total)
+                VALUES (?, ?, ?, ?)
+                """,
+                (1, "2025-01-08", 8, 900.0),
+            )
+            conn.commit()
+
         result = database.get_weekly_footfall_multi([1], "2025-01-01", "2025-01-31")
-        assert isinstance(result, list)
-        if result:
-            row = result[0]
-            assert "week" in row
-            assert "covers" in row
-            assert "total_days" in row
+
+        assert result == [
+            {
+                "week": "2024-W53",
+                "covers": 25,
+                "net_total": 2500.0,
+                "total_days": 2,
+            },
+            {
+                "week": "2025-W01",
+                "covers": 8,
+                "net_total": 900.0,
+                "total_days": 1,
+            },
+        ]
 
 
 class TestSaveDailySummaryTopItems:

@@ -50,6 +50,24 @@ _PAYMENT_COLUMN_MAP: Dict[str, str] = {
     "other pmt": "other_sales",
 }
 
+
+def _status_token(val: Any) -> str:
+    """Normalize bill status text for robust comparisons."""
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return ""
+    return str(val).strip().lower().replace(" ", "").replace("_", "").replace("-", "")
+
+
+def _is_success_status(val: Any) -> bool:
+    """Return True for known success statuses across Dynamic Report variants."""
+    token = _status_token(val)
+    return token in {"success", "successorder"}
+
+
+def _is_complimentary_status(val: Any) -> bool:
+    """Return True when status indicates complimentary bill rows."""
+    return "compli" in _status_token(val)
+
 def _payment_type_to_sales_field(pay_norm: str) -> Optional[str]:
     """Map normalized Payment Type text to a daily_summaries payment column.
 
@@ -317,13 +335,13 @@ def _parse_v1(
     if "bill status" in col_map:
         status_col = col_map["bill status"]
         before = len(df)
-        df = df[df[status_col].str.strip() == "SuccessOrder"]
+        df = df[df[status_col].apply(_is_success_status)]
         after = len(df)
-        notes.append(f"Filtered {before - after} non-SuccessOrder rows from {filename}")
+        notes.append(f"Filtered {before - after} non-success rows from {filename}")
     elif "status" in col_map:
         status_col = col_map["status"]
         before = len(df)
-        df = df[df[status_col].str.strip().str.lower() == "success"]
+        df = df[df[status_col].apply(_is_success_status)]
         after = len(df)
         notes.append(f"Filtered {before - after} non-success rows from {filename}")
 
@@ -545,9 +563,9 @@ def _parse_v2(
     is_complimentary = pd.Series(False, index=df.index)
 
     if status_col:
-        status_vals = df[status_col].fillna("").astype(str).str.strip()
-        is_success = status_vals == "SuccessOrder"
-        is_complimentary = status_vals.str.lower().str.contains("compli")
+        status_vals = df[status_col]
+        is_success = status_vals.apply(_is_success_status)
+        is_complimentary = status_vals.apply(_is_complimentary_status)
 
     # Build groups: (date, bill_no) then attach outlet from Restaurant so one file
     # can contain multiple outlets without merging their totals.

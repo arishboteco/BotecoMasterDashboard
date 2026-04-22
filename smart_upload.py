@@ -51,6 +51,21 @@ _FILE_TYPE_PREFERENCE = (
     "flash_report",
 )
 
+_SUCCESS_STATUSES = {"", "success", "successorder"}
+
+
+def _normalize_status_token(value: Any) -> str:
+    """Normalize status text for robust comparisons across export variants."""
+    token = str(value or "").strip().lower()
+    return token.replace(" ", "").replace("_", "").replace("-", "")
+
+
+def _is_success_order_status(raw_status: str) -> bool:
+    """Return True for accepted success statuses from Order Summary exports."""
+    if "complimentary" in raw_status:
+        return False
+    return _normalize_status_token(raw_status) in _SUCCESS_STATUSES
+
 
 def _primary_file_type(source_kinds: List[str]) -> str:
     for kind in _FILE_TYPE_PREFERENCE:
@@ -126,6 +141,7 @@ def _parse_order_summary_csv(
     date_col = _get_col("date")
     amount_col = _get_col("my_amount", "amount")
     status_col = _get_col("status")
+    pay_col = _get_col("payment_type", "payment type")
 
     if not date_col or not amount_col:
         return None, ["Order Summary CSV missing required columns (date / my_amount)."]
@@ -138,12 +154,8 @@ def _parse_order_summary_csv(
         if not day:
             continue
 
-        status = (
-            str(row.get(status_col, "")).strip().lower() if status_col else "success"
-        )
-        if "complimentary" in status:
-            continue
-        if status not in ("success", ""):
+        raw_status = str(row.get(status_col, "")).strip().lower() if status_col else "success"
+        if not _is_success_order_status(raw_status):
             continue
 
         if day not in days:
@@ -165,7 +177,6 @@ def _parse_order_summary_csv(
         b["net"] += amt
         b["gross"] += amt
 
-        pay_col = _get_col("payment_type", "payment type")
         if pay_col:
             bucket = pos_parser.payment_bucket(str(row.get(pay_col, "")))
             if bucket in ("cash", "card", "gpay", "zomato"):
