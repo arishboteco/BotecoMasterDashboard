@@ -76,6 +76,11 @@ class TestProcessSmartUpload:
             "exception",
             lambda msg, *args: logged.append(msg % args),
         )
+        monkeypatch.setattr(
+            smart_upload.database,
+            "get_all_locations",
+            lambda: [{"id": 1, "name": "Boteco - Indiqube"}],
+        )
 
         result = smart_upload.process_smart_upload([("dyn.csv", b"x")], location_id=1)
 
@@ -161,3 +166,61 @@ class TestProcessSmartUpload:
         days = result.location_results.get(1, [])
         dates = [d.date for d in days]
         assert dates == ["2026-04-01", "2026-04-02"]
+
+
+class TestParseOrderSummaryCsv:
+    def test_accepts_successorder_status_rows(self):
+        content = (
+            "date,my_amount,status,payment_type\n"
+            "2026-04-01,100,SuccessOrder,GPay\n"
+        ).encode("utf-8")
+
+        parsed, notes = smart_upload._parse_order_summary_csv(content, "orders.csv")
+
+        assert notes == []
+        assert parsed is not None
+        assert len(parsed) == 1
+        assert parsed[0]["date"] == "2026-04-01"
+        assert parsed[0]["net_total"] == 100.0
+        assert parsed[0]["gpay_sales"] == 100.0
+
+    def test_accepts_success_order_status_with_space(self):
+        content = (
+            "date,my_amount,status,payment_type\n"
+            "2026-04-01,120,Success Order,Card\n"
+        ).encode("utf-8")
+
+        parsed, notes = smart_upload._parse_order_summary_csv(content, "orders.csv")
+
+        assert notes == []
+        assert parsed is not None
+        assert len(parsed) == 1
+        assert parsed[0]["date"] == "2026-04-01"
+        assert parsed[0]["net_total"] == 120.0
+        assert parsed[0]["card_sales"] == 120.0
+
+    def test_accepts_success_order_status_with_hyphen_and_case(self):
+        content = (
+            "date,my_amount,status,payment_type\n"
+            "2026-04-01,90,SUCCESS-ORDER,Cash\n"
+        ).encode("utf-8")
+
+        parsed, notes = smart_upload._parse_order_summary_csv(content, "orders.csv")
+
+        assert notes == []
+        assert parsed is not None
+        assert len(parsed) == 1
+        assert parsed[0]["date"] == "2026-04-01"
+        assert parsed[0]["net_total"] == 90.0
+        assert parsed[0]["cash_sales"] == 90.0
+
+    def test_rejects_complimentary_status_even_if_success_like(self):
+        content = (
+            "date,my_amount,status,payment_type\n"
+            "2026-04-01,90,Success Complimentary,Cash\n"
+        ).encode("utf-8")
+
+        parsed, notes = smart_upload._parse_order_summary_csv(content, "orders.csv")
+
+        assert notes == []
+        assert parsed is None

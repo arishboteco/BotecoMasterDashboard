@@ -70,6 +70,18 @@ class TestDynamicReportServiceData:
         assert records is not None
         assert records[0].get("services") == []
 
+    def test_v1_accepts_success_order_status_variant(self):
+        from dynamic_report_parser import parse_dynamic_report
+
+        csv_content = (
+            "Bill Date,Bill No,Pax,Net Amount,Gross Sale,Bill Status\n"
+            "2024-03-15,B001,2,500.0,550.0,Success Order\n"
+        )
+        records, _ = parse_dynamic_report(csv_content.encode("utf-8"), "test.csv")
+        assert records is not None
+        assert len(records) == 1
+        assert records[0]["order_count"] == 1
+
 
 class TestDynamicReportV2Format:
     """Tests for the new line-item Dynamic Report format."""
@@ -217,6 +229,18 @@ class TestDynamicReportV2Format:
         records, _ = parse_dynamic_report(csv_content, "test.csv")
         r = records[0]
         assert r["gpay_sales"] == 913.0
+
+    def test_v2_accepts_success_status_with_space(self):
+        from dynamic_report_parser import parse_dynamic_report
+
+        csv_content = self._make_v2_csv(
+            "Boteco,2026-04-08,2026-04-8 12:59:29,8875,Lalan,3,Success Order,Card,-,"
+            "Tira Gosto,Chicken Coxinha,1,2,870,0,870,0.15,21.75,21.75,87,4.35,"
+            "1005,-,-,1005,-,-,-,-,-,-\n"
+        )
+        records, _ = parse_dynamic_report(csv_content, "test.csv")
+        assert records is not None
+        assert records[0]["card_sales"] == 1005.0
 
     def test_v2_multi_item_bill_groups_correctly(self):
         from dynamic_report_parser import parse_dynamic_report
