@@ -173,6 +173,50 @@ TOKEN_SYSTEM = r"""
         --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.45), 0 4px 6px -4px rgba(0,0,0,0.3);
     }
 
+    /* ── CSS-only dark mode: mirror .stAppDark class on <html> ──────────── */
+    /* Streamlit adds class "stAppDark" or "stAppDarkTheme" to .stApp in     */
+    /* dark mode. This activates dark tokens purely via CSS — no JS needed */
+    .stApp.stAppDark,
+    .stApp.stAppDarkTheme {
+        --brand: #2D7AC9;
+        --brand-dark: #1F5FA8;
+        --brand-darker: #005AAB;
+        --brand-light: #5A97D6;
+        --brand-soft: #1E3A5F;
+        --surface: #0F172A;
+        --surface-elevated: #1E293B;
+        --surface-raised: #334155;
+        --sidebar-bg: #0F172A;
+        --sidebar-border: #1E293B;
+        --table-header-bg: #1E293B;
+        --text: #F1F5F9;
+        --text-secondary: #CBD5E1;
+        --text-muted: #94A3B8;
+        --border-subtle: #334155;
+        --border-medium: #475569;
+        --accent-coral: #2D7AC9;
+        --accent-teal: #7DD3E0;
+        --accent-amber: #FBBF24;
+        --accent-green: #A2D06E;
+        --accent-slate: #2D7AC9;
+        --success-bg: #052E16;
+        --success-text: #86EFAC;
+        --success-border: #166534;
+        --error-bg: #450A0A;
+        --error-text: #FCA5A5;
+        --error-border: #7F1D1D;
+        --info-bg: #1E1B4B;
+        --info-text: #A5B4FC;
+        --info-border: #3730A3;
+        --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
+        --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.3);
+        --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.45), 0 4px 6px -4px rgba(0,0,0,0.3);
+    }
+    .stApp.stAppDark [data-testid="stSidebar"],
+    .stApp.stAppDarkTheme [data-testid="stSidebar"] {
+        background: var(--sidebar-bg) !important;
+    }
+
     /* ── System-preference fallback (no explicit data-theme override) ──── */
     @media (prefers-color-scheme: dark) {
         :root:not([data-theme="light"]) {

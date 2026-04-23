@@ -83,37 +83,45 @@ if st.query_params.get("health") == "check":
 st.markdown(styles.get_css(), unsafe_allow_html=True)
 
 # Detect and propagate Streamlit's active theme to the CSS token system.
-# Streamlit sets --streamlit-variant as a CSS custom property on the body.
-# We mirror it as data-theme on <html> so all :root[data-theme="dark"] { … }
-# CSS rules in styles/_tokens.py activate automatically.
+# Streamlit adds a data-theme attribute to .stApp element. We observe that
+# attribute directly and mirror it as data-theme on <html>.
 _theme_script = """
 <script id="boteco-theme-sync">
 (function() {
     function applyTheme(dark) {
-        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+        var prev = document.documentElement.getAttribute('data-theme');
+        var next = dark ? 'dark' : 'light';
+        if (prev !== next) {
+            document.documentElement.setAttribute('data-theme', next);
+        }
     }
 
     function detect() {
-        // Primary: Streamlit's --streamlit-variant custom property (Streamlit 1.33+)
-        var variant = getComputedStyle(document.body).getPropertyValue('--streamlit-variant').trim();
-        if (variant === 'dark') { applyTheme(true); return; }
-        if (variant === 'light') { applyTheme(false); return; }
-        // Fallback: class on .stApp
         var app = document.querySelector('.stApp');
-        if (app && (app.getAttribute('data-theme') === 'dark' || app.className.includes('dark'))) {
-            applyTheme(true); return;
-        }
-        // System preference fallback
-        applyTheme(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (!app) return;
+        var dark = app.getAttribute('data-theme') === 'dark' ||
+            (app.className && app.className.split(' ').includes('dark'));
+        applyTheme(dark);
     }
 
-    detect();
-    if (window.MutationObserver) {
-        new MutationObserver(detect).observe(
-            document.body,
-            { attributes: true, attributeFilter: ['data-theme', 'class'], subtree: false }
-        );
+    function setupObserver() {
+        var app = document.querySelector('.stApp');
+        if (!app) {
+            setTimeout(setupObserver, 50);
+            return;
+        }
+        // Immediate detection in case attribute is already set
+        detect();
+        // Watch for theme changes mid-session
+        if (window.MutationObserver) {
+            new MutationObserver(detect).observe(app, {
+                attributes: true,
+                attributeFilter: ['data-theme', 'class']
+            });
+        }
     }
+
+    setupObserver();
 })();
 </script>"""
 st.markdown(_theme_script, unsafe_allow_html=True)
