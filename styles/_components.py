@@ -316,21 +316,6 @@ WHATSAPP_SHARE_BUTTONS = r"""    /* ── WhatsApp share buttons ────�
         outline: none;
     }
     .whatsapp-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-        padding: var(--btn-padding-y) var(--btn-padding-x);
-        border-radius: var(--radius-sm);
-        font-family: var(--font-body);
-        font-weight: 600;
-        font-size: 0.85rem;
-        cursor: pointer;
-        transition: all var(--transition-normal) ease;
-        white-space: nowrap;
-        line-height: 1.3;
-        min-height: var(--btn-height-md);
-    }
-    .whatsapp-btn-primary {
         background: var(--brand);
         color: #FFFFFF;
         border: none;

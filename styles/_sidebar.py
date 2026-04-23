@@ -1,6 +1,7 @@
 """Sidebar styling — base, account section, gradient refinement."""
 
-SIDEBAR = r"""    /* ── Sidebar ────────────────────────────────────────────── */
+SIDEBAR = r"""
+    /* ── Sidebar — uses CSS tokens for mode-aware theming ─────── */
     [data-testid="stSidebar"] {
         background-color: var(--sidebar-bg) !important;
         border-right: 1px solid var(--sidebar-border) !important;
@@ -17,7 +18,7 @@ SIDEBAR = r"""    /* ── Sidebar ──────────────�
         z-index: 1;
     }
 
-    /* Logo — white card so dark logo is visible on dark blue sidebar */
+    /* Logo — white card so dark logo is visible on any sidebar bg */
     [data-testid="stSidebar"] img {
         background-color: #FFFFFF;
         border-radius: var(--radius-md);
@@ -25,7 +26,7 @@ SIDEBAR = r"""    /* ── Sidebar ──────────────�
         display: block;
     }
 
-    /* Sidebar text — white/light on dark blue */
+    /* Sidebar text — white on brand/dark surfaces */
     [data-testid="stSidebar"] p,
     [data-testid="stSidebar"] .stMarkdown p,
     [data-testid="stSidebar"] span {
@@ -53,13 +54,14 @@ SIDEBAR = r"""    /* ── Sidebar ──────────────�
         color: rgba(255, 255, 255, 0.85) !important;
     }
 
-    /* Sidebar dividers — subtle white line */
+    /* Sidebar dividers */
     [data-testid="stSidebar"] hr {
         margin: 1rem 0;
-        border-color: rgba(255, 255, 255, 0.2) !important;
+        border-color: var(--sidebar-border) !important;
+        opacity: 0.5;
     }
 
-    /* Sidebar logout button — outlined white style */
+    /* Sidebar logout button — semi-transparent white style */
     [data-testid="stSidebar"] .stButton > button {
         background: rgba(255, 255, 255, 0.12) !important;
         color: #FFFFFF !important;
@@ -70,9 +72,18 @@ SIDEBAR = r"""    /* ── Sidebar ──────────────�
         border-color: rgba(255, 255, 255, 0.55) !important;
     }
 
+    /* Sidebar selectbox / input elements */
+    [data-testid="stSidebar"] .stSelectbox [data-baseweb="select"],
+    [data-testid="stSidebar"] .stTextInput input {
+        background: rgba(255, 255, 255, 0.08) !important;
+        color: #FFFFFF !important;
+        border-color: rgba(255, 255, 255, 0.25) !important;
+    }
+
 """
 
-SIDEBAR_IMPROVEMENTS = r"""    /* ── Sidebar improvements ─────────────────────────────── */
+SIDEBAR_IMPROVEMENTS = r"""
+    /* ── Sidebar improvements ─────────────────────────────── */
     .sidebar-account-section {
         background: rgba(255, 255, 255, 0.08);
         border-radius: var(--radius-md);
@@ -108,9 +119,6 @@ SIDEBAR_IMPROVEMENTS = r"""    /* ── Sidebar improvements ──────
         opacity: 0.6;
     }
     .sidebar-footer {
-        /* Flex push-to-bottom: Streamlit's sidebar inner is a flex column,
-           so margin-top:auto sinks this to the bottom without breaking on
-           short viewports. */
         margin-top: auto;
         padding-top: 1rem;
         text-align: center;
@@ -149,7 +157,9 @@ SIDEBAR_IMPROVEMENTS = r"""    /* ── Sidebar improvements ──────
 
 """
 
-SIDEBAR_GRADIENT_REFINEMENT = r"""    /* ── Sidebar gradient refinement ──────────────────────── */
+SIDEBAR_GRADIENT_REFINEMENT = r"""
+    /* ── Sidebar gradient refinement ──────────────────────── */
+    /* Light: brand blue gradient; Dark: deep navy (no gradient needed) */
     [data-testid="stSidebar"] {
         background: linear-gradient(
             175deg,
@@ -158,6 +168,13 @@ SIDEBAR_GRADIENT_REFINEMENT = r"""    /* ── Sidebar gradient refinement ─�
             var(--brand-darker) 100%
         ) !important;
     }
+    :root[data-theme="dark"] [data-testid="stSidebar"] {
+        background: var(--sidebar-bg) !important;
+    }
+    @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) [data-testid="stSidebar"] {
+            background: var(--sidebar-bg) !important;
+        }
+    }
 
 """
-

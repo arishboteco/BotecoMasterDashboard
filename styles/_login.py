@@ -4,19 +4,19 @@ LOGIN_CSS = r"""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap');
     :root {
-        --brand: #1F5FA8;
-        --brand-dark: #174A82;
-        --brand-light: #2A6BB3;
+        --brand: #005AAB;
+        --brand-dark: #004080;
+        --brand-light: #2D7AC9;
         --text: #1E293B;
-        --text-muted: #475569;
+        --text-muted: #64748B;
     }
 
     /* ── Login page background ────────────────────────── */
     .stApp {
         background:
-            radial-gradient(ellipse at 20% 50%, rgba(31,95,168,0.06) 0%, transparent 60%),
-            radial-gradient(ellipse at 80% 20%, rgba(63,167,163,0.05) 0%, transparent 55%),
-            radial-gradient(ellipse at 60% 80%, rgba(244,180,0,0.04) 0%, transparent 50%),
+            radial-gradient(ellipse at 20% 50%, rgba(0,90,171,0.06) 0%, transparent 60%),
+            radial-gradient(ellipse at 80% 20%, rgba(84,197,208,0.05) 0%, transparent 55%),
+            radial-gradient(ellipse at 60% 80%, rgba(253,184,19,0.04) 0%, transparent 50%),
             #F7FAFC !important;
     }
 
@@ -104,14 +104,14 @@ LOGIN_CSS = r"""
     }
     .stButton > button:hover {
         background-color: var(--brand-dark) !important;
-        box-shadow: 0 4px 12px rgba(31, 95, 168, 0.3) !important;
+        box-shadow: 0 4px 12px rgba(0, 90, 171, 0.3) !important;
         transform: translateY(-1px) !important;
     }
 
     /* ── Input focus ──────────────────────────────────── */
     .stTextInput input:focus {
         border-color: var(--brand) !important;
-        box-shadow: 0 0 0 3px rgba(31, 95, 168, 0.15) !important;
+        box-shadow: 0 0 0 3px rgba(0, 90, 171, 0.18) !important;
     }
     .stTextInput label {
         font-family: 'Inter', sans-serif !important;

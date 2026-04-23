@@ -83,9 +83,9 @@ if st.query_params.get("health") == "check":
 st.markdown(styles.get_css(), unsafe_allow_html=True)
 
 # Detect and propagate Streamlit's active theme to the CSS token system.
-# Streamlit applies a .stApp[data-theme="dark"] class to the root; we mirror it
-# as a plain data-theme attribute so all :root[data-theme="dark"] { … } CSS
-# rules in styles/_tokens.py activate automatically.
+# Streamlit sets --streamlit-variant as a CSS custom property on the body.
+# We mirror it as data-theme on <html> so all :root[data-theme="dark"] { … }
+# CSS rules in styles/_tokens.py activate automatically.
 _theme_script = """
 <script id="boteco-theme-sync">
 (function() {
@@ -94,20 +94,24 @@ _theme_script = """
     }
 
     function detect() {
+        // Primary: Streamlit's --streamlit-variant custom property (Streamlit 1.33+)
+        var variant = getComputedStyle(document.body).getPropertyValue('--streamlit-variant').trim();
+        if (variant === 'dark') { applyTheme(true); return; }
+        if (variant === 'light') { applyTheme(false); return; }
+        // Fallback: class on .stApp
         var app = document.querySelector('.stApp');
-        if (!app) return;
-        var dark =
-            app.getAttribute('data-theme') === 'dark' ||
-            (app.classList.contains('stApp') && app.className.includes('dark'));
-        applyTheme(dark);
+        if (app && (app.getAttribute('data-theme') === 'dark' || app.className.includes('dark'))) {
+            applyTheme(true); return;
+        }
+        // System preference fallback
+        applyTheme(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
     }
 
     detect();
-    // React to mid-session theme changes
     if (window.MutationObserver) {
         new MutationObserver(detect).observe(
-            document.querySelector('.stApp') || document.body,
-            { attributes: true, attributeFilter: ['data-theme', 'class'] }
+            document.body,
+            { attributes: true, attributeFilter: ['data-theme', 'class'], subtree: false }
         );
     }
 })();

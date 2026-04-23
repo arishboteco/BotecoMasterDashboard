@@ -1,37 +1,51 @@
-"""CSS :root tokens and Material Symbols base class."""
+"""CSS :root tokens and Material Symbols base class — logo-derived palette.
 
-TOKEN_SYSTEM = r"""    /* ── Token system ─────────────────────────────────────────── */
+Public exports:
+  TOKEN_SYSTEM — full token block (light + dark + system-preference fallback).
+"""
+
+from __future__ import annotations
+
+# ── Logo color palette ─────────────────────────────────────────────────────────
+# Extracted from logo.png dominant non-white pixels.
+# Primary:   #005AAB — Royal Blue (brand)
+# Secondary: #A2D06E — Lime Green (success/positive)
+# Accent:    #FDB813 — Golden Yellow (accent/warning)
+# Tertiary:  #54C5D0 — Sky Teal (secondary accent)
+
+TOKEN_SYSTEM = r"""
+    /* ── Light mode tokens (default) ─────────────────────────── */
     :root {
-        /* Brand palette */
-        --brand: #1F5FA8;
-        --brand-dark: #174A82;
-        --brand-darker: #133F70;
-        --brand-light: #2A6BB3;
-        --brand-soft: #E6F4F3;
+        /* Brand palette — logo-derived */
+        --brand: #005AAB;
+        --brand-dark: #004080;
+        --brand-darker: #003366;
+        --brand-light: #2D7AC9;
+        --brand-soft: #EBF4FF;
 
         /* Surface palette */
         --surface: #F7FAFC;
         --surface-elevated: #FFFFFF;
         --surface-raised: #FFFFFF;
-        --sidebar-bg: #1F5FA8;
-        --sidebar-border: #2A6BB3;
+        --sidebar-bg: #005AAB;
+        --sidebar-border: #004080;
         --table-header-bg: #EEF2F7;
 
         /* Text palette */
         --text: #1E293B;
         --text-secondary: #475569;
-        --text-muted: #475569;
+        --text-muted: #64748B;
 
         /* Border palette */
         --border-subtle: #E2E8F0;
         --border-medium: #CBD5E1;
 
-        /* Accent colors */
-        --accent-coral: #1F5FA8;
-        --accent-teal: #3FA7A3;
-        --accent-amber: #F4B400;
-        --accent-indigo: #6DBE45;
-        --accent-slate: #1F5FA8;
+        /* Accent colors — logo palette */
+        --accent-coral: #005AAB;
+        --accent-teal: #54C5D0;
+        --accent-amber: #FDB813;
+        --accent-green: #A2D06E;
+        --accent-slate: #005AAB;
 
         /* Semantic colors */
         --success-bg: #F0FDF4;
@@ -41,8 +55,8 @@ TOKEN_SYSTEM = r"""    /* ── Token system ───────────�
         --error-text: #B91C1C;
         --error-border: #FECACA;
         --info-bg: #EFF6FF;
-        --info-text: #4338CA;
-        --info-border: #C7D2FE;
+        --info-text: #1D4ED8;
+        --info-border: #BFDBFE;
 
         /* Typography */
         --font-display: 'Plus Jakarta Sans', sans-serif;
@@ -111,16 +125,16 @@ TOKEN_SYSTEM = r"""    /* ── Token system ───────────�
 
     /* ── Dark mode tokens — activated via data-theme="dark" on <html> ──── */
     :root[data-theme="dark"] {
-        /* Brand palette (brightened for dark-surface contrast) */
-        --brand: #3A7FC9;
-        --brand-dark: #2A6BB3;
-        --brand-darker: #174A82;
+        /* Brand palette — brightened for dark surface contrast */
+        --brand: #2D7AC9;
+        --brand-dark: #1F5FA8;
+        --brand-darker: #005AAB;
         --brand-light: #5A97D6;
         --brand-soft: #1E3A5F;
 
         /* Surface palette */
-        --surface: #1E293B;
-        --surface-elevated: #0F172A;
+        --surface: #0F172A;
+        --surface-elevated: #1E293B;
         --surface-raised: #334155;
         --sidebar-bg: #0F172A;
         --sidebar-border: #1E293B;
@@ -135,14 +149,14 @@ TOKEN_SYSTEM = r"""    /* ── Token system ───────────�
         --border-subtle: #334155;
         --border-medium: #475569;
 
-        /* Accent colors (slight brightening for dark) */
-        --accent-coral: #3A7FC9;
-        --accent-teal: #4FB7B3;
+        /* Accent colors — slight brightening */
+        --accent-coral: #2D7AC9;
+        --accent-teal: #7DD3E0;
         --accent-amber: #FBBF24;
-        --accent-indigo: #7DD053;
-        --accent-slate: #3A7FC9;
+        --accent-green: #A2D06E;
+        --accent-slate: #2D7AC9;
 
-        /* Semantic colors (dark variants) */
+        /* Semantic colors — dark variants */
         --success-bg: #052E16;
         --success-text: #86EFAC;
         --success-border: #166534;
@@ -159,16 +173,16 @@ TOKEN_SYSTEM = r"""    /* ── Token system ───────────�
         --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.45), 0 4px 6px -4px rgba(0,0,0,0.3);
     }
 
-    /* System-preference fallback when no explicit data-theme is set */
+    /* ── System-preference fallback (no explicit data-theme override) ──── */
     @media (prefers-color-scheme: dark) {
         :root:not([data-theme="light"]) {
-            --brand: #3A7FC9;
-            --brand-dark: #2A6BB3;
-            --brand-darker: #174A82;
+            --brand: #2D7AC9;
+            --brand-dark: #1F5FA8;
+            --brand-darker: #005AAB;
             --brand-light: #5A97D6;
             --brand-soft: #1E3A5F;
-            --surface: #1E293B;
-            --surface-elevated: #0F172A;
+            --surface: #0F172A;
+            --surface-elevated: #1E293B;
             --surface-raised: #334155;
             --sidebar-bg: #0F172A;
             --sidebar-border: #1E293B;
@@ -178,13 +192,24 @@ TOKEN_SYSTEM = r"""    /* ── Token system ───────────�
             --text-muted: #94A3B8;
             --border-subtle: #334155;
             --border-medium: #475569;
-            --accent-coral: #3A7FC9;
-            --accent-teal: #4FB7B3;
+            --accent-coral: #2D7AC9;
+            --accent-teal: #7DD3E0;
             --accent-amber: #FBBF24;
-            --accent-indigo: #7DD053;
-            --accent-slate: #3A7FC9;
+            --accent-green: #A2D06E;
+            --accent-slate: #2D7AC9;
+            --success-bg: #052E16;
+            --success-text: #86EFAC;
+            --success-border: #166534;
+            --error-bg: #450A0A;
+            --error-text: #FCA5A5;
+            --error-border: #7F1D1D;
+            --info-bg: #1E1B4B;
+            --info-text: #A5B4FC;
+            --info-border: #3730A3;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
+            --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.3);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.45), 0 4px 6px -4px rgba(0,0,0,0.3);
         }
     }
 
 """
-

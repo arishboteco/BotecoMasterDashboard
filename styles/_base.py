@@ -1,6 +1,7 @@
 """Base typography, scrollbar, focus, background, section headers, tab bar, form inputs."""
 
-BASE_TYPOGRAPHY = r"""    /* ── Base typography ────────────────────────────────────── */
+BASE_TYPOGRAPHY = r"""
+    /* ── Base typography ────────────────────────────────────── */
     .stMarkdown p, .stMarkdown li, .stMarkdown span, .stMarkdown label,
     [data-testid="stText"] p, [data-testid="stText"] li, [data-testid="stText"] span,
     .stTextInput input, .stTextArea textarea, .stSelectbox select,
@@ -58,21 +59,10 @@ BASE_TYPOGRAPHY = r"""    /* ── Base typography ─────────�
         font-family: var(--font-body) !important;
     }
 
-    /* Dark mode: brighten tab hover/selected foreground for AA compliance */
-    :root[data-theme="dark"] button[data-baseweb="tab"]:hover,
-    :root[data-theme="dark"] button[data-baseweb="tab"][aria-selected="true"] {
-        color: var(--brand-light) !important;
-    }
-    @media (prefers-color-scheme: dark) {
-        :root:not([data-theme="light"]) button[data-baseweb="tab"]:hover,
-        :root:not([data-theme="light"]) button[data-baseweb="tab"][aria-selected="true"] {
-            color: var(--brand-light) !important;
-        }
-    }
-
 """
 
-BRANDED_HEADER = r"""    /* ── Branded header ─────────────────────────────────────── */
+BRANDED_HEADER = r"""
+    /* ── Branded header ─────────────────────────────────────── */
     .boteco-header {
         display: flex;
         align-items: baseline;
@@ -104,7 +94,8 @@ BRANDED_HEADER = r"""    /* ── Branded header ──────────
 
 """
 
-LAYOUT_SPACING = r"""    /* ── Layout & spacing ──────────────────────────────────── */
+LAYOUT_SPACING = r"""
+    /* ── Layout & spacing ──────────────────────────────────── */
     .main .block-container {
         max-width: 1200px;
         padding: 1.5rem 2rem 2rem !important;
@@ -112,7 +103,8 @@ LAYOUT_SPACING = r"""    /* ── Layout & spacing ─────────�
 
 """
 
-SCROLLBAR_STYLING = r"""    /* ── Scrollbar styling ──────────────────────────────────── */
+SCROLLBAR_STYLING = r"""
+    /* ── Scrollbar styling ──────────────────────────────────── */
     ::-webkit-scrollbar {
         width: 8px;
         height: 8px;
@@ -131,27 +123,30 @@ SCROLLBAR_STYLING = r"""    /* ── Scrollbar styling ────────
 
 """
 
-FOCUS_RINGS = r"""    /* ── Focus rings ───────────────────────────────────────── */
+FOCUS_RINGS = r"""
+    /* ── Focus rings ───────────────────────────────────────── */
     .stTextInput input:focus,
     .stTextArea textarea:focus,
     .stSelectbox [data-baseweb="select"]:focus-within {
         border-color: var(--brand) !important;
-        box-shadow: 0 0 0 3px rgba(63,167,163,0.25) !important;
+        box-shadow: 0 0 0 3px rgba(0,90,171,0.18) !important;
     }
 
 """
 
-SUBTLE_BACKGROUND_TEXTURE = r"""    /* ── Subtle background texture ────────────────────────── */
+SUBTLE_BACKGROUND_TEXTURE = r"""
+    /* ── Subtle background texture ────────────────────────── */
     .main {
         background:
-            radial-gradient(ellipse at 0% 0%, rgba(31,95,168,0.03) 0%, transparent 50%),
-            radial-gradient(ellipse at 100% 100%, rgba(63,167,163,0.03) 0%, transparent 50%),
+            radial-gradient(ellipse at 0% 0%, rgba(0,90,171,0.03) 0%, transparent 50%),
+            radial-gradient(ellipse at 100% 100%, rgba(84,197,208,0.03) 0%, transparent 50%),
             var(--surface-elevated);
     }
 
 """
 
-SECTION_HEADERS_REFINED_STYLING = r"""    /* ── Section headers — refined styling (h2, h3) ─────── */
+SECTION_HEADERS_REFINED_STYLING = r"""
+    /* ── Section headers — refined styling (h2, h3) ──────── */
     h2, h3,
     .stMarkdown h2, .stMarkdown h3,
     [data-testid="stMarkdownContainer"] h2, [data-testid="stMarkdownContainer"] h3 {
@@ -165,7 +160,8 @@ SECTION_HEADERS_REFINED_STYLING = r"""    /* ── Section headers — refined 
 
 """
 
-TAB_BAR_REFINEMENT = r"""    /* ── Tab bar refinement ────────────────────────────────── */
+TAB_BAR_REFINEMENT = r"""
+    /* ── Tab bar refinement ────────────────────────────────── */
     button[data-baseweb="tab"] {
         letter-spacing: 0.01em !important;
     }
@@ -179,22 +175,22 @@ TAB_BAR_REFINEMENT = r"""    /* ── Tab bar refinement ───────�
         background-color: var(--brand-soft) !important;
         border-radius: var(--radius-sm) var(--radius-sm) 0 0 !important;
     }
-    /* Dark-mode: --brand (#3A7FC9) on --brand-soft (#1E3A5F) is 2.77:1 which
-       fails WCAG UI-component 3:1. Brighten the text to --brand-light. */
+    /* Dark mode: brighten tab hover/selected foreground for WCAG AA */
     :root[data-theme="dark"] button[data-baseweb="tab"]:hover,
     :root[data-theme="dark"] button[data-baseweb="tab"][aria-selected="true"] {
         color: var(--brand-light) !important;
     }
     @media (prefers-color-scheme: dark) {
-        :root:not([data-theme="light"]):not([data-theme="dark"]) button[data-baseweb="tab"]:hover,
-        :root:not([data-theme="light"]):not([data-theme="dark"]) button[data-baseweb="tab"][aria-selected="true"] {
+        :root:not([data-theme="light"]) button[data-baseweb="tab"]:hover,
+        :root:not([data-theme="light"]) button[data-baseweb="tab"][aria-selected="true"] {
             color: var(--brand-light) !important;
         }
     }
 
 """
 
-COMPREHENSIVE_FOCUS_INDICATORS = r"""    /* ── Comprehensive focus indicators (WCAG 2.1 AA) ──── */
+COMPREHENSIVE_FOCUS_INDICATORS = r"""
+    /* ── Comprehensive focus indicators (WCAG 2.1 AA) ──────── */
     a:focus-visible,
     button:focus-visible,
     input:focus-visible,
@@ -217,11 +213,9 @@ COMPREHENSIVE_FOCUS_INDICATORS = r"""    /* ── Comprehensive focus indicator
         outline: 2px solid var(--brand) !important;
         outline-offset: 3px !important;
     }
-    /* Remove default browser outline but keep :focus-visible (keyboard) */
     button:focus:not(:focus-visible),
     a:focus:not(:focus-visible),
     [tabindex]:focus:not(:focus-visible) {
         outline: none;
     }
 """
-

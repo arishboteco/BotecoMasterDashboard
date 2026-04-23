@@ -3,20 +3,23 @@
 import plotly.graph_objects as go
 import plotly.io as pio
 
-# -- Brand palette (Boteco Mango) -----------------------------------------------
-BRAND_PRIMARY = "#1F5FA8"  # Deep Royal Blue — primary actions, links
-BRAND_DARK = "#174A82"  # Dark blue — hover/pressed
-BRAND_LIGHT = "#2A6BB3"  # Lighter blue — gradients
-BRAND_SOFT = (
-    "#E6F4F3"  # Soft teal tint — backgrounds (teal, not blue, for tropical feel)
-)
-BRAND_SECONDARY = "#3FA7A3"  # Teal Blue — secondary actions
-BRAND_SECONDARY_DARK = "#2F8C89"  # Dark teal — secondary hover
-BRAND_SUCCESS = "#3FA7A3"  # Teal — positive deltas (same as BRAND_SECONDARY — distinct semantic roles)
-BRAND_WARN = "#F4B400"  # Golden Mustard — warning
-BRAND_GREEN = "#6DBE45"  # Leaf Green — freshness, Zomato charts
-BRAND_ERROR = "#EF4444"  # Red — negative deltas, destructive
-BRAND_INFO = "#6366F1"  # Indigo — info
+# -- Brand palette (Boteco Mango — logo-derived) ---------------------------
+# Primary:   #005AAB — Royal Blue
+# Secondary: #A2D06E — Lime Green (success)
+# Accent:    #FDB813 — Golden Yellow (accent/warning)
+# Tertiary:  #54C5D0 — Sky Teal
+
+BRAND_PRIMARY = "#005AAB"
+BRAND_DARK = "#004080"
+BRAND_LIGHT = "#2D7AC9"
+BRAND_SOFT = "#EBF4FF"
+BRAND_SECONDARY = "#54C5D0"
+BRAND_SECONDARY_DARK = "#3BA8B5"
+BRAND_SUCCESS = "#A2D06E"
+BRAND_WARN = "#FDB813"
+BRAND_GREEN = "#A2D06E"
+BRAND_ERROR = "#EF4444"
+BRAND_INFO = "#6366F1"
 
 # -- Conditional formatting colors for tables --------------------------------
 TABLE_ACHIEVEMENT_GREEN = "#10B981"  # ≥100% achievement
@@ -24,14 +27,14 @@ TABLE_ACHIEVEMENT_YELLOW = "#FBBF24"  # 70–99% achievement
 TABLE_ACHIEVEMENT_RED = "#EF4444"  # <70% achievement
 
 # -- Surface & neutral palette -------------------------------------------------
-SURFACE_BASE = "#F7FAFC"  # Main background — soft off-white
-SURFACE_ELEVATED = "#FFFFFF"  # Cards — white
-SURFACE_RAISED = "#FFFFFF"  # Modals, tooltips
-TEXT_PRIMARY = "#1E293B"  # Primary text — slate 800
-TEXT_SECONDARY = "#475569"  # Secondary text — slate 600
-TEXT_MUTED = "#475569"  # Muted text — slate 600 (WCAG AA compliant, was 500 which failed)
-BORDER_SUBTLE = "#E2E8F0"  # Light borders — slate 200
-BORDER_MEDIUM = "#CBD5E1"  # Medium borders — slate 300
+SURFACE_BASE = "#F7FAFC"
+SURFACE_ELEVATED = "#FFFFFF"
+SURFACE_RAISED = "#FFFFFF"
+TEXT_PRIMARY = "#1E293B"
+TEXT_SECONDARY = "#475569"
+TEXT_MUTED = "#64748B"
+BORDER_SUBTLE = "#E2E8F0"
+BORDER_MEDIUM = "#CBD5E1"
 
 # -- Shadow system -------------------------------------------------------------
 SHADOW_SM = "0 1px 2px rgba(0,0,0,0.05)"
@@ -43,28 +46,37 @@ RADIUS_SM = "6px"
 RADIUS_MD = "8px"
 RADIUS_LG = "12px"
 
-# -- Chart colorway — Boteco Mango brand, 5-color palette ---------------------
+# -- Chart colorway — logo palette, 5-color -----------------------------------
 CHART_COLORWAY = [
-    "#1F5FA8",  # deep royal blue (primary)
-    "#3FA7A3",  # teal blue
-    "#6DBE45",  # leaf green
-    "#F4B400",  # golden mustard
-    "#174A82",  # dark blue
+    "#005AAB",  # royal blue (primary)
+    "#54C5D0",  # sky teal
+    "#A2D06E",  # lime green
+    "#FDB813",  # golden yellow
+    "#2D7AC9",  # bright blue
 ]
 
 CHART_HEIGHT = 380
 CHART_HEIGHT_MOBILE = 280  # Used via responsive CSS override + autosize=True
 CHART_MARGIN = dict(l=48, r=28, t=56, b=48)
 
-# -- Dark mode surface tokens (used by boteco-dark Plotly template) -----------
-SURFACE_BASE_DARK = "#0F172A"  # slate 900
-SURFACE_ELEVATED_DARK = "#1E293B"  # slate 800
-SURFACE_RAISED_DARK = "#334155"  # slate 700
-TEXT_PRIMARY_DARK = "#F1F5F9"  # slate 100
-TEXT_SECONDARY_DARK = "#CBD5E1"  # slate 300
-TEXT_MUTED_DARK = "#94A3B8"  # slate 400
-BORDER_SUBTLE_DARK = "#334155"  # slate 700
-BORDER_MEDIUM_DARK = "#475569"  # slate 600
+# -- Dark mode surface tokens --------------------------------------------------
+SURFACE_BASE_DARK = "#0F172A"
+SURFACE_ELEVATED_DARK = "#1E293B"
+SURFACE_RAISED_DARK = "#334155"
+TEXT_PRIMARY_DARK = "#F1F5F9"
+TEXT_SECONDARY_DARK = "#CBD5E1"
+TEXT_MUTED_DARK = "#94A3B8"
+BORDER_SUBTLE_DARK = "#334155"
+BORDER_MEDIUM_DARK = "#475569"
+
+# -- Dark mode chart colorway --------------------------------------------------
+CHART_COLORWAY_DARK = [
+    "#2D7AC9",  # bright blue
+    "#7DD3E0",  # bright teal
+    "#A2D06E",  # lime green (same — already bright)
+    "#FBBF24",  # bright amber
+    "#5A97D6",  # light blue
+]
 
 # -- Dark mode message colors for iframe toolbar ---------------------------------
 MSG_SUCCESS_DARK = "#86EFAC"  # green (matches --success-text in dark)
@@ -136,9 +148,10 @@ def apply_plotly_theme() -> None:
     )
 
     # ── Dark template (boteco-dark) ──────────────────────────
+    _dark_layout = dict(_shared_layout, colorway=CHART_COLORWAY_DARK)
     pio.templates["boteco-dark"] = go.layout.Template(
         layout=dict(
-            **_shared_layout,
+            **_dark_layout,
             hoverlabel=dict(
                 bgcolor=SURFACE_RAISED_DARK,
                 font_size=12,
