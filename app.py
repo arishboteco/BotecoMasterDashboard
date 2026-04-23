@@ -187,7 +187,7 @@ else:
         _idx = _outlet_options.index(_current)
 
         def _on_outlet_change():
-            _new = st.session_state["sidebar_outlet_switcher"]
+            _new = st.session_state.get("sidebar_outlet_switcher", "all")
             st.session_state.view_scope = _new
             if _new != "all":
                 try:
