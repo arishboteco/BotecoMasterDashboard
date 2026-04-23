@@ -82,6 +82,38 @@ if st.query_params.get("health") == "check":
 # Apply centralized CSS
 st.markdown(styles.get_css(), unsafe_allow_html=True)
 
+# Detect and propagate Streamlit's active theme to the CSS token system.
+# Streamlit applies a .stApp[data-theme="dark"] class to the root; we mirror it
+# as a plain data-theme attribute so all :root[data-theme="dark"] { … } CSS
+# rules in styles/_tokens.py activate automatically.
+_theme_script = """
+<script id="boteco-theme-sync">
+(function() {
+    function applyTheme(dark) {
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    }
+
+    function detect() {
+        var app = document.querySelector('.stApp');
+        if (!app) return;
+        var dark =
+            app.getAttribute('data-theme') === 'dark' ||
+            (app.classList.contains('stApp') && app.className.includes('dark'));
+        applyTheme(dark);
+    }
+
+    detect();
+    // React to mid-session theme changes
+    if (window.MutationObserver) {
+        new MutationObserver(detect).observe(
+            document.querySelector('.stApp') || document.body,
+            { attributes: true, attributeFilter: ['data-theme', 'class'] }
+        );
+    }
+})();
+</script>"""
+st.markdown(_theme_script, unsafe_allow_html=True)
+
 # Initialize authentication
 auth.init_auth_state()
 
