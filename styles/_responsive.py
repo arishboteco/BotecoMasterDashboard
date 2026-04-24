@@ -70,11 +70,35 @@ MOBILE_TOUCH_IMPROVEMENTS = r"""    /* ── Mobile touch improvements ──�
         [data-testid="stVerticalBlock"] {
             gap: 0.5rem !important;
         }
-        /* Stack report cards on mobile */
-        [data-testid="stHorizontalBlock"] {
+        /* Stack column layouts only when a child is wide content that would
+           squish to illegibility on narrow screens (charts, tables, metrics,
+           form inputs). Icon rows and centering layouts with [1,2,1] / [1,4,1]
+           spacers stay horizontal. Requires :has() — Chrome 105+, Safari 15.4+,
+           Firefox 121+; older browsers keep the row layout (harmless fallback). */
+        [data-testid="stHorizontalBlock"]:is(
+            :has([data-testid="stPlotlyChart"]),
+            :has([data-testid="stDataFrame"]),
+            :has([data-testid="stMetric"]),
+            :has([data-testid="stTextInput"]),
+            :has([data-testid="stNumberInput"]),
+            :has([data-testid="stSelectbox"]),
+            :has([data-testid="stDateInput"]),
+            :has([data-testid="stTextArea"]),
+            :has([data-testid="stFileUploader"])
+        ) {
             flex-direction: column !important;
         }
-        [data-testid="stHorizontalBlock"] > div {
+        [data-testid="stHorizontalBlock"]:is(
+            :has([data-testid="stPlotlyChart"]),
+            :has([data-testid="stDataFrame"]),
+            :has([data-testid="stMetric"]),
+            :has([data-testid="stTextInput"]),
+            :has([data-testid="stNumberInput"]),
+            :has([data-testid="stSelectbox"]),
+            :has([data-testid="stDateInput"]),
+            :has([data-testid="stTextArea"]),
+            :has([data-testid="stFileUploader"])
+        ) > div {
             width: 100% !important;
         }
         /* Scrollable tables on mobile */
@@ -85,20 +109,6 @@ MOBILE_TOUCH_IMPROVEMENTS = r"""    /* ── Mobile touch improvements ──�
             display: block;
             overflow-x: auto;
             white-space: nowrap;
-        }
-    }
-
-"""
-
-STACK_ON_MOBILE_UTILITY = r"""    /* ── .stack-on-mobile utility — opt-in column stacking ── */
-    @media (max-width: 768px) {
-        .stack-on-mobile [data-testid="stHorizontalBlock"] {
-            flex-wrap: wrap !important;
-            gap: 0.75rem !important;
-        }
-        .stack-on-mobile [data-testid="stHorizontalBlock"] > div {
-            flex: 1 1 100% !important;
-            width: 100% !important;
         }
     }
 

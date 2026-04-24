@@ -11,17 +11,11 @@ BRAND_SOFT = (
     "#E6F4F3"  # Soft teal tint — backgrounds (teal, not blue, for tropical feel)
 )
 BRAND_SECONDARY = "#3FA7A3"  # Teal Blue — secondary actions
-BRAND_SECONDARY_DARK = "#2F8C89"  # Dark teal — secondary hover
 BRAND_SUCCESS = "#3FA7A3"  # Teal — positive deltas (same as BRAND_SECONDARY — distinct semantic roles)
 BRAND_WARN = "#F4B400"  # Golden Mustard — warning
 BRAND_GREEN = "#6DBE45"  # Leaf Green — freshness, Zomato charts
 BRAND_ERROR = "#EF4444"  # Red — negative deltas, destructive
 BRAND_INFO = "#6366F1"  # Indigo — info
-
-# -- Conditional formatting colors for tables --------------------------------
-TABLE_ACHIEVEMENT_GREEN = "#10B981"  # ≥100% achievement
-TABLE_ACHIEVEMENT_YELLOW = "#FBBF24"  # 70–99% achievement
-TABLE_ACHIEVEMENT_RED = "#EF4444"  # <70% achievement
 
 # -- Achievement % cell styles (bg + text pairs for Styler.map) --------------
 # Light bg + dark text pairs; contrast is intrinsic to the cell, readable on
@@ -50,15 +44,8 @@ TEXT_MUTED = "#475569"  # Muted text — slate 600 (WCAG AA compliant, was 500 w
 BORDER_SUBTLE = "#E2E8F0"  # Light borders — slate 200
 BORDER_MEDIUM = "#CBD5E1"  # Medium borders — slate 300
 
-# -- Shadow system -------------------------------------------------------------
+# -- Shadow (single size used by iframe toolbar) -------------------------------
 SHADOW_SM = "0 1px 2px rgba(0,0,0,0.05)"
-SHADOW_MD = "0 4px 6px rgba(0,0,0,0.07)"
-SHADOW_LG = "0 10px 15px rgba(0,0,0,0.1)"
-
-# -- Border radius system ------------------------------------------------------
-RADIUS_SM = "6px"
-RADIUS_MD = "8px"
-RADIUS_LG = "12px"
 
 # -- Chart colorway — Boteco Mango brand, 5-color palette ---------------------
 CHART_COLORWAY = [
@@ -70,7 +57,6 @@ CHART_COLORWAY = [
 ]
 
 CHART_HEIGHT = 380
-CHART_HEIGHT_MOBILE = 280  # Used via responsive CSS override + autosize=True
 CHART_MARGIN = dict(l=48, r=28, t=56, b=48)
 
 # -- Message text colors for iframe toolbar (distinct from button-flash accents) --
@@ -78,12 +64,6 @@ CHART_MARGIN = dict(l=48, r=28, t=56, b=48)
 MSG_SUCCESS = "#15803D"  # matches --success-text
 MSG_WARNING = "#B45309"  # amber-700
 MSG_ERROR = "#B91C1C"  # matches --error-text
-
-# -- Shared hovertemplate fragments -------------------------------------------
-# Bold metric value + de-emphasized label. `%{` placeholders are escaped for f-strings.
-HOVERTEMPLATE_SALES = "<b>₹%{y:,.0f}</b><br><span style='color:#475569'>%{x}</span><extra></extra>"
-HOVERTEMPLATE_APC = "<b>₹%{y:,.1f}</b><br><span style='color:#475569'>%{x}</span><extra></extra>"
-HOVERTEMPLATE_COUNT = "<b>%{y:,d}</b><br><span style='color:#475569'>%{x}</span><extra></extra>"
 
 
 def apply_plotly_theme() -> None:
