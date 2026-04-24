@@ -533,6 +533,17 @@ def render_share_images_button(
     uid = _safe_id(component_key + "s")
     stl = _btn_style(primary=primary)
 
+    # Theme-aware message colors (iframe can't read parent's CSS vars)
+    theme = st.session_state.get("theme", "light")
+    if theme == "dark":
+        msg_success = ui_theme.MSG_SUCCESS_DARK
+        msg_warning = ui_theme.MSG_WARNING_DARK
+        msg_error = ui_theme.MSG_ERROR_DARK
+    else:
+        msg_success = ui_theme.MSG_SUCCESS_LIGHT
+        msg_warning = ui_theme.MSG_WARNING_LIGHT
+        msg_error = ui_theme.MSG_ERROR_LIGHT
+
     # JSON-safe representation of files array
     files_json = (
         "["
@@ -641,5 +652,8 @@ def render_share_images_button(
         files_json=files_json,
         share_text_json=json.dumps(share_text),
         fallback_url_json=fallback_url_json,
+        msg_success=msg_success,
+        msg_warning=msg_warning,
+        msg_error=msg_error,
     )
     _html(html, height, component_key)
