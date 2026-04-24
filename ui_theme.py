@@ -73,24 +73,11 @@ CHART_HEIGHT = 380
 CHART_HEIGHT_MOBILE = 280  # Used via responsive CSS override + autosize=True
 CHART_MARGIN = dict(l=48, r=28, t=56, b=48)
 
-# -- Dark mode surface tokens (used by boteco-dark Plotly template) -----------
-SURFACE_BASE_DARK = "#0F172A"  # slate 900
-SURFACE_ELEVATED_DARK = "#1E293B"  # slate 800
-SURFACE_RAISED_DARK = "#334155"  # slate 700
-TEXT_PRIMARY_DARK = "#F1F5F9"  # slate 100
-TEXT_SECONDARY_DARK = "#CBD5E1"  # slate 300
-TEXT_MUTED_DARK = "#94A3B8"  # slate 400
-BORDER_SUBTLE_DARK = "#334155"  # slate 700
-BORDER_MEDIUM_DARK = "#475569"  # slate 600
-
 # -- Message text colors for iframe toolbar (distinct from button-flash accents) --
 # Chosen for readability on surrounding surface (not for brand punch).
-MSG_SUCCESS_LIGHT = "#15803D"  # matches --success-text in light
-MSG_WARNING_LIGHT = "#B45309"  # matches --warning-text equivalent (amber-700)
-MSG_ERROR_LIGHT = "#B91C1C"  # matches --error-text in light
-MSG_SUCCESS_DARK = "#86EFAC"  # green (matches --success-text in dark)
-MSG_WARNING_DARK = "#FBBF24"  # amber (matches --accent-amber in dark)
-MSG_ERROR_DARK = "#FCA5A5"  # red (matches --error-text in dark)
+MSG_SUCCESS = "#15803D"  # matches --success-text
+MSG_WARNING = "#B45309"  # amber-700
+MSG_ERROR = "#B91C1C"  # matches --error-text
 
 # -- Shared hovertemplate fragments -------------------------------------------
 # Bold metric value + de-emphasized label. `%{` placeholders are escaped for f-strings.
@@ -100,32 +87,26 @@ HOVERTEMPLATE_COUNT = "<b>%{y:,d}</b><br><span style='color:#475569'>%{x}</span>
 
 
 def apply_plotly_theme() -> None:
-    """Register `boteco` (light) and `boteco-dark` templates; set `boteco` as default."""
-    # Shared layout properties across light/dark variants
-    _shared_layout = dict(
-        font=dict(
-            family="Inter, sans-serif",
-            size=13,
-        ),
-        colorway=CHART_COLORWAY,
-        margin=CHART_MARGIN,
-        autosize=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.25,
-            xanchor="center",
-            x=0.5,
-            bgcolor="rgba(0,0,0,0)",
-            bordercolor="rgba(0,0,0,0)",
-            font=dict(size=11, family="Inter, sans-serif"),
-        ),
-    )
-
-    # ── Light template (boteco) ──────────────────────────────
+    """Register the `boteco` Plotly template and set it as default."""
     pio.templates["boteco"] = go.layout.Template(
         layout=dict(
-            **_shared_layout,
+            font=dict(
+                family="Inter, sans-serif",
+                size=13,
+            ),
+            colorway=CHART_COLORWAY,
+            margin=CHART_MARGIN,
+            autosize=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.25,
+                xanchor="center",
+                x=0.5,
+                bgcolor="rgba(0,0,0,0)",
+                bordercolor="rgba(0,0,0,0)",
+                font=dict(size=11, family="Inter, sans-serif"),
+            ),
             hoverlabel=dict(
                 bgcolor=SURFACE_ELEVATED,
                 font_size=12,
@@ -155,48 +136,4 @@ def apply_plotly_theme() -> None:
             ),
         )
     )
-
-    # ── Dark template (boteco-dark) ──────────────────────────
-    pio.templates["boteco-dark"] = go.layout.Template(
-        layout=dict(
-            **_shared_layout,
-            hoverlabel=dict(
-                bgcolor=SURFACE_RAISED_DARK,
-                font_size=12,
-                bordercolor=BORDER_SUBTLE_DARK,
-                font_family="Inter, sans-serif",
-                font_color=TEXT_PRIMARY_DARK,
-                align="left",
-                namelength=-1,
-            ),
-            title=dict(
-                font=dict(size=15, color=TEXT_PRIMARY_DARK), x=0.02, xanchor="left"
-            ),
-            plot_bgcolor=SURFACE_BASE_DARK,
-            paper_bgcolor=SURFACE_BASE_DARK,
-            xaxis=dict(
-                gridcolor=BORDER_SUBTLE_DARK,
-                gridwidth=1,
-                zerolinecolor=BORDER_MEDIUM_DARK,
-                title_font=dict(size=12, color=TEXT_SECONDARY_DARK),
-                tickfont=dict(size=11, color=TEXT_MUTED_DARK),
-            ),
-            yaxis=dict(
-                gridcolor=BORDER_SUBTLE_DARK,
-                gridwidth=1,
-                zerolinecolor=BORDER_MEDIUM_DARK,
-                title_font=dict(size=12, color=TEXT_SECONDARY_DARK),
-                tickfont=dict(size=11, color=TEXT_MUTED_DARK),
-                tickformat=",",
-            ),
-        )
-    )
-
     pio.templates.default = "plotly_white+boteco"
-
-
-def plotly_template_for_theme(theme: str = "light") -> str:
-    """Return the Plotly template chain string for the given UI theme."""
-    if theme == "dark":
-        return "plotly_dark+boteco-dark"
-    return "plotly_white+boteco"
