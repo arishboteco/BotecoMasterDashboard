@@ -2,9 +2,9 @@
 
 Both files encode the same brand palette in different shapes: Python constants
 for Plotly / iframe-embedded HTML, CSS variables for the main stylesheet.
-When they drift (e.g. a brand hex updated in one but not the other) dark mode
-and Plotly charts go out of sync with the rest of the UI. This test pins the
-mapping so CI catches accidental drift.
+When they drift (e.g. a brand hex updated in one but not the other) Plotly
+charts go out of sync with the rest of the UI. This test pins the mapping so
+CI catches accidental drift.
 """
 
 from __future__ import annotations
@@ -35,13 +35,8 @@ def light_tokens() -> dict[str, str]:
     return _extract_tokens(_tokens.TOKEN_SYSTEM, ":root")
 
 
-@pytest.fixture(scope="module")
-def dark_tokens() -> dict[str, str]:
-    return _extract_tokens(_tokens.TOKEN_SYSTEM, ':root[data-theme="dark"]')
-
-
 # Pairs: (ui_theme attribute, CSS custom-property name)
-LIGHT_PAIRS = [
+PALETTE_PAIRS = [
     ("BRAND_PRIMARY", "--brand"),
     ("BRAND_DARK", "--brand-dark"),
     ("BRAND_LIGHT", "--brand-light"),
@@ -56,36 +51,12 @@ LIGHT_PAIRS = [
     ("BORDER_MEDIUM", "--border-medium"),
 ]
 
-DARK_PAIRS = [
-    # Note: dark-mode --surface / --surface-elevated swap roles vs. light
-    # (--surface in dark is the "card" color, not the page bg), so those pairs
-    # are intentionally omitted here. Text and border tokens map 1:1.
-    ("SURFACE_RAISED_DARK", "--surface-raised"),
-    ("TEXT_PRIMARY_DARK", "--text"),
-    ("TEXT_SECONDARY_DARK", "--text-secondary"),
-    ("TEXT_MUTED_DARK", "--text-muted"),
-    ("BORDER_SUBTLE_DARK", "--border-subtle"),
-    ("BORDER_MEDIUM_DARK", "--border-medium"),
-]
 
-
-class TestLightPalette:
-    @pytest.mark.parametrize("attr,token", LIGHT_PAIRS)
-    def test_ui_theme_matches_css_token(self, attr, token, light_tokens):
-        py_value = getattr(ui_theme, attr).upper()
-        css_value = light_tokens[token].upper()
-        assert py_value == css_value, (
-            f"{attr} = {py_value} but {token} = {css_value} "
-            "(drift between ui_theme.py and styles/_tokens.py)"
-        )
-
-
-class TestDarkPalette:
-    @pytest.mark.parametrize("attr,token", DARK_PAIRS)
-    def test_ui_theme_matches_css_token(self, attr, token, dark_tokens):
-        py_value = getattr(ui_theme, attr).upper()
-        css_value = dark_tokens[token].upper()
-        assert py_value == css_value, (
-            f"{attr} = {py_value} but {token} (dark) = {css_value} "
-            "(drift between ui_theme.py and styles/_tokens.py)"
-        )
+@pytest.mark.parametrize("attr,token", PALETTE_PAIRS)
+def test_ui_theme_matches_css_token(attr, token, light_tokens):
+    py_value = getattr(ui_theme, attr).upper()
+    css_value = light_tokens[token].upper()
+    assert py_value == css_value, (
+        f"{attr} = {py_value} but {token} = {css_value} "
+        "(drift between ui_theme.py and styles/_tokens.py)"
+    )

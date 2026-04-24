@@ -58,18 +58,6 @@ BASE_TYPOGRAPHY = r"""    /* ── Base typography ─────────�
         font-family: var(--font-body) !important;
     }
 
-    /* Dark mode: brighten tab hover/selected foreground for AA compliance */
-    :root[data-theme="dark"] button[data-baseweb="tab"]:hover,
-    :root[data-theme="dark"] button[data-baseweb="tab"][aria-selected="true"] {
-        color: var(--brand-light) !important;
-    }
-    @media (prefers-color-scheme: dark) {
-        :root:not([data-theme="light"]) button[data-baseweb="tab"]:hover,
-        :root:not([data-theme="light"]) button[data-baseweb="tab"][aria-selected="true"] {
-            color: var(--brand-light) !important;
-        }
-    }
-
 """
 
 BRANDED_HEADER = r"""    /* ── Branded header ─────────────────────────────────────── */
@@ -178,18 +166,6 @@ TAB_BAR_REFINEMENT = r"""    /* ── Tab bar refinement ───────�
     button[data-baseweb="tab"][aria-selected="true"] {
         background-color: var(--brand-soft) !important;
         border-radius: var(--radius-sm) var(--radius-sm) 0 0 !important;
-    }
-    /* Dark-mode: --brand (#3A7FC9) on --brand-soft (#1E3A5F) is 2.77:1 which
-       fails WCAG UI-component 3:1. Brighten the text to --brand-light. */
-    :root[data-theme="dark"] button[data-baseweb="tab"]:hover,
-    :root[data-theme="dark"] button[data-baseweb="tab"][aria-selected="true"] {
-        color: var(--brand-light) !important;
-    }
-    @media (prefers-color-scheme: dark) {
-        :root:not([data-theme="light"]):not([data-theme="dark"]) button[data-baseweb="tab"]:hover,
-        :root:not([data-theme="light"]):not([data-theme="dark"]) button[data-baseweb="tab"][aria-selected="true"] {
-            color: var(--brand-light) !important;
-        }
     }
 
 """

@@ -2,10 +2,6 @@
 
 LOGIN_CSS = r"""
 <style>
-    /* Login token subset. Light values live in :root; the
-       :root[data-theme="dark"] block overrides them when data-theme is set
-       on <html> (see app.py theme-injection script). The OS-preference
-       fallback keeps dark mode working when no attribute is set yet. */
     :root {
         --brand: #1F5FA8;
         --brand-dark: #174A82;
@@ -23,44 +19,6 @@ LOGIN_CSS = r"""
         --login-caps-text: #92400E;
         --login-caps-border: #FDE68A;
         --login-image-bg: #F1F5F9;
-    }
-    :root[data-theme="dark"] {
-        --brand: #3A7FC9;
-        --brand-dark: #2A6BB3;
-        --brand-light: #5A97D6;
-        --text: #F1F5F9;
-        --text-muted: #94A3B8;
-        --login-page-bg: #0F172A;
-        --login-card-bg: #1E293B;
-        --login-card-border: #334155;
-        --login-card-shadow: 0 4px 6px -1px rgba(0,0,0,0.45),
-                             0 20px 40px -8px rgba(0,0,0,0.5);
-        --login-label: #CBD5E1;
-        --login-footer-text: #94A3B8;
-        --login-caps-bg: #78350F;
-        --login-caps-text: #FDE68A;
-        --login-caps-border: #92400E;
-        --login-image-bg: #334155;
-    }
-    @media (prefers-color-scheme: dark) {
-        :root:not([data-theme="light"]) {
-            --brand: #3A7FC9;
-            --brand-dark: #2A6BB3;
-            --brand-light: #5A97D6;
-            --text: #F1F5F9;
-            --text-muted: #94A3B8;
-            --login-page-bg: #0F172A;
-            --login-card-bg: #1E293B;
-            --login-card-border: #334155;
-            --login-card-shadow: 0 4px 6px -1px rgba(0,0,0,0.45),
-                                 0 20px 40px -8px rgba(0,0,0,0.5);
-            --login-label: #CBD5E1;
-            --login-footer-text: #94A3B8;
-            --login-caps-bg: #78350F;
-            --login-caps-text: #FDE68A;
-            --login-caps-border: #92400E;
-            --login-image-bg: #334155;
-        }
     }
     /* Fonts imported by _fonts.FONTS in main stylesheet (applied before auth). */
 

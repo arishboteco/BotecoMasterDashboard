@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import streamlit as st
-import streamlit.components.v1 as _components
 from datetime import datetime
 
 import config
@@ -82,50 +81,6 @@ if st.query_params.get("health") == "check":
 
 # Apply centralized CSS
 st.markdown(styles.get_css(), unsafe_allow_html=True)
-
-# Detect active Streamlit theme (light/dark) from context or ?theme= param.
-# Runs before the auth check so the login page also gets a correct data-theme.
-_theme = "light"
-_context = getattr(st, "context", None)
-_context_theme = getattr(_context, "theme", None)
-_context_theme_type = getattr(_context_theme, "type", None)
-if _context_theme_type in {"light", "dark"}:
-    _theme = _context_theme_type
-else:
-    _query_theme = st.query_params.get("theme")
-    if _query_theme in {"light", "dark"}:
-        _theme = _query_theme
-
-# Store for clipboard_ui and other components that need it.
-st.session_state["theme"] = _theme
-
-# Activate CSS token dark-mode branch by setting data-theme on <html>.
-# Uses a sandboxed component iframe; window.parent is the Streamlit app frame.
-# The script is defensive: (1) try window.parent first, fall back to window.top
-# for deeply-nested iframe hosts, (2) short-circuit when the attribute is
-# already correct so we don't churn the cascade, (3) swallow cross-origin
-# access errors silently instead of dropping the rest of the rerun.
-_components.html(
-    "<script>"
-    "(function(){"
-    f'var t="{_theme}";'
-    "function apply(doc){"
-    'if(doc.getAttribute("data-theme")!==t){'
-    'doc.setAttribute("data-theme",t);'
-    "}"
-    "}"
-    "try{apply(window.parent.document.documentElement);return;}catch(e){}"
-    "try{apply(window.top.document.documentElement);}catch(e){}"
-    "})();"
-    "</script>",
-    height=0,
-)
-
-import plotly.io as _pio
-
-_pio.templates.default = ui_theme.plotly_template_for_theme(
-    "dark" if _theme == "dark" else "light"
-)
 
 # Initialize authentication
 auth.init_auth_state()

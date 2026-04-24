@@ -140,30 +140,16 @@ def render_image_action_row(
     # NOTE: The Material Symbols <link> below is intentional — this HTML
     # renders inside st.iframe whose sandbox has no inherited fonts.
     # Do not remove, even though the same font is loaded in styles.py.
-    theme = st.session_state.get("theme", "light")
-
-    if theme == "dark":
-        tray_bg = ui_theme.SURFACE_ELEVATED_DARK
-        border = ui_theme.BORDER_SUBTLE_DARK
-        icon_default = ui_theme.TEXT_SECONDARY_DARK
-        hover_bg = ui_theme.BRAND_DARK
-        hover_fg = ui_theme.BRAND_LIGHT
-        success_color = ui_theme.MSG_SUCCESS_DARK
-        error_color = ui_theme.MSG_ERROR_DARK
-        msg_success = ui_theme.MSG_SUCCESS_DARK
-        msg_warning = ui_theme.MSG_WARNING_DARK
-        msg_error = ui_theme.MSG_ERROR_DARK
-    else:
-        tray_bg = ui_theme.SURFACE_BASE
-        border = ui_theme.BORDER_SUBTLE
-        icon_default = ui_theme.TEXT_SECONDARY
-        hover_bg = ui_theme.BRAND_SOFT
-        hover_fg = ui_theme.BRAND_PRIMARY
-        success_color = ui_theme.BRAND_GREEN
-        error_color = ui_theme.BRAND_ERROR
-        msg_success = ui_theme.MSG_SUCCESS_LIGHT
-        msg_warning = ui_theme.MSG_WARNING_LIGHT
-        msg_error = ui_theme.MSG_ERROR_LIGHT
+    tray_bg = ui_theme.SURFACE_BASE
+    border = ui_theme.BORDER_SUBTLE
+    icon_default = ui_theme.TEXT_SECONDARY
+    hover_bg = ui_theme.BRAND_SOFT
+    hover_fg = ui_theme.BRAND_PRIMARY
+    success_color = ui_theme.BRAND_GREEN
+    error_color = ui_theme.BRAND_ERROR
+    msg_success = ui_theme.MSG_SUCCESS
+    msg_warning = ui_theme.MSG_WARNING
+    msg_error = ui_theme.MSG_ERROR
 
     html = f"""
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..24,400,0,0&display=swap" rel="stylesheet">
@@ -533,16 +519,9 @@ def render_share_images_button(
     uid = _safe_id(component_key + "s")
     stl = _btn_style(primary=primary)
 
-    # Theme-aware message colors (iframe can't read parent's CSS vars)
-    theme = st.session_state.get("theme", "light")
-    if theme == "dark":
-        msg_success = ui_theme.MSG_SUCCESS_DARK
-        msg_warning = ui_theme.MSG_WARNING_DARK
-        msg_error = ui_theme.MSG_ERROR_DARK
-    else:
-        msg_success = ui_theme.MSG_SUCCESS_LIGHT
-        msg_warning = ui_theme.MSG_WARNING_LIGHT
-        msg_error = ui_theme.MSG_ERROR_LIGHT
+    msg_success = ui_theme.MSG_SUCCESS
+    msg_warning = ui_theme.MSG_WARNING
+    msg_error = ui_theme.MSG_ERROR
 
     # JSON-safe representation of files array
     files_json = (
