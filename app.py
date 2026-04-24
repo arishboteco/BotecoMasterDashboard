@@ -180,7 +180,12 @@ else:
         _idx = _outlet_options.index(_current)
 
         def _on_outlet_change():
-            _new = st.session_state["sidebar_outlet_switcher"]
+            # Streamlit fires on_script_will_rerun callbacks before the widget
+            # is remounted; if session_state was cleared (login/logout, etc.)
+            # the key may be missing. Bail out silently in that case.
+            _new = st.session_state.get("sidebar_outlet_switcher")
+            if _new is None:
+                return
             st.session_state.view_scope = _new
             if _new != "all":
                 try:
