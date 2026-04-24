@@ -15,6 +15,7 @@ import utils
 from auth import is_admin
 from tabs import TabContext
 from components.navigation import date_range_nav
+from components.forms import confirm_dialog
 
 
 def render(ctx: TabContext) -> None:
@@ -44,7 +45,7 @@ def render(ctx: TabContext) -> None:
     # ADMIN-ONLY SECTIONS BELOW
     # ─────────────────────────────────────────────────────────────
 
-    st.markdown("---")
+    st.divider()
 
     # ── Location settings ─────────────────────────────────────────
     st.markdown("### Outlet Settings")
@@ -80,6 +81,7 @@ def render(ctx: TabContext) -> None:
                         else config.MONTHLY_TARGET
                     ),
                     step=100000,
+                    help="Enter in rupees — e.g. 5000000 for ₹50,00,000",
                 )
             with lf3:
                 seat_default = 0
@@ -118,6 +120,7 @@ def render(ctx: TabContext) -> None:
                     min_value=0,
                     value=config.MONTHLY_TARGET,
                     step=100000,
+                    help="Enter in rupees — e.g. 5000000 for ₹50,00,000",
                 )
             with nl3:
                 nl_seats = st.number_input(
@@ -152,32 +155,32 @@ def render(ctx: TabContext) -> None:
                 format_func=lambda i: del_loc_opts[i],
                 key="del_loc_select",
             )
+            if "_outlet_delete_result" in st.session_state:
+                ok, msg = st.session_state.pop("_outlet_delete_result")
+                if ok:
+                    st.success(msg)
+                else:
+                    st.error(msg)
             if st.button("Delete outlet", key="del_loc_btn", type="secondary"):
                 st.session_state["_pending_loc_delete"] = del_loc_id
-            pld = st.session_state.get("_pending_loc_delete")
-            if pld:
-                st.error(
-                    f"**Confirm:** permanently delete outlet "
-                    f"**{del_loc_opts.get(pld, pld)}**?"
-                )
-                dlc1, dlc2 = st.columns(2)
-                with dlc1:
-                    if st.button(
-                        "Yes, delete outlet", key="del_loc_yes", type="primary"
-                    ):
-                        ok, msg = database.delete_location(pld)
-                        st.session_state.pop("_pending_loc_delete", None)
-                        if ok:
-                            st.success(msg)
-                        else:
-                            st.error(msg)
-                        st.rerun()
-                with dlc2:
-                    if st.button("Cancel", key="del_loc_no"):
-                        st.session_state.pop("_pending_loc_delete", None)
-                        st.rerun()
 
-    st.markdown("---")
+            def _do_delete_outlet(_id=st.session_state.get("_pending_loc_delete")):
+                ok, msg = database.delete_location(_id)
+                st.session_state.pop("_pending_loc_delete", None)
+                st.session_state["_outlet_delete_result"] = (ok, msg)
+                st.rerun()
+
+            confirm_dialog(
+                message=(
+                    f"**Confirm:** permanently delete outlet "
+                    f"**{del_loc_opts.get(st.session_state.get('_pending_loc_delete'), '')}**?"
+                ),
+                confirm_key="_pending_loc_delete",
+                on_confirm=_do_delete_outlet,
+                confirm_label="Yes, delete outlet",
+            )
+
+    st.divider()
 
     # ── User management ───────────────────────────────────────────
     st.markdown("### User Management")
@@ -314,31 +317,37 @@ def render(ctx: TabContext) -> None:
                 format_func=lambda i: du_opts[i],
                 key="del_user_select",
             )
+            if "_user_delete_result" in st.session_state:
+                ok, msg = st.session_state.pop("_user_delete_result")
+                if ok:
+                    st.success(msg)
+                else:
+                    st.error(msg)
             if st.button("Delete user", key="del_user_btn", type="secondary"):
                 st.session_state["_pending_user_delete"] = du_id
-            pud = st.session_state.get("_pending_user_delete")
-            if pud:
-                st.error(
-                    f"**Confirm:** permanently delete user **{du_opts.get(pud, pud)}**?"
-                )
-                duc1, duc2 = st.columns(2)
-                with duc1:
-                    if st.button(
-                        "Yes, delete user", key="del_user_yes", type="primary"
-                    ):
-                        ok, msg = database.delete_user(pud, st.session_state.username)
-                        st.session_state.pop("_pending_user_delete", None)
-                        if ok:
-                            st.success(msg)
-                        else:
-                            st.error(msg)
-                        st.rerun()
-                with duc2:
-                    if st.button("Cancel", key="del_user_no"):
-                        st.session_state.pop("_pending_user_delete", None)
-                        st.rerun()
 
-    st.markdown("---")
+            _current_user = st.session_state.username
+
+            def _do_delete_user(
+                _id=st.session_state.get("_pending_user_delete"),
+                _actor=_current_user,
+            ):
+                ok, msg = database.delete_user(_id, _actor)
+                st.session_state.pop("_pending_user_delete", None)
+                st.session_state["_user_delete_result"] = (ok, msg)
+                st.rerun()
+
+            confirm_dialog(
+                message=(
+                    f"**Confirm:** permanently delete user "
+                    f"**{du_opts.get(st.session_state.get('_pending_user_delete'), '')}**?"
+                ),
+                confirm_key="_pending_user_delete",
+                on_confirm=_do_delete_user,
+                confirm_label="Yes, delete user",
+            )
+
+    st.divider()
 
     # ── Data export ───────────────────────────────────────────────
     st.markdown("### Data Export")
@@ -407,14 +416,14 @@ def render(ctx: TabContext) -> None:
     else:
         st.caption("No data found for the selected filters.")
 
-    st.markdown("---")
+    st.divider()
 
-    # ── Wipe All Data (DEV ONLY) ──────────────────────────────────
+    # ── Wipe All Data ─────────────────────────────────────────────
     with st.container(border=True):
-        st.markdown("### Wipe All Data (Development Only)")
+        st.markdown("### Wipe All Data")
         st.caption(
             "Permanently deletes ALL daily summaries, categories, services, items, and upload history. "
-            "Outlets and users are preserved. This action cannot be undone."
+            "Outlets and users are preserved. **This action cannot be undone.**"
         )
         wipe_confirm = st.checkbox(
             "I understand this will permanently delete ALL operational data",
@@ -451,21 +460,21 @@ def render(ctx: TabContext) -> None:
                     if count > 0:
                         st.write(f"- `{table}`: {count:,} records deleted")
             else:
-                st.error(
-                    "Wipe completed but 0 records were deleted. Check for RLS policy restrictions on Supabase tables."
-                )
+                st.error("Wipe completed but no records were deleted.")
             if errors:
                 for err in errors:
                     st.warning(f"- {err}")
 
-    st.markdown("---")
+    st.divider()
 
     # ── Quick outlet stats ────────────────────────────────────────
     with st.expander("Quick stats (all outlets)", expanded=False):
-        for loc in sorted(database.get_all_locations(), key=lambda x: x["name"]):
+        locs_for_stats = sorted(database.get_all_locations(), key=lambda x: x["name"])
+        for i, loc in enumerate(locs_for_stats):
             st.write(f"**{loc['name']}**")
             st.write(
                 f"- Monthly target: {utils.format_currency(loc.get('target_monthly_sales', 0))}"
                 f"  |  Seats: {loc.get('seat_count') or '—'}"
             )
-            st.markdown("---")
+            if i < len(locs_for_stats) - 1:
+                st.divider()
