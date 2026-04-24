@@ -24,6 +24,26 @@ from tabs.forecasting import (
 )
 
 
+def _style_achievement(val) -> str:
+    """Pandas Styler.map function: color an Achievement % cell by band."""
+    if pd.isna(val):
+        return ""
+    if val >= 100:
+        return (
+            f"background-color: {ui_theme.ACHIEVEMENT_HIGH_BG}; "
+            f"color: {ui_theme.ACHIEVEMENT_HIGH_TEXT}"
+        )
+    if val >= 70:
+        return (
+            f"background-color: {ui_theme.ACHIEVEMENT_MED_BG}; "
+            f"color: {ui_theme.ACHIEVEMENT_MED_TEXT}"
+        )
+    return (
+        f"background-color: {ui_theme.ACHIEVEMENT_LOW_BG}; "
+        f"color: {ui_theme.ACHIEVEMENT_LOW_TEXT}"
+    )
+
+
 def _fmt_rupee_short(amount: float) -> str:
     """Format a rupee amount as a short label: ₹1.3k, ₹130k, ₹1.3L.
 
@@ -247,7 +267,9 @@ def render_sales_performance(
                         ma_series = pd.Series(ma_vals)
                         ma_valid = ma_series[pd.notna(ma_series)]
                         if not ma_valid.empty:
-                            ma_color = outlet_colors.get(outlet_name, "#FF6B35")
+                            ma_color = outlet_colors.get(
+                                outlet_name, ui_theme.CHART_MA_ACCENT
+                            )
                             fig_line.add_trace(
                                 go.Scatter(
                                     x=outlet_dates[pd.notna(ma_series)],
@@ -338,7 +360,11 @@ def render_sales_performance(
                                 y=ma_valid.tolist(),
                                 mode="lines",
                                 name="7-day Avg",
-                                line=dict(color="#FF6B35", width=2, dash="dash"),
+                                line=dict(
+                                    color=ui_theme.CHART_MA_ACCENT,
+                                    width=2,
+                                    dash="dash",
+                                ),
                                 opacity=0.7,
                             )
                         )
@@ -758,11 +784,11 @@ def render_revenue_breakdown(
         wd_colors = []
         for i in range(len(wd_agg)):
             if i == _best_idx:
-                wd_colors.append("#22c55e")
+                wd_colors.append(ui_theme.CHART_POSITIVE)
             elif i == _worst_idx:
-                wd_colors.append("#ef4444")
+                wd_colors.append(ui_theme.CHART_NEGATIVE)
             else:
-                wd_colors.append("#6366f1")
+                wd_colors.append(ui_theme.CHART_NEUTRAL)
 
         wd_patterns = [
             "✓" if v >= daily_tgt else "⚠" if v >= daily_tgt * 0.8 else "✗"
@@ -1076,16 +1102,6 @@ def render_target_and_daily(
         st.markdown("### Daily Data")
         dv = build_daily_view_table(df, df_raw, multi_analytics, numeric=True)
 
-        def _style_achievement(val):
-            if pd.isna(val):
-                return ""
-            if val >= 100:
-                return "background-color: #dcfce7; color: #166534"
-            elif val >= 70:
-                return "background-color: #fef9c3; color: #854d0e"
-            else:
-                return "background-color: #fee2e2; color: #991b1b"
-
         dv_display = dv.copy()
         _is_multi_table = "Outlet" in dv_display.columns
         rename_map = {
@@ -1121,16 +1137,6 @@ def render_target_and_daily(
         daily_view = build_daily_view_table(
             df, pd.DataFrame(), multi_analytics=False, numeric=True
         )
-
-        def _style_achievement(val):
-            if pd.isna(val):
-                return ""
-            if val >= 100:
-                return "background-color: #dcfce7; color: #166534"
-            elif val >= 70:
-                return "background-color: #fef9c3; color: #854d0e"
-            else:
-                return "background-color: #fee2e2; color: #991b1b"
 
         dv_display = daily_view.rename(
             columns={

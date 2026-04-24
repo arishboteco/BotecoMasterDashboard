@@ -197,10 +197,6 @@ def show_login_form():
                 st.warning("Please enter both username and password")
 
         st.markdown('</div>', unsafe_allow_html=True)  # login-form-wrap
-        st.markdown(
-            '<div class="login-footer">Internal use only · Session secured with cookie auth</div>',
-            unsafe_allow_html=True,
-        )
         st.markdown('</div>', unsafe_allow_html=True)  # login-card
 
 

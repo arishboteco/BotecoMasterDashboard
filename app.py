@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import streamlit as st
+import streamlit.components.v1 as _components
 from datetime import datetime
 
 import config
@@ -82,6 +83,36 @@ if st.query_params.get("health") == "check":
 # Apply centralized CSS
 st.markdown(styles.get_css(), unsafe_allow_html=True)
 
+# Detect active Streamlit theme (light/dark) from context or ?theme= param.
+# Runs before the auth check so the login page also gets a correct data-theme.
+_theme = "light"
+_context = getattr(st, "context", None)
+_context_theme = getattr(_context, "theme", None)
+_context_theme_type = getattr(_context_theme, "type", None)
+if _context_theme_type in {"light", "dark"}:
+    _theme = _context_theme_type
+else:
+    _query_theme = st.query_params.get("theme")
+    if _query_theme in {"light", "dark"}:
+        _theme = _query_theme
+
+# Store for clipboard_ui and other components that need it.
+st.session_state["theme"] = _theme
+
+# Activate CSS token dark-mode branch by setting data-theme on <html>.
+# Uses a sandboxed component iframe; window.parent is the Streamlit app frame.
+_components.html(
+    f'<script>window.parent.document.documentElement'
+    f'.setAttribute("data-theme","{_theme}");</script>',
+    height=0,
+)
+
+import plotly.io as _pio
+
+_pio.templates.default = ui_theme.plotly_template_for_theme(
+    "dark" if _theme == "dark" else "light"
+)
+
 # Initialize authentication
 auth.init_auth_state()
 
@@ -90,26 +121,6 @@ if not auth.check_authentication():
     auth.show_login_form()
 else:
     st.sidebar.image("logo.png", width=180)
-
-    st.sidebar.caption("Theme: use ⋮ -> Settings -> Theme")
-
-    # Switch Plotly template to match active Streamlit theme.
-    _theme = "light"
-    _context = getattr(st, "context", None)
-    _context_theme = getattr(_context, "theme", None)
-    _context_theme_type = getattr(_context_theme, "type", None)
-    if _context_theme_type in {"light", "dark"}:
-        _theme = _context_theme_type
-    else:
-        _query_theme = st.query_params.get("theme")
-        if _query_theme in {"light", "dark"}:
-            _theme = _query_theme
-
-    import plotly.io as _pio
-
-    _pio.templates.default = ui_theme.plotly_template_for_theme(
-        "dark" if _theme == "dark" else "light"
-    )
 
     st.sidebar.divider()
 
