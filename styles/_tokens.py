@@ -15,6 +15,9 @@ TOKEN_SYSTEM = r"""    /* ── Token system ───────────�
         --surface-raised: #FFFFFF;
         --sidebar-bg: #1F5FA8;
         --sidebar-border: #2A6BB3;
+        --sidebar-gradient-start: #1F5FA8;
+        --sidebar-gradient-mid: #174A82;
+        --sidebar-gradient-end: #133F70;
         --table-header-bg: #EEF2F7;
 
         /* Text palette */
@@ -125,6 +128,9 @@ TOKEN_SYSTEM = r"""    /* ── Token system ───────────�
         --surface-raised: #334155;
         --sidebar-bg: #0F172A;
         --sidebar-border: #1E293B;
+        --sidebar-gradient-start: #1E293B;
+        --sidebar-gradient-mid: #0F172A;
+        --sidebar-gradient-end: #020617;
         --table-header-bg: #1E293B;
 
         /* Text palette */
@@ -174,6 +180,9 @@ TOKEN_SYSTEM = r"""    /* ── Token system ───────────�
             --surface-raised: #334155;
             --sidebar-bg: #0F172A;
             --sidebar-border: #1E293B;
+            --sidebar-gradient-start: #1E293B;
+            --sidebar-gradient-mid: #0F172A;
+            --sidebar-gradient-end: #020617;
             --table-header-bg: #1E293B;
             --text: #F1F5F9;
             --text-secondary: #CBD5E1;

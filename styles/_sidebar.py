@@ -150,12 +150,14 @@ SIDEBAR_IMPROVEMENTS = r"""    /* ── Sidebar improvements ──────
 """
 
 SIDEBAR_GRADIENT_REFINEMENT = r"""    /* ── Sidebar gradient refinement ──────────────────────── */
+    /* Use dedicated gradient tokens so dark mode gets a slate gradient
+       instead of the brand-blue one (which only brightens in dark). */
     [data-testid="stSidebar"] {
         background: linear-gradient(
             175deg,
-            var(--brand) 0%,
-            var(--brand-dark) 60%,
-            var(--brand-darker) 100%
+            var(--sidebar-gradient-start) 0%,
+            var(--sidebar-gradient-mid) 60%,
+            var(--sidebar-gradient-end) 100%
         ) !important;
     }
 
