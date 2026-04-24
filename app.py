@@ -101,9 +101,23 @@ st.session_state["theme"] = _theme
 
 # Activate CSS token dark-mode branch by setting data-theme on <html>.
 # Uses a sandboxed component iframe; window.parent is the Streamlit app frame.
+# The script is defensive: (1) try window.parent first, fall back to window.top
+# for deeply-nested iframe hosts, (2) short-circuit when the attribute is
+# already correct so we don't churn the cascade, (3) swallow cross-origin
+# access errors silently instead of dropping the rest of the rerun.
 _components.html(
-    f'<script>window.parent.document.documentElement'
-    f'.setAttribute("data-theme","{_theme}");</script>',
+    "<script>"
+    "(function(){"
+    f'var t="{_theme}";'
+    "function apply(doc){"
+    'if(doc.getAttribute("data-theme")!==t){'
+    'doc.setAttribute("data-theme",t);'
+    "}"
+    "}"
+    "try{apply(window.parent.document.documentElement);return;}catch(e){}"
+    "try{apply(window.top.document.documentElement);}catch(e){}"
+    "})();"
+    "</script>",
     height=0,
 )
 
