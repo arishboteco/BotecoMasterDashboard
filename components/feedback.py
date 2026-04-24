@@ -76,5 +76,5 @@ def empty_state(
     if action_label and action_callback:
         _, btn_col, _ = st.columns([1, 2, 1])
         with btn_col:
-            if st.button(action_label, key=f"empty_state_action_{hash(message)}", use_container_width=True):
+            if st.button(action_label, key=f"empty_state_action_{hash(message)}", width="stretch"):
                 action_callback()

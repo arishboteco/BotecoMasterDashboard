@@ -130,7 +130,7 @@ def show_login_form():
                 unsafe_allow_html=True,
             )
             remember = st.checkbox("Remember me for 30 days", value=True)
-            submit = st.form_submit_button("Sign In", use_container_width=True)
+            submit = st.form_submit_button("Sign In", width="stretch")
 
         # Caps-lock hint: listen to keydown/keyup on password input
         st.markdown(
@@ -312,50 +312,6 @@ def require_auth():
     if not check_authentication():
         show_login_form()
         st.stop()
-
-
-def render_auth_sidebar():
-    """Render authentication info in sidebar."""
-    with st.sidebar:
-        st.markdown("##### Account")
-        st.write(f"**Logged in as:** {st.session_state.username}")
-        st.write(f"**Role:** {st.session_state.user_role}")
-        st.write(f"**Assigned location:** {st.session_state.location_name}")
-        st.divider()
-        st.markdown("##### Reports & scope")
-        st.caption("Daily Report and Analytics use this scope.")
-        locs = database.get_all_locations()
-        if is_manager() and len(locs) > 1:
-            options = ["all"] + [
-                str(l["id"]) for l in sorted(locs, key=lambda x: x["name"])
-            ]
-
-            def _scope_label(k: str) -> str:
-                if k == "all":
-                    return "All locations"
-                for loc in locs:
-                    if str(loc["id"]) == k:
-                        return str(loc["name"])
-                return k
-
-            vs = st.session_state.get("view_scope")
-            if vs not in options:
-                st.session_state.view_scope = "all"
-                vs = "all"
-            ix = options.index(vs)
-            choice = st.selectbox(
-                "Report scope",
-                options=options,
-                index=ix,
-                format_func=_scope_label,
-                key="sidebar_report_scope",
-            )
-            st.session_state.view_scope = choice
-        else:
-            st.session_state.view_scope = str(st.session_state.location_id)
-        st.divider()
-        if st.button("Logout"):
-            logout()
 
 
 def is_admin():
