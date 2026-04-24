@@ -212,7 +212,7 @@ def build_weekday_chart(df: pd.DataFrame, daily_target: float) -> go.Figure:
         if day == best_day
         else ui_theme.BRAND_ERROR
         if day == worst_day
-        else "#94A3B8"  # neutral gray
+        else ui_theme.CHART_BAR_MUTED
         for day in wd_agg["weekday"]
     ]
 

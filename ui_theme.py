@@ -38,6 +38,7 @@ CHART_MA_ACCENT = "#FF6B35"  # Moving-average overlay line (orange)
 CHART_POSITIVE = "#22C55E"  # Best-performer bar (bright green)
 CHART_NEGATIVE = "#EF4444"  # Worst-performer bar (red)
 CHART_NEUTRAL = "#6366F1"  # Neutral bar (indigo)
+CHART_BAR_MUTED = "#94A3B8"  # De-emphasized bar (slate 400) for non-highlight rows
 
 # -- Surface & neutral palette -------------------------------------------------
 SURFACE_BASE = "#F7FAFC"  # Main background — soft off-white
@@ -82,7 +83,11 @@ TEXT_MUTED_DARK = "#94A3B8"  # slate 400
 BORDER_SUBTLE_DARK = "#334155"  # slate 700
 BORDER_MEDIUM_DARK = "#475569"  # slate 600
 
-# -- Dark mode message colors for iframe toolbar ---------------------------------
+# -- Message text colors for iframe toolbar (distinct from button-flash accents) --
+# Chosen for readability on surrounding surface (not for brand punch).
+MSG_SUCCESS_LIGHT = "#15803D"  # matches --success-text in light
+MSG_WARNING_LIGHT = "#B45309"  # matches --warning-text equivalent (amber-700)
+MSG_ERROR_LIGHT = "#B91C1C"  # matches --error-text in light
 MSG_SUCCESS_DARK = "#86EFAC"  # green (matches --success-text in dark)
 MSG_WARNING_DARK = "#FBBF24"  # amber (matches --accent-amber in dark)
 MSG_ERROR_DARK = "#FCA5A5"  # red (matches --error-text in dark)
