@@ -55,7 +55,6 @@ def get_css() -> str:
         _responsive.RESPONSIVE_BREAKPOINTS,
         _components.REDUCE_VERTICAL_WHITESPACE_FOR_REPORT_TAB,
         _responsive.MOBILE_TOUCH_IMPROVEMENTS,
-        _responsive.STACK_ON_MOBILE_UTILITY,
         _responsive.RESPONSIVE_PLOTLY_HEIGHT,
         _animations.PAGE_LOAD_ANIMATIONS,
         _animations.REDUCED_MOTION_DISABLE_ALL_ANIMATIONS,

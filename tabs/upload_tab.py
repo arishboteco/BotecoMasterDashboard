@@ -114,10 +114,31 @@ def render(ctx: TabContext) -> None:
                 st.session_state.get("_upload_fingerprint") != fp
                 or "_upload_result" not in st.session_state
             ):
-                with st.spinner("Parsing files..."):
+                total_mb = sum(len(c) for _, c in files_payload) / (1024 * 1024)
+                _parse_label = (
+                    f"Parsing {importable_count} file"
+                    f"{'s' if importable_count != 1 else ''} "
+                    f"({total_mb:.1f} MB)…"
+                )
+                with st.status(_parse_label, expanded=False) as _status:
                     upload_result = smart_upload.process_smart_upload(
                         files_payload,
                         ctx.location_id,
+                    )
+                    _days = sum(
+                        len(days)
+                        for days in upload_result.location_results.values()
+                    )
+                    _outlets = len(upload_result.location_results)
+                    _status.update(
+                        label=(
+                            f"Parsed {importable_count} file"
+                            f"{'s' if importable_count != 1 else ''} → "
+                            f"{_days} day{'s' if _days != 1 else ''} "
+                            f"across {_outlets} outlet"
+                            f"{'s' if _outlets != 1 else ''}"
+                        ),
+                        state="complete",
                     )
                 st.session_state["_upload_result"] = upload_result
                 st.session_state["_upload_fingerprint"] = fp
@@ -204,7 +225,16 @@ def render(ctx: TabContext) -> None:
                         loc_settings.get("seat_count") if loc_settings else None
                     )
 
-                    with st.spinner("Saving to database..."):
+                    _save_total_days = sum(
+                        len(days)
+                        for days in upload_result.location_results.values()
+                    )
+                    _save_label = (
+                        f"Saving {_save_total_days} day"
+                        f"{'s' if _save_total_days != 1 else ''} "
+                        "to database…"
+                    )
+                    with st.status(_save_label, expanded=False) as _save_status:
                         saved_days, skipped_validation, save_messages = (
                             smart_upload.save_smart_upload_results(
                                 upload_result,
@@ -214,6 +244,18 @@ def render(ctx: TabContext) -> None:
                                 daily_target=float(daily_tgt),
                                 seat_count=(int(sc_setting) if sc_setting else None),
                             )
+                        )
+                        _save_status.update(
+                            label=(
+                                f"Saved {saved_days} day"
+                                f"{'s' if saved_days != 1 else ''}"
+                                + (
+                                    f" · {skipped_validation} skipped"
+                                    if skipped_validation
+                                    else ""
+                                )
+                            ),
+                            state="complete",
                         )
                     total_saved = saved_days
                     total_skipped = skipped_validation
