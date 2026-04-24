@@ -147,10 +147,10 @@ def render(ctx: TabContext) -> None:
                 change = g["change"]
                 if change > 0:
                     arrow = "\u25b2"
-                    color = "#22c55e"
+                    color = "var(--success-text)"
                 elif change < 0:
                     arrow = "\u25bc"
-                    color = "#ef4444"
+                    color = "var(--error-text)"
                     change = abs(change)
                     pct = abs(pct)
                 else:
@@ -172,7 +172,8 @@ def render(ctx: TabContext) -> None:
             st.markdown(
                 f'<div style="display:flex;gap:2rem;padding:0.25rem 0 0.5rem 0;'
                 f"color:var(--text-secondary);font-size:0.85rem;"
-                f'border-bottom:1px solid #e2e8f0;margin-bottom:0.5rem;">'
+                f"border-bottom:1px solid var(--border-subtle);"
+                f'margin-bottom:0.5rem;">'
                 f"<span>vs {_prev_date.strftime('%d %b')}: "
                 f"Net {_net_cmp} &nbsp;|&nbsp; "
                 f"Covers {_cov_cmp} &nbsp;|&nbsp; "

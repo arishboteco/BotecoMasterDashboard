@@ -23,6 +23,22 @@ TABLE_ACHIEVEMENT_GREEN = "#10B981"  # ≥100% achievement
 TABLE_ACHIEVEMENT_YELLOW = "#FBBF24"  # 70–99% achievement
 TABLE_ACHIEVEMENT_RED = "#EF4444"  # <70% achievement
 
+# -- Achievement % cell styles (bg + text pairs for Styler.map) --------------
+# Light bg + dark text pairs; contrast is intrinsic to the cell, readable on
+# any surrounding surface.
+ACHIEVEMENT_HIGH_BG = "#DCFCE7"
+ACHIEVEMENT_HIGH_TEXT = "#166534"
+ACHIEVEMENT_MED_BG = "#FEF9C3"
+ACHIEVEMENT_MED_TEXT = "#854D0E"
+ACHIEVEMENT_LOW_BG = "#FEE2E2"
+ACHIEVEMENT_LOW_TEXT = "#991B1B"
+
+# -- Chart semantic accents (distinct from brand palette for visual punch) ---
+CHART_MA_ACCENT = "#FF6B35"  # Moving-average overlay line (orange)
+CHART_POSITIVE = "#22C55E"  # Best-performer bar (bright green)
+CHART_NEGATIVE = "#EF4444"  # Worst-performer bar (red)
+CHART_NEUTRAL = "#6366F1"  # Neutral bar (indigo)
+
 # -- Surface & neutral palette -------------------------------------------------
 SURFACE_BASE = "#F7FAFC"  # Main background — soft off-white
 SURFACE_ELEVATED = "#FFFFFF"  # Cards — white

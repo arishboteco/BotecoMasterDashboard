@@ -30,7 +30,8 @@ TOKEN_SYSTEM = r"""    /* ── Token system ───────────�
         --accent-coral: #1F5FA8;
         --accent-teal: #3FA7A3;
         --accent-amber: #F4B400;
-        --accent-indigo: #6DBE45;
+        --accent-green: #6DBE45;
+        --accent-info: #6366F1;
         --accent-slate: #1F5FA8;
 
         /* Semantic colors */
@@ -139,7 +140,8 @@ TOKEN_SYSTEM = r"""    /* ── Token system ───────────�
         --accent-coral: #3A7FC9;
         --accent-teal: #4FB7B3;
         --accent-amber: #FBBF24;
-        --accent-indigo: #7DD053;
+        --accent-green: #7DD053;
+        --accent-info: #A5B4FC;
         --accent-slate: #3A7FC9;
 
         /* Semantic colors (dark variants) */
@@ -181,7 +183,8 @@ TOKEN_SYSTEM = r"""    /* ── Token system ───────────�
             --accent-coral: #3A7FC9;
             --accent-teal: #4FB7B3;
             --accent-amber: #FBBF24;
-            --accent-indigo: #7DD053;
+            --accent-green: #7DD053;
+            --accent-info: #A5B4FC;
             --accent-slate: #3A7FC9;
         }
     }
