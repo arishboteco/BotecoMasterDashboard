@@ -150,6 +150,9 @@ def render_image_action_row(
         hover_fg = ui_theme.BRAND_LIGHT
         success_color = ui_theme.MSG_SUCCESS_DARK
         error_color = ui_theme.MSG_ERROR_DARK
+        msg_success = ui_theme.MSG_SUCCESS_DARK
+        msg_warning = ui_theme.MSG_WARNING_DARK
+        msg_error = ui_theme.MSG_ERROR_DARK
     else:
         tray_bg = ui_theme.SURFACE_BASE
         border = ui_theme.BORDER_SUBTLE
@@ -158,6 +161,9 @@ def render_image_action_row(
         hover_fg = ui_theme.BRAND_PRIMARY
         success_color = ui_theme.BRAND_GREEN
         error_color = ui_theme.BRAND_ERROR
+        msg_success = ui_theme.MSG_SUCCESS_LIGHT
+        msg_warning = ui_theme.MSG_WARNING_LIGHT
+        msg_error = ui_theme.MSG_ERROR_LIGHT
 
     html = f"""
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..24,400,0,0&display=swap" rel="stylesheet">
@@ -580,22 +586,22 @@ def render_share_images_button(
           text: shareText
         }});
         msgEl.textContent = "Shared!";
-        msgEl.style.color = "#15803D";
+        msgEl.style.color = "{msg_success}";
       }} else {{
         if (fallbackUrl) {{
           try {{
             const blob = await b64ToBlob(filesData[0].b64, "image/png");
             await navigator.clipboard.write([new ClipboardItem({{"image/png": blob}})]);
             msgEl.textContent = "Image copied — paste in WhatsApp";
-            msgEl.style.color = "#15803D";
+            msgEl.style.color = "{msg_success}";
           }} catch (clipErr) {{
             msgEl.textContent = "Open WhatsApp — attach image manually";
-            msgEl.style.color = "#B45309";
+            msgEl.style.color = "{msg_warning}";
           }}
           window.open(fallbackUrl, "_blank");
         }} else {{
           msgEl.textContent = "Use download (ZIP/PNG)";
-          msgEl.style.color = "#B45309";
+          msgEl.style.color = "{msg_warning}";
         }}
       }}
     }} catch (e) {{
@@ -609,19 +615,19 @@ def render_share_images_button(
             const blob = await b64ToBlob(filesData[0].b64, "image/png");
             await navigator.clipboard.write([new ClipboardItem({{"image/png": blob}})]);
             msgEl.textContent = "Image copied — paste in WhatsApp";
-            msgEl.style.color = "#15803D";
+            msgEl.style.color = "{msg_success}";
           }} catch (clipErr) {{
             msgEl.textContent = "Open WhatsApp — attach image manually";
-            msgEl.style.color = "#B45309";
+            msgEl.style.color = "{msg_warning}";
           }}
           window.open(fallbackUrl, "_blank");
         }} else {{
           msgEl.textContent = "Use download (ZIP/PNG)";
-          msgEl.style.color = "#B45309";
+          msgEl.style.color = "{msg_warning}";
         }}
       }} else {{
         msgEl.textContent = "Share failed";
-        msgEl.style.color = "#B91C1C";
+        msgEl.style.color = "{msg_error}";
       }}
     }}
   }};
