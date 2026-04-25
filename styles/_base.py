@@ -257,3 +257,31 @@ COMPREHENSIVE_FOCUS_INDICATORS = r"""    /* ── Comprehensive focus indicator
         outline: none;
     }
 """
+
+INLINE_HTML_UTILITIES = r"""    /* ── Inline HTML replacement utility classes ─────────────── */
+    .delta-chip {
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+    .delta-chip--positive {
+        color: var(--success-text);
+    }
+    .delta-chip--negative {
+        color: var(--error-text);
+    }
+    .period-range-note {
+        padding: 0.5rem 0;
+        font-size: 0.95rem;
+        color: var(--text-secondary);
+    }
+    .report-comparison-bar {
+        display: flex;
+        gap: 2rem;
+        padding: 0.25rem 0 0.5rem 0;
+        color: var(--text-secondary);
+        font-size: 0.85rem;
+        border-bottom: 1px solid var(--border-subtle);
+        margin-bottom: 0.5rem;
+    }
+
+"""

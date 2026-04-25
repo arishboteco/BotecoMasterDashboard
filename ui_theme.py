@@ -1,23 +1,33 @@
 """Shared UI constants and Plotly defaults for the dashboard."""
 
+from __future__ import annotations
+
 import plotly.graph_objects as go
 import plotly.io as pio
 
-# -- Brand palette (Boteco Mango) -----------------------------------------------
-BRAND_PRIMARY = "#005AAB"  # Royal blue — primary actions, links
-BRAND_DARK = "#004080"  # Dark blue — hover/pressed
-BRAND_LIGHT = "#2D7AC9"  # Lighter blue — gradients
-BRAND_SOFT = "#EBF4FF"  # Soft brand tint for backgrounds
-BRAND_SECONDARY = "#3FA7A3"  # Teal Blue — secondary actions
-BRAND_SUCCESS = "#3FA7A3"  # Teal — positive deltas (same as BRAND_SECONDARY — distinct semantic roles)
-BRAND_WARN = "#F4B400"  # Golden Mustard — warning
-BRAND_GREEN = "#6DBE45"  # Leaf Green — freshness, Zomato charts
-BRAND_ERROR = "#EF4444"  # Red — negative deltas, destructive
-BRAND_INFO = "#6366F1"  # Indigo — info
+from styles import _tokens
 
-# -- Achievement % cell styles (bg + text pairs for Styler.map) --------------
-# Light bg + dark text pairs; contrast is intrinsic to the cell, readable on
-# any surrounding surface.
+# -- Semantic token aliases -----------------------------------------------------
+PRIMARY = _tokens.PRIMARY
+SURFACE = _tokens.SURFACE
+SURFACE_ELEVATED = _tokens.SURFACE_ELEVATED
+TEXT = _tokens.TEXT
+BORDER = _tokens.BORDER
+SUCCESS = _tokens.SUCCESS
+ERROR = _tokens.ERROR
+
+# -- Backward-compatible names used across existing modules --------------------
+BRAND_PRIMARY = PRIMARY
+BRAND_DARK = _tokens.PRIMARY_DARK
+BRAND_LIGHT = _tokens.PRIMARY_LIGHT
+BRAND_SOFT = _tokens.PRIMARY_SOFT
+BRAND_SECONDARY = "#3FA7A3"
+BRAND_SUCCESS = BRAND_SECONDARY
+BRAND_WARN = "#F4B400"
+BRAND_GREEN = "#6DBE45"
+BRAND_ERROR = "#EF4444"
+BRAND_INFO = "#6366F1"
+
 ACHIEVEMENT_HIGH_BG = "#DCFCE7"
 ACHIEVEMENT_HIGH_TEXT = "#166534"
 ACHIEVEMENT_MED_BG = "#FEF9C3"
@@ -25,43 +35,36 @@ ACHIEVEMENT_MED_TEXT = "#854D0E"
 ACHIEVEMENT_LOW_BG = "#FEE2E2"
 ACHIEVEMENT_LOW_TEXT = "#991B1B"
 
-# -- Chart semantic accents (distinct from brand palette for visual punch) ---
-CHART_MA_ACCENT = "#FF6B35"  # Moving-average overlay line (orange)
-CHART_POSITIVE = "#22C55E"  # Best-performer bar (bright green)
-CHART_NEGATIVE = "#EF4444"  # Worst-performer bar (red)
-CHART_NEUTRAL = "#6366F1"  # Neutral bar (indigo)
-CHART_BAR_MUTED = "#94A3B8"  # De-emphasized bar (slate 400) for non-highlight rows
+CHART_MA_ACCENT = "#FF6B35"
+CHART_POSITIVE = "#22C55E"
+CHART_NEGATIVE = BRAND_ERROR
+CHART_NEUTRAL = BRAND_INFO
+CHART_BAR_MUTED = _tokens.BORDER_STRONG
 
-# -- Surface & neutral palette -------------------------------------------------
-SURFACE_BASE = "#F7FAFC"  # Main background — soft off-white
-SURFACE_ELEVATED = "#FFFFFF"  # Cards — white
-SURFACE_RAISED = "#FFFFFF"  # Modals, tooltips
-TEXT_PRIMARY = "#1E293B"  # Primary text — slate 800
-TEXT_SECONDARY = "#475569"  # Secondary text — slate 600
-TEXT_MUTED = "#64748B"  # Muted text — slate 500
-BORDER_SUBTLE = "#E2E8F0"  # Light borders — slate 200
-BORDER_MEDIUM = "#CBD5E1"  # Medium borders — slate 300
+SURFACE_BASE = SURFACE
+SURFACE_RAISED = _tokens.SURFACE_RAISED
+TEXT_PRIMARY = TEXT
+TEXT_SECONDARY = _tokens.TEXT_SECONDARY
+TEXT_MUTED = _tokens.TEXT_MUTED
+BORDER_SUBTLE = BORDER
+BORDER_MEDIUM = _tokens.BORDER_MEDIUM
 
-# -- Shadow (single size used by iframe toolbar) -------------------------------
 SHADOW_SM = "0 1px 2px rgba(0,0,0,0.05)"
 
-# -- Chart colorway — Boteco Mango brand, 5-color palette ---------------------
 CHART_COLORWAY = [
-    "#1F5FA8",  # deep royal blue (primary)
-    "#3FA7A3",  # teal blue
-    "#6DBE45",  # leaf green
-    "#F4B400",  # golden mustard
-    "#174A82",  # dark blue
+    "#1F5FA8",
+    "#3FA7A3",
+    "#6DBE45",
+    "#F4B400",
+    "#174A82",
 ]
 
 CHART_HEIGHT = 380
 CHART_MARGIN = dict(l=48, r=28, t=56, b=48)
 
-# -- Message text colors for iframe toolbar (distinct from button-flash accents) --
-# Chosen for readability on surrounding surface (not for brand punch).
-MSG_SUCCESS = "#15803D"  # matches --success-text
-MSG_WARNING = "#B45309"  # amber-700
-MSG_ERROR = "#B91C1C"  # matches --error-text
+MSG_SUCCESS = SUCCESS
+MSG_WARNING = "#B45309"
+MSG_ERROR = ERROR
 
 
 def apply_plotly_theme() -> None:
@@ -88,29 +91,29 @@ def apply_plotly_theme() -> None:
             hoverlabel=dict(
                 bgcolor=SURFACE_ELEVATED,
                 font_size=12,
-                bordercolor=BORDER_SUBTLE,
+                bordercolor=BORDER,
                 font_family="Inter, sans-serif",
-                font_color=TEXT_PRIMARY,
+                font_color=TEXT,
                 align="left",
                 namelength=-1,
             ),
-            title=dict(font=dict(size=15, color=TEXT_PRIMARY), x=0.02, xanchor="left"),
-            plot_bgcolor=SURFACE_BASE,
-            paper_bgcolor=SURFACE_BASE,
+            title=dict(font=dict(size=15, color=TEXT), x=0.02, xanchor="left"),
+            plot_bgcolor=SURFACE,
+            paper_bgcolor=SURFACE,
             xaxis=dict(
-                gridcolor=BORDER_SUBTLE,
+                gridcolor=BORDER,
                 gridwidth=1,
                 zerolinecolor=BORDER_MEDIUM,
                 title_font=dict(size=12, color=TEXT_SECONDARY),
                 tickfont=dict(size=11, color=TEXT_MUTED),
             ),
             yaxis=dict(
-                gridcolor=BORDER_SUBTLE,
+                gridcolor=BORDER,
                 gridwidth=1,
                 zerolinecolor=BORDER_MEDIUM,
                 title_font=dict(size=12, color=TEXT_SECONDARY),
                 tickfont=dict(size=11, color=TEXT_MUTED),
-                tickformat=",",  # thousand separator by default
+                tickformat=",",
             ),
         )
     )

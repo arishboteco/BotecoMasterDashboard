@@ -1,60 +1,121 @@
-"""CSS :root tokens and Material Symbols base class — logo-derived palette.
+"""Canonical design tokens shared by CSS, Streamlit theme config, and Python UI code.
 
 Public exports:
   TOKEN_SYSTEM — full token block (light + dark + system-preference fallback).
+  STREAMLIT_THEME_LIGHT / STREAMLIT_THEME_DARK — canonical values for `.streamlit/config.toml`.
 """
 
 from __future__ import annotations
 
-# ── Logo color palette ─────────────────────────────────────────────────────────
-# Extracted from logo.png dominant non-white pixels.
-# Primary:   #005AAB — Royal Blue (brand)
-# Secondary: #A2D06E — Lime Green (success/positive)
-# Accent:    #FDB813 — Golden Yellow (accent/warning)
-# Tertiary:  #54C5D0 — Sky Teal (secondary accent)
+# ── Canonical semantic tokens (light) ─────────────────────────────────────────
+PRIMARY = "#005AAB"
+PRIMARY_DARK = "#004080"
+PRIMARY_LIGHT = "#2D7AC9"
+PRIMARY_SOFT = "#EBF4FF"
 
-TOKEN_SYSTEM = r"""
+SURFACE = "#F7FAFC"
+SURFACE_ELEVATED = "#FFFFFF"
+SURFACE_RAISED = "#FFFFFF"
+SURFACE_MUTED = "#EEF3F8"
+
+TEXT = "#1E293B"
+TEXT_SECONDARY = "#475569"
+TEXT_MUTED = "#64748B"
+
+BORDER = "#E2E8F0"
+BORDER_MEDIUM = "#CBD5E1"
+BORDER_STRONG = "#94A3B8"
+
+SUCCESS = "#15803D"
+ERROR = "#B91C1C"
+
+# ── Canonical semantic tokens (dark) ──────────────────────────────────────────
+DARK_PRIMARY = "#2D7AC9"
+DARK_PRIMARY_DARK = "#1F5FA8"
+DARK_PRIMARY_LIGHT = "#5A97D6"
+DARK_PRIMARY_SOFT = "#1E3A5F"
+
+DARK_SURFACE = "#0F172A"
+DARK_SURFACE_ELEVATED = "#1E293B"
+DARK_SURFACE_RAISED = "#334155"
+DARK_SURFACE_MUTED = "#253245"
+
+DARK_TEXT = "#F1F5F9"
+DARK_TEXT_SECONDARY = "#CBD5E1"
+DARK_TEXT_MUTED = "#94A3B8"
+
+DARK_BORDER = "#334155"
+DARK_BORDER_MEDIUM = "#475569"
+DARK_BORDER_STRONG = "#64748B"
+
+DARK_SUCCESS = "#86EFAC"
+DARK_ERROR = "#FCA5A5"
+
+# ── Streamlit config maps from canonical semantic tokens ──────────────────────
+STREAMLIT_THEME_LIGHT = {
+    "primaryColor": PRIMARY,
+    "backgroundColor": SURFACE_ELEVATED,
+    "secondaryBackgroundColor": SURFACE_MUTED,
+    "textColor": TEXT,
+    "font": "sans serif",
+}
+
+STREAMLIT_THEME_DARK = {
+    "primaryColor": DARK_PRIMARY,
+    "backgroundColor": DARK_SURFACE,
+    "secondaryBackgroundColor": DARK_SURFACE_ELEVATED,
+    "textColor": DARK_TEXT,
+    "font": "sans serif",
+}
+
+TOKEN_SYSTEM = f"""
     /* ── Light mode tokens (default) ─────────────────────────── */
-    :root {
-        /* Brand palette — logo-derived */
+    :root {{
+        /* Canonical semantic aliases */
+        --primary: {PRIMARY};
+        --surface: {SURFACE};
+        --text: {TEXT};
+        --border: {BORDER};
+        --success: {SUCCESS};
+        --error: {ERROR};
+
+        /* Brand palette */
         --brand: #005AAB;
-        --brand-dark: #004080;
+        --brand-dark: {PRIMARY_DARK};
         --brand-darker: #003366;
-        --brand-light: #2D7AC9;
-        --brand-soft: #EBF4FF;
+        --brand-light: {PRIMARY_LIGHT};
+        --brand-soft: {PRIMARY_SOFT};
 
         /* Surface palette */
-        --surface: #F7FAFC;
-        --surface-elevated: #FFFFFF;
-        --surface-raised: #FFFFFF;
-        --surface-muted: #EEF3F8;
-        --sidebar-bg: #005AAB;
-        --sidebar-border: #004080;
+        --surface-elevated: {SURFACE_ELEVATED};
+        --surface-raised: {SURFACE_RAISED};
+        --surface-muted: {SURFACE_MUTED};
+        --sidebar-bg: {PRIMARY};
+        --sidebar-border: {PRIMARY_DARK};
         --table-header-bg: #EEF2F7;
 
         /* Text palette */
-        --text: #1E293B;
-        --text-secondary: #475569;
-        --text-muted: #64748B;
+        --text-secondary: {TEXT_SECONDARY};
+        --text-muted: {TEXT_MUTED};
 
         /* Border palette */
         --border-subtle: #E2E8F0;
-        --border-medium: #CBD5E1;
-        --border-strong: #94A3B8;
+        --border-medium: {BORDER_MEDIUM};
+        --border-strong: {BORDER_STRONG};
 
-        /* Accent colors — logo palette */
-        --accent-coral: #005AAB;
+        /* Accent colors */
+        --accent-coral: {PRIMARY};
         --accent-teal: #54C5D0;
         --accent-amber: #FDB813;
         --accent-green: #A2D06E;
-        --accent-slate: #005AAB;
+        --accent-slate: {PRIMARY};
 
         /* Semantic colors */
         --success-bg: #F0FDF4;
-        --success-text: #15803D;
+        --success-text: var(--success);
         --success-border: #BBF7D0;
         --error-bg: #FEF2F2;
-        --error-text: #B91C1C;
+        --error-text: var(--error);
         --error-border: #FECACA;
         --info-bg: #EFF6FF;
         --info-text: #1D4ED8;
@@ -96,7 +157,7 @@ TOKEN_SYSTEM = r"""
         --icon-size: 18px;
 
         /* Material Symbols */
-        .material-symbols-outlined {
+        .material-symbols-outlined {{
             font-family: 'Material Symbols Outlined';
             font-weight: normal;
             font-style: normal;
@@ -113,7 +174,7 @@ TOKEN_SYSTEM = r"""
             text-rendering: optimizeLegibility;
             font-feature-settings: 'liga';
             font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-        }
+        }}
 
         /* Z-index scale */
         --z-index-dropdown: 10;
@@ -123,93 +184,91 @@ TOKEN_SYSTEM = r"""
         /* Transitions */
         --transition-fast: 150ms;
         --transition-normal: 200ms;
-    }
+    }}
 
-    /* ── Dark mode tokens — activated via data-theme="dark" on <html> ──── */
-    :root[data-theme="dark"] {
-        /* Brand palette — brightened for dark surface contrast */
+    :root[data-theme="dark"] {{
+        --primary: {DARK_PRIMARY};
+        --surface: {DARK_SURFACE};
+        --text: {DARK_TEXT};
+        --border: {DARK_BORDER};
+        --success: {DARK_SUCCESS};
+        --error: {DARK_ERROR};
+
         --brand: #2D7AC9;
-        --brand-dark: #1F5FA8;
-        --brand-darker: #005AAB;
-        --brand-light: #5A97D6;
-        --brand-soft: #1E3A5F;
+        --brand-dark: {DARK_PRIMARY_DARK};
+        --brand-darker: {PRIMARY};
+        --brand-light: {DARK_PRIMARY_LIGHT};
+        --brand-soft: {DARK_PRIMARY_SOFT};
 
-        /* Surface palette */
-        --surface: #0F172A;
-        --surface-elevated: #1E293B;
-        --surface-raised: #334155;
-        --surface-muted: #253245;
-        --sidebar-bg: #0F172A;
-        --sidebar-border: #1E293B;
-        --table-header-bg: #1E293B;
+        --surface-elevated: {DARK_SURFACE_ELEVATED};
+        --surface-raised: {DARK_SURFACE_RAISED};
+        --surface-muted: {DARK_SURFACE_MUTED};
+        --sidebar-bg: {DARK_SURFACE};
+        --sidebar-border: {DARK_SURFACE_ELEVATED};
+        --table-header-bg: {DARK_SURFACE_ELEVATED};
 
-        /* Text palette */
-        --text: #F1F5F9;
-        --text-secondary: #CBD5E1;
-        --text-muted: #94A3B8;
+        --text-secondary: {DARK_TEXT_SECONDARY};
+        --text-muted: {DARK_TEXT_MUTED};
 
-        /* Border palette */
         --border-subtle: #334155;
-        --border-medium: #475569;
-        --border-strong: #64748B;
+        --border-medium: {DARK_BORDER_MEDIUM};
+        --border-strong: {DARK_BORDER_STRONG};
 
-        /* Accent colors — slight brightening */
-        --accent-coral: #2D7AC9;
+        --accent-coral: {DARK_PRIMARY};
         --accent-teal: #7DD3E0;
         --accent-amber: #FBBF24;
         --accent-green: #A2D06E;
-        --accent-slate: #2D7AC9;
+        --accent-slate: {DARK_PRIMARY};
 
-        /* Semantic colors — dark variants */
         --success-bg: #052E16;
-        --success-text: #86EFAC;
+        --success-text: var(--success);
         --success-border: #166534;
         --error-bg: #450A0A;
-        --error-text: #FCA5A5;
+        --error-text: var(--error);
         --error-border: #7F1D1D;
         --info-bg: #1E1B4B;
         --info-text: #A5B4FC;
         --info-border: #3730A3;
 
-        /* Shadows deepen on dark backgrounds */
         --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
         --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.3);
         --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.45), 0 4px 6px -4px rgba(0,0,0,0.3);
-    }
+    }}
 
-    /* ── CSS-only dark mode: mirror .stAppDark class on <html> ──────────── */
-    /* Streamlit adds class "stAppDark" or "stAppDarkTheme" to .stApp in     */
-    /* dark mode. This activates dark tokens purely via CSS — no JS needed */
     .stApp.stAppDark,
-    .stApp.stAppDarkTheme {
+    .stApp.stAppDarkTheme {{
+        --primary: {DARK_PRIMARY};
+        --surface: {DARK_SURFACE};
+        --text: {DARK_TEXT};
+        --border: {DARK_BORDER};
+        --success: {DARK_SUCCESS};
+        --error: {DARK_ERROR};
         --brand: #2D7AC9;
-        --brand-dark: #1F5FA8;
-        --brand-darker: #005AAB;
-        --brand-light: #5A97D6;
-        --brand-soft: #1E3A5F;
-        --surface: #0F172A;
-        --surface-elevated: #1E293B;
-        --surface-raised: #334155;
-        --surface-muted: #253245;
-        --sidebar-bg: #0F172A;
-        --sidebar-border: #1E293B;
-        --table-header-bg: #1E293B;
-        --text: #F1F5F9;
-        --text-secondary: #CBD5E1;
-        --text-muted: #94A3B8;
+        --brand-dark: {DARK_PRIMARY_DARK};
+        --brand-darker: {PRIMARY};
+        --brand-light: {DARK_PRIMARY_LIGHT};
+        --brand-soft: {DARK_PRIMARY_SOFT};
+        --surface-elevated: {DARK_SURFACE_ELEVATED};
+        --surface-raised: {DARK_SURFACE_RAISED};
+        --surface-muted: {DARK_SURFACE_MUTED};
+        --sidebar-bg: {DARK_SURFACE};
+        --sidebar-border: {DARK_SURFACE_ELEVATED};
+        --table-header-bg: {DARK_SURFACE_ELEVATED};
+        --text-secondary: {DARK_TEXT_SECONDARY};
+        --text-muted: {DARK_TEXT_MUTED};
         --border-subtle: #334155;
-        --border-medium: #475569;
-        --border-strong: #64748B;
-        --accent-coral: #2D7AC9;
+        --border-medium: {DARK_BORDER_MEDIUM};
+        --border-strong: {DARK_BORDER_STRONG};
+        --accent-coral: {DARK_PRIMARY};
         --accent-teal: #7DD3E0;
         --accent-amber: #FBBF24;
         --accent-green: #A2D06E;
-        --accent-slate: #2D7AC9;
+        --accent-slate: {DARK_PRIMARY};
         --success-bg: #052E16;
-        --success-text: #86EFAC;
+        --success-text: var(--success);
         --success-border: #166534;
         --error-bg: #450A0A;
-        --error-text: #FCA5A5;
+        --error-text: var(--error);
         --error-border: #7F1D1D;
         --info-bg: #1E1B4B;
         --info-text: #A5B4FC;
@@ -217,43 +276,47 @@ TOKEN_SYSTEM = r"""
         --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
         --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.3);
         --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.45), 0 4px 6px -4px rgba(0,0,0,0.3);
-    }
-    .stApp.stAppDark [data-testid="stSidebar"],
-    .stApp.stAppDarkTheme [data-testid="stSidebar"] {
-        background: var(--sidebar-bg) !important;
-    }
+    }}
 
-    /* ── System-preference fallback (no explicit data-theme override) ──── */
-    @media (prefers-color-scheme: dark) {
-        :root:not([data-theme="light"]) {
+    .stApp.stAppDark [data-testid="stSidebar"],
+    .stApp.stAppDarkTheme [data-testid="stSidebar"] {{
+        background: var(--sidebar-bg) !important;
+    }}
+
+    @media (prefers-color-scheme: dark) {{
+        :root:not([data-theme="light"]) {{
+            --primary: {DARK_PRIMARY};
+            --surface: {DARK_SURFACE};
+            --text: {DARK_TEXT};
+            --border: {DARK_BORDER};
+            --success: {DARK_SUCCESS};
+            --error: {DARK_ERROR};
             --brand: #2D7AC9;
-            --brand-dark: #1F5FA8;
-            --brand-darker: #005AAB;
-            --brand-light: #5A97D6;
-            --brand-soft: #1E3A5F;
-            --surface: #0F172A;
-            --surface-elevated: #1E293B;
-            --surface-raised: #334155;
-            --surface-muted: #253245;
-            --sidebar-bg: #0F172A;
-            --sidebar-border: #1E293B;
-            --table-header-bg: #1E293B;
-            --text: #F1F5F9;
-            --text-secondary: #CBD5E1;
-            --text-muted: #94A3B8;
+            --brand-dark: {DARK_PRIMARY_DARK};
+            --brand-darker: {PRIMARY};
+            --brand-light: {DARK_PRIMARY_LIGHT};
+            --brand-soft: {DARK_PRIMARY_SOFT};
+            --surface-elevated: {DARK_SURFACE_ELEVATED};
+            --surface-raised: {DARK_SURFACE_RAISED};
+            --surface-muted: {DARK_SURFACE_MUTED};
+            --sidebar-bg: {DARK_SURFACE};
+            --sidebar-border: {DARK_SURFACE_ELEVATED};
+            --table-header-bg: {DARK_SURFACE_ELEVATED};
+            --text-secondary: {DARK_TEXT_SECONDARY};
+            --text-muted: {DARK_TEXT_MUTED};
             --border-subtle: #334155;
-            --border-medium: #475569;
-            --border-strong: #64748B;
-            --accent-coral: #2D7AC9;
+            --border-medium: {DARK_BORDER_MEDIUM};
+            --border-strong: {DARK_BORDER_STRONG};
+            --accent-coral: {DARK_PRIMARY};
             --accent-teal: #7DD3E0;
             --accent-amber: #FBBF24;
             --accent-green: #A2D06E;
-            --accent-slate: #2D7AC9;
+            --accent-slate: {DARK_PRIMARY};
             --success-bg: #052E16;
-            --success-text: #86EFAC;
+            --success-text: var(--success);
             --success-border: #166534;
             --error-bg: #450A0A;
-            --error-text: #FCA5A5;
+            --error-text: var(--error);
             --error-border: #7F1D1D;
             --info-bg: #1E1B4B;
             --info-text: #A5B4FC;
@@ -261,7 +324,6 @@ TOKEN_SYSTEM = r"""
             --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
             --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.3);
             --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.45), 0 4px 6px -4px rgba(0,0,0,0.3);
-        }
-    }
-
+        }}
+    }}
 """
