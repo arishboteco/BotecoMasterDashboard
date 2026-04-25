@@ -34,7 +34,7 @@ LOGIN_CSS = r"""
     /* ── Login card ───────────────────────────────────── */
     .login-card {
         background: var(--login-card-bg);
-        border-radius: 20px;
+        border-radius: var(--radius-xl);
         border: 1px solid var(--login-card-border);
         box-shadow: var(--login-card-shadow);
         padding: 2.5rem 2rem 2rem;
@@ -51,8 +51,8 @@ LOGIN_CSS = r"""
         padding: 0.35rem 0.55rem;
         background: var(--login-caps-bg);
         color: var(--login-caps-text);
-        border-radius: 8px;
-        font-size: 0.78rem;
+        border-radius: var(--radius-md);
+        font-size: var(--font-size-caption);
         font-family: 'Inter', sans-serif;
         border: 1px solid var(--login-caps-border);
     }
@@ -92,7 +92,7 @@ LOGIN_CSS = r"""
     .login-footer {
         margin-top: 1.25rem;
         font-family: 'Inter', sans-serif;
-        font-size: 0.73rem;
+        font-size: var(--font-size-caption);
         color: var(--login-footer-text);
         text-align: center;
         letter-spacing: 0.02em;
@@ -104,7 +104,7 @@ LOGIN_CSS = r"""
         color: #FFFFFF !important;
         border: none !important;
         padding: 0.7rem !important;
-        border-radius: 10px !important;
+        border-radius: var(--radius-lg) !important;
         font-weight: 600 !important;
         font-family: 'Inter', sans-serif !important;
         font-size: 0.95rem !important;
@@ -141,7 +141,7 @@ LOGIN_CSS = r"""
         justify-content: center;
     }
     .login-card img {
-        border-radius: 12px;
+        border-radius: var(--radius-lg);
         padding: 6px;
         background: var(--login-image-bg);
     }

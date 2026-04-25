@@ -92,13 +92,13 @@ SIDEBAR_IMPROVEMENTS = r"""    /* ── Sidebar improvements ──────
         line-height: 1.2;
     }
     .sidebar-account-section .role-label {
-        font-size: 0.72rem;
+        font-size: var(--font-size-caption);
         color: rgba(255, 255, 255, 0.75);
         text-transform: uppercase;
         letter-spacing: 0.06em;
     }
     .sidebar-account-section .location-row {
-        font-size: 0.78rem;
+        font-size: var(--font-size-caption);
         color: rgba(255, 255, 255, 0.75);
         display: flex;
         align-items: center;
@@ -143,7 +143,7 @@ SIDEBAR_IMPROVEMENTS = r"""    /* ── Sidebar improvements ──────
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        font-size: 0.75rem;
+        font-size: var(--font-size-caption);
         font-weight: 600;
     }
 
