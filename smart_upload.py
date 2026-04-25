@@ -29,9 +29,9 @@ import dynamic_report_parser
 import file_detector
 import pos_parser
 import timing_parser
-from boteco_logger import get_logger
+import boteco_logger
 
-logger = get_logger(__name__)
+logger = boteco_logger.get_logger(__name__)
 
 _PARSE_EXCEPTIONS = (
     ValueError,
@@ -884,8 +884,17 @@ def save_smart_upload_results(
                 # SQLite path: save_daily_summary handles item_sales + service_sales
                 try:
                     database.save_daily_summary(loc_id, merged)
-                except Exception as e:
-                    messages.append(f"Error saving {date_str} to SQLite: {e}")
+                except (ValueError, TypeError, KeyError, RuntimeError, OSError) as ex:
+                    logger.exception(
+                        "SQLite save failed in smart_upload.py location_id=%s date=%s uploaded_by=%s error=%s",
+                        loc_id,
+                        date_str,
+                        uploaded_by,
+                        ex,
+                    )
+                    messages.append(
+                        f"⚠️ Could not save {date_str} for outlet {loc_id} to SQLite: {ex}"
+                    )
                     skipped += 1
                     continue
 
@@ -916,8 +925,13 @@ def save_smart_upload_results(
             try:
                 db_writes.upsert_daily_summaries_supabase_batch(client, daily_rows)
                 messages.append(f"Saved {len(daily_rows)} daily summary row(s)")
-            except Exception as e:
-                messages.append(f"Error saving daily summaries: {e}")
+            except (ValueError, TypeError, KeyError, RuntimeError) as ex:
+                logger.exception(
+                    "Supabase daily_summary upsert failed in smart_upload.py uploaded_by=%s error=%s",
+                    uploaded_by,
+                    ex,
+                )
+                messages.append(f"⚠️ Error saving daily summaries: {ex}")
 
         if cat_records:
             try:
@@ -925,12 +939,25 @@ def save_smart_upload_results(
                 # before upsert to clear stale categories that no longer appear
                 try:
                     db_writes.delete_category_summary_batch(client, dates_locs)
-                except Exception:
-                    pass
+                except (ValueError, TypeError, KeyError, RuntimeError) as ex:
+                    logger.warning(
+                        "Category pre-delete skipped in smart_upload.py uploaded_by=%s pairs=%d error=%s",
+                        uploaded_by,
+                        len(dates_locs),
+                        ex,
+                    )
+                    messages.append(
+                        "⚠️ Could not clear previous category rows before re-save; continuing with upsert."
+                    )
                 db_writes.save_category_summary_batch(client, cat_records)
                 messages.append(f"Saved {len(cat_records)} category summary records")
-            except Exception as e:
-                messages.append(f"Error saving category summaries: {e}")
+            except (ValueError, TypeError, KeyError, RuntimeError) as ex:
+                logger.exception(
+                    "Category save failed in smart_upload.py uploaded_by=%s error=%s",
+                    uploaded_by,
+                    ex,
+                )
+                messages.append(f"⚠️ Error saving category summaries: {ex}")
 
     # ── Step 3: Raw bill_items from Dynamic Report CSVs (Supabase only) ──
     if is_supabase and client:
@@ -958,23 +985,43 @@ def save_smart_upload_results(
                 # Batch-delete existing bill_items for these dates/locations (idempotent re-upload)
                 try:
                     db_writes.delete_bill_items_by_dates_locs(client, file_dates_locs)
-                except Exception:
-                    pass
+                except (ValueError, TypeError, KeyError, RuntimeError) as ex:
+                    logger.warning(
+                        "bill_items pre-delete skipped in smart_upload.py file=%s uploaded_by=%s pairs=%d error=%s",
+                        fr.filename,
+                        uploaded_by,
+                        len(file_dates_locs),
+                        ex,
+                    )
+                    messages.append(
+                        f"⚠️ Could not clear old bill items before saving {fr.filename}; new rows will still be inserted."
+                    )
 
                 db_writes.save_bill_items(client, raw_records)
                 messages.append(
                     f"Saved {len(raw_records)} bill items from {fr.filename}"
                 )
-            except Exception as e:
-                messages.append(f"Error saving bill items from {fr.filename}: {e}")
-                logger.exception("Failed to save bill_items for %s", fr.filename)
+            except (ValueError, TypeError, KeyError, RuntimeError) as ex:
+                messages.append(f"⚠️ Error saving bill items from {fr.filename}: {ex}")
+                logger.exception(
+                    "Failed to save bill_items in smart_upload.py file=%s uploaded_by=%s error=%s",
+                    fr.filename,
+                    uploaded_by,
+                    ex,
+                )
 
     # ── Step 4: Upload history ──
     if upload_batch:
         try:
             db_writes.save_upload_records_batch(upload_batch)
-        except Exception as e:
-            messages.append(f"Error saving upload history: {e}")
+        except (ValueError, TypeError, KeyError, RuntimeError) as ex:
+            logger.exception(
+                "Upload history save failed in smart_upload.py uploaded_by=%s rows=%d error=%s",
+                uploaded_by,
+                len(upload_batch),
+                ex,
+            )
+            messages.append(f"⚠️ Error saving upload history: {ex}")
 
     messages.append(f"Processed {saved} day/location row(s), {skipped} skipped")
     _elapsed = time.monotonic() - _save_t0

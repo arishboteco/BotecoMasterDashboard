@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import os
-import streamlit as st
 from datetime import datetime
+
+import streamlit as st
 
 import config
 import database
@@ -19,6 +20,7 @@ from tabs.analytics_tab import render as render_analytics
 from tabs.settings_tab import render as render_settings
 
 boteco_logger.setup_logging()
+logger = boteco_logger.get_logger(__name__)
 ui_theme.apply_plotly_theme()
 
 # Warn if Supabase mode is requested but credentials are missing
@@ -74,8 +76,12 @@ if st.query_params.get("health") == "check":
             with database.db_connection() as _conn:
                 _conn.cursor().execute("SELECT 1")
             db_ok = True
-    except Exception:
-        pass
+    except (ConnectionError, OSError, RuntimeError, ValueError) as ex:
+        logger.warning(
+            "Health check failed for db_type=%s path=app.py error=%s",
+            db_type,
+            ex,
+        )
     st.json({"status": "ok" if db_ok else "degraded", "database": db_type})
     st.stop()
 

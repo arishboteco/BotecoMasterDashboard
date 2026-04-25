@@ -3,12 +3,14 @@ from datetime import datetime, timedelta
 
 import streamlit as st
 import database
+import boteco_logger
 import config
 import styles
 from streamlit_cookies_controller import CookieController
 
 _COOKIE_NAME = "boteco_session"
 _COOKIE_EXPIRY_DAYS = 30
+logger = boteco_logger.get_logger(__name__)
 
 
 def _get_cookie_manager() -> Optional[CookieController]:
@@ -21,7 +23,12 @@ def _get_cookie_manager() -> Optional[CookieController]:
     if "_cm" not in st.session_state or st.session_state._cm is None:
         try:
             st.session_state._cm = CookieController(key="boteco_cookie_manager")
-        except TypeError:
+        except TypeError as ex:
+            logger.warning(
+                "CookieController init failed in auth.py user=%s error=%s",
+                st.session_state.get("username") or "anonymous",
+                ex,
+            )
             return None
     return st.session_state._cm
 
@@ -69,7 +76,12 @@ def init_auth_state():
     # render without creating a duplicate component call.
     try:
         st.session_state._cm = CookieController(key="boteco_cookie_manager")
-    except TypeError:
+    except TypeError as ex:
+        logger.warning(
+            "CookieController render init failed in auth.py user=%s error=%s",
+            st.session_state.get("username") or "anonymous",
+            ex,
+        )
         st.session_state._cm = None
 
     if st.session_state.authenticated:
@@ -94,8 +106,13 @@ def init_auth_state():
                 if st.session_state._cm is not None:
                     try:
                         st.session_state._cm.remove(_COOKIE_NAME)
-                    except (TypeError, AttributeError):
-                        pass
+                    except (TypeError, AttributeError) as ex:
+                        logger.warning(
+                            "Cookie removal failed in auth.py user=%s token_present=%s error=%s",
+                            st.session_state.get("username") or "anonymous",
+                            bool(token),
+                            ex,
+                        )
                 st.session_state.pop("_cookie_retries", None)
                 st.rerun()
         else:
@@ -181,8 +198,16 @@ def show_login_form():
                                     datetime.now() + timedelta(days=session_days)
                                 )
                             cm.set(_COOKIE_NAME, token, **cookie_kwargs)
-                        except TypeError:
-                            pass
+                        except TypeError as ex:
+                            logger.warning(
+                                "Cookie set failed in auth.py user=%s remember=%s error=%s",
+                                username,
+                                remember,
+                                ex,
+                            )
+                            st.warning(
+                                "Signed in, but 'Remember me' could not be applied in this browser."
+                            )
                     _apply_user_to_session(user, token)
                     st.rerun()
                 else:
@@ -294,8 +319,12 @@ def logout():
     if cm is not None:
         try:
             cm.remove(_COOKIE_NAME)
-        except (TypeError, AttributeError):
-            pass
+        except (TypeError, AttributeError) as ex:
+            logger.warning(
+                "Cookie cleanup failed during logout in auth.py user=%s error=%s",
+                st.session_state.get("username") or "anonymous",
+                ex,
+            )
 
     st.session_state.authenticated = False
     st.session_state.username = None
@@ -334,8 +363,13 @@ def get_report_location_ids() -> List[int]:
     if vs and str(vs) != "all":
         try:
             return [int(vs)]
-        except (TypeError, ValueError):
-            pass
+        except (TypeError, ValueError) as ex:
+            logger.warning(
+                "Invalid view_scope in auth.py user=%s view_scope=%s error=%s",
+                st.session_state.get("username") or "anonymous",
+                vs,
+                ex,
+            )
     lid = st.session_state.get("location_id")
     return [int(lid)] if lid is not None else [1]
 
