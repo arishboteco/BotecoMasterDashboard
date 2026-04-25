@@ -22,6 +22,9 @@ from io import BytesIO
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
+import boteco_logger
+
+logger = boteco_logger.get_logger(__name__)
 
 
 # -- Helpers -------------------------------------------------------------
@@ -53,7 +56,19 @@ def _load_df(file_content: bytes) -> Optional[pd.DataFrame]:
             bio.seek(0)
             kw = {"engine": engine} if engine else {}
             return pd.read_excel(bio, sheet_name=0, header=None, **kw)
-        except Exception:
+        except (
+            ValueError,
+            OSError,
+            ImportError,
+            KeyError,
+            pd.errors.EmptyDataError,
+            pd.errors.ParserError,
+        ) as ex:
+            logger.debug(
+                "Timing report read failed engine=%s parser=timing_parser.py error=%s",
+                engine or "auto",
+                ex,
+            )
             continue
     return None
 
@@ -72,8 +87,8 @@ def _extract_date_from_header(df: pd.DataFrame) -> Optional[str]:
                 if tail:
                     try:
                         return dparser.parse(tail, dayfirst=True).strftime("%Y-%m-%d")
-                    except Exception:
-                        pass
+                    except (ValueError, TypeError, OverflowError):
+                        continue
                 # Try the next cell in the same row
                 if j + 1 < len(df.columns):
                     nxt = str(df.iloc[i, j + 1]).strip()
@@ -82,8 +97,8 @@ def _extract_date_from_header(df: pd.DataFrame) -> Optional[str]:
                             return dparser.parse(nxt, dayfirst=True).strftime(
                                 "%Y-%m-%d"
                             )
-                        except Exception:
-                            pass
+                        except (ValueError, TypeError, OverflowError):
+                            continue
             # Otherwise try to parse the cell itself as a date
             # (avoid accidentally parsing integers like row counts)
             raw = str(v).strip()
@@ -95,8 +110,8 @@ def _extract_date_from_header(df: pd.DataFrame) -> Optional[str]:
                     ts = pd.to_datetime(raw, dayfirst=True, errors="coerce")
                     if pd.notna(ts) and ts.year > 2000:
                         return ts.strftime("%Y-%m-%d")
-                except Exception:
-                    pass
+                except (ValueError, TypeError):
+                    continue
     return None
 
 

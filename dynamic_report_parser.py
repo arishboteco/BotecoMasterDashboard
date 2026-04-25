@@ -29,6 +29,9 @@ from io import BytesIO, StringIO
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
+import boteco_logger
+
+logger = boteco_logger.get_logger(__name__)
 
 
 _PAYMENT_MAP_V1 = {
@@ -213,7 +216,7 @@ def _meal_from_time(ts_val: Any, is_12h: bool = False) -> Optional[str]:
         return None
     try:
         ts = pd.Timestamp(s)
-    except Exception:
+    except (ValueError, TypeError):
         return None
     if pd.isna(ts):
         return None
@@ -242,7 +245,7 @@ def _detect_12h_format(df: pd.DataFrame, cdt_col: Optional[str]) -> bool:
             continue
         try:
             ts = pd.Timestamp(s)
-        except Exception:
+        except (ValueError, TypeError):
             continue
         if pd.isna(ts):
             continue
@@ -262,14 +265,14 @@ def _normalize_date(val: Any) -> Optional[str]:
         if pd.isna(dt):
             return None
         return dt.strftime("%Y-%m-%d")
-    except Exception:
-        pass
+    except (ValueError, TypeError):
+        logger.debug("Date parse fallback (dayfirst=False) failed value=%s", s)
     try:
         dt = pd.to_datetime(s, dayfirst=True)
         if pd.isna(dt):
             return None
         return dt.strftime("%Y-%m-%d")
-    except Exception:
+    except (ValueError, TypeError):
         return None
 
 
@@ -901,7 +904,7 @@ def parse_dynamic_report(
 
     try:
         df = pd.read_csv(StringIO(text), dtype=str)
-    except Exception as ex:
+    except (pd.errors.EmptyDataError, pd.errors.ParserError, ValueError) as ex:
         return None, [f"Cannot parse {filename} as CSV: {ex}"]
 
     if df.empty:
@@ -948,7 +951,7 @@ def parse_dynamic_report_raw(
 
     try:
         df = pd.read_csv(StringIO(text), dtype=str)
-    except Exception as ex:
+    except (pd.errors.EmptyDataError, pd.errors.ParserError, ValueError) as ex:
         return None, [f"Cannot parse {filename} as CSV: {ex}"]
 
     if df.empty:

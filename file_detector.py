@@ -21,6 +21,9 @@ from io import BytesIO
 from typing import Tuple
 
 import pandas as pd
+import boteco_logger
+
+logger = boteco_logger.get_logger(__name__)
 
 
 # -- Priority: which types contribute new importable data ----------------
@@ -87,8 +90,12 @@ def _peek_text(file_content: bytes, filename: str) -> str:
             tokens.extend(_norm(c) for c in df.columns)
             for i in range(min(5, len(df))):
                 tokens.extend(_norm(v) for v in df.iloc[i].values)
-        except Exception:
-            pass
+        except (pd.errors.EmptyDataError, pd.errors.ParserError, UnicodeDecodeError, ValueError) as ex:
+            logger.warning(
+                "CSV peek failed in file_detector.py file=%s error=%s",
+                filename,
+                ex,
+            )
         return " ".join(t for t in tokens if t)
 
     # HTML-disguised .xls files
@@ -100,8 +107,12 @@ def _peek_text(file_content: bytes, filename: str) -> str:
             for d in dfs[:2]:
                 for i in range(min(8, len(d))):
                     tokens.extend(_norm(v) for v in d.iloc[i].values)
-        except Exception:
-            pass
+        except (ValueError, ImportError, TypeError) as ex:
+            logger.warning(
+                "HTML/XLS peek failed in file_detector.py file=%s error=%s",
+                filename,
+                ex,
+            )
         return " ".join(t for t in tokens if t)
 
     # Excel files (.xlsx / .xls)
@@ -113,7 +124,20 @@ def _peek_text(file_content: bytes, filename: str) -> str:
             for i in range(min(12, len(df))):
                 tokens.extend(_norm(v) for v in df.iloc[i].values)
             break
-        except Exception:
+        except (
+            ValueError,
+            OSError,
+            ImportError,
+            KeyError,
+            pd.errors.EmptyDataError,
+            pd.errors.ParserError,
+        ) as ex:
+            logger.debug(
+                "Excel peek attempt failed in file_detector.py file=%s engine=%s error=%s",
+                filename,
+                engine or "auto",
+                ex,
+            )
             continue
 
     return " ".join(t for t in tokens if t)

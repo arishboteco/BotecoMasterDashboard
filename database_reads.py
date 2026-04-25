@@ -5,6 +5,9 @@ from __future__ import annotations
 from typing import Dict, List, Optional
 
 import streamlit as st
+import boteco_logger
+
+logger = boteco_logger.get_logger(__name__)
 
 # Must match database_writes._CATEGORY_ROW_PREFIX (avoid importing database_writes here).
 _CATEGORY_ROW_PREFIX = "__category_row:"
@@ -215,7 +218,13 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
             cats, svcs = _detail_lists_for_daily_summary(location_id, date)
             d["categories"] = cats
             d["services"] = svcs
-        except Exception:
+        except (ValueError, TypeError, KeyError, RuntimeError) as ex:
+            logger.warning(
+                "Detail list hydration failed in database_reads.py location_id=%s date=%s error=%s",
+                location_id,
+                date,
+                ex,
+            )
             d.setdefault("categories", [])
             d.setdefault("services", [])
         return d
@@ -251,8 +260,13 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
                         for s in (svcs or [])
                         if float(s.get("amount") or 0) > 0
                     ]
-                except Exception:
-                    pass
+                except (ValueError, TypeError, KeyError, RuntimeError) as ex:
+                    logger.warning(
+                        "Service fallback query failed in database_reads.py location_id=%s date=%s error=%s",
+                        location_id,
+                        date,
+                        ex,
+                    )
         return d
 
 
