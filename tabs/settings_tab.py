@@ -16,7 +16,13 @@ from auth import is_admin
 from tabs import TabContext
 from components.navigation import date_range_nav
 from components.forms import confirm_dialog
-from components import page_header
+from components import (
+    divider,
+    filter_strip,
+    page_header,
+    primary_action_bar,
+    section_block,
+)
 
 
 def render(ctx: TabContext) -> None:
@@ -48,7 +54,7 @@ def render(ctx: TabContext) -> None:
     # ADMIN-ONLY SECTIONS BELOW
     # ─────────────────────────────────────────────────────────────
 
-    st.markdown('<div class="ux-panel-title">Outlet administration</div>', unsafe_allow_html=True)
+    section_block("Outlet administration", icon="store")
 
     # ── Location settings ─────────────────────────────────────────
     st.markdown("### Outlet Settings")
@@ -183,7 +189,7 @@ def render(ctx: TabContext) -> None:
                 confirm_label="Yes, delete outlet",
             )
 
-    st.markdown('<div class="ux-panel-title">User access management</div>', unsafe_allow_html=True)
+    section_block("User access management", icon="groups")
 
     # ── User management ───────────────────────────────────────────
     st.markdown("### User Management")
@@ -350,7 +356,7 @@ def render(ctx: TabContext) -> None:
                 confirm_label="Yes, delete user",
             )
 
-    st.markdown('<div class="ux-panel-title">Data export and maintenance</div>', unsafe_allow_html=True)
+    section_block("Data export and maintenance", icon="download")
 
     # ── Data export ───────────────────────────────────────────────
     st.markdown("### Data Export")
@@ -358,6 +364,7 @@ def render(ctx: TabContext) -> None:
         "Download all saved daily summaries as CSV or Excel. "
         "Use the filters to narrow the export."
     )
+    filter_strip("Export filters", "Pick outlet and date range", icon="filter_alt")
 
     exp_c1, exp_c2 = st.columns([1, 2])
     with exp_c1:
@@ -419,7 +426,7 @@ def render(ctx: TabContext) -> None:
     else:
         st.caption("No data found for the selected filters.")
 
-    st.markdown('<div class="ux-panel-title">Danger zone</div>', unsafe_allow_html=True)
+    section_block("Danger zone", icon="warning")
 
     # ── Wipe All Data ─────────────────────────────────────────────
     with st.container(border=True):
@@ -432,12 +439,12 @@ def render(ctx: TabContext) -> None:
             "I understand this will permanently delete ALL operational data",
             key="wipe_all_confirm",
         )
-        if st.button(
+        wipe_clicked, _ = primary_action_bar(
             "Wipe All Data",
-            type="secondary",
-            disabled=not wipe_confirm,
-            key="wipe_all_btn",
-        ):
+            primary_key="wipe_all_btn",
+            primary_disabled=not wipe_confirm,
+        )
+        if wipe_clicked:
             counts, errors = database.wipe_all_data()
             st.cache_data.clear()
             total = sum(counts.values())
@@ -468,7 +475,7 @@ def render(ctx: TabContext) -> None:
                 for err in errors:
                     st.warning(f"- {err}")
 
-    st.divider()
+    divider()
 
     # ── Quick outlet stats ────────────────────────────────────────
     with st.expander("Quick stats (all outlets)", expanded=False):
@@ -480,4 +487,4 @@ def render(ctx: TabContext) -> None:
                 f"  |  Seats: {loc.get('seat_count') or '—'}"
             )
             if i < len(locs_for_stats) - 1:
-                st.divider()
+                divider()
