@@ -20,6 +20,7 @@ from . import (
     _login,
     _visual_polish,
     _contrast_fix,
+    _mobile_control_fix,
 )
 
 
@@ -73,6 +74,7 @@ def get_css() -> str:
         _base.COMPREHENSIVE_FOCUS_INDICATORS,
         _visual_polish.VISUAL_POLISH,
         _contrast_fix.CONTRAST_FIX,
+        _mobile_control_fix.MOBILE_CONTROL_FIX,
         "</style>\n",
     ]
     return "".join(parts)
