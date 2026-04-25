@@ -20,7 +20,13 @@ from database_reads import clear_location_cache, peek_existing_net_sales_batch
 import tabs.report_tab as report_tab
 from auth import is_admin
 from tabs import TabContext
-from components import page_header, workflow_steps
+from components import (
+    info_banner,
+    page_header,
+    primary_action_bar,
+    section_block,
+    workflow_steps,
+)
 
 logger = logging.getLogger("boteco")
 
@@ -63,12 +69,10 @@ def render(ctx: TabContext) -> None:
             "Saving for the same **outlet + date** overwrites that day's data."
         )
 
-    st.markdown(
-        '<div class="ux-panel-title">Step 1 · Drop source files</div>'
-        '<p class="ux-panel-subtitle">'
-        "Include any Petpooja exports. Dynamic Report CSV is preferred for tax accuracy."
-        "</p>",
-        unsafe_allow_html=True,
+    section_block(
+        "Step 1 · Drop source files",
+        "Include any Petpooja exports. Dynamic Report CSV is preferred for tax accuracy.",
+        icon="upload_file",
     )
     uploaded_files = st.file_uploader(
         "Petpooja exports (XLSX, XLS, CSV — any report type)",
@@ -91,19 +95,14 @@ def render(ctx: TabContext) -> None:
         # Clear cached result when files are removed
         st.session_state.pop("_upload_result", None)
         st.session_state.pop("_upload_fingerprint", None)
-        st.markdown(
-            '<div class="empty-upload-hint">'
-            "No files selected. Download your reports from Petpooja and "
-            "drop them all here — any combination works."
-            "</div>",
-            unsafe_allow_html=True,
+        info_banner(
+            "No files selected yet. Download reports from Petpooja and drop any combination here.",
+            tone="neutral",
+            icon="upload",
         )
 
     if uploaded_files:
-        st.markdown(
-            '<div class="ux-panel-title">Step 2 · Review detected files</div>',
-            unsafe_allow_html=True,
-        )
+        section_block("Step 2 · Review detected files", icon="fact_check")
         files_payload = [(f.name, f.getvalue()) for f in uploaded_files]
 
         importable_count = 0
@@ -203,12 +202,12 @@ def render(ctx: TabContext) -> None:
 
             import_blocked = must_confirm_replace and not confirm_replace
 
-            if st.button(
+            import_clicked, _ = primary_action_bar(
                 f"Import {importable_count} file(s) \u2192 save to database",
-                type="primary",
-                key="smart_import_btn",
-                disabled=import_blocked,
-            ):
+                primary_key="smart_import_btn",
+                primary_disabled=import_blocked,
+            )
+            if import_clicked:
                 if must_confirm_replace and not confirm_replace:
                     st.error("Confirm replacement above to import.")
                 else:
@@ -336,10 +335,10 @@ def render(ctx: TabContext) -> None:
                     report_tab.clear_report_cache()
                     st.rerun()
 
-    st.markdown(
-        '<div class="ux-panel-title">Recent import activity</div>'
-        '<p class="ux-panel-subtitle">Last 10 saved files for this outlet scope.</p>',
-        unsafe_allow_html=True,
+    section_block(
+        "Recent import activity",
+        "Last 10 saved files for this outlet scope.",
+        icon="history",
     )
     history = database.get_upload_history(ctx.location_id, 10)
     if history:

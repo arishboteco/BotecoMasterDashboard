@@ -42,7 +42,14 @@ def _load_report_bundle_cached(location_ids: List[int], date_str: str):
 
 
 from tabs import TabContext
-from components import date_nav, divider, page_header
+from components import (
+    date_nav,
+    divider,
+    filter_strip,
+    info_banner,
+    page_header,
+    section_block,
+)
 
 
 def _build_mtd_maps(
@@ -272,6 +279,11 @@ def render(ctx: TabContext) -> None:
             )
 
         if multi_outlet and outlets_bundle:
+            filter_strip(
+                "Report scope",
+                "Choose a single outlet or all outlets for PNG export.",
+                icon="tune",
+            )
             _outlet_options = ["All outlets"] + [name for _i, name, _ in outlets_bundle]
             _selected_outlet = st.radio(
                 "Select outlet for PNG report",
@@ -395,9 +407,10 @@ def render(ctx: TabContext) -> None:
                     return items
 
                 with st.expander("PNG Report", expanded=True):
-                    st.markdown(
-                        '<span class="pill-info">Primary share bundle</span>',
-                        unsafe_allow_html=True,
+                    info_banner(
+                        "Primary share bundle",
+                        tone="info",
+                        icon="ios_share",
                     )
                     _sec_meta = [
                         ("sales_summary", "Sales summary"),
@@ -429,10 +442,7 @@ def render(ctx: TabContext) -> None:
                         sec_bytes = _single_section_bufs[key].getvalue()
                         row_idx, col_idx = divmod(idx, 2)
                         with _cells[row_idx][col_idx]:
-                            st.markdown(
-                                f'<div class="section-label">{title}</div>',
-                                unsafe_allow_html=True,
-                            )
+                            section_block(title, icon="image")
                             st.image(BytesIO(sec_bytes), width="stretch")
                             _wa_text = f"Boteco {_selected_outlet} EOD Report \u2013 {date_str} ({title})"
                             clipboard_ui.render_image_action_row(
@@ -445,9 +455,10 @@ def render(ctx: TabContext) -> None:
                 return
 
         with st.expander("Individual PNG sections", expanded=True):
-            st.markdown(
-                '<span class="pill-info">Section-level exports</span>',
-                unsafe_allow_html=True,
+            info_banner(
+                "Section-level exports",
+                tone="info",
+                icon="dashboard",
             )
             _sec_meta = [
                 ("sales_summary", "Sales summary"),
@@ -477,10 +488,7 @@ def render(ctx: TabContext) -> None:
                 sec_bytes = section_bufs[key].getvalue()
                 row_idx, col_idx = divmod(idx, 2)
                 with _cells[row_idx][col_idx]:
-                    st.markdown(
-                        f'<div class="section-label">{title}</div>',
-                        unsafe_allow_html=True,
-                    )
+                    section_block(title, icon="image")
                     st.image(BytesIO(sec_bytes), width="stretch")
                     _wa_text = (
                         f"Boteco Bangalore EOD Report \u2013 {date_str} ({title})"

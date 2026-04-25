@@ -508,6 +508,103 @@ WORKFLOW_AND_SURFACES = r"""    /* ── Workflow and surface polish ───�
         background: var(--info-bg);
         border: 1px solid var(--info-border);
     }
+    .section-block {
+        margin: 0.2rem 0 0.7rem;
+    }
+    .section-block-title {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-family: var(--font-display);
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: var(--text);
+    }
+    .section-block-icon {
+        font-size: 1.05rem !important;
+        color: var(--brand);
+    }
+    .section-block-subtitle {
+        margin: 0.12rem 0 0;
+        color: var(--text-secondary);
+        font-size: 0.84rem;
+    }
+    .info-banner {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.55rem 0.7rem;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border-subtle);
+        background: var(--surface);
+        margin: 0.35rem 0 0.55rem;
+    }
+    .info-banner-icon {
+        font-size: 1rem !important;
+        line-height: 1;
+    }
+    .info-banner-text {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+    }
+    .info-banner--info {
+        background: var(--info-bg);
+        border-color: var(--info-border);
+    }
+    .info-banner--info .info-banner-icon,
+    .info-banner--info .info-banner-text {
+        color: var(--info-text);
+    }
+    .info-banner--success {
+        background: var(--success-bg);
+        border-color: var(--success-border);
+    }
+    .info-banner--success .info-banner-icon,
+    .info-banner--success .info-banner-text {
+        color: var(--success-text);
+    }
+    .info-banner--warning {
+        background: rgba(251, 191, 36, 0.14);
+        border-color: rgba(217, 119, 6, 0.35);
+    }
+    .info-banner--warning .info-banner-icon,
+    .info-banner--warning .info-banner-text {
+        color: #92400e;
+    }
+    .info-banner--error {
+        background: var(--error-bg);
+        border-color: var(--error-border);
+    }
+    .info-banner--error .info-banner-icon,
+    .info-banner--error .info-banner-text {
+        color: var(--error-text);
+    }
+    .filter-strip {
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin: 0.05rem 0 0.5rem;
+        padding: 0.32rem 0.58rem;
+        border-radius: 999px;
+        border: 1px solid var(--border-subtle);
+        background: var(--surface-elevated);
+    }
+    .filter-strip-icon {
+        font-size: 1rem !important;
+        color: var(--brand);
+    }
+    .filter-strip-title {
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: var(--text);
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+    .filter-strip-subtitle {
+        font-size: 0.76rem;
+        color: var(--text-muted);
+    }
 
 """
 
@@ -671,4 +768,3 @@ CRITICAL_ALERT = r"""    /* ── Critical alert (first-run password, etc.) ─
     }
 
 """
-
