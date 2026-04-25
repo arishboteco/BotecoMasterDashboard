@@ -18,6 +18,7 @@ from . import (
     _responsive,
     _print,
     _login,
+    _visual_polish,
 )
 
 
@@ -68,6 +69,7 @@ def get_css() -> str:
         _components.CRITICAL_ALERT,
         _print.PRINT_STYLES,
         _base.COMPREHENSIVE_FOCUS_INDICATORS,
+        _visual_polish.VISUAL_POLISH,
         "</style>\n",
     ]
     return "".join(parts)
