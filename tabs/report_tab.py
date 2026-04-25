@@ -145,6 +145,17 @@ def render(ctx: TabContext) -> None:
         if summary:
             y_m = [int(x) for x in date_str.split("-")[:2]]
             multi_outlet = len(outlets_bundle) > 1
+
+            st.markdown('<div class="kpi-primary-card">', unsafe_allow_html=True)
+            st.markdown("#### Daily KPI Snapshot")
+            kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
+            with kpi_col1:
+                st.metric("Net Sales", utils.format_rupee_short(float(summary.get("net_total") or 0)))
+            with kpi_col2:
+                st.metric("Covers", f"{int(summary.get('covers') or 0):,}")
+            with kpi_col3:
+                st.metric("APC", utils.format_rupee_short(float(summary.get("apc") or 0)))
+            st.markdown("</div>", unsafe_allow_html=True)
     
             # ── Same weekday previous week comparison ──────────────
             _prev_date = selected_date - timedelta(days=7)
@@ -152,6 +163,10 @@ def render(ctx: TabContext) -> None:
             _prev_summary = scope.get_daily_summary_for_scope(
                 ctx.report_loc_ids, _prev_date_str
             )
+            _context_items = [
+                f'<span class="context-band-item"><strong>Date:</strong> {selected_date.strftime("%d %b %Y")}</span>',
+                f'<span class="context-band-item"><strong>Scope:</strong> {ctx.report_display_name}</span>',
+            ]
             if _prev_summary:
                 _prev_net = float(_prev_summary.get("net_total") or 0)
                 _prev_cov = int(_prev_summary.get("covers") or 0)
@@ -187,15 +202,15 @@ def render(ctx: TabContext) -> None:
                 _net_cmp = _delta_indicator(_curr_net, _prev_net, is_currency=True)
                 _cov_cmp = _delta_indicator(_curr_cov, _prev_cov, is_currency=False)
                 _apc_cmp = _delta_indicator(_curr_apc, _prev_apc, is_currency=True)
-                st.markdown(
-                    f'<div class="report-comparison-bar">'
-                    f"<span>vs {_prev_date.strftime('%d %b')}: "
-                    f"Net {_net_cmp} &nbsp;|&nbsp; "
-                    f"Covers {_cov_cmp} &nbsp;|&nbsp; "
-                    f"APC {_apc_cmp}</span></div>",
-                    unsafe_allow_html=True,
+                _context_items.append(
+                    f'<span class="report-comparison-bar"><strong>vs {_prev_date.strftime("%d %b")}:</strong> '
+                    f"Net {_net_cmp} | Covers {_cov_cmp} | APC {_apc_cmp}</span>"
                 )
-    
+
+            st.markdown(
+                f'<div class="context-band context-band--muted">{"".join(_context_items)}</div>',
+                unsafe_allow_html=True,
+            )
             divider()
     
             # Individual PNG sections
@@ -279,9 +294,16 @@ def render(ctx: TabContext) -> None:
                 return items
     
             if multi_outlet:
-                st.caption(
-                    "Category and service sections use **combined** "
-                    "MTD for all outlets in scope. Footfall metrics are shown per outlet."
+                st.markdown(
+                    '<div class="context-band context-band--muted">'
+                    '<span class="context-band-item microtext">'
+                    "<strong>Note:</strong> Category and service sections use combined MTD for all outlets in scope."
+                    "</span>"
+                    '<span class="context-band-item microtext">'
+                    "<strong>Footfall:</strong> Metrics are shown per outlet."
+                    "</span>"
+                    "</div>",
+                    unsafe_allow_html=True,
                 )
     
             if multi_outlet and outlets_bundle:

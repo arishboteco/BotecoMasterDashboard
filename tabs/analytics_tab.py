@@ -160,17 +160,6 @@ def render(ctx: TabContext) -> None:
         custom_end=custom_end,
     )
 
-    with shell.filters:
-        if analysis_period != "Custom":
-            with col_per2:
-                st.markdown(
-                    f'<div class="period-range-note">'
-                    f"<strong>From:</strong> {start_date.strftime('%d %b')} "
-                    f"<strong>to</strong> {end_date.strftime('%d %b %Y')}"
-                    f"</div>",
-                    unsafe_allow_html=True,
-                )
-
     start_str = start_date.strftime("%Y-%m-%d")
     end_str = end_date.strftime("%Y-%m-%d")
 
@@ -250,6 +239,27 @@ def render(ctx: TabContext) -> None:
             prior_covers = int(prior_df["covers"].sum()) if not prior_df.empty else None
             prior_avg = float(prior_df["net_total"].mean()) if not prior_df.empty else None
 
+            context_items = [
+                (
+                    f'<span class="context-band-item"><strong>Window:</strong> '
+                    f"{start_date.strftime('%d %b')} to {end_date.strftime('%d %b %Y')}</span>"
+                ),
+                (
+                    f'<span class="context-band-item"><strong>Scope:</strong> '
+                    f"{'All outlets' if multi_analytics and len(analytics_loc_ids) > 1 else 'Single outlet'}</span>"
+                ),
+            ]
+            if prior_start and prior_end:
+                context_items.append(
+                    f'<span class="context-band-item"><strong>Comparison:</strong> '
+                    f"{prior_start.strftime('%d %b')} to {prior_end.strftime('%d %b %Y')}</span>"
+                )
+            st.markdown(
+                f'<div class="context-band context-band--muted">{"".join(context_items)}</div>',
+                unsafe_allow_html=True,
+            )
+
+            st.markdown('<div class="kpi-primary-card">', unsafe_allow_html=True)
             render_overview(
                 analysis_period,
                 start_date,
@@ -261,6 +271,9 @@ def render(ctx: TabContext) -> None:
                 prior_covers,
                 prior_avg,
             )
+            st.markdown("</div>", unsafe_allow_html=True)
+
+            st.markdown('<div class="section-stack">', unsafe_allow_html=True)
             render_sales_performance(
                 df,
                 df_raw,
@@ -284,6 +297,7 @@ def render(ctx: TabContext) -> None:
                 analysis_period=analysis_period,
             )
             render_payment_reconciliation(analytics_loc_ids, start_str, end_str)
+            st.markdown("</div>", unsafe_allow_html=True)
 
         else:
             empty_state(
