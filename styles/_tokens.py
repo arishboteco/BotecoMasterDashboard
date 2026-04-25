@@ -48,6 +48,7 @@ TOKEN_SYSTEM = r"""    /* ── Token system ───────────�
         /* Typography */
         --font-display: 'Plus Jakarta Sans', sans-serif;
         --font-body: 'Inter', sans-serif;
+        --font-size-caption: 0.75rem;
         --font-size-xs: 12px;
         --font-size-sm: 14px;
         --font-size-base: 16px;
@@ -69,6 +70,7 @@ TOKEN_SYSTEM = r"""    /* ── Token system ───────────�
         --radius-sm: 6px;
         --radius-md: 8px;
         --radius-lg: 12px;
+        --radius-xl: 20px;
 
         /* Button heights */
         --btn-height-sm: 32px;
@@ -76,6 +78,8 @@ TOKEN_SYSTEM = r"""    /* ── Token system ───────────�
         --btn-height-lg: 48px;
         --btn-padding-x: 1rem;
         --btn-padding-y: 0.5rem;
+        --tab-padding-x: 1.25rem;
+        --tab-padding-y: 0.75rem;
 
         /* Icon */
         --icon-size: 18px;

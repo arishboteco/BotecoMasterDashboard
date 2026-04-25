@@ -95,8 +95,8 @@ COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ─�
         color: var(--text-secondary) !important;
         font-weight: 500 !important;
         text-transform: uppercase;
-        font-size: 0.55rem !important;
-        letter-spacing: 0.04em;
+        font-size: 0.75rem !important;
+        letter-spacing: 0.03em;
         line-height: 1;
     }
     .kpi-value {
@@ -150,7 +150,7 @@ METRIC_CARDS_CONTAINERS = r"""    /* ── Metric cards & containers ───�
         border-radius: var(--radius-md);
         border: 1px solid var(--border-subtle);
         border-left: 4px solid var(--accent-coral);
-        padding: 0.85rem;
+        padding: 1rem;
     }
 
 """
@@ -184,7 +184,7 @@ UPLOAD_ZONE = r"""    /* ── Upload zone ────────────
     .upload-zone {
         border: 2px dashed var(--brand);
         border-radius: var(--radius-lg);
-        padding: 1rem 1.25rem;
+        padding: 1rem;
         text-align: left;
         background: var(--surface);
         margin-bottom: 0.75rem;
@@ -387,7 +387,7 @@ ICON_ONLY_ACTION_BUTTONS = r"""    /* ── Icon-only action buttons ───�
         width: 36px;
         height: 36px;
         padding: 0;
-        border-radius: var(--spacing-xs);
+        border-radius: var(--radius-sm);
         cursor: pointer;
         transition: all var(--transition-normal) ease;
         border: none;
@@ -443,7 +443,7 @@ SECTION_DIVIDERS = r"""    /* ── Section dividers ────────�
         border: none;
         height: 1px;
         background: linear-gradient(to right, transparent, var(--border-subtle), transparent);
-        margin: 2rem 0;
+        margin: var(--spacing-xl) 0;
     }
 
 """

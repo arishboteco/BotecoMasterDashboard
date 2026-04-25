@@ -33,7 +33,7 @@ BASE_TYPOGRAPHY = r"""    /* ── Base typography ─────────�
         font-size: 0.95rem !important;
         font-weight: 500 !important;
         letter-spacing: 0.02em;
-        padding: 0.75rem 1.25rem !important;
+        padding: var(--tab-padding-y) var(--tab-padding-x) !important;
         color: var(--text-muted) !important;
         transition: color var(--transition-normal) ease, background-color var(--transition-normal) ease !important;
     }
@@ -107,11 +107,11 @@ SCROLLBAR_STYLING = r"""    /* ── Scrollbar styling ────────
     }
     ::-webkit-scrollbar-track {
         background: var(--surface);
-        border-radius: var(--spacing-xs);
+        border-radius: var(--radius-sm);
     }
     ::-webkit-scrollbar-thumb {
         background: var(--border-medium);
-        border-radius: var(--spacing-xs);
+        border-radius: var(--radius-sm);
     }
     ::-webkit-scrollbar-thumb:hover {
         background: var(--text-muted);
