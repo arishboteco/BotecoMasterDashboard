@@ -154,6 +154,11 @@ def render_image_action_row(
     html = f"""
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..24,400,0,0&display=swap" rel="stylesheet">
 <style>
+html, body {{
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}}
 .material-symbols-outlined {{
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
   font-size: 20px;
