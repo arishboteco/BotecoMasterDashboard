@@ -23,6 +23,8 @@ CONTRAST_FIX = r"""    /* ── Contrast safety layer ────────�
         --text-muted: #64748B;
         --border-subtle: #E2E8F0;
         --border-medium: #CBD5E1;
+        --success-text: #15803D;
+        --error-text: #B91C1C;
     }
 
     .stApp,
@@ -63,6 +65,21 @@ CONTRAST_FIX = r"""    /* ── Contrast safety layer ────────�
     [data-testid="stMarkdownContainer"] a {
         color: var(--brand-dark) !important;
         font-weight: 600;
+    }
+
+    /* Metrics: keep labels readable without destroying semantic delta colors. */
+    div[data-testid="stMetricValue"] {
+        color: var(--text) !important;
+    }
+    div[data-testid="stMetricLabel"],
+    div[data-testid="stMetricLabel"] * {
+        color: var(--text-muted) !important;
+    }
+    div[data-testid="stMetricDelta"] {
+        color: revert !important;
+    }
+    div[data-testid="stMetricDelta"] * {
+        color: inherit !important;
     }
 
     /* Buttons: force nested Streamlit labels to inherit the button foreground. */
