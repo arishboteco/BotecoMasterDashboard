@@ -64,6 +64,8 @@ SIDEBAR = r"""    /* ── Sidebar ──────────────�
         background: rgba(255, 255, 255, 0.12) !important;
         color: #FFFFFF !important;
         border: 1px solid rgba(255, 255, 255, 0.35) !important;
+        min-height: 42px !important;
+        font-weight: 600 !important;
     }
     [data-testid="stSidebar"] .stButton > button:hover {
         background: rgba(255, 255, 255, 0.22) !important;
@@ -74,8 +76,9 @@ SIDEBAR = r"""    /* ── Sidebar ──────────────�
 
 SIDEBAR_IMPROVEMENTS = r"""    /* ── Sidebar improvements ─────────────────────────────── */
     .sidebar-account-section {
-        background: rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.12);
         border-radius: var(--radius-md);
+        border: 1px solid rgba(255, 255, 255, 0.18);
         padding: 0.75rem;
         margin-bottom: 0.5rem;
     }
@@ -160,4 +163,3 @@ SIDEBAR_GRADIENT_REFINEMENT = r"""    /* ── Sidebar gradient refinement ─�
     }
 
 """
-

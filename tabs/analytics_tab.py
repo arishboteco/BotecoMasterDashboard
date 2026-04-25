@@ -23,6 +23,7 @@ from tabs.analytics_sections import (
 from tabs import TabContext
 from components.feedback import empty_state
 from components.navigation import date_range_nav
+from components import page_header
 
 # In-process cache registered with cache_manager for coordinated invalidation
 _RAW_SUMMARY_CACHE: dict = cache_manager.register("analytics_raw")
@@ -111,12 +112,22 @@ def _load_raw_summaries_cached(
 
 def render(ctx: TabContext) -> None:
     """Render the Analytics tab UI with charts and period analysis."""
-    st.markdown("### Sales Analytics")
-    st.divider()
+    page_header(
+        title="Sales Analytics",
+        subtitle=(
+            "Analyze trends, category mix, target achievement, and payment reconciliation "
+            "across your selected operating window."
+        ),
+        context="Period comparison and outlet filtering",
+    )
 
     # ── Period selector ──────────────────────────────────────────
     col_per1, col_per2 = st.columns([2, 3])
     with col_per1:
+        st.markdown(
+            '<span class="pill-info">Filters</span>',
+            unsafe_allow_html=True,
+        )
         default_period = "Last Month"
         if "analysis_period" not in st.session_state:
             st.session_state.analysis_period = default_period

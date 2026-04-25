@@ -95,7 +95,49 @@ BRANDED_HEADER = r"""    /* ── Branded header ──────────
 LAYOUT_SPACING = r"""    /* ── Layout & spacing ──────────────────────────────────── */
     .main .block-container {
         max-width: 1200px;
-        padding: 1.5rem 2rem 2rem !important;
+        padding: 1.1rem 1.5rem 1.75rem !important;
+    }
+    .page-hero {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-lg);
+        background: linear-gradient(135deg, var(--surface-elevated), var(--surface-muted));
+        padding: 1rem 1.1rem;
+        margin-bottom: 0.85rem;
+        box-shadow: var(--shadow-sm);
+    }
+    .page-hero-kicker {
+        margin: 0;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-muted);
+        font-size: 0.72rem;
+        font-weight: 600;
+    }
+    .page-hero-title {
+        margin: 0.15rem 0;
+        font-size: 1.35rem;
+        color: var(--text);
+        border-left: none !important;
+        padding-left: 0 !important;
+    }
+    .page-hero-subtitle {
+        margin: 0;
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+    }
+    .page-hero-context {
+        border: 1px solid var(--border-medium);
+        background: var(--surface-elevated);
+        border-radius: 999px;
+        color: var(--text-secondary);
+        font-size: 0.78rem;
+        font-weight: 600;
+        padding: 0.35rem 0.7rem;
+        white-space: nowrap;
     }
 
 """
@@ -156,6 +198,7 @@ SECTION_HEADERS_REFINED_STYLING = r"""    /* ── Section headers — refined 
 TAB_BAR_REFINEMENT = r"""    /* ── Tab bar refinement ────────────────────────────────── */
     button[data-baseweb="tab"] {
         letter-spacing: 0.01em !important;
+        min-height: 44px !important;
     }
     [data-testid="stTabs"] [role="tablist"] {
         border-bottom: 2px solid var(--border-subtle) !important;
@@ -166,6 +209,20 @@ TAB_BAR_REFINEMENT = r"""    /* ── Tab bar refinement ───────�
     button[data-baseweb="tab"][aria-selected="true"] {
         background-color: var(--brand-soft) !important;
         border-radius: var(--radius-sm) var(--radius-sm) 0 0 !important;
+    }
+    [data-testid="stTabs"] [role="tab"] p {
+        font-weight: 600 !important;
+    }
+    /* Dark mode: brighten tab hover/selected foreground for WCAG AA */
+    :root[data-theme="dark"] button[data-baseweb="tab"]:hover,
+    :root[data-theme="dark"] button[data-baseweb="tab"][aria-selected="true"] {
+        color: var(--brand-light) !important;
+    }
+    @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) button[data-baseweb="tab"]:hover,
+        :root:not([data-theme="light"]) button[data-baseweb="tab"][aria-selected="true"] {
+            color: var(--brand-light) !important;
+        }
     }
 
 """
@@ -200,4 +257,3 @@ COMPREHENSIVE_FOCUS_INDICATORS = r"""    /* ── Comprehensive focus indicator
         outline: none;
     }
 """
-

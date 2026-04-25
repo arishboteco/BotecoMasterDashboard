@@ -200,7 +200,7 @@ else:
     )
 
     # Tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["⬆ Upload", "📊 Report", "📈 Analytics", "⚙ Settings"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Upload", "Report", "Analytics", "Settings"])
 
     with tab1:
         render_upload(ctx)

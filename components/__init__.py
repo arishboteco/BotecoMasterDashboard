@@ -13,7 +13,7 @@ from components.feedback import (
     skeleton_metric_row,
     skeleton_table,
 )
-from components.layout import section, divider
+from components.layout import section, divider, page_header, workflow_steps
 
 __all__ = [
     "kpi_row",
@@ -29,4 +29,6 @@ __all__ = [
     "skeleton_table",
     "section",
     "divider",
+    "page_header",
+    "workflow_steps",
 ]

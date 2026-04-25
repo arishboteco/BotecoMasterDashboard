@@ -19,6 +19,15 @@ RESPONSIVE_BREAKPOINTS = r"""    /* ── Responsive breakpoints ────�
         .main .block-container {
             padding: 1rem !important;
         }
+        .page-hero {
+            flex-direction: column;
+            padding: 0.85rem;
+        }
+        .page-hero-context {
+            white-space: normal;
+            width: 100%;
+            text-align: center;
+        }
         h1 { font-size: 1.5rem !important; }
         h2 { font-size: 1.2rem !important; }
         h3 { font-size: 1.05rem !important; }

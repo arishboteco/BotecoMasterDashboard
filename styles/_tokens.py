@@ -1,38 +1,53 @@
-"""CSS :root tokens and Material Symbols base class."""
+"""CSS :root tokens and Material Symbols base class — logo-derived palette.
 
-TOKEN_SYSTEM = r"""    /* ── Token system ─────────────────────────────────────────── */
+Public exports:
+  TOKEN_SYSTEM — full token block (light + dark + system-preference fallback).
+"""
+
+from __future__ import annotations
+
+# ── Logo color palette ─────────────────────────────────────────────────────────
+# Extracted from logo.png dominant non-white pixels.
+# Primary:   #005AAB — Royal Blue (brand)
+# Secondary: #A2D06E — Lime Green (success/positive)
+# Accent:    #FDB813 — Golden Yellow (accent/warning)
+# Tertiary:  #54C5D0 — Sky Teal (secondary accent)
+
+TOKEN_SYSTEM = r"""
+    /* ── Light mode tokens (default) ─────────────────────────── */
     :root {
-        /* Brand palette */
-        --brand: #1F5FA8;
-        --brand-dark: #174A82;
-        --brand-darker: #133F70;
-        --brand-light: #2A6BB3;
-        --brand-soft: #E6F4F3;
+        /* Brand palette — logo-derived */
+        --brand: #005AAB;
+        --brand-dark: #004080;
+        --brand-darker: #003366;
+        --brand-light: #2D7AC9;
+        --brand-soft: #EBF4FF;
 
         /* Surface palette */
         --surface: #F7FAFC;
         --surface-elevated: #FFFFFF;
         --surface-raised: #FFFFFF;
-        --sidebar-bg: #1F5FA8;
-        --sidebar-border: #2A6BB3;
+        --surface-muted: #EEF3F8;
+        --sidebar-bg: #005AAB;
+        --sidebar-border: #004080;
         --table-header-bg: #EEF2F7;
 
         /* Text palette */
         --text: #1E293B;
         --text-secondary: #475569;
-        --text-muted: #475569;
+        --text-muted: #64748B;
 
         /* Border palette */
         --border-subtle: #E2E8F0;
         --border-medium: #CBD5E1;
+        --border-strong: #94A3B8;
 
-        /* Accent colors */
-        --accent-coral: #1F5FA8;
-        --accent-teal: #3FA7A3;
-        --accent-amber: #F4B400;
-        --accent-green: #6DBE45;
-        --accent-info: #6366F1;
-        --accent-slate: #1F5FA8;
+        /* Accent colors — logo palette */
+        --accent-coral: #005AAB;
+        --accent-teal: #54C5D0;
+        --accent-amber: #FDB813;
+        --accent-green: #A2D06E;
+        --accent-slate: #005AAB;
 
         /* Semantic colors */
         --success-bg: #F0FDF4;
@@ -42,13 +57,12 @@ TOKEN_SYSTEM = r"""    /* ── Token system ───────────�
         --error-text: #B91C1C;
         --error-border: #FECACA;
         --info-bg: #EFF6FF;
-        --info-text: #4338CA;
-        --info-border: #C7D2FE;
+        --info-text: #1D4ED8;
+        --info-border: #BFDBFE;
 
         /* Typography */
         --font-display: 'Plus Jakarta Sans', sans-serif;
         --font-body: 'Inter', sans-serif;
-        --font-size-caption: 0.75rem;
         --font-size-xs: 12px;
         --font-size-sm: 14px;
         --font-size-base: 16px;
@@ -70,7 +84,6 @@ TOKEN_SYSTEM = r"""    /* ── Token system ───────────�
         --radius-sm: 6px;
         --radius-md: 8px;
         --radius-lg: 12px;
-        --radius-xl: 20px;
 
         /* Button heights */
         --btn-height-sm: 32px;
@@ -78,8 +91,6 @@ TOKEN_SYSTEM = r"""    /* ── Token system ───────────�
         --btn-height-lg: 48px;
         --btn-padding-x: 1rem;
         --btn-padding-y: 0.5rem;
-        --tab-padding-x: 1.25rem;
-        --tab-padding-y: 0.75rem;
 
         /* Icon */
         --icon-size: 18px;
@@ -114,5 +125,143 @@ TOKEN_SYSTEM = r"""    /* ── Token system ───────────�
         --transition-normal: 200ms;
     }
 
-"""
+    /* ── Dark mode tokens — activated via data-theme="dark" on <html> ──── */
+    :root[data-theme="dark"] {
+        /* Brand palette — brightened for dark surface contrast */
+        --brand: #2D7AC9;
+        --brand-dark: #1F5FA8;
+        --brand-darker: #005AAB;
+        --brand-light: #5A97D6;
+        --brand-soft: #1E3A5F;
 
+        /* Surface palette */
+        --surface: #0F172A;
+        --surface-elevated: #1E293B;
+        --surface-raised: #334155;
+        --surface-muted: #253245;
+        --sidebar-bg: #0F172A;
+        --sidebar-border: #1E293B;
+        --table-header-bg: #1E293B;
+
+        /* Text palette */
+        --text: #F1F5F9;
+        --text-secondary: #CBD5E1;
+        --text-muted: #94A3B8;
+
+        /* Border palette */
+        --border-subtle: #334155;
+        --border-medium: #475569;
+        --border-strong: #64748B;
+
+        /* Accent colors — slight brightening */
+        --accent-coral: #2D7AC9;
+        --accent-teal: #7DD3E0;
+        --accent-amber: #FBBF24;
+        --accent-green: #A2D06E;
+        --accent-slate: #2D7AC9;
+
+        /* Semantic colors — dark variants */
+        --success-bg: #052E16;
+        --success-text: #86EFAC;
+        --success-border: #166534;
+        --error-bg: #450A0A;
+        --error-text: #FCA5A5;
+        --error-border: #7F1D1D;
+        --info-bg: #1E1B4B;
+        --info-text: #A5B4FC;
+        --info-border: #3730A3;
+
+        /* Shadows deepen on dark backgrounds */
+        --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
+        --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.3);
+        --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.45), 0 4px 6px -4px rgba(0,0,0,0.3);
+    }
+
+    /* ── CSS-only dark mode: mirror .stAppDark class on <html> ──────────── */
+    /* Streamlit adds class "stAppDark" or "stAppDarkTheme" to .stApp in     */
+    /* dark mode. This activates dark tokens purely via CSS — no JS needed */
+    .stApp.stAppDark,
+    .stApp.stAppDarkTheme {
+        --brand: #2D7AC9;
+        --brand-dark: #1F5FA8;
+        --brand-darker: #005AAB;
+        --brand-light: #5A97D6;
+        --brand-soft: #1E3A5F;
+        --surface: #0F172A;
+        --surface-elevated: #1E293B;
+        --surface-raised: #334155;
+        --surface-muted: #253245;
+        --sidebar-bg: #0F172A;
+        --sidebar-border: #1E293B;
+        --table-header-bg: #1E293B;
+        --text: #F1F5F9;
+        --text-secondary: #CBD5E1;
+        --text-muted: #94A3B8;
+        --border-subtle: #334155;
+        --border-medium: #475569;
+        --border-strong: #64748B;
+        --accent-coral: #2D7AC9;
+        --accent-teal: #7DD3E0;
+        --accent-amber: #FBBF24;
+        --accent-green: #A2D06E;
+        --accent-slate: #2D7AC9;
+        --success-bg: #052E16;
+        --success-text: #86EFAC;
+        --success-border: #166534;
+        --error-bg: #450A0A;
+        --error-text: #FCA5A5;
+        --error-border: #7F1D1D;
+        --info-bg: #1E1B4B;
+        --info-text: #A5B4FC;
+        --info-border: #3730A3;
+        --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
+        --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.3);
+        --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.45), 0 4px 6px -4px rgba(0,0,0,0.3);
+    }
+    .stApp.stAppDark [data-testid="stSidebar"],
+    .stApp.stAppDarkTheme [data-testid="stSidebar"] {
+        background: var(--sidebar-bg) !important;
+    }
+
+    /* ── System-preference fallback (no explicit data-theme override) ──── */
+    @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+            --brand: #2D7AC9;
+            --brand-dark: #1F5FA8;
+            --brand-darker: #005AAB;
+            --brand-light: #5A97D6;
+            --brand-soft: #1E3A5F;
+            --surface: #0F172A;
+            --surface-elevated: #1E293B;
+            --surface-raised: #334155;
+            --surface-muted: #253245;
+            --sidebar-bg: #0F172A;
+            --sidebar-border: #1E293B;
+            --table-header-bg: #1E293B;
+            --text: #F1F5F9;
+            --text-secondary: #CBD5E1;
+            --text-muted: #94A3B8;
+            --border-subtle: #334155;
+            --border-medium: #475569;
+            --border-strong: #64748B;
+            --accent-coral: #2D7AC9;
+            --accent-teal: #7DD3E0;
+            --accent-amber: #FBBF24;
+            --accent-green: #A2D06E;
+            --accent-slate: #2D7AC9;
+            --success-bg: #052E16;
+            --success-text: #86EFAC;
+            --success-border: #166534;
+            --error-bg: #450A0A;
+            --error-text: #FCA5A5;
+            --error-border: #7F1D1D;
+            --info-bg: #1E1B4B;
+            --info-text: #A5B4FC;
+            --info-border: #3730A3;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
+            --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.3);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.45), 0 4px 6px -4px rgba(0,0,0,0.3);
+        }
+    }
+
+"""
