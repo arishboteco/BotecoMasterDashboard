@@ -7,16 +7,13 @@ system without changing business logic or tab rendering code.
 VISUAL_POLISH = r"""    /* ── Final visual polish layer ─────────────────────────── */
     :root {
         --radius-xl: 20px;
-        --shadow-card: 0 14px 30px rgba(15, 23, 42, 0.08), 0 2px 8px rgba(15, 23, 42, 0.04);
-        --shadow-card-hover: 0 18px 42px rgba(15, 23, 42, 0.12), 0 4px 12px rgba(15, 23, 42, 0.06);
-        --shadow-focus: 0 0 0 4px rgba(0, 90, 171, 0.14);
+        --shadow-card: 0 8px 18px rgba(15, 23, 42, 0.06), 0 1px 4px rgba(15, 23, 42, 0.04);
+        --shadow-card-hover: 0 10px 24px rgba(15, 23, 42, 0.09), 0 2px 8px rgba(15, 23, 42, 0.05);
+        --shadow-focus: 0 0 0 3px rgba(0, 90, 171, 0.12);
     }
 
     .stApp {
-        background:
-            radial-gradient(circle at 12% -10%, rgba(0, 90, 171, 0.10), transparent 32rem),
-            radial-gradient(circle at 90% 0%, rgba(84, 197, 208, 0.10), transparent 28rem),
-            linear-gradient(180deg, #F8FBFF 0%, var(--surface) 42%, #FFFFFF 100%) !important;
+        background: var(--surface) !important;
     }
 
     .main .block-container {
@@ -35,12 +32,10 @@ VISUAL_POLISH = r"""    /* ── Final visual polish layer ──────�
         gap: 0.35rem !important;
         padding: 0.35rem !important;
         margin: 0 0 1.15rem !important;
-        border: 1px solid rgba(148, 163, 184, 0.22) !important;
+        border: 1px solid var(--border-subtle) !important;
         border-radius: 999px !important;
-        background: rgba(255, 255, 255, 0.82) !important;
+        background: var(--surface-elevated) !important;
         box-shadow: var(--shadow-sm) !important;
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
     }
     button[data-baseweb="tab"] {
         min-height: 40px !important;
@@ -52,8 +47,8 @@ VISUAL_POLISH = r"""    /* ── Final visual polish layer ──────�
     }
     button[data-baseweb="tab"][aria-selected="true"] {
         color: #FFFFFF !important;
-        background: linear-gradient(135deg, var(--brand), var(--brand-dark)) !important;
-        box-shadow: 0 8px 18px rgba(0, 90, 171, 0.22) !important;
+        background: var(--brand) !important;
+        box-shadow: 0 6px 14px rgba(0, 90, 171, 0.18) !important;
     }
     [data-testid="stTabs"] [data-baseweb="tab-highlight"] {
         display: none !important;
@@ -64,9 +59,9 @@ VISUAL_POLISH = r"""    /* ── Final visual polish layer ──────�
     [data-testid="stExpander"],
     [data-testid="stDataFrame"],
     [data-testid="stPlotlyChart"] {
-        border: 1px solid rgba(148, 163, 184, 0.20) !important;
+        border: 1px solid var(--border-subtle) !important;
         border-radius: var(--radius-lg) !important;
-        background: rgba(255, 255, 255, 0.88) !important;
+        background: var(--surface-elevated) !important;
         box-shadow: var(--shadow-card) !important;
     }
     [data-testid="stVerticalBlockBorderWrapper"],
@@ -93,8 +88,8 @@ VISUAL_POLISH = r"""    /* ── Final visual polish layer ──────�
     .empty-state,
     .filter-strip,
     .date-display {
-        border-color: rgba(148, 163, 184, 0.22) !important;
-        background: rgba(255, 255, 255, 0.90) !important;
+        border-color: var(--border-subtle) !important;
+        background: var(--surface-elevated) !important;
         box-shadow: var(--shadow-card) !important;
     }
     .metric-card,
@@ -108,7 +103,7 @@ VISUAL_POLISH = r"""    /* ── Final visual polish layer ──────�
         position: absolute;
         inset: 0 auto 0 0;
         width: 4px;
-        background: linear-gradient(180deg, var(--brand), var(--accent-teal));
+        background: var(--brand);
         border-radius: var(--radius-lg) 0 0 var(--radius-lg);
     }
 
@@ -120,7 +115,7 @@ VISUAL_POLISH = r"""    /* ── Final visual polish layer ──────�
         color: var(--text-muted) !important;
     }
 
-    /* Buttons with clearer hierarchy and a more tactile hover state. */
+    /* Buttons with clearer hierarchy and a restrained hover state. */
     .stButton > button {
         border-radius: var(--radius-md) !important;
         box-shadow: var(--shadow-sm) !important;
@@ -130,11 +125,11 @@ VISUAL_POLISH = r"""    /* ── Final visual polish layer ──────�
         box-shadow: var(--shadow-md) !important;
     }
     .stButton > button[kind="primary"] {
-        background: linear-gradient(135deg, var(--brand), var(--brand-dark)) !important;
-        box-shadow: 0 10px 20px rgba(0, 90, 171, 0.22) !important;
+        background: var(--brand) !important;
+        box-shadow: 0 6px 14px rgba(0, 90, 171, 0.18) !important;
     }
     .stButton > button[kind="primary"]:hover {
-        background: linear-gradient(135deg, var(--brand-light), var(--brand)) !important;
+        background: var(--brand-dark) !important;
     }
 
     /* Inputs and selectors should read as modern controls, not plain form fields. */
@@ -146,8 +141,8 @@ VISUAL_POLISH = r"""    /* ── Final visual polish layer ──────�
     .stMultiSelect [data-baseweb="select"] {
         min-height: 42px !important;
         border-radius: var(--radius-md) !important;
-        border-color: rgba(148, 163, 184, 0.34) !important;
-        background: rgba(255, 255, 255, 0.92) !important;
+        border-color: var(--border-medium) !important;
+        background: var(--surface-elevated) !important;
         box-shadow: var(--shadow-sm) !important;
     }
     .stTextInput input:focus,
@@ -160,37 +155,35 @@ VISUAL_POLISH = r"""    /* ── Final visual polish layer ──────�
         box-shadow: var(--shadow-focus) !important;
     }
 
-    /* File uploader: clearer destination area and premium dashed border. */
+    /* File uploader: clearer destination area without decorative gradients. */
     .upload-zone-container [data-testid="stFileUploaderDropzone"] {
         min-height: 164px !important;
-        border-color: rgba(0, 90, 171, 0.45) !important;
-        background:
-            linear-gradient(135deg, rgba(235, 244, 255, 0.88), rgba(255,255,255,0.92)) !important;
-        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.65), var(--shadow-card) !important;
+        border-color: var(--brand) !important;
+        background: var(--surface-elevated) !important;
+        box-shadow: var(--shadow-card) !important;
     }
     .upload-zone-container [data-testid="stFileUploaderDropzone"]:hover {
-        border-color: var(--brand) !important;
-        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.75), var(--shadow-card-hover) !important;
+        border-color: var(--brand-dark) !important;
+        background: var(--brand-soft) !important;
+        box-shadow: var(--shadow-card-hover) !important;
     }
 
-    /* Sidebar polish: glass account card and better logo treatment. */
+    /* Sidebar polish: keep the existing brand sidebar, only refine contained elements. */
     [data-testid="stSidebar"] img {
         border-radius: var(--radius-lg) !important;
-        box-shadow: 0 14px 30px rgba(0, 0, 0, 0.18) !important;
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.14) !important;
     }
     .sidebar-account-section {
-        background: rgba(255, 255, 255, 0.16) !important;
+        background: rgba(255, 255, 255, 0.14) !important;
         border-color: rgba(255, 255, 255, 0.24) !important;
         border-radius: var(--radius-lg) !important;
-        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14) !important;
-        backdrop-filter: blur(14px);
-        -webkit-backdrop-filter: blur(14px);
+        box-shadow: none !important;
     }
     .sidebar-user-initials {
         width: 32px !important;
         height: 32px !important;
         background: rgba(255, 255, 255, 0.24) !important;
-        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22) !important;
+        box-shadow: none !important;
     }
     [data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] {
         background: rgba(255, 255, 255, 0.14) !important;
@@ -201,12 +194,12 @@ VISUAL_POLISH = r"""    /* ── Final visual polish layer ──────�
         color: #FFFFFF !important;
     }
 
-    /* Tables: make dense data easier to scan. */
+    /* Tables: make dense data easier to scan with flat headers. */
     [data-testid="stDataFrame"] th {
-        background: linear-gradient(180deg, #F8FAFC, #EEF2F7) !important;
+        background: var(--table-header-bg) !important;
     }
     [data-testid="stDataFrame"] td {
-        border-bottom-color: rgba(226, 232, 240, 0.72) !important;
+        border-bottom-color: var(--border-subtle) !important;
     }
 
     @media (max-width: 768px) {
