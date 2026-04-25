@@ -229,109 +229,148 @@ def parse_item_order_details(
     if any(x is None for x in required):
         return None
 
+    data = df.iloc[header_idx + 1 :].copy()
+    if data.empty:
+        return None
+
+    parsed_day = data.iloc[:, idx_date].map(_cell_date_to_iso)
+    valid_day_mask = parsed_day.notna()
+    data = data[valid_day_mask].copy()
+    if data.empty:
+        return None
+    data["__day"] = parsed_day[valid_day_mask].values
+
+    status_norm = data.iloc[:, idx_status].map(_norm_header)
+    data["__is_complimentary"] = status_norm.str.contains("complimentary", na=False)
+    data["__is_success"] = status_norm.eq("success")
+
+    def _to_float_series(series: pd.Series) -> pd.Series:
+        cleaned = (
+            series.fillna("")
+            .astype(str)
+            .str.replace(",", "", regex=False)
+            .str.replace("₹", "", regex=False)
+            .str.replace("Γé╣", "", regex=False)
+            .str.strip()
+        )
+        return pd.to_numeric(cleaned, errors="coerce").fillna(0.0)
+
+    data["__sub"] = _to_float_series(data.iloc[:, idx_sub])
+    data["__final"] = _to_float_series(data.iloc[:, idx_final])
+    data["__disc"] = _to_float_series(data.iloc[:, idx_disc]) if idx_disc is not None else 0.0
+    data["__tax"] = _to_float_series(data.iloc[:, idx_tax]) if idx_tax is not None else 0.0
+    data["__pay_bucket"] = (
+        data.iloc[:, idx_pay].fillna("").astype(str).str.strip().map(_payment_bucket)
+        if idx_pay is not None
+        else "other"
+    )
+    data["__inv"] = (
+        data.iloc[:, idx_inv].fillna("").astype(str).str.strip() if idx_inv is not None else ""
+    )
+    missing_inv = data["__inv"].eq("") | data["__inv"].str.lower().isin(("nan", "none"))
+    data.loc[missing_inv, "__inv"] = "row_" + data.index[missing_inv].astype(str)
+    data["__qty"] = _to_float_series(data.iloc[:, idx_qty]).round().astype(int) if idx_qty is not None else 0
+    data["__cov"] = _to_float_series(data.iloc[:, idx_covers]) if idx_covers is not None else 0.0
+    if idx_ts is not None:
+        ts_vals = pd.to_datetime(data.iloc[:, idx_ts], errors="coerce")
+        hours = ts_vals.dt.hour
+        data["__meal"] = None
+        data.loc[hours < 12, "__meal"] = "Breakfast"
+        data.loc[(hours >= 12) & (hours < 15), "__meal"] = "Lunch"
+        data.loc[hours >= 15, "__meal"] = "Dinner"
+    else:
+        data["__meal"] = None
+
+    cat_primary = (
+        data.iloc[:, idx_cat].fillna("").astype(str).str.strip() if idx_cat is not None else ""
+    )
+    cat_fallback = (
+        data.iloc[:, idx_group].fillna("").astype(str).str.strip() if idx_group is not None else ""
+    )
+    cat_merged = cat_primary.where(cat_primary != "", cat_fallback)
+    data["__cat"] = cat_merged.map(
+        lambda x: _normalize_group_category(x) if x else "Other"
+    )
+
+    if idx_item is not None:
+        items = data.iloc[:, idx_item].fillna("").astype(str).str.strip()
+        data["__item"] = items.where(~items.str.lower().isin(("", "nan", "none")), "")
+    else:
+        data["__item"] = ""
+
     DayAgg = Dict[str, Any]
     days: Dict[str, DayAgg] = {}
+    for day in sorted(data["__day"].unique()):
+        days[day] = {
+            "net": 0.0,
+            "gross": 0.0,
+            "cash": 0.0,
+            "card": 0.0,
+            "gpay": 0.0,
+            "zomato": 0.0,
+            "other": 0.0,
+            "discount": 0.0,
+            "tax": 0.0,
+            "complimentary": 0.0,
+            "inv_covers": defaultdict(float),
+            "invoices": set(),
+            "categories": defaultdict(lambda: {"qty": 0, "amount": 0.0}),
+            "meal": defaultdict(float),
+            "items": defaultdict(lambda: {"qty": 0, "amount": 0.0}),
+        }
 
-    def day_bucket(d: str) -> DayAgg:
-        if d not in days:
-            days[d] = {
-                "net": 0.0,
-                "gross": 0.0,
-                "cash": 0.0,
-                "card": 0.0,
-                "gpay": 0.0,
-                "zomato": 0.0,
-                "other": 0.0,
-                "discount": 0.0,
-                "tax": 0.0,
-                "complimentary": 0.0,
-                "inv_covers": defaultdict(float),
-                "invoices": set(),
-                "categories": defaultdict(lambda: {"qty": 0, "amount": 0.0}),
-                "meal": defaultdict(float),
-                "items": defaultdict(lambda: {"qty": 0, "amount": 0.0}),
-            }
-        return days[d]
+    success_df = data[data["__is_success"]].copy()
+    compli_df = data[data["__is_complimentary"]].copy()
 
-    for ri in range(header_idx + 1, len(df)):
-        row = df.iloc[ri]
-        dcell = row.iloc[idx_date]
-        if pd.isna(dcell):
-            continue
-        if str(dcell).strip().lower() == "total":
-            continue
-        day = _cell_date_to_iso(dcell)
-        if not day:
-            continue
+    if not success_df.empty:
+        day_totals = success_df.groupby("__day").agg(
+            net=("__sub", "sum"),
+            gross=("__final", "sum"),
+            discount=("__disc", "sum"),
+            tax=("__tax", "sum"),
+        )
+        pay_totals = (
+            success_df.groupby(["__day", "__pay_bucket"])["__final"].sum().unstack(fill_value=0.0)
+        )
+        for day, net_val, gross_val, discount_val, tax_val in day_totals.reset_index().itertuples(
+            index=False, name=None
+        ):
+            b = days[day]
+            b["net"] = float(net_val)
+            b["gross"] = float(gross_val)
+            b["discount"] = float(discount_val)
+            b["tax"] = float(tax_val)
+            b["cash"] = float(pay_totals.at[day, "cash"]) if "cash" in pay_totals.columns else 0.0
+            b["card"] = float(pay_totals.at[day, "card"]) if "card" in pay_totals.columns else 0.0
+            b["gpay"] = float(pay_totals.at[day, "gpay"]) if "gpay" in pay_totals.columns else 0.0
+            b["zomato"] = (
+                float(pay_totals.at[day, "zomato"]) if "zomato" in pay_totals.columns else 0.0
+            )
+            b["other"] = float(pay_totals.at[day, "other"]) if "other" in pay_totals.columns else 0.0
 
-        st = _norm_header(row.iloc[idx_status] if idx_status is not None else "")
-        is_complimentary = "complimentary" in st
-        is_success = st == "success"
-
-        sub = _f(row.iloc[idx_sub])
-        final = _f(row.iloc[idx_final])
-        disc = _f(row.iloc[idx_disc]) if idx_disc is not None else 0.0
-        tax = _f(row.iloc[idx_tax]) if idx_tax is not None else 0.0
-        pay_raw = str(row.iloc[idx_pay]).strip() if idx_pay is not None else ""
-        inv_key = str(row.iloc[idx_inv]).strip() if idx_inv is not None else f"row_{ri}"
-        qty = _i(row.iloc[idx_qty]) if idx_qty is not None else 0
-        cov = _f(row.iloc[idx_covers]) if idx_covers is not None else 0.0
-
-        cat_cell = ""
-        if idx_cat is not None and pd.notna(row.iloc[idx_cat]):
-            cat_cell = str(row.iloc[idx_cat]).strip()
-        if not cat_cell and idx_group is not None and pd.notna(row.iloc[idx_group]):
-            cat_cell = str(row.iloc[idx_group]).strip()
-        cat_name = _normalize_group_category(cat_cell) if cat_cell else "Other"
-
-        b = day_bucket(day)
-
-        if is_complimentary:
-            b["complimentary"] += final
-            continue
-
-        if not is_success:
-            continue
-
-        b["net"] += sub
-        b["gross"] += final
-        b["discount"] += disc
-        b["tax"] += tax
-
-        bucket = _payment_bucket(pay_raw)
-        if bucket == "cash":
-            b["cash"] += final
-        elif bucket == "card":
-            b["card"] += final
-        elif bucket == "gpay":
-            b["gpay"] += final
-        elif bucket == "zomato":
-            b["zomato"] += final
-        else:
-            b["other"] += final
-
-        if cov > 0:
-            b["inv_covers"][inv_key] = max(b["inv_covers"][inv_key], cov)
-
-        # Count unique orders (invoices)
-        b["invoices"].add(inv_key)
-
-        bc = b["categories"][cat_name]
-        bc["qty"] += max(qty, 1) if sub > 0 else qty
-        bc["amount"] += sub
-
-        # Item-level tracking for top-sellers
-        if idx_item is not None and pd.notna(row.iloc[idx_item]):
-            item_name = str(row.iloc[idx_item]).strip()
-            if item_name and item_name.lower() not in ("nan", ""):
+        detail_cols = ["__day", "__cov", "__inv", "__qty", "__sub", "__cat", "__item", "__meal", "__final"]
+        for day_val, cov, inv, qty, sub, cat, item_name, meal, final in success_df[
+            detail_cols
+        ].itertuples(index=False, name=None):
+            b = days[day_val]
+            if cov > 0:
+                b["inv_covers"][inv] = max(b["inv_covers"][inv], cov)
+            b["invoices"].add(inv)
+            qty_value = max(qty, 1) if sub > 0 else qty
+            bc = b["categories"][cat]
+            bc["qty"] += qty_value
+            bc["amount"] += sub
+            if item_name:
                 bi = b["items"][item_name]
-                bi["qty"] += max(qty, 1) if sub > 0 else qty
+                bi["qty"] += qty_value
                 bi["amount"] += sub
-
-        if idx_ts is not None:
-            meal = _meal_from_timestamp(row.iloc[idx_ts])
             if meal:
                 b["meal"][meal] += final
+
+    if not compli_df.empty:
+        compli_totals = compli_df.groupby("__day")["__final"].sum()
+        for day, amt in compli_totals.items():
+            days[day]["complimentary"] += float(amt)
 
     out: List[Dict[str, Any]] = []
     for d in sorted(days.keys()):

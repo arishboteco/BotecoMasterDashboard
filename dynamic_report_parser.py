@@ -335,16 +335,19 @@ def _parse_v1(
         if first_val and first_val.lower() not in ("", "nan", "none"):
             restaurant_name = first_val
 
+    status_tokens = None
     if "bill status" in col_map:
         status_col = col_map["bill status"]
+        status_tokens = df[status_col].map(_status_token)
         before = len(df)
-        df = df[df[status_col].apply(_is_success_status)]
+        df = df[status_tokens.isin({"success", "successorder"})]
         after = len(df)
         notes.append(f"Filtered {before - after} non-success rows from {filename}")
     elif "status" in col_map:
         status_col = col_map["status"]
         before = len(df)
-        df = df[df[status_col].apply(_is_success_status)]
+        status_tokens = df[status_col].map(_status_token)
+        df = df[status_tokens.isin({"success", "successorder"})]
         after = len(df)
         notes.append(f"Filtered {before - after} non-success rows from {filename}")
 
@@ -365,13 +368,50 @@ def _parse_v1(
     file_default = _file_default_restaurant(df, rest_col)
     days: Dict[Tuple[str, str], Dict[str, Any]] = {}
 
-    for _, row in df.iterrows():
-        date_raw = _normalize_date(row.get(date_col, ""))
+    parsed_dates = df[date_col].map(_normalize_date)
+    rest_vals = (
+        df[rest_col].fillna("").astype(str).str.strip() if rest_col else pd.Series("", index=df.index)
+    )
+    pax_vals = pd.to_numeric(df[pax_col], errors="coerce").fillna(0).round().astype(int)
+    net_vals = pd.to_numeric(df[net_col], errors="coerce").fillna(0.0)
+    gross_vals = pd.to_numeric(df[gross_col], errors="coerce").fillna(0.0)
+    disc_vals = pd.to_numeric(df[disc_col], errors="coerce").fillna(0.0) if disc_col else None
+    sc_vals = pd.to_numeric(df[sc_col], errors="coerce").fillna(0.0) if sc_col else None
+    cgst_vals = pd.to_numeric(df[cgst_col], errors="coerce").fillna(0.0) if cgst_col else None
+    sgst_vals = pd.to_numeric(df[sgst_col], errors="coerce").fillna(0.0) if sgst_col else None
+    bill_vals = df[bill_col].fillna("").astype(str).str.strip()
+    paytype_vals = (
+        df[col_map.get("payment type")].fillna("").astype(str) if col_map.get("payment type") else None
+    )
+
+    payment_col_values: Dict[str, pd.Series] = {}
+    for col_lower, bucket_name in _PAYMENT_COLUMN_MAP.items():
+        col_name = col_map.get(col_lower)
+        if col_name:
+            payment_col_values[bucket_name + "|" + col_lower] = pd.to_numeric(
+                df[col_name], errors="coerce"
+            ).fillna(0.0)
+    v1_payment_values = {
+        dyn_col: pd.to_numeric(df[col_map[dyn_col]], errors="coerce").fillna(0.0)
+        for dyn_col in _PAYMENT_MAP_V1
+        if dyn_col in col_map
+    }
+    category_values = {
+        dyn_col: pd.to_numeric(df[col_map[dyn_col]], errors="coerce").fillna(0.0)
+        for dyn_col in _CATEGORY_MAP_V1
+        if dyn_col in col_map
+    }
+    cdt_vals = df[cdt_col] if cdt_col else None
+
+    for row_idx, idx in enumerate(df.index):
+        date_raw = parsed_dates.iloc[row_idx]
         if not date_raw:
             continue
 
         if rest_col:
-            row_rest = _cell_restaurant(row, rest_col) or file_default
+            row_rest = rest_vals.iloc[row_idx]
+            if row_rest.lower() in ("", "nan", "none"):
+                row_rest = file_default
             day_key: Tuple[str, str] = (date_raw, row_rest)
         else:
             day_key = (date_raw, "__single__")
@@ -398,25 +438,30 @@ def _parse_v1(
             }
 
         day = days[day_key]
-        day["covers"] += _safe_int(row.get(pax_col, 0))
-        day["net_total"] += _safe_float(row.get(net_col, 0))
-        day["gross_total"] += _safe_float(row.get(gross_col, 0))
-        day["discount"] += _safe_float(row.get(disc_col, 0)) if disc_col else 0.0
-        day["service_charge"] += _safe_float(row.get(sc_col, 0)) if sc_col else 0.0
-        day["cgst"] += _safe_float(row.get(cgst_col, 0)) if cgst_col else 0.0
-        day["sgst"] += _safe_float(row.get(sgst_col, 0)) if sgst_col else 0.0
+        day["covers"] += int(pax_vals.iloc[row_idx])
+        day["net_total"] += float(net_vals.iloc[row_idx])
+        day["gross_total"] += float(gross_vals.iloc[row_idx])
+        day["discount"] += float(disc_vals.iloc[row_idx]) if disc_col else 0.0
+        day["service_charge"] += float(sc_vals.iloc[row_idx]) if sc_col else 0.0
+        day["cgst"] += float(cgst_vals.iloc[row_idx]) if cgst_col else 0.0
+        day["sgst"] += float(sgst_vals.iloc[row_idx]) if sgst_col else 0.0
 
         pay_type_col_v1 = col_map.get("payment type")
         if pay_type_col_v1:
-            gross_for_pay = _safe_float(row.get(gross_col, 0))
+            gross_for_pay = float(gross_vals.iloc[row_idx])
             if gross_for_pay <= 0:
-                gross_for_pay = _safe_float(row.get(net_col, 0))
-            pk = _norm_pay(row.get(pay_type_col_v1, ""))
+                gross_for_pay = float(net_vals.iloc[row_idx])
+            pk = _norm_pay(paytype_vals.iloc[row_idx] if paytype_vals is not None else "")
             b = None if pk == "part payment" else _payment_type_to_sales_field(pk)
             if b and b != "other_sales":
                 day[b] += gross_for_pay
             else:
-                col_buckets = _buckets_from_payment_columns(row, col_map)
+                col_buckets: Dict[str, float] = defaultdict(float)
+                for key, series in payment_col_values.items():
+                    bucket = key.split("|", 1)[0]
+                    amt = float(series.iloc[row_idx])
+                    if amt > 0:
+                        col_buckets[bucket] += amt
                 col_total = sum(col_buckets.values())
                 if col_total > 0:
                     for bk, amt in col_buckets.items():
@@ -428,26 +473,27 @@ def _parse_v1(
                     day["other_sales"] += gross_for_pay
         else:
             for dyn_col, db_field in _PAYMENT_MAP_V1.items():
-                if dyn_col in col_map:
-                    day[db_field] += _safe_float(row.get(col_map[dyn_col], 0))
+                series = v1_payment_values.get(dyn_col)
+                if series is not None:
+                    day[db_field] += float(series.iloc[row_idx])
 
-        bill_no = str(row.get(bill_col, "")).strip()
+        bill_no = bill_vals.iloc[row_idx]
         if bill_no and bill_no != "nan":
             day["bills"].add(bill_no)
 
         for dyn_col, clean_name in _CATEGORY_MAP_V1.items():
-            if dyn_col in col_map:
-                val = _safe_float(row.get(col_map[dyn_col], 0))
+            series = category_values.get(dyn_col)
+            if series is not None:
+                val = float(series.iloc[row_idx])
                 if val > 0:
                     day["categories"][clean_name] = (
                         day["categories"].get(clean_name, 0.0) + val
                     )
 
         if cdt_col:
-            meal = _meal_from_time(row.get(cdt_col), is_12h=is_12h)
+            meal = _meal_from_time(cdt_vals.iloc[row_idx], is_12h=is_12h) if cdt_vals is not None else None
             if meal:
-                net_val = _safe_float(row.get(net_col, 0))
-                day["meals"][meal] = day["meals"].get(meal, 0.0) + net_val
+                day["meals"][meal] = day["meals"].get(meal, 0.0) + float(net_vals.iloc[row_idx])
 
     results: List[Dict[str, Any]] = []
     for day_key in sorted(days.keys()):
@@ -566,21 +612,25 @@ def _parse_v2(
     is_complimentary = pd.Series(False, index=df.index)
 
     if status_col:
-        status_vals = df[status_col]
-        is_success = status_vals.apply(_is_success_status)
-        is_complimentary = status_vals.apply(_is_complimentary_status)
+        status_tokens = df[status_col].map(_status_token)
+        is_success = status_tokens.isin({"success", "successorder"})
+        is_complimentary = status_tokens.str.contains("compli", na=False)
 
     # Build groups: (date, bill_no) then attach outlet from Restaurant so one file
     # can contain multiple outlets without merging their totals.
     groups_raw: Dict[Tuple[str, str], List[int]] = defaultdict(list)
 
-    for idx, row in df.iterrows():
-        if not is_success.iloc[idx] and not is_complimentary.iloc[idx]:
+    normalized_dates = df[date_col].map(_normalize_date)
+    bill_series = (
+        df[bill_col].fillna("").astype(str).str.strip() if bill_col else pd.Series("", index=df.index)
+    )
+    for idx in df.index:
+        if not is_success.loc[idx] and not is_complimentary.loc[idx]:
             continue
-        date_val = _normalize_date(row.get(date_col, ""))
+        date_val = normalized_dates.loc[idx]
         if not date_val:
             continue
-        bill_no = str(row.get(bill_col, "")).strip() if bill_col else ""
+        bill_no = bill_series.loc[idx] if bill_col else ""
         if not bill_no or bill_no.lower() in ("", "nan", "none"):
             bill_no = f"row_{idx}"
         groups_raw[(date_val, bill_no)].append(idx)
@@ -959,92 +1009,56 @@ def parse_dynamic_report_raw(
 
     df.columns = [c.strip() for c in df.columns]
 
-    bill_items_records: List[Dict[str, Any]] = []
+    def _clean_text_col(col_name: str) -> pd.Series:
+        if col_name not in df.columns:
+            return pd.Series("", index=df.index, dtype="object")
+        return df[col_name].fillna("").astype(str).str.strip()
 
-    for _, row in df.iterrows():
-        restaurant = str(row.get("Restaurant", "")).strip()
-        bill_date = str(row.get("Bill Date", "")).strip()
-        bill_no = str(row.get("Bill No", "")).strip()
-        server_name = (
-            str(row.get("Server Name", "")).strip()
-            if pd.notna(row.get("Server Name"))
-            else ""
-        )
-        table_no = (
-            str(row.get("Table No", "")).strip()
-            if pd.notna(row.get("Table No"))
-            else ""
-        )
-        bill_status = (
-            str(row.get("Bill Status", "")).strip()
-            if pd.notna(row.get("Bill Status"))
-            else ""
-        )
-        payment_type = (
-            str(row.get("Payment Type", "")).strip()
-            if pd.notna(row.get("Payment Type"))
-            else ""
-        )
-        category_name = (
-            str(row.get("Category Name", "")).strip()
-            if pd.notna(row.get("Category Name"))
-            else ""
-        )
-        item_name = (
-            str(row.get("Item Name", "")).strip()
-            if pd.notna(row.get("Item Name"))
-            else ""
-        )
+    normalized = pd.DataFrame(index=df.index)
+    normalized["restaurant"] = _clean_text_col("Restaurant")
+    normalized["bill_date"] = _clean_text_col("Bill Date")
+    normalized["bill_no"] = _clean_text_col("Bill No")
+    normalized["server_name"] = _clean_text_col("Server Name")
+    normalized["table_no"] = _clean_text_col("Table No")
+    normalized["bill_status"] = _clean_text_col("Bill Status")
+    normalized["payment_type"] = _clean_text_col("Payment Type")
+    normalized["category_name"] = _clean_text_col("Category Name")
+    normalized["item_name"] = _clean_text_col("Item Name")
+    normalized["discount_reason"] = _clean_text_col("Discount Reason")
+    normalized["created_date_time"] = _clean_text_col("Created Date Time")
 
-        item_qty = _safe_int(row.get("Item Qty", "0"))
-        pax = _safe_int(row.get("Pax", "0"))
-        discount_reason = (
-            str(row.get("Discount Reason", "")).strip()
-            if pd.notna(row.get("Discount Reason"))
-            else ""
-        )
-        created_date_time = (
-            str(row.get("Created Date Time", "")).strip()
-            if pd.notna(row.get("Created Date Time"))
-            else ""
-        )
+    numeric_map = {
+        "item_qty": "Item Qty",
+        "pax": "Pax",
+        "net_amount": "Net Amount",
+        "gross_amount": "Gross Sale",
+        "discount": "Discount",
+        "cgst": "CGST (2.5)",
+        "sgst": "SGST (2.5)",
+        "service_charge": "Service Charge (10)",
+        "gst_on_service_charge": "Gst On Service Charge (5)",
+        "cancelled_amount": "Cancelled Amount",
+        "complementary_amount": "Complementary Amount",
+    }
+    for out_col, src_col in numeric_map.items():
+        vals = _clean_text_col(src_col).str.replace(",", "", regex=False)
+        normalized[out_col] = pd.to_numeric(vals, errors="coerce").fillna(0.0)
 
-        net_amount = _safe_float(row.get("Net Amount", "0"))
-        gross_amount = _safe_float(row.get("Gross Sale", "0"))
-        discount = _safe_float(row.get("Discount", "0"))
-        cgst = _safe_float(row.get("CGST (2.5)", "0"))
-        sgst = _safe_float(row.get("SGST (2.5)", "0"))
-        service_charge = _safe_float(row.get("Service Charge (10)", "0"))
-        gst_on_sc = _safe_float(row.get("Gst On Service Charge (5)", "0"))
-        cancelled_amount = _safe_float(row.get("Cancelled Amount", "0"))
-        complementary_amount = _safe_float(row.get("Complementary Amount", "0"))
+    normalized["item_qty"] = normalized["item_qty"].round().astype(int)
+    normalized["pax"] = normalized["pax"].round().astype(int)
 
-        bill_items_records.append(
-            {
-                "restaurant": restaurant,
-                "bill_date": bill_date,
-                "bill_no": bill_no,
-                "server_name": server_name or None,
-                "table_no": table_no or None,
-                "bill_status": bill_status,
-                "payment_type": payment_type or None,
-                "category_name": category_name or None,
-                "item_name": item_name or None,
-                "item_qty": item_qty,
-                "pax": pax,
-                "discount_reason": discount_reason or None,
-                "created_date_time": created_date_time or None,
-                "net_amount": net_amount,
-                "gross_amount": gross_amount,
-                "discount": discount,
-                "cgst": cgst,
-                "sgst": sgst,
-                "service_charge": service_charge,
-                "gst_on_service_charge": gst_on_sc,
-                "cancelled_amount": cancelled_amount,
-                "complementary_amount": complementary_amount,
-            }
-        )
+    for col in (
+        "server_name",
+        "table_no",
+        "payment_type",
+        "category_name",
+        "item_name",
+        "discount_reason",
+        "created_date_time",
+    ):
+        normalized[col] = normalized[col].replace("", None)
+
+    bill_items_records: List[Dict[str, Any]] = normalized.to_dict("records")
 
     notes.append(f"Parsed {len(bill_items_records)} raw records from {filename}")
     return bill_items_records, notes
