@@ -93,6 +93,14 @@ BRANDED_HEADER = r"""    /* ── Branded header ──────────
 """
 
 LAYOUT_SPACING = r"""    /* ── Layout & spacing ──────────────────────────────────── */
+    :root {
+        --space-hero-y: 1.15rem;
+        --space-section-y: 1.35rem;
+        --space-card-padding: 0.95rem;
+        --space-context-band-y: 0.65rem;
+        --type-table-header: 0.78rem;
+        --type-microtext: 0.74rem;
+    }
     .main .block-container {
         max-width: 1200px;
         padding: 1.1rem 1.5rem 1.75rem !important;
@@ -105,8 +113,8 @@ LAYOUT_SPACING = r"""    /* ── Layout & spacing ─────────�
         border: 1px solid var(--border-subtle);
         border-radius: var(--radius-lg);
         background: linear-gradient(135deg, var(--surface-elevated), var(--surface-muted));
-        padding: 1rem 1.1rem;
-        margin-bottom: 0.85rem;
+        padding: var(--space-hero-y) 1.1rem;
+        margin-bottom: var(--space-section-y);
         box-shadow: var(--shadow-sm);
     }
     .page-hero-kicker {
@@ -138,6 +146,12 @@ LAYOUT_SPACING = r"""    /* ── Layout & spacing ─────────�
         font-weight: 600;
         padding: 0.35rem 0.7rem;
         white-space: nowrap;
+    }
+    .section-stack {
+        margin-top: var(--space-section-y);
+    }
+    .section-stack:first-child {
+        margin-top: 0;
     }
 
 """
@@ -269,19 +283,42 @@ INLINE_HTML_UTILITIES = r"""    /* ── Inline HTML replacement utility classe
     .delta-chip--negative {
         color: var(--error-text);
     }
-    .period-range-note {
-        padding: 0.5rem 0;
-        font-size: 0.95rem;
+    .microtext {
+        font-size: var(--type-microtext);
+        color: var(--text-muted);
+        letter-spacing: 0.01em;
+    }
+    .context-band {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem 1.2rem;
+        align-items: center;
+        background: var(--surface-muted);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        padding: var(--space-context-band-y) var(--space-card-padding);
+        margin: 0.35rem 0 var(--space-section-y) 0;
         color: var(--text-secondary);
+        font-size: 0.84rem;
+    }
+    .context-band strong {
+        color: var(--text);
+        font-weight: 600;
+    }
+    .context-band--muted {
+        opacity: 0.95;
+    }
+    .context-band-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
     }
     .report-comparison-bar {
-        display: flex;
-        gap: 2rem;
-        padding: 0.25rem 0 0.5rem 0;
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
         color: var(--text-secondary);
-        font-size: 0.85rem;
-        border-bottom: 1px solid var(--border-subtle);
-        margin-bottom: 0.5rem;
+        font-size: 0.84rem;
     }
 
 """

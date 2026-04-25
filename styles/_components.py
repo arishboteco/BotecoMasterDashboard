@@ -132,7 +132,7 @@ METRIC_CARDS_CONTAINERS = r"""    /* ── Metric cards & containers ───�
     }
     /* Selector-specific overrides */
     .metric-card {
-        padding: 1rem;
+        padding: var(--space-card-padding);
         border-radius: var(--radius-lg);
         border-left: 4px solid var(--brand);
     }
@@ -150,7 +150,23 @@ METRIC_CARDS_CONTAINERS = r"""    /* ── Metric cards & containers ───�
         border-radius: var(--radius-md);
         border: 1px solid var(--border-subtle);
         border-left: 4px solid var(--accent-coral);
-        padding: 1rem;
+        padding: var(--space-card-padding);
+    }
+    .kpi-primary-card {
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-lg);
+        background: var(--surface);
+        box-shadow: var(--shadow-sm);
+        padding: var(--space-card-padding);
+        margin-bottom: var(--space-section-y);
+    }
+    .kpi-secondary-card {
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        background: var(--surface-elevated);
+        padding: calc(var(--space-card-padding) * 0.9);
+        margin-top: 0.4rem;
+        margin-bottom: var(--space-section-y);
     }
 
 """
@@ -212,7 +228,7 @@ DATA_TABLES = r"""    /* ── Data tables ────────────
     [data-testid="stDataFrame"] th {
         font-family: var(--font-body) !important;
         font-weight: 600 !important;
-        font-size: 0.8rem !important;
+        font-size: var(--type-table-header) !important;
         text-transform: uppercase !important;
         letter-spacing: 0.04em !important;
         color: var(--text-secondary) !important;
