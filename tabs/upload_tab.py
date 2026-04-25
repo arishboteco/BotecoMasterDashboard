@@ -20,6 +20,7 @@ from database_reads import clear_location_cache, peek_existing_net_sales_batch
 import tabs.report_tab as report_tab
 from auth import is_admin
 from tabs import TabContext
+from components import page_header, workflow_steps
 
 logger = logging.getLogger("boteco")
 
@@ -35,11 +36,13 @@ def _files_fingerprint(uploaded_files) -> str:
 
 def render(ctx: TabContext) -> None:
     """Render the Upload tab UI and handle import logic."""
-    st.markdown("### Upload POS Data")
-
-    st.caption(
-        "Drop **any** Petpooja exports below — the system auto-detects file types "
-        "and routes data to the correct outlet automatically."
+    page_header(
+        title="POS Ingestion",
+        subtitle=(
+            "Drop Petpooja exports, verify routing, then import with overwrite "
+            "protection for existing outlet/day data."
+        ),
+        context="Smart detection + multi-outlet routing",
     )
 
     flash = st.session_state.pop("_import_summary_flash", None)
@@ -60,7 +63,13 @@ def render(ctx: TabContext) -> None:
             "Saving for the same **outlet + date** overwrites that day's data."
         )
 
-    st.markdown("### Drop your files")
+    st.markdown(
+        '<div class="ux-panel-title">Step 1 · Drop source files</div>'
+        '<p class="ux-panel-subtitle">'
+        "Include any Petpooja exports. Dynamic Report CSV is preferred for tax accuracy."
+        "</p>",
+        unsafe_allow_html=True,
+    )
     uploaded_files = st.file_uploader(
         "Petpooja exports (XLSX, XLS, CSV — any report type)",
         type=["xlsx", "xls", "csv"],
@@ -71,6 +80,11 @@ def render(ctx: TabContext) -> None:
         ),
         key="smart_upload_files",
         label_visibility="collapsed",
+    )
+
+    workflow_steps(
+        ["Drop files", "Review detection", "Confirm and import"],
+        active_index=0 if not uploaded_files else 1,
     )
 
     if not uploaded_files:
@@ -86,7 +100,10 @@ def render(ctx: TabContext) -> None:
         )
 
     if uploaded_files:
-        st.markdown("#### Detected files")
+        st.markdown(
+            '<div class="ux-panel-title">Step 2 · Review detected files</div>',
+            unsafe_allow_html=True,
+        )
         files_payload = [(f.name, f.getvalue()) for f in uploaded_files]
 
         importable_count = 0
@@ -319,8 +336,11 @@ def render(ctx: TabContext) -> None:
                     report_tab.clear_report_cache()
                     st.rerun()
 
-    st.markdown("---")
-    st.markdown("### Recent Entries")
+    st.markdown(
+        '<div class="ux-panel-title">Recent import activity</div>'
+        '<p class="ux-panel-subtitle">Last 10 saved files for this outlet scope.</p>',
+        unsafe_allow_html=True,
+    )
     history = database.get_upload_history(ctx.location_id, 10)
     if history:
         hdf = pd.DataFrame(history)

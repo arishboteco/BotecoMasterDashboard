@@ -16,13 +16,16 @@ from auth import is_admin
 from tabs import TabContext
 from components.navigation import date_range_nav
 from components.forms import confirm_dialog
+from components import page_header
 
 
 def render(ctx: TabContext) -> None:
     """Render the Settings tab UI for admins and account display."""
-    st.markdown("### Settings")
-    st.caption("Outlets, users, targets, and data export.")
-    st.divider()
+    page_header(
+        title="Settings and Administration",
+        subtitle="Manage outlets, user access, targets, exports, and maintenance controls.",
+        context="Admin controls",
+    )
 
     # ── Account info (all users) ──────────────────────────────────
     with st.container(border=True):
@@ -45,7 +48,7 @@ def render(ctx: TabContext) -> None:
     # ADMIN-ONLY SECTIONS BELOW
     # ─────────────────────────────────────────────────────────────
 
-    st.divider()
+    st.markdown('<div class="ux-panel-title">Outlet administration</div>', unsafe_allow_html=True)
 
     # ── Location settings ─────────────────────────────────────────
     st.markdown("### Outlet Settings")
@@ -180,7 +183,7 @@ def render(ctx: TabContext) -> None:
                 confirm_label="Yes, delete outlet",
             )
 
-    st.divider()
+    st.markdown('<div class="ux-panel-title">User access management</div>', unsafe_allow_html=True)
 
     # ── User management ───────────────────────────────────────────
     st.markdown("### User Management")
@@ -347,7 +350,7 @@ def render(ctx: TabContext) -> None:
                 confirm_label="Yes, delete user",
             )
 
-    st.divider()
+    st.markdown('<div class="ux-panel-title">Data export and maintenance</div>', unsafe_allow_html=True)
 
     # ── Data export ───────────────────────────────────────────────
     st.markdown("### Data Export")
@@ -416,7 +419,7 @@ def render(ctx: TabContext) -> None:
     else:
         st.caption("No data found for the selected filters.")
 
-    st.divider()
+    st.markdown('<div class="ux-panel-title">Danger zone</div>', unsafe_allow_html=True)
 
     # ── Wipe All Data ─────────────────────────────────────────────
     with st.container(border=True):

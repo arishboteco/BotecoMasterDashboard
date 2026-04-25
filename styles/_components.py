@@ -461,6 +461,56 @@ SECTION_LABELS = r"""    /* ── Section labels ──────────
 
 """
 
+WORKFLOW_AND_SURFACES = r"""    /* ── Workflow and surface polish ─────────────────────── */
+    .workflow-steps {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin: 0.25rem 0 0.9rem;
+    }
+    .workflow-step {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--border-medium);
+        border-radius: 999px;
+        padding: 0.28rem 0.7rem;
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        background: var(--surface-elevated);
+    }
+    .workflow-step.active {
+        color: #FFFFFF;
+        border-color: var(--brand);
+        background: var(--brand);
+    }
+    .ux-panel-title {
+        font-family: var(--font-display);
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: var(--text);
+        margin-bottom: 0.35rem;
+    }
+    .ux-panel-subtitle {
+        margin: 0;
+        color: var(--text-secondary);
+        font-size: 0.84rem;
+    }
+    .pill-info {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        border-radius: 999px;
+        padding: 0.25rem 0.55rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--info-text);
+        background: var(--info-bg);
+        border: 1px solid var(--info-border);
+    }
+
+"""
+
 EMPTY_STATE = r"""    /* ── Empty state ─────────────────────────────────────── */
     .empty-state {
         text-align: center;

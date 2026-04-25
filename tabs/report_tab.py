@@ -15,6 +15,7 @@ import clipboard_ui
 import database
 import scope
 import sheet_reports as reports
+import ui_theme
 import utils
 from components.feedback import empty_state
 
@@ -41,7 +42,7 @@ def _load_report_bundle_cached(location_ids: List[int], date_str: str):
 
 
 from tabs import TabContext
-from components import date_nav, divider
+from components import date_nav, divider, page_header
 
 
 def _build_mtd_maps(
@@ -101,7 +102,14 @@ def _get_foot_rows_cached(location_ids: List[int], year: int, month: int):
 
 def render(ctx: TabContext) -> None:
     """Render the Daily Report tab UI."""
-    st.markdown("### Daily Sales Report")
+    page_header(
+        title="Daily Sales Report",
+        subtitle=(
+            "Track day-level sales health, compare with same weekday last week, and "
+            "share report-ready PNG sections."
+        ),
+        context=ctx.report_display_name,
+    )
     # Date selector with Prev/Next navigation
     if "report_date" not in st.session_state:
         most_recent_date = database.get_most_recent_date_with_data(ctx.report_loc_ids)
@@ -393,6 +401,10 @@ def render(ctx: TabContext) -> None:
                     return items
 
                 with st.expander("PNG Report", expanded=True):
+                    st.markdown(
+                        '<span class="pill-info">Primary share bundle</span>',
+                        unsafe_allow_html=True,
+                    )
                     _sec_meta = [
                         ("sales_summary", "Sales summary"),
                         ("category", "Category sales"),
@@ -439,6 +451,10 @@ def render(ctx: TabContext) -> None:
                 return
 
         with st.expander("Individual PNG sections", expanded=True):
+            st.markdown(
+                '<span class="pill-info">Section-level exports</span>',
+                unsafe_allow_html=True,
+            )
             _sec_meta = [
                 ("sales_summary", "Sales summary"),
                 ("category", "Category sales"),
