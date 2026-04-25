@@ -997,34 +997,152 @@ def wipe_all_data() -> Tuple[Dict[str, int], List[str]]:
     return _impl()
 
 
-# Re-export functions from database_reads for backward compatibility
-from database_reads import (
-    get_all_locations,
-    peek_daily_net_sales,
-    get_all_summaries_for_export,
-    get_daily_summary,
-    get_summaries_for_month,
-    get_category_mtd_totals,
-    get_summaries_for_date_range,
-    get_summaries_for_date_range_multi,
-    get_mtd_totals_multi,
-    get_summaries_for_month_multi,
-    get_most_recent_date_with_data,
-    get_location_settings,
-    get_upload_history,
-    get_recent_summaries,
-    get_category_totals_for_date_range,
-)
+# ---------------------------------------------------------------------------
+# Facade exports (authoritative import path: this module)
+# ---------------------------------------------------------------------------
+AUTH_EXPORTS = [
+    "create_admin_user",
+    "verify_user",
+    "get_all_users",
+    "create_user",
+    "update_user",
+    "delete_user",
+    "create_user_session",
+    "validate_session_token",
+    "delete_session_token",
+    "purge_expired_sessions",
+    "is_login_locked",
+    "record_failed_login",
+    "clear_failed_login",
+]
 
-# Re-export functions from database_analytics
-from database_analytics import (
-    get_monthly_footfall_multi,
-    get_weekly_footfall_multi,
-    get_daily_sales_for_date_range,
-    get_category_sales_for_date_range,
-    get_service_sales_for_date_range,
-    get_daily_service_sales_for_date_range,
-    get_super_category_mtd_totals,
-    get_top_items_for_date_range,
-    get_payment_breakdown_for_date_range,
-)
+READ_EXPORTS = [
+    "get_all_locations",
+    "peek_daily_net_sales",
+    "get_all_summaries_for_export",
+    "get_daily_summary",
+    "get_summaries_for_month",
+    "get_category_mtd_totals",
+    "get_service_mtd_totals",
+    "get_summaries_for_date_range",
+    "get_summaries_for_date_range_multi",
+    "get_mtd_totals_multi",
+    "get_summaries_for_month_multi",
+    "get_most_recent_date_with_data",
+    "get_location_settings",
+    "get_upload_history",
+    "get_recent_summaries",
+    "get_category_mtd_totals_multi",
+    "get_service_mtd_totals_multi",
+]
+
+WRITE_EXPORTS = [
+    "ensure_default_locations",
+    "save_daily_summary",
+    "delete_daily_summary_for_location_date",
+    "create_location",
+    "delete_location",
+    "update_daily_summary_covers_only",
+    "update_location_settings",
+    "save_upload_record",
+    "backfill_weekday_weighted_targets",
+    "wipe_all_data",
+]
+
+ANALYTICS_EXPORTS = [
+    "get_monthly_footfall_multi",
+    "get_weekly_footfall_multi",
+    "get_top_items_for_date_range",
+    "get_category_sales_for_date_range",
+    "get_service_sales_for_date_range",
+    "get_daily_service_sales_for_date_range",
+    "get_super_category_mtd_totals",
+    "get_super_category_mtd_totals_multi",
+    "get_super_category_sales_for_date_range",
+    "get_item_sales_for_date_range",
+]
+
+DELEGATED_SYMBOL_ORIGINS = {
+    # auth
+    "create_admin_user": "database_auth",
+    "verify_user": "database_auth",
+    "get_all_users": "database_auth",
+    "create_user": "database_auth",
+    "update_user": "database_auth",
+    "delete_user": "database_auth",
+    "create_user_session": "database_auth",
+    "validate_session_token": "database_auth",
+    "delete_session_token": "database_auth",
+    "purge_expired_sessions": "database_auth",
+    "is_login_locked": "database_auth",
+    "record_failed_login": "database_auth",
+    "clear_failed_login": "database_auth",
+    # reads
+    "get_all_locations": "database_reads",
+    "peek_daily_net_sales": "database_reads",
+    "get_all_summaries_for_export": "database_reads",
+    "get_daily_summary": "database_reads",
+    "get_summaries_for_month": "database_reads",
+    "get_category_mtd_totals": "database_reads",
+    "get_service_mtd_totals": "database_reads",
+    "get_summaries_for_date_range": "database_reads",
+    "get_summaries_for_date_range_multi": "database_reads",
+    "get_mtd_totals_multi": "database_reads",
+    "get_summaries_for_month_multi": "database_reads",
+    "get_most_recent_date_with_data": "database_reads",
+    "get_location_settings": "database_reads",
+    "get_upload_history": "database_reads",
+    "get_recent_summaries": "database_reads",
+    "get_category_mtd_totals_multi": "database_reads",
+    "get_service_mtd_totals_multi": "database_reads",
+    # writes
+    "ensure_default_locations": "database_writes",
+    "save_daily_summary": "database_writes",
+    "delete_daily_summary_for_location_date": "database_writes",
+    "create_location": "database_writes",
+    "delete_location": "database_writes",
+    "update_daily_summary_covers_only": "database_writes",
+    "update_location_settings": "database_writes",
+    "save_upload_record": "database_writes",
+    "backfill_weekday_weighted_targets": "database_writes",
+    "wipe_all_data": "database_writes",
+    # analytics
+    "get_monthly_footfall_multi": "database_analytics",
+    "get_weekly_footfall_multi": "database_analytics",
+    "get_top_items_for_date_range": "database_analytics",
+    "get_category_sales_for_date_range": "database_analytics",
+    "get_service_sales_for_date_range": "database_analytics",
+    "get_daily_service_sales_for_date_range": "database_analytics",
+    "get_super_category_mtd_totals": "database_analytics",
+    "get_super_category_mtd_totals_multi": "database_analytics",
+    "get_super_category_sales_for_date_range": "database_analytics",
+    "get_item_sales_for_date_range": "database_analytics",
+}
+
+FACADE_EXPORT_GROUPS = {
+    "auth": AUTH_EXPORTS,
+    "reads": READ_EXPORTS,
+    "writes": WRITE_EXPORTS,
+    "analytics": ANALYTICS_EXPORTS,
+}
+
+__all__ = [
+    "get_connection",
+    "db_connection",
+    "init_database",
+    "bootstrap",
+    "use_supabase",
+    "get_supabase_client",
+    "reset_supabase_client",
+    "get_supabase_admin_client",
+    "AUTH_EXPORTS",
+    "READ_EXPORTS",
+    "WRITE_EXPORTS",
+    "ANALYTICS_EXPORTS",
+    "FACADE_EXPORT_GROUPS",
+    "DELEGATED_SYMBOL_ORIGINS",
+    *AUTH_EXPORTS,
+    *READ_EXPORTS,
+    *WRITE_EXPORTS,
+    *ANALYTICS_EXPORTS,
+]
