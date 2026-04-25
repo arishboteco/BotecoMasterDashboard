@@ -44,6 +44,7 @@ def get_css() -> str:
         _components.UPLOAD_ZONE_STYLING,
         _components.SECTION_DIVIDERS,
         _base.LAYOUT_SPACING,
+        _base.INLINE_HTML_UTILITIES,
         _base.SCROLLBAR_STYLING,
         _base.FOCUS_RINGS,
         _components.SECTION_LABELS,

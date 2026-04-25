@@ -1,12 +1,13 @@
+# Canonical Streamlit theme values mapped from styles/_tokens.py
 [theme]
-primaryColor = "#1F5FA8"
+primaryColor = "#005AAB"
 backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F1F3F7"
+secondaryBackgroundColor = "#EEF3F8"
 textColor = "#1E293B"
 font = "sans serif"
 
 [theme.dark]
-primaryColor = "#3A7FC9"
+primaryColor = "#2D7AC9"
 backgroundColor = "#0F172A"
 secondaryBackgroundColor = "#1E293B"
 textColor = "#F1F5F9"

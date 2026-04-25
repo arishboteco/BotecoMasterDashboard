@@ -155,33 +155,27 @@ def render(ctx: TabContext) -> None:
                 change = g["change"]
                 if change > 0:
                     arrow = "\u25b2"
-                    color = "var(--success-text)"
+                    delta_class = "delta-chip--positive"
                 elif change < 0:
                     arrow = "\u25bc"
-                    color = "var(--error-text)"
+                    delta_class = "delta-chip--negative"
                     change = abs(change)
                     pct = abs(pct)
                 else:
                     return "\u2014"
-                if is_currency:
-                    return (
-                        f'<span style="color:{color};font-size:0.8rem;">'
-                        f"{arrow} {utils.format_rupee_short(change)} ({pct:+.2f}%)</span>"
-                    )
-                else:
-                    return (
-                        f'<span style="color:{color};font-size:0.8rem;">'
-                        f"{arrow} {int(change):,} ({pct:+.2f}%)</span>"
-                    )
+                value = (
+                    utils.format_rupee_short(change) if is_currency else f"{int(change):,}"
+                )
+                return (
+                    f'<span class="delta-chip {delta_class}">'
+                    f"{arrow} {value} ({pct:+.2f}%)</span>"
+                )
 
             _net_cmp = _delta_indicator(_curr_net, _prev_net, is_currency=True)
             _cov_cmp = _delta_indicator(_curr_cov, _prev_cov, is_currency=False)
             _apc_cmp = _delta_indicator(_curr_apc, _prev_apc, is_currency=True)
             st.markdown(
-                f'<div style="display:flex;gap:2rem;padding:0.25rem 0 0.5rem 0;'
-                f"color:var(--text-secondary);font-size:0.85rem;"
-                f"border-bottom:1px solid var(--border-subtle);"
-                f'margin-bottom:0.5rem;">'
+                f'<div class="report-comparison-bar">'
                 f"<span>vs {_prev_date.strftime('%d %b')}: "
                 f"Net {_net_cmp} &nbsp;|&nbsp; "
                 f"Covers {_cov_cmp} &nbsp;|&nbsp; "

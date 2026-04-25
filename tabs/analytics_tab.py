@@ -164,7 +164,7 @@ def render(ctx: TabContext) -> None:
     if analysis_period != "Custom":
         with col_per2:
             st.markdown(
-                f'<div style="padding:0.5rem 0;font-size:0.95rem;color:var(--text-secondary);">'
+                f'<div class="period-range-note">'
                 f"<strong>From:</strong> {start_date.strftime('%d %b')} "
                 f"<strong>to</strong> {end_date.strftime('%d %b %Y')}"
                 f"</div>",
