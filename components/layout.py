@@ -10,6 +10,21 @@ from typing import Generator, Iterable, Optional, Tuple
 import streamlit as st
 
 
+ICON_FALLBACKS = {
+    "upload_file": "↥",
+    "fact_check": "✓",
+    "history": "↺",
+    "widgets": "•",
+    "info": "i",
+    "check_circle": "✓",
+    "warning": "!",
+    "error": "!",
+    "lightbulb": "•",
+    "upload": "↥",
+    "tune": "≡",
+}
+
+
 @contextmanager
 def section(
     title: str,
@@ -77,6 +92,17 @@ def page_shell() -> PageShell:
     )
 
 
+def _icon_html(icon: str, class_name: str) -> str:
+    """Render an icon with a text fallback that does not leak ligature names."""
+    fallback = ICON_FALLBACKS.get(icon, "•")
+    return (
+        f'<span class="{class_name}" aria-hidden="true">'
+        f'<span class="material-symbols-outlined {class_name}__glyph">{escape(icon)}</span>'
+        f'<span class="{class_name}__fallback">{escape(fallback)}</span>'
+        f'</span>'
+    )
+
+
 def section_title(
     title: str,
     subtitle: Optional[str] = None,
@@ -89,7 +115,7 @@ def section_title(
     st.markdown(
         f'<div class="section-block">'
         f'<div class="section-block-title">'
-        f'<span class="material-symbols-outlined section-block-icon">{escape(icon)}</span>'
+        f'{_icon_html(icon, "section-block-icon")}'
         f"<span>{escape(title)}</span>"
         f"</div>"
         f"{subtitle_html}"
@@ -138,7 +164,7 @@ def info_banner(
     resolved_icon = icon or icon_by_tone[safe_tone]
     st.markdown(
         f'<div class="info-banner info-banner--{safe_tone}">'
-        f'<span class="material-symbols-outlined info-banner-icon">{escape(resolved_icon)}</span>'
+        f'{_icon_html(resolved_icon, "info-banner-icon")}'
         f'<span class="info-banner-text">{escape(message)}</span>'
         f"</div>",
         unsafe_allow_html=True,
@@ -158,7 +184,7 @@ def filter_strip(
     )
     st.markdown(
         f'<div class="filter-strip">'
-        f'<span class="material-symbols-outlined filter-strip-icon">{escape(icon)}</span>'
+        f'{_icon_html(icon, "filter-strip-icon")}'
         f'<span class="filter-strip-title">{escape(title)}</span>'
         f"{subtitle_html}"
         f"</div>",
