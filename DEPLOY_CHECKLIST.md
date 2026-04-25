@@ -4,33 +4,38 @@
 
 - [ ] Set environment variables:
   - `SUPABASE_URL` — Supabase project URL
-  - `SUPABASE_KEY` — Supabase anon key (**rotate immediately** — old key was in source history)
-  - `SUPABASE_SERVICE_KEY` — Supabase service role key
-  - `USE_SUPABASE=1` — Enable cloud database mode
+  - `SUPABASE_KEY` — Supabase anon key
+  - `SUPABASE_SERVICE_KEY` — Supabase service role key (for privileged/admin operations)
+  - `USE_SUPABASE=1` — Enable and enforce cloud database mode
   - `BOTECO_LOG_FILE=logs/boteco.log` — Log file path (optional)
 - [ ] Verify `.env` is NOT in version control (`git status`)
-- [ ] Dead code files removed (no `*.sql`, `generate_insert*.py` in repo root)
-- [ ] Default admin password changed from the generated one shown on first run
 - [ ] Run data integrity check: `python scripts/integrity_check.py`
-- [ ] All tests pass: `pytest tests/ -v`
+- [ ] Run full tests: `pytest`
 
 ## Supabase Configuration
 
-- [ ] **Rotate the Supabase anon key** — the previous key was committed to source history and must be invalidated via the Supabase dashboard (Settings → API → Regenerate anon key)
-- [ ] RLS policies configured on all tables
-- [ ] Service role key is set for admin operations
-- [ ] Database indexes exist on `daily_summaries(location_id, date)`
+- [ ] RLS policies configured on all application tables
+- [ ] Service role key is set only in secure deployment secrets
+- [ ] Indexes and constraints are applied (especially date/location query paths)
+- [ ] Health check works in Supabase mode: `curl "https://your-app.streamlit.app/?health=check"`
 
-## Post-Deployment
+## First-Run Authentication Hardening
 
-- [ ] Health check returns OK: `curl "https://your-app.streamlit.app/?health=check"`
-- [ ] Login with admin credentials works (first-run password shown on login screen)
-- [ ] Upload a test CSV — verify data appears in Report tab
-- [ ] Generate PNG report — verify layout is correct
+- [ ] On first boot, log in with bootstrap credentials: `admin` / `admin`
+- [ ] Immediately change admin password in **Settings**
+- [ ] Confirm at least one additional admin/manager user is created
+- [ ] Validate login lockout behavior (failed-attempt throttling)
+- [ ] Validate session persistence/logout flow
+
+## Post-Deployment Smoke Tests
+
+- [ ] Upload a test CSV/XLSX and verify data appears in Report tab
+- [ ] Generate PNG report and verify layout/text
+- [ ] Run basic analytics date ranges and confirm charts populate
 - [ ] Check logs for structured output: `tail -f logs/boteco.log`
 
 ## Monitoring
 
-- [ ] Log file is being written to
-- [ ] Streamlit Cloud dashboard shows no errors
-- [ ] Set up log rotation if using file-based logging
+- [ ] Streamlit Cloud dashboard shows no recurring errors
+- [ ] Log file (if configured) is being written to
+- [ ] Add log rotation/retention policy if using file logs
