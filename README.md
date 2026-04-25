@@ -13,17 +13,22 @@ source venv/bin/activate  # Linux/Mac
 venv\Scripts\activate     # Windows
 ```
 
-### 2. Install Dependencies
+### 2. Install Runtime Dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Run the Application
+### 3. (Optional) Install Dev/Test Dependencies
+```bash
+pip install -r requirements-dev.txt
+```
+
+### 4. Run the Application
 ```bash
 streamlit run app.py
 ```
 
-### 4. First Time Setup
+### 5. First Time Setup
 - On first run, you'll be prompted to create an admin account
 - Default locations "Boteco - Indiqube" and "Boteco - Bagmane" will be created
 - Set your monthly sales target (default: ₹5,000,000)
@@ -66,7 +71,8 @@ BotecoMasterDashboard/
 ├── timing_parser.py            # Parses Restaurant Timing Report XLSX
 ├── ui_theme.py                 # Shared UI constants and Plotly theme defaults
 ├── utils.py                    # Helper functions (formatting, dates, growth calc)
-├── requirements.txt            # Python dependencies
+├── requirements.txt            # Runtime dependencies
+├── requirements-dev.txt        # Dev/test dependencies (includes runtime)
 ├── .streamlit/
 │   └── config.toml             # Streamlit theme config
 ├── .devcontainer/
