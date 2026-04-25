@@ -48,7 +48,8 @@ from components import (
     filter_strip,
     info_banner,
     page_header,
-    section_block,
+    page_shell,
+    section_title,
 )
 
 
@@ -109,14 +110,16 @@ def _get_foot_rows_cached(location_ids: List[int], year: int, month: int):
 
 def render(ctx: TabContext) -> None:
     """Render the Daily Report tab UI."""
-    page_header(
-        title="Daily Sales Report",
-        subtitle=(
-            "Track day-level sales health, compare with same weekday last week, and "
-            "share report-ready PNG sections."
-        ),
-        context=ctx.report_display_name,
-    )
+    shell = page_shell()
+    with shell.hero:
+        page_header(
+            title="Daily Sales Report",
+            subtitle=(
+                "Track day-level sales health, compare with same weekday last week, and "
+                "share report-ready PNG sections."
+            ),
+            context=ctx.report_display_name,
+        )
     # Date selector with Prev/Next navigation
     if "report_date" not in st.session_state:
         most_recent_date = database.get_most_recent_date_with_data(ctx.report_loc_ids)
@@ -127,385 +130,388 @@ def render(ctx: TabContext) -> None:
         else:
             st.session_state["report_date"] = datetime.now().date()
 
-    selected_date = date_nav(
-        session_key="report_date",
-        label="Select a date",
-        help_text="Choose a date to view that day's report",
-    )
+    with shell.filters:
+        section_title("Filters", "Choose a day and outlet scope.", icon="filter_alt")
+        selected_date = date_nav(
+            session_key="report_date",
+            label="Select a date",
+            help_text="Choose a date to view that day's report",
+        )
 
     date_str = selected_date.strftime("%Y-%m-%d")
     outlets_bundle, summary = _load_report_bundle_cached(ctx.report_loc_ids, date_str)
 
-    if summary:
-        y_m = [int(x) for x in date_str.split("-")[:2]]
-        multi_outlet = len(outlets_bundle) > 1
-
-        # ── Same weekday previous week comparison ──────────────
-        _prev_date = selected_date - timedelta(days=7)
-        _prev_date_str = _prev_date.strftime("%Y-%m-%d")
-        _prev_summary = scope.get_daily_summary_for_scope(
-            ctx.report_loc_ids, _prev_date_str
-        )
-        if _prev_summary:
-            _prev_net = float(_prev_summary.get("net_total") or 0)
-            _prev_cov = int(_prev_summary.get("covers") or 0)
-            _prev_apc = float(_prev_summary.get("apc") or 0)
-            _curr_net = float(summary.get("net_total") or 0)
-            _curr_cov = int(summary.get("covers") or 0)
-            _curr_apc = float(summary.get("apc") or 0)
-
-            def _delta_indicator(curr, prev, is_currency=True):
-                if prev is None or prev == 0:
-                    return ""
-                g = utils.calculate_growth(curr, prev)
-                pct = g["percentage"]
-                change = g["change"]
-                if change > 0:
-                    arrow = "\u25b2"
-                    delta_class = "delta-chip--positive"
-                elif change < 0:
-                    arrow = "\u25bc"
-                    delta_class = "delta-chip--negative"
-                    change = abs(change)
-                    pct = abs(pct)
-                else:
-                    return "\u2014"
-                value = (
-                    utils.format_rupee_short(change) if is_currency else f"{int(change):,}"
-                )
-                return (
-                    f'<span class="delta-chip {delta_class}">'
-                    f"{arrow} {value} ({pct:+.2f}%)</span>"
-                )
-
-            _net_cmp = _delta_indicator(_curr_net, _prev_net, is_currency=True)
-            _cov_cmp = _delta_indicator(_curr_cov, _prev_cov, is_currency=False)
-            _apc_cmp = _delta_indicator(_curr_apc, _prev_apc, is_currency=True)
-            st.markdown(
-                f'<div class="report-comparison-bar">'
-                f"<span>vs {_prev_date.strftime('%d %b')}: "
-                f"Net {_net_cmp} &nbsp;|&nbsp; "
-                f"Covers {_cov_cmp} &nbsp;|&nbsp; "
-                f"APC {_apc_cmp}</span></div>",
-                unsafe_allow_html=True,
+    with shell.content:
+        if summary:
+            y_m = [int(x) for x in date_str.split("-")[:2]]
+            multi_outlet = len(outlets_bundle) > 1
+    
+            # ── Same weekday previous week comparison ──────────────
+            _prev_date = selected_date - timedelta(days=7)
+            _prev_date_str = _prev_date.strftime("%Y-%m-%d")
+            _prev_summary = scope.get_daily_summary_for_scope(
+                ctx.report_loc_ids, _prev_date_str
             )
-
-        divider()
-
-        # Individual PNG sections
-        per_outlet_sheet = (
-            [(n, d) for _i, n, d in outlets_bundle] if multi_outlet else None
-        )
-        per_outlet_cat = None
-        per_outlet_svc = None
-        if len(ctx.report_loc_ids) > 1:
-            mtd_cat, mtd_svc = _build_mtd_maps_cached(
-                ctx.report_loc_ids, y_m[0], y_m[1], date_str
-            )
-            _today = datetime.now().date()
-            _end = _today.strftime("%Y-%m-%d")
-            _start_mo_dt = utils.subtract_months(_today, 9)
-            _start_mo_str = _start_mo_dt.strftime("%Y-%m-%d")
-            _days_since_monday = _today.weekday()
-            _current_week_monday = _today - timedelta(days=_days_since_monday)
-            _start_wk = (_current_week_monday - timedelta(weeks=3)).strftime("%Y-%m-%d")
-
-            per_outlet_footfall_metrics = [
-                (
-                    name,
-                    database.get_monthly_footfall_multi([lid], _start_mo_str, _end),
-                    database.get_weekly_footfall_multi([lid], _start_wk, _end),
+            if _prev_summary:
+                _prev_net = float(_prev_summary.get("net_total") or 0)
+                _prev_cov = int(_prev_summary.get("covers") or 0)
+                _prev_apc = float(_prev_summary.get("apc") or 0)
+                _curr_net = float(summary.get("net_total") or 0)
+                _curr_cov = int(summary.get("covers") or 0)
+                _curr_apc = float(summary.get("apc") or 0)
+    
+                def _delta_indicator(curr, prev, is_currency=True):
+                    if prev is None or prev == 0:
+                        return ""
+                    g = utils.calculate_growth(curr, prev)
+                    pct = g["percentage"]
+                    change = g["change"]
+                    if change > 0:
+                        arrow = "\u25b2"
+                        delta_class = "delta-chip--positive"
+                    elif change < 0:
+                        arrow = "\u25bc"
+                        delta_class = "delta-chip--negative"
+                        change = abs(change)
+                        pct = abs(pct)
+                    else:
+                        return "\u2014"
+                    value = (
+                        utils.format_rupee_short(change) if is_currency else f"{int(change):,}"
+                    )
+                    return (
+                        f'<span class="delta-chip {delta_class}">'
+                        f"{arrow} {value} ({pct:+.2f}%)</span>"
+                    )
+    
+                _net_cmp = _delta_indicator(_curr_net, _prev_net, is_currency=True)
+                _cov_cmp = _delta_indicator(_curr_cov, _prev_cov, is_currency=False)
+                _apc_cmp = _delta_indicator(_curr_apc, _prev_apc, is_currency=True)
+                st.markdown(
+                    f'<div class="report-comparison-bar">'
+                    f"<span>vs {_prev_date.strftime('%d %b')}: "
+                    f"Net {_net_cmp} &nbsp;|&nbsp; "
+                    f"Covers {_cov_cmp} &nbsp;|&nbsp; "
+                    f"APC {_apc_cmp}</span></div>",
+                    unsafe_allow_html=True,
                 )
-                for lid, name, _ in outlets_bundle
-            ]
-            foot_rows = _get_foot_rows_cached(ctx.report_loc_ids, y_m[0], y_m[1])
-            per_outlet_footfall = None
+    
+            divider()
+    
+            # Individual PNG sections
+            per_outlet_sheet = (
+                [(n, d) for _i, n, d in outlets_bundle] if multi_outlet else None
+            )
             per_outlet_cat = None
             per_outlet_svc = None
-        else:
-            mtd_cat, mtd_svc = _build_mtd_maps_cached(
-                [ctx.report_loc_ids[0]], y_m[0], y_m[1], date_str
-            )
-            foot_rows = _get_foot_rows_cached([ctx.report_loc_ids[0]], y_m[0], y_m[1])
-            per_outlet_footfall = None
-            per_outlet_footfall_metrics = None
-            per_outlet_cat = None
-            per_outlet_svc = None
-
-        section_bufs = reports.generate_sheet_style_report_sections(
-            summary,
-            ctx.report_display_name,
-            mtd_category=mtd_cat,
-            mtd_service=mtd_svc,
-            month_footfall_rows=foot_rows,
-            per_outlet_summaries=per_outlet_sheet,
-            per_outlet_category=per_outlet_cat,
-            per_outlet_service=per_outlet_svc,
-            per_outlet_footfall=per_outlet_footfall,
-            per_outlet_footfall_metrics=per_outlet_footfall_metrics,
-            daily_sales_history=foot_rows,
-        )
-
-        def _footfall_sections() -> List[Tuple[str, str]]:
-            items: List[Tuple[str, str]] = []
-            for key in section_bufs.keys():
-                if key == "footfall_metrics":
-                    items.append((key, "Footfall Metrics"))
-                    continue
-                if key == "footfall":
-                    items.append((key, "Footfall (month)"))
-                    continue
-                if key.startswith("footfall_metrics__"):
-                    parts = key.split("__")
-                    if len(parts) >= 3:
-                        slug = parts[1].replace("_", " ")
-                        items.append((key, f"Footfall Metrics ({slug.title()})"))
-                    else:
-                        items.append((key, "Footfall Metrics"))
-                    continue
-                if key.startswith("footfall__"):
-                    parts = key.split("__")
-                    if len(parts) >= 3:
-                        slug = parts[1].replace("_", " ")
-                        items.append((key, f"Footfall ({slug.title()})"))
-                    else:
-                        items.append((key, "Footfall"))
-            return items
-
-        if multi_outlet:
-            st.caption(
-                "Category and service sections use **combined** "
-                "MTD for all outlets in scope. Footfall metrics are shown per outlet."
-            )
-
-        if multi_outlet and outlets_bundle:
-            filter_strip(
-                "Report scope",
-                "Choose a single outlet or all outlets for PNG export.",
-                icon="tune",
-            )
-            _outlet_options = ["All outlets"] + [name for _i, name, _ in outlets_bundle]
-            _selected_outlet = st.radio(
-                "Select outlet for PNG report",
-                options=_outlet_options,
-                horizontal=True,
-                key="png_outlet_selector",
-                label_visibility="collapsed",
-            )
-
-            if _selected_outlet != "All outlets":
-                _selected_lid = None
-                for lid, name, _ in outlets_bundle:
-                    if name == _selected_outlet:
-                        _selected_lid = lid
-                        break
-
-                _outlet_data = None
-                for lid, name, data in outlets_bundle:
-                    if lid == _selected_lid:
-                        _outlet_data = data
-                        break
-
-                _single_outlet_sheet = [(_selected_outlet, _outlet_data)]
-                _single_outlet_cat = None
-                _single_outlet_svc = None
-                _single_outlet_footfall_metrics = None
-
-                if len(ctx.report_loc_ids) > 1:
-                    _single_outlet_cat = [
-                        (
-                            name,
-                            _build_mtd_maps_cached([lid], y_m[0], y_m[1], date_str)[0],
-                        )
-                        for lid, name, _ in outlets_bundle
-                        if lid == _selected_lid
-                    ]
-                    _single_outlet_svc = [
-                        (
-                            name,
-                            _build_mtd_maps_cached([lid], y_m[0], y_m[1], date_str)[1],
-                        )
-                        for lid, name, _ in outlets_bundle
-                        if lid == _selected_lid
-                    ]
-                    _today = datetime.now().date()
-                    _end = _today.strftime("%Y-%m-%d")
-                    _start_mo_dt = utils.subtract_months(_today, 9)
-                    _start_mo_str = _start_mo_dt.strftime("%Y-%m-%d")
-                    _days_since_monday = _today.weekday()
-                    _current_week_monday = _today - timedelta(days=_days_since_monday)
-                    _start_wk = (_current_week_monday - timedelta(weeks=3)).strftime(
-                        "%Y-%m-%d"
-                    )
-                    _single_outlet_footfall_metrics = [
-                        (
-                            _selected_outlet,
-                            database.get_monthly_footfall_multi(
-                                [_selected_lid], _start_mo_str, _end
-                            ),
-                            database.get_weekly_footfall_multi(
-                                [_selected_lid], _start_wk, _end
-                            ),
-                        )
-                    ]
-                    foot_rows = database.get_summaries_for_month(
-                        _selected_lid, y_m[0], y_m[1]
-                    )
-                else:
-                    foot_rows = _get_foot_rows_cached([_selected_lid], y_m[0], y_m[1])
-
-                _single_outlet_mtd_cat = None
-                _single_outlet_mtd_svc = None
-
-                if len(ctx.report_loc_ids) > 1:
-                    _single_outlet_mtd_cat, _single_outlet_mtd_svc = (
-                        _build_mtd_maps_cached(
-                            [_selected_lid], y_m[0], y_m[1], date_str
-                        )
-                    )
-
-                _single_section_bufs = reports.generate_sheet_style_report_sections(
-                    _outlet_data,
-                    _selected_outlet,
-                    mtd_category=_single_outlet_mtd_cat or mtd_cat,
-                    mtd_service=_single_outlet_mtd_svc or mtd_svc,
-                    month_footfall_rows=foot_rows,
-                    per_outlet_summaries=_single_outlet_sheet,
-                    per_outlet_category=_single_outlet_cat,
-                    per_outlet_service=_single_outlet_svc,
-                    per_outlet_footfall=None,
-                    per_outlet_footfall_metrics=_single_outlet_footfall_metrics,
-                    daily_sales_history=foot_rows,
+            if len(ctx.report_loc_ids) > 1:
+                mtd_cat, mtd_svc = _build_mtd_maps_cached(
+                    ctx.report_loc_ids, y_m[0], y_m[1], date_str
                 )
-
-                def _single_footfall_sections() -> List[Tuple[str, str]]:
-                    items: List[Tuple[str, str]] = []
-                    for key in _single_section_bufs.keys():
-                        if key == "footfall_metrics":
-                            items.append((key, "Footfall Metrics"))
-                            continue
-                        if key == "footfall":
-                            items.append((key, "Footfall (month)"))
-                            continue
-                        if key.startswith("footfall_metrics__"):
-                            parts = key.split("__")
-                            if len(parts) >= 3:
-                                slug = parts[1].replace("_", " ")
-                                items.append(
-                                    (key, f"Footfall Metrics ({slug.title()})")
-                                )
-                            else:
-                                items.append((key, "Footfall Metrics"))
-                            continue
-                        if key.startswith("footfall__"):
-                            parts = key.split("__")
-                            if len(parts) >= 3:
-                                slug = parts[1].replace("_", " ")
-                                items.append((key, f"Footfall ({slug.title()})"))
-                            else:
-                                items.append((key, "Footfall"))
-                    return items
-
-                with st.expander("PNG Report", expanded=True):
-                    info_banner(
-                        "Primary share bundle",
-                        tone="info",
-                        icon="ios_share",
+                _today = datetime.now().date()
+                _end = _today.strftime("%Y-%m-%d")
+                _start_mo_dt = utils.subtract_months(_today, 9)
+                _start_mo_str = _start_mo_dt.strftime("%Y-%m-%d")
+                _days_since_monday = _today.weekday()
+                _current_week_monday = _today - timedelta(days=_days_since_monday)
+                _start_wk = (_current_week_monday - timedelta(weeks=3)).strftime("%Y-%m-%d")
+    
+                per_outlet_footfall_metrics = [
+                    (
+                        name,
+                        database.get_monthly_footfall_multi([lid], _start_mo_str, _end),
+                        database.get_weekly_footfall_multi([lid], _start_wk, _end),
                     )
-                    _sec_meta = [
-                        ("sales_summary", "Sales summary"),
-                        ("category", "Category sales"),
-                        ("service", "Service sales"),
-                    ]
-                    _sec_meta.extend(_single_footfall_sections())
-
-                    _first_five = _sec_meta[:5]
-                    if _first_five:
-                        _share_files = [
-                            (
-                                f"boteco_{key}_{date_str}.png",
-                                _single_section_bufs[key].getvalue(),
-                            )
-                            for key, _ in _first_five
-                        ]
-                        clipboard_ui.render_share_images_button(
-                            _share_files,
-                            "WhatsApp",
-                            f"share_5_pngs_{date_str}",
-                            height=48,
-                            primary=True,
-                        )
-
-                    rows = max(1, (len(_sec_meta) + 1) // 2)
-                    _cells = [st.columns(2) for _ in range(rows)]
-                    for idx, (key, title) in enumerate(_sec_meta):
-                        sec_bytes = _single_section_bufs[key].getvalue()
-                        row_idx, col_idx = divmod(idx, 2)
-                        with _cells[row_idx][col_idx]:
-                            section_block(title, icon="image")
-                            st.image(BytesIO(sec_bytes), width="stretch")
-                            _wa_text = f"Boteco {_selected_outlet} EOD Report \u2013 {date_str} ({title})"
-                            clipboard_ui.render_image_action_row(
-                                sec_bytes,
-                                f"boteco_{key}_{date_str}.png",
-                                f"action_row_{key}_{date_str}",
-                                share_text=_wa_text,
-                                fallback_url=f"https://wa.me/?text={quote_plus(_wa_text)}",
-                            )
-                return
-
-        with st.expander("Individual PNG sections", expanded=True):
-            info_banner(
-                "Section-level exports",
-                tone="info",
-                icon="dashboard",
-            )
-            _sec_meta = [
-                ("sales_summary", "Sales summary"),
-                ("category", "Category sales"),
-                ("service", "Service sales"),
-            ]
-            _sec_meta.extend(_footfall_sections())
-
-            # Combined share button for first 5 PNG sections
-            _first_five = _sec_meta[:5]
-            if _first_five:
-                _share_files = [
-                    (f"boteco_{key}_{date_str}.png", section_bufs[key].getvalue())
-                    for key, _ in _first_five
+                    for lid, name, _ in outlets_bundle
                 ]
-                clipboard_ui.render_share_images_button(
-                    _share_files,
-                    "WhatsApp",
-                    f"share_5_pngs_{date_str}",
-                    height=48,
-                    primary=True,
+                foot_rows = _get_foot_rows_cached(ctx.report_loc_ids, y_m[0], y_m[1])
+                per_outlet_footfall = None
+                per_outlet_cat = None
+                per_outlet_svc = None
+            else:
+                mtd_cat, mtd_svc = _build_mtd_maps_cached(
+                    [ctx.report_loc_ids[0]], y_m[0], y_m[1], date_str
                 )
-
-            rows = max(1, (len(_sec_meta) + 1) // 2)
-            _cells = [st.columns(2) for _ in range(rows)]
-            for idx, (key, title) in enumerate(_sec_meta):
-                sec_bytes = section_bufs[key].getvalue()
-                row_idx, col_idx = divmod(idx, 2)
-                with _cells[row_idx][col_idx]:
-                    section_block(title, icon="image")
-                    st.image(BytesIO(sec_bytes), width="stretch")
-                    _wa_text = (
-                        f"Boteco Bangalore EOD Report \u2013 {date_str} ({title})"
+                foot_rows = _get_foot_rows_cached([ctx.report_loc_ids[0]], y_m[0], y_m[1])
+                per_outlet_footfall = None
+                per_outlet_footfall_metrics = None
+                per_outlet_cat = None
+                per_outlet_svc = None
+    
+            section_bufs = reports.generate_sheet_style_report_sections(
+                summary,
+                ctx.report_display_name,
+                mtd_category=mtd_cat,
+                mtd_service=mtd_svc,
+                month_footfall_rows=foot_rows,
+                per_outlet_summaries=per_outlet_sheet,
+                per_outlet_category=per_outlet_cat,
+                per_outlet_service=per_outlet_svc,
+                per_outlet_footfall=per_outlet_footfall,
+                per_outlet_footfall_metrics=per_outlet_footfall_metrics,
+                daily_sales_history=foot_rows,
+            )
+    
+            def _footfall_sections() -> List[Tuple[str, str]]:
+                items: List[Tuple[str, str]] = []
+                for key in section_bufs.keys():
+                    if key == "footfall_metrics":
+                        items.append((key, "Footfall Metrics"))
+                        continue
+                    if key == "footfall":
+                        items.append((key, "Footfall (month)"))
+                        continue
+                    if key.startswith("footfall_metrics__"):
+                        parts = key.split("__")
+                        if len(parts) >= 3:
+                            slug = parts[1].replace("_", " ")
+                            items.append((key, f"Footfall Metrics ({slug.title()})"))
+                        else:
+                            items.append((key, "Footfall Metrics"))
+                        continue
+                    if key.startswith("footfall__"):
+                        parts = key.split("__")
+                        if len(parts) >= 3:
+                            slug = parts[1].replace("_", " ")
+                            items.append((key, f"Footfall ({slug.title()})"))
+                        else:
+                            items.append((key, "Footfall"))
+                return items
+    
+            if multi_outlet:
+                st.caption(
+                    "Category and service sections use **combined** "
+                    "MTD for all outlets in scope. Footfall metrics are shown per outlet."
+                )
+    
+            if multi_outlet and outlets_bundle:
+                filter_strip(
+                    "Report scope",
+                    "Choose a single outlet or all outlets for PNG export.",
+                    icon="tune",
+                )
+                _outlet_options = ["All outlets"] + [name for _i, name, _ in outlets_bundle]
+                _selected_outlet = st.radio(
+                    "Select outlet for PNG report",
+                    options=_outlet_options,
+                    horizontal=True,
+                    key="png_outlet_selector",
+                    label_visibility="collapsed",
+                )
+    
+                if _selected_outlet != "All outlets":
+                    _selected_lid = None
+                    for lid, name, _ in outlets_bundle:
+                        if name == _selected_outlet:
+                            _selected_lid = lid
+                            break
+    
+                    _outlet_data = None
+                    for lid, name, data in outlets_bundle:
+                        if lid == _selected_lid:
+                            _outlet_data = data
+                            break
+    
+                    _single_outlet_sheet = [(_selected_outlet, _outlet_data)]
+                    _single_outlet_cat = None
+                    _single_outlet_svc = None
+                    _single_outlet_footfall_metrics = None
+    
+                    if len(ctx.report_loc_ids) > 1:
+                        _single_outlet_cat = [
+                            (
+                                name,
+                                _build_mtd_maps_cached([lid], y_m[0], y_m[1], date_str)[0],
+                            )
+                            for lid, name, _ in outlets_bundle
+                            if lid == _selected_lid
+                        ]
+                        _single_outlet_svc = [
+                            (
+                                name,
+                                _build_mtd_maps_cached([lid], y_m[0], y_m[1], date_str)[1],
+                            )
+                            for lid, name, _ in outlets_bundle
+                            if lid == _selected_lid
+                        ]
+                        _today = datetime.now().date()
+                        _end = _today.strftime("%Y-%m-%d")
+                        _start_mo_dt = utils.subtract_months(_today, 9)
+                        _start_mo_str = _start_mo_dt.strftime("%Y-%m-%d")
+                        _days_since_monday = _today.weekday()
+                        _current_week_monday = _today - timedelta(days=_days_since_monday)
+                        _start_wk = (_current_week_monday - timedelta(weeks=3)).strftime(
+                            "%Y-%m-%d"
+                        )
+                        _single_outlet_footfall_metrics = [
+                            (
+                                _selected_outlet,
+                                database.get_monthly_footfall_multi(
+                                    [_selected_lid], _start_mo_str, _end
+                                ),
+                                database.get_weekly_footfall_multi(
+                                    [_selected_lid], _start_wk, _end
+                                ),
+                            )
+                        ]
+                        foot_rows = database.get_summaries_for_month(
+                            _selected_lid, y_m[0], y_m[1]
+                        )
+                    else:
+                        foot_rows = _get_foot_rows_cached([_selected_lid], y_m[0], y_m[1])
+    
+                    _single_outlet_mtd_cat = None
+                    _single_outlet_mtd_svc = None
+    
+                    if len(ctx.report_loc_ids) > 1:
+                        _single_outlet_mtd_cat, _single_outlet_mtd_svc = (
+                            _build_mtd_maps_cached(
+                                [_selected_lid], y_m[0], y_m[1], date_str
+                            )
+                        )
+    
+                    _single_section_bufs = reports.generate_sheet_style_report_sections(
+                        _outlet_data,
+                        _selected_outlet,
+                        mtd_category=_single_outlet_mtd_cat or mtd_cat,
+                        mtd_service=_single_outlet_mtd_svc or mtd_svc,
+                        month_footfall_rows=foot_rows,
+                        per_outlet_summaries=_single_outlet_sheet,
+                        per_outlet_category=_single_outlet_cat,
+                        per_outlet_service=_single_outlet_svc,
+                        per_outlet_footfall=None,
+                        per_outlet_footfall_metrics=_single_outlet_footfall_metrics,
+                        daily_sales_history=foot_rows,
                     )
-                    clipboard_ui.render_image_action_row(
-                        sec_bytes,
-                        f"boteco_{key}_{date_str}.png",
-                        f"action_row_{key}_{date_str}",
-                        share_text=_wa_text,
-                        fallback_url=f"https://wa.me/?text={quote_plus(_wa_text)}",
+    
+                    def _single_footfall_sections() -> List[Tuple[str, str]]:
+                        items: List[Tuple[str, str]] = []
+                        for key in _single_section_bufs.keys():
+                            if key == "footfall_metrics":
+                                items.append((key, "Footfall Metrics"))
+                                continue
+                            if key == "footfall":
+                                items.append((key, "Footfall (month)"))
+                                continue
+                            if key.startswith("footfall_metrics__"):
+                                parts = key.split("__")
+                                if len(parts) >= 3:
+                                    slug = parts[1].replace("_", " ")
+                                    items.append(
+                                        (key, f"Footfall Metrics ({slug.title()})")
+                                    )
+                                else:
+                                    items.append((key, "Footfall Metrics"))
+                                continue
+                            if key.startswith("footfall__"):
+                                parts = key.split("__")
+                                if len(parts) >= 3:
+                                    slug = parts[1].replace("_", " ")
+                                    items.append((key, f"Footfall ({slug.title()})"))
+                                else:
+                                    items.append((key, "Footfall"))
+                        return items
+    
+                    with st.expander("PNG Report", expanded=True):
+                        info_banner(
+                            "Primary share bundle",
+                            tone="info",
+                            icon="ios_share",
+                        )
+                        _sec_meta = [
+                            ("sales_summary", "Sales summary"),
+                            ("category", "Category sales"),
+                            ("service", "Service sales"),
+                        ]
+                        _sec_meta.extend(_single_footfall_sections())
+    
+                        _first_five = _sec_meta[:5]
+                        if _first_five:
+                            _share_files = [
+                                (
+                                    f"boteco_{key}_{date_str}.png",
+                                    _single_section_bufs[key].getvalue(),
+                                )
+                                for key, _ in _first_five
+                            ]
+                            clipboard_ui.render_share_images_button(
+                                _share_files,
+                                "WhatsApp",
+                                f"share_5_pngs_{date_str}",
+                                height=48,
+                                primary=True,
+                            )
+    
+                        rows = max(1, (len(_sec_meta) + 1) // 2)
+                        _cells = [st.columns(2) for _ in range(rows)]
+                        for idx, (key, title) in enumerate(_sec_meta):
+                            sec_bytes = _single_section_bufs[key].getvalue()
+                            row_idx, col_idx = divmod(idx, 2)
+                            with _cells[row_idx][col_idx]:
+                                section_title(title, icon="image")
+                                st.image(BytesIO(sec_bytes), width="stretch")
+                                _wa_text = f"Boteco {_selected_outlet} EOD Report \u2013 {date_str} ({title})"
+                                clipboard_ui.render_image_action_row(
+                                    sec_bytes,
+                                    f"boteco_{key}_{date_str}.png",
+                                    f"action_row_{key}_{date_str}",
+                                    share_text=_wa_text,
+                                    fallback_url=f"https://wa.me/?text={quote_plus(_wa_text)}",
+                                )
+                    return
+    
+            with st.expander("Individual PNG sections", expanded=True):
+                info_banner(
+                    "Section-level exports",
+                    tone="info",
+                    icon="dashboard",
+                )
+                _sec_meta = [
+                    ("sales_summary", "Sales summary"),
+                    ("category", "Category sales"),
+                    ("service", "Service sales"),
+                ]
+                _sec_meta.extend(_footfall_sections())
+    
+                # Combined share button for first 5 PNG sections
+                _first_five = _sec_meta[:5]
+                if _first_five:
+                    _share_files = [
+                        (f"boteco_{key}_{date_str}.png", section_bufs[key].getvalue())
+                        for key, _ in _first_five
+                    ]
+                    clipboard_ui.render_share_images_button(
+                        _share_files,
+                        "WhatsApp",
+                        f"share_5_pngs_{date_str}",
+                        height=48,
+                        primary=True,
                     )
-    else:
-        empty_state(
-            message="No data for this date",
-            hint=(
-                f"No saved data for <strong>{selected_date.strftime('%d %b %Y')}</strong>. "
-                "Go to the <strong>Upload</strong> tab and import POS files for that date."
-            ),
-            icon="insights",
-        )
+    
+                rows = max(1, (len(_sec_meta) + 1) // 2)
+                _cells = [st.columns(2) for _ in range(rows)]
+                for idx, (key, title) in enumerate(_sec_meta):
+                    sec_bytes = section_bufs[key].getvalue()
+                    row_idx, col_idx = divmod(idx, 2)
+                    with _cells[row_idx][col_idx]:
+                        section_title(title, icon="image")
+                        st.image(BytesIO(sec_bytes), width="stretch")
+                        _wa_text = (
+                            f"Boteco Bangalore EOD Report \u2013 {date_str} ({title})"
+                        )
+                        clipboard_ui.render_image_action_row(
+                            sec_bytes,
+                            f"boteco_{key}_{date_str}.png",
+                            f"action_row_{key}_{date_str}",
+                            share_text=_wa_text,
+                            fallback_url=f"https://wa.me/?text={quote_plus(_wa_text)}",
+                        )
+        else:
+            empty_state(
+                message="No data for this date",
+                hint=(
+                    f"No saved data for <strong>{selected_date.strftime('%d %b %Y')}</strong>. "
+                    "Go to the <strong>Upload</strong> tab and import POS files for that date."
+                ),
+                icon="insights",
+            )

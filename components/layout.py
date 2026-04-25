@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import dataclass
 from html import escape
 from typing import Generator, Iterable, Optional, Tuple
 
@@ -54,6 +55,49 @@ def page_header(
     )
 
 
+@dataclass(frozen=True)
+class PageShell:
+    """Named layout slots for consistent tab composition."""
+
+    hero: st.delta_generator.DeltaGenerator
+    filters: st.delta_generator.DeltaGenerator
+    kpi_row: st.delta_generator.DeltaGenerator
+    content: st.delta_generator.DeltaGenerator
+    footer_actions: st.delta_generator.DeltaGenerator
+
+
+def page_shell() -> PageShell:
+    """Create reusable tab-level layout slots in a stable vertical order."""
+    return PageShell(
+        hero=st.container(),
+        filters=st.container(),
+        kpi_row=st.container(),
+        content=st.container(),
+        footer_actions=st.container(),
+    )
+
+
+def section_title(
+    title: str,
+    subtitle: Optional[str] = None,
+    icon: str = "widgets",
+) -> None:
+    """Render a compact section heading with consistent hierarchy and spacing."""
+    subtitle_html = (
+        f'<p class="section-block-subtitle">{escape(subtitle)}</p>' if subtitle else ""
+    )
+    st.markdown(
+        f'<div class="section-block">'
+        f'<div class="section-block-title">'
+        f'<span class="material-symbols-outlined section-block-icon">{escape(icon)}</span>'
+        f"<span>{escape(title)}</span>"
+        f"</div>"
+        f"{subtitle_html}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+
 def workflow_steps(steps: Iterable[str], active_index: int = 0) -> None:
     """Render lightweight workflow chips for linear tasks."""
     pills = []
@@ -74,19 +118,7 @@ def section_block(
     icon: str = "widgets",
 ) -> None:
     """Render a compact section heading block with optional subtitle."""
-    subtitle_html = (
-        f'<p class="section-block-subtitle">{escape(subtitle)}</p>' if subtitle else ""
-    )
-    st.markdown(
-        f'<div class="section-block">'
-        f'<div class="section-block-title">'
-        f'<span class="material-symbols-outlined section-block-icon">{escape(icon)}</span>'
-        f"<span>{escape(title)}</span>"
-        f"</div>"
-        f"{subtitle_html}"
-        f"</div>",
-        unsafe_allow_html=True,
-    )
+    section_title(title=title, subtitle=subtitle, icon=icon)
 
 
 def info_banner(

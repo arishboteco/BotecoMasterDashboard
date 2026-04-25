@@ -20,29 +20,33 @@ from components import (
     divider,
     filter_strip,
     page_header,
+    page_shell,
     primary_action_bar,
-    section_block,
+    section_title,
 )
 
 
 def render(ctx: TabContext) -> None:
     """Render the Settings tab UI for admins and account display."""
-    page_header(
-        title="Settings and Administration",
-        subtitle="Manage outlets, user access, targets, exports, and maintenance controls.",
-        context="Admin controls",
-    )
+    shell = page_shell()
+    with shell.hero:
+        page_header(
+            title="Settings and Administration",
+            subtitle="Manage outlets, user access, targets, exports, and maintenance controls.",
+            context="Admin controls",
+        )
 
     # ── Account info (all users) ──────────────────────────────────
-    with st.container(border=True):
-        st.markdown("### Your Account")
-        ac1, ac2, ac3 = st.columns(3)
-        with ac1:
-            st.markdown(f"**Username:** {st.session_state.username}")
-        with ac2:
-            st.markdown(f"**Role:** {st.session_state.user_role.title()}")
-        with ac3:
-            st.markdown(f"**Home location:** {st.session_state.location_name}")
+    with shell.filters:
+        section_title("Your account", icon="person")
+        with st.container(border=True):
+            ac1, ac2, ac3 = st.columns(3)
+            with ac1:
+                st.markdown(f"**Username:** {st.session_state.username}")
+            with ac2:
+                st.markdown(f"**Role:** {st.session_state.user_role.title()}")
+            with ac3:
+                st.markdown(f"**Home location:** {st.session_state.location_name}")
 
     if not is_admin():
         st.info(
@@ -50,11 +54,12 @@ def render(ctx: TabContext) -> None:
         )
         st.stop()
 
+    with shell.content:
     # ─────────────────────────────────────────────────────────────
     # ADMIN-ONLY SECTIONS BELOW
     # ─────────────────────────────────────────────────────────────
 
-    section_block("Outlet administration", icon="store")
+        section_title("Outlet administration", icon="store")
 
     # ── Location settings ─────────────────────────────────────────
     st.markdown("### Outlet Settings")
@@ -189,7 +194,7 @@ def render(ctx: TabContext) -> None:
                 confirm_label="Yes, delete outlet",
             )
 
-    section_block("User access management", icon="groups")
+    section_title("User access management", icon="groups")
 
     # ── User management ───────────────────────────────────────────
     st.markdown("### User Management")
@@ -356,7 +361,7 @@ def render(ctx: TabContext) -> None:
                 confirm_label="Yes, delete user",
             )
 
-    section_block("Data export and maintenance", icon="download")
+    section_title("Data export and maintenance", icon="download")
 
     # ── Data export ───────────────────────────────────────────────
     st.markdown("### Data Export")
@@ -426,7 +431,7 @@ def render(ctx: TabContext) -> None:
     else:
         st.caption("No data found for the selected filters.")
 
-    section_block("Danger zone", icon="warning")
+    section_title("Danger zone", icon="warning")
 
     # ── Wipe All Data ─────────────────────────────────────────────
     with st.container(border=True):
