@@ -18,32 +18,63 @@ MOBILE_CONTROL_FIX = r"""    /* ── Mobile/control consistency layer ──�
         color: var(--text) !important;
     }
 
-    /* Material icon text should never show as a blue link-like word such as
-       `upload_file`. If the font is unavailable, keep it small and aligned. */
-    .material-symbols-outlined,
+    /* Icon wrappers use a glyph plus safe fallback. The fallback is hidden when
+       Material Symbols loads; if it does not, CSS keeps raw ligature text from
+       expanding into headings such as `upload_file Step 1`. */
     .section-block-icon,
     .info-banner-icon,
     .filter-strip-icon {
-        font-family: 'Material Symbols Outlined' !important;
-        color: var(--brand) !important;
-        text-decoration: none !important;
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-        vertical-align: -0.2em !important;
+        flex: 0 0 1.35rem !important;
+        width: 1.35rem !important;
+        height: 1.35rem !important;
+        color: var(--brand) !important;
         line-height: 1 !important;
+        overflow: hidden !important;
+    }
+    .section-block-icon__glyph,
+    .info-banner-icon__glyph,
+    .filter-strip-icon__glyph {
+        font-family: 'Material Symbols Outlined' !important;
         font-size: 1.15rem !important;
+        line-height: 1 !important;
+        color: var(--brand) !important;
         max-width: 1.35rem !important;
         overflow: hidden !important;
         white-space: nowrap !important;
+    }
+    .section-block-icon__fallback,
+    .info-banner-icon__fallback,
+    .filter-strip-icon__fallback {
+        display: none !important;
+        color: var(--brand) !important;
+        font-family: var(--font-body) !important;
+        font-weight: 800 !important;
+        font-size: 0.95rem !important;
+        line-height: 1 !important;
     }
     .section-block-title {
         color: var(--text) !important;
         gap: 0.55rem !important;
     }
-    .section-block-title span:not(.material-symbols-outlined),
+    .section-block-title > span:not(.section-block-icon),
     .section-block-title p {
         color: var(--text) !important;
+    }
+
+    @supports not (font-variation-settings: 'FILL' 0) {
+        .section-block-icon__glyph,
+        .info-banner-icon__glyph,
+        .filter-strip-icon__glyph {
+            display: none !important;
+        }
+        .section-block-icon__fallback,
+        .info-banner-icon__fallback,
+        .filter-strip-icon__fallback {
+            display: inline-flex !important;
+        }
     }
 
     /* Selectbox: BaseWeb uses several nested layers. Force light theme for
