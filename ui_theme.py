@@ -4,12 +4,10 @@ import plotly.graph_objects as go
 import plotly.io as pio
 
 # -- Brand palette (Boteco Mango) -----------------------------------------------
-BRAND_PRIMARY = "#1F5FA8"  # Deep Royal Blue — primary actions, links
-BRAND_DARK = "#174A82"  # Dark blue — hover/pressed
-BRAND_LIGHT = "#2A6BB3"  # Lighter blue — gradients
-BRAND_SOFT = (
-    "#E6F4F3"  # Soft teal tint — backgrounds (teal, not blue, for tropical feel)
-)
+BRAND_PRIMARY = "#005AAB"  # Royal blue — primary actions, links
+BRAND_DARK = "#004080"  # Dark blue — hover/pressed
+BRAND_LIGHT = "#2D7AC9"  # Lighter blue — gradients
+BRAND_SOFT = "#EBF4FF"  # Soft brand tint for backgrounds
 BRAND_SECONDARY = "#3FA7A3"  # Teal Blue — secondary actions
 BRAND_SUCCESS = "#3FA7A3"  # Teal — positive deltas (same as BRAND_SECONDARY — distinct semantic roles)
 BRAND_WARN = "#F4B400"  # Golden Mustard — warning
@@ -40,7 +38,7 @@ SURFACE_ELEVATED = "#FFFFFF"  # Cards — white
 SURFACE_RAISED = "#FFFFFF"  # Modals, tooltips
 TEXT_PRIMARY = "#1E293B"  # Primary text — slate 800
 TEXT_SECONDARY = "#475569"  # Secondary text — slate 600
-TEXT_MUTED = "#475569"  # Muted text — slate 600 (WCAG AA compliant, was 500 which failed)
+TEXT_MUTED = "#64748B"  # Muted text — slate 500
 BORDER_SUBTLE = "#E2E8F0"  # Light borders — slate 200
 BORDER_MEDIUM = "#CBD5E1"  # Medium borders — slate 300
 
