@@ -72,6 +72,10 @@ class TestLightModeContrast:
         ratio = contrast_ratio(_tokens.PRIMARY, _tokens.SURFACE_ELEVATED)
         assert ratio >= AA_NORMAL_TEXT_MIN_RATIO
 
+    def test_tab_active_text_on_tab_active_background(self):
+        ratio = contrast_ratio("#FFFFFF", _tokens.PRIMARY)
+        assert ratio >= AA_NORMAL_TEXT_MIN_RATIO
+
     def test_error_on_error_background_if_available(self):
         error_bg = _token_string_hex("error-bg")
         if not error_bg:
@@ -114,3 +118,7 @@ class TestDarkModeContrast:
         # DARK_PRIMARY is often used for larger labels/interactive UI affordances.
         # If this fails 4.5:1, 3:1 is still acceptable for large text/non-text contrast.
         assert ratio >= AA_LARGE_TEXT_MIN_RATIO
+
+    def test_dark_tab_active_text_on_tab_active_background(self):
+        ratio = contrast_ratio(_tokens.DARK_TEXT, _tokens.DARK_PRIMARY_DARK)
+        assert ratio >= AA_NORMAL_TEXT_MIN_RATIO

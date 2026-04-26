@@ -246,6 +246,18 @@ TOKEN_SYSTEM = f"""
         --btn-sidebar-hover-fg: var(--brand-dark);
         --btn-sidebar-hover-border: var(--brand-light);
 
+        /* Navigation tabs */
+        --tab-inactive-bg: transparent;
+        --tab-inactive-fg: var(--text-secondary);
+        --tab-inactive-border: transparent;
+        --tab-hover-bg: var(--brand-soft);
+        --tab-hover-fg: var(--brand);
+        --tab-hover-border: var(--brand-light);
+        --tab-active-bg: var(--brand);
+        --tab-active-fg: #FFFFFF;
+        --tab-active-border: var(--brand-dark);
+        --tab-focus-ring: var(--brand);
+
         /* Icon */
         --icon-size: 18px;
 
@@ -348,6 +360,16 @@ TOKEN_SYSTEM = f"""
         --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
         --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.3);
         --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.45), 0 4px 6px -4px rgba(0,0,0,0.3);
+        --tab-inactive-bg: transparent;
+        --tab-inactive-fg: var(--text-secondary);
+        --tab-inactive-border: transparent;
+        --tab-hover-bg: var(--brand-soft);
+        --tab-hover-fg: var(--text);
+        --tab-hover-border: var(--brand-light);
+        --tab-active-bg: var(--brand-dark);
+        --tab-active-fg: var(--text);
+        --tab-active-border: var(--brand);
+        --tab-focus-ring: var(--brand-light);
     }}
 
     .stApp.stAppDark,
@@ -413,6 +435,16 @@ TOKEN_SYSTEM = f"""
         --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
         --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.3);
         --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.45), 0 4px 6px -4px rgba(0,0,0,0.3);
+        --tab-inactive-bg: transparent;
+        --tab-inactive-fg: var(--text-secondary);
+        --tab-inactive-border: transparent;
+        --tab-hover-bg: var(--brand-soft);
+        --tab-hover-fg: var(--text);
+        --tab-hover-border: var(--brand-light);
+        --tab-active-bg: var(--brand-dark);
+        --tab-active-fg: var(--text);
+        --tab-active-border: var(--brand);
+        --tab-focus-ring: var(--brand-light);
     }}
 
     .stApp.stAppDark [data-testid="stSidebar"],
@@ -483,6 +515,16 @@ TOKEN_SYSTEM = f"""
             --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
             --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.3);
             --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.45), 0 4px 6px -4px rgba(0,0,0,0.3);
+            --tab-inactive-bg: transparent;
+            --tab-inactive-fg: var(--text-secondary);
+            --tab-inactive-border: transparent;
+            --tab-hover-bg: var(--brand-soft);
+            --tab-hover-fg: var(--text);
+            --tab-hover-border: var(--brand-light);
+            --tab-active-bg: var(--brand-dark);
+            --tab-active-fg: var(--text);
+            --tab-active-border: var(--brand);
+            --tab-focus-ring: var(--brand-light);
         }}
     }}
 """
