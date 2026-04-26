@@ -1,6 +1,7 @@
 """Tests for centralized backend table names."""
 
 from db.table_names import (
+    SQLITE_CATEGORY_SALES,
     SQLITE_DAILY_SUMMARIES,
     SQLITE_ITEM_SALES,
     SQLITE_SERVICE_SALES,
@@ -13,6 +14,7 @@ from db.table_names import (
 def test_table_name_constants_match_expected_values() -> None:
     assert SQLITE_DAILY_SUMMARIES == "daily_summaries"
     assert SQLITE_ITEM_SALES == "item_sales"
+    assert SQLITE_CATEGORY_SALES == "category_sales"
     assert SQLITE_SERVICE_SALES == "service_sales"
     assert SUPABASE_DAILY_SUMMARY == "daily_summary"
     assert SUPABASE_CATEGORY_SUMMARY == "category_summary"

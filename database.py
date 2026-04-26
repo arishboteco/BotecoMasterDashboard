@@ -1,8 +1,8 @@
-import sqlite3
 import hashlib
 import os
+import sqlite3
 from contextlib import contextmanager
-from typing import Optional, List, Dict, Any, Tuple, Generator
+from typing import Any, Dict, List, Optional, Tuple
 
 try:
     import bcrypt
@@ -10,6 +10,8 @@ except ImportError:
     bcrypt = None
 import config
 from boteco_logger import get_logger
+from db.category_rows import CATEGORY_ROW_PREFIX
+from db.table_names import SQLITE_CATEGORY_SALES
 
 logger = get_logger(__name__)
 
@@ -86,9 +88,7 @@ def _hash_password(password: str) -> str:
     """Hash password using bcrypt with fallback to salted SHA-256."""
     if bcrypt:
         # bcrypt automatically handles salting
-        return bcrypt.hashpw(
-            password.encode("utf-8"), bcrypt.gensalt(rounds=12)
-        ).decode("utf-8")
+        return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
     else:
         # Fallback: use SHA-256 with random salt (less secure but better than unsalted)
         salt = os.urandom(32).hex()
@@ -151,6 +151,7 @@ def _create_supabase_client():
         return None
     try:
         from supabase import create_client
+
         return create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
     except ImportError:
         logger.warning("supabase package not installed")
@@ -196,9 +197,7 @@ def get_supabase_admin_client():
         try:
             from supabase import create_client
 
-            _supabase_admin_client = create_client(
-                config.SUPABASE_URL, config.SUPABASE_SERVICE_KEY
-            )
+            _supabase_admin_client = create_client(config.SUPABASE_URL, config.SUPABASE_SERVICE_KEY)
         except ImportError:
             logger.warning("supabase package not installed")
             return None
@@ -320,9 +319,22 @@ def init_database():
         )
     """)
 
-    # Drop deprecated tables (replaced by views derived from item_sales)
-    cursor.execute("DROP TABLE IF EXISTS category_sales")
-    cursor.execute("DROP TABLE IF EXISTS super_category_sales")
+    # Category totals table (new SQLite-native storage path; synthetic item rows remain supported).
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS category_sales (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            summary_id INTEGER NOT NULL,
+            category_name TEXT NOT NULL,
+            qty INTEGER DEFAULT 0,
+            net_amount REAL DEFAULT 0,
+            source TEXT DEFAULT 'direct',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (summary_id) REFERENCES daily_summaries(id),
+            UNIQUE(summary_id, category_name)
+        )
+        """
+    )
 
     # Create views for category sales derived from item_sales
     cursor.execute(CATEGORY_SALES_VIEW_SQL)
@@ -375,9 +387,7 @@ def init_database():
         ("order_count", "INTEGER"),
     ):
         if _col not in _ds_cols:
-            cursor.execute(
-                f"ALTER TABLE daily_summaries ADD COLUMN {_col} {_typ} DEFAULT NULL"
-            )
+            cursor.execute(f"ALTER TABLE daily_summaries ADD COLUMN {_col} {_typ} DEFAULT NULL")
 
     cursor.execute("PRAGMA table_info(item_sales)")
     _is_cols = {row[1] for row in cursor.fetchall()}
@@ -387,9 +397,7 @@ def init_database():
     cursor.execute("PRAGMA table_info(locations)")
     _loc_cols = {row[1] for row in cursor.fetchall()}
     if "seat_count" not in _loc_cols:
-        cursor.execute(
-            "ALTER TABLE locations ADD COLUMN seat_count INTEGER DEFAULT NULL"
-        )
+        cursor.execute("ALTER TABLE locations ADD COLUMN seat_count INTEGER DEFAULT NULL")
 
     _migrate_daily_summaries_composite_unique(cursor)
 
@@ -430,9 +438,67 @@ def init_database():
         ON item_sales(summary_id)
         """
     )
+    cursor.execute(
+        f"""
+        CREATE INDEX IF NOT EXISTS idx_{SQLITE_CATEGORY_SALES}_summary_id
+        ON {SQLITE_CATEGORY_SALES}(summary_id)
+        """
+    )
 
     conn.commit()
     conn.close()
+
+
+def migrate_category_sales_from_synthetic_rows() -> Dict[str, int]:
+    """Backfill SQLite category_sales from synthetic item_sales rows.
+
+    This is intentionally opt-in and idempotent: it inserts only missing
+    (summary_id, category_name) rows and does not modify existing rows.
+    """
+    if use_supabase():
+        return {"inserted": 0, "skipped_existing": 0}
+
+    with db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT i.summary_id, i.category, i.qty, i.amount
+            FROM item_sales i
+            INNER JOIN daily_summaries ds ON ds.id = i.summary_id
+            WHERE i.item_name LIKE ?
+            ORDER BY i.summary_id, i.category
+            """,
+            (f"{CATEGORY_ROW_PREFIX}%",),
+        )
+        rows = cursor.fetchall()
+
+        inserted = 0
+        skipped_existing = 0
+        for row in rows:
+            category_name = str(row["category"] or "").strip()
+            if not category_name:
+                continue
+            cursor.execute(
+                f"""
+                INSERT OR IGNORE INTO {SQLITE_CATEGORY_SALES}
+                (summary_id, category_name, qty, net_amount, source)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    int(row["summary_id"]),
+                    category_name,
+                    int(row["qty"] or 0),
+                    float(row["amount"] or 0.0),
+                    "synthetic_backfill",
+                ),
+            )
+            if cursor.rowcount:
+                inserted += 1
+            else:
+                skipped_existing += 1
+
+        conn.commit()
+    return {"inserted": inserted, "skipped_existing": skipped_existing}
 
 
 def _migrate_supabase_schema() -> None:
@@ -457,20 +523,17 @@ def _migrate_supabase_schema() -> None:
             supabase.table(view_name).select("id").limit(1).execute()
         except Exception:
             logger.warning(
-                "Supabase view '%s' is missing. "
-                "Run the Supabase migration that creates this view.",
+                "Supabase view '%s' is missing. Run the Supabase migration that creates this view.",
                 view_name,
             )
 
 
 def _migrate_daily_summaries_composite_unique(cursor) -> None:
-    """One-time: replace global UNIQUE(date) with UNIQUE(location_id, date). Preserves ids for FK children."""
+    """Replace legacy UNIQUE(date) with UNIQUE(location_id, date)."""
     cursor.execute("SELECT v FROM app_meta WHERE k = ?", ("ds_composite_unique",))
     if cursor.fetchone():
         return
-    cursor.execute(
-        "SELECT sql FROM sqlite_master WHERE type='table' AND name='daily_summaries'"
-    )
+    cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='daily_summaries'")
     row = cursor.fetchone()
     if not row or not row[0]:
         cursor.execute(
@@ -700,9 +763,7 @@ def get_summaries_for_month(location_id: int, year: int, month: int) -> List[Dic
     return _impl(location_id, year, month)
 
 
-def get_category_mtd_totals(
-    location_ids: List[int], year: int, month: int
-) -> List[Dict]:
+def get_category_mtd_totals(location_ids: List[int], year: int, month: int) -> List[Dict]:
     """Return category rows from month start onward for the given locations."""
     from database_reads import get_category_mtd_totals as _impl
 
@@ -716,27 +777,21 @@ def get_service_mtd_totals(location_id: int, year: int, month: int) -> Dict[str,
     return _impl(location_id, year, month)
 
 
-def get_mtd_totals_multi(
-    location_ids: List[int], year: int, month: int
-) -> Dict[str, float]:
+def get_mtd_totals_multi(location_ids: List[int], year: int, month: int) -> Dict[str, float]:
     """Fetch aggregate MTD summary totals across multiple locations."""
     from database_reads import get_mtd_totals_multi as _impl
 
     return _impl(location_ids, year, month)
 
 
-def get_summaries_for_month_multi(
-    location_ids: List[int], year: int, month: int
-) -> List[Dict]:
+def get_summaries_for_month_multi(location_ids: List[int], year: int, month: int) -> List[Dict]:
     """Get all summaries for a specific month across multiple locations."""
     from database_reads import get_summaries_for_month_multi as _impl
 
     return _impl(location_ids, year, month)
 
 
-def get_summaries_for_date_range(
-    location_id: int, start_date: str, end_date: str
-) -> List[Dict]:
+def get_summaries_for_date_range(location_id: int, start_date: str, end_date: str) -> List[Dict]:
     """Get summaries for a date range."""
     from database_reads import get_summaries_for_date_range as _impl
 
@@ -892,9 +947,7 @@ def get_daily_service_sales_for_date_range(
     return _impl(location_ids, start_date, end_date)
 
 
-def get_super_category_mtd_totals(
-    location_id: int, year: int, month: int
-) -> Dict[str, float]:
+def get_super_category_mtd_totals(location_id: int, year: int, month: int) -> Dict[str, float]:
     """Sum super-category sales amounts for calendar month."""
     from database_analytics import get_super_category_mtd_totals as _impl
 
@@ -1044,6 +1097,7 @@ WRITE_EXPORTS = [
     "delete_daily_summary_for_location_date",
     "create_location",
     "delete_location",
+    "migrate_category_sales_from_synthetic_rows",
     "update_daily_summary_covers_only",
     "update_location_settings",
     "save_upload_record",

@@ -2,6 +2,7 @@
 
 SQLITE_DAILY_SUMMARIES = "daily_summaries"
 SQLITE_ITEM_SALES = "item_sales"
+SQLITE_CATEGORY_SALES = "category_sales"
 SQLITE_SERVICE_SALES = "service_sales"
 
 SUPABASE_DAILY_SUMMARY = "daily_summary"
