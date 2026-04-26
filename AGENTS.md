@@ -114,3 +114,7 @@ Files uploaded → `file_detector.py` classifies → `smart_upload.py` orchestra
 - Always use Context7 when library/API documentation, code generation, setup, or configuration steps are needed — do not wait for explicit requests.
 - Use `resolve-library-id` first to find the correct library ID (format: `/org/project`), then `query-docs` with your specific question.
 - Applies to all libraries, frameworks, SDKs, APIs, and cloud services — even well-known ones.
+
+## UI Quality
+
+- For any PR that changes UI, complete `docs/visual_qa_checklist.md` before requesting review.
