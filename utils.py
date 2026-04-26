@@ -273,13 +273,13 @@ def calculate_mtd_period() -> tuple:
 def get_days_in_month(year: int, month: int) -> int:
     """Get number of days in a month."""
     if month == 12:
-        next_month = year + 1
-        next_month_day = 1
+        next_year = year + 1
+        next_month = 1
     else:
+        next_year = year
         next_month = month + 1
-        next_month_day = 1
 
-    first_next_month = datetime(year, next_month, next_month_day).date()
+    first_next_month = datetime(next_year, next_month, 1).date()
     last_day = first_next_month - timedelta(days=1)
     return last_day.day
 
