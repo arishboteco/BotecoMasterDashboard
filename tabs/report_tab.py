@@ -54,24 +54,12 @@ def render(ctx: TabContext) -> None:
             "mobile-layout-filters",
             "report-filter-shell",
         ):
-            filter_strip("Report context", "Choose day and scope.", icon="tune")
+            filter_strip("Report context", "Choose day.", icon="tune")
             with classed_container("report-date-nav"):
-                nav_col, scope_col = st.columns([3, 2])
-                with nav_col:
-                    selected_date = date_nav(
-                        session_key="report_date",
-                        label="Report date",
-                    )
-                with scope_col:
-                    st.markdown(
-                        (
-                            '<div class="report-scope-chip-wrap">'
-                            '<span class="report-scope-label">Scope</span>'
-                            f'<span class="report-scope-chip">{ctx.report_display_name}</span>'
-                            "</div>"
-                        ),
-                        unsafe_allow_html=True,
-                    )
+                selected_date = date_nav(
+                    session_key="report_date",
+                    label="Report date",
+                )
 
     date_str = selected_date.strftime("%Y-%m-%d")
     outlets_bundle, summary = report_service.load_report_bundle_cached(ctx.report_loc_ids, date_str)
