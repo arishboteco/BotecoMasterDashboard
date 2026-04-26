@@ -1,0 +1,50 @@
+{
+  "styles/_components.py": [
+    "#FFF",
+    "#FFFFFF"
+  ],
+  "styles/_login.py": [
+    "#174A82",
+    "#1E293B",
+    "#1F5FA8",
+    "#2A6BB3",
+    "#374151",
+    "#475569",
+    "#92400E",
+    "#94A3B8",
+    "#E2E8F0",
+    "#F1F5F9",
+    "#F7FAFC",
+    "#FDE68A",
+    "#FEF3C7",
+    "#FFFFFF"
+  ],
+  "styles/_mobile_control_fix.py": [
+    "#FFFFFF"
+  ],
+  "styles/_print.py": [
+    "#000",
+    "#FFF"
+  ],
+  "styles/_visual_polish.py": [
+    "#003366",
+    "#004080",
+    "#005AAB",
+    "#15803D",
+    "#1E293B",
+    "#2D7AC9",
+    "#475569",
+    "#54C5D0",
+    "#64748B",
+    "#94A3B8",
+    "#A2D06E",
+    "#B91C1C",
+    "#CBD5E1",
+    "#E2E8F0",
+    "#EBF4FF",
+    "#F3F7FC",
+    "#F6FAFE",
+    "#FDB813",
+    "#FFFFFF"
+  ]
+}
