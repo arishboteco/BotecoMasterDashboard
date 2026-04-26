@@ -52,12 +52,21 @@ BORDER_MEDIUM = _tokens.BORDER_MEDIUM
 SHADOW_SM = "0 1px 2px rgba(0,0,0,0.05)"
 
 CHART_COLORWAY = [
-    "#1F5FA8",
-    "#3FA7A3",
-    "#6DBE45",
-    "#F4B400",
-    "#174A82",
+    _tokens.PRIMARY,
+    _tokens.PRIMARY_DARK,
+    _tokens.PRIMARY_LIGHT,
+    _tokens.SUCCESS,
+    _tokens.BORDER_STRONG,
+    _tokens.ERROR,
 ]
+
+CHART_BG = _tokens.SURFACE_ELEVATED
+CHART_PAPER_BG = _tokens.SURFACE_ELEVATED
+CHART_FONT_COLOR = _tokens.TEXT
+CHART_GRID_COLOR = _tokens.BORDER
+CHART_AXIS_COLOR = _tokens.BORDER_MEDIUM
+CHART_TITLE_COLOR = _tokens.TEXT
+CHART_TICK_COLOR = _tokens.TEXT_SECONDARY
 
 CHART_HEIGHT = 380
 CHART_MARGIN = dict(l=48, r=28, t=56, b=48)
@@ -74,6 +83,7 @@ def apply_plotly_theme() -> None:
             font=dict(
                 family="Inter, sans-serif",
                 size=13,
+                color=CHART_FONT_COLOR,
             ),
             colorway=CHART_COLORWAY,
             margin=CHART_MARGIN,
@@ -97,22 +107,24 @@ def apply_plotly_theme() -> None:
                 align="left",
                 namelength=-1,
             ),
-            title=dict(font=dict(size=15, color=TEXT), x=0.02, xanchor="left"),
-            plot_bgcolor=SURFACE,
-            paper_bgcolor=SURFACE,
+            title=dict(font=dict(size=15, color=CHART_TITLE_COLOR), x=0.02, xanchor="left"),
+            plot_bgcolor=CHART_BG,
+            paper_bgcolor=CHART_PAPER_BG,
             xaxis=dict(
-                gridcolor=BORDER,
+                gridcolor=CHART_GRID_COLOR,
                 gridwidth=1,
-                zerolinecolor=BORDER_MEDIUM,
+                linecolor=CHART_AXIS_COLOR,
+                zerolinecolor=CHART_AXIS_COLOR,
                 title_font=dict(size=12, color=TEXT_SECONDARY),
-                tickfont=dict(size=11, color=TEXT_MUTED),
+                tickfont=dict(size=11, color=CHART_TICK_COLOR),
             ),
             yaxis=dict(
-                gridcolor=BORDER,
+                gridcolor=CHART_GRID_COLOR,
                 gridwidth=1,
-                zerolinecolor=BORDER_MEDIUM,
+                linecolor=CHART_AXIS_COLOR,
+                zerolinecolor=CHART_AXIS_COLOR,
                 title_font=dict(size=12, color=TEXT_SECONDARY),
-                tickfont=dict(size=11, color=TEXT_MUTED),
+                tickfont=dict(size=11, color=CHART_TICK_COLOR),
                 tickformat=",",
             ),
         )
