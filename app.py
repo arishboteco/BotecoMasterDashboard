@@ -3,21 +3,20 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
 
 import streamlit as st
 
+import auth
+import boteco_logger
 import config
 import database
-import boteco_logger
 import styles
 import ui_theme
-import auth
 from tabs import TabContext
-from tabs.upload_tab import render as render_upload
-from tabs.report_tab import render as render_report
 from tabs.analytics_tab import render as render_analytics
+from tabs.report_tab import render as render_report
 from tabs.settings_tab import render as render_settings
+from tabs.upload_tab import render as render_upload
 
 boteco_logger.setup_logging()
 logger = boteco_logger.get_logger(__name__)
@@ -110,67 +109,15 @@ else:
         f'<span class="sidebar-user-initials">{initials}</span>'
         f'<div><div class="user-name">{username}</div>'
         f'<div class="role-label">{role}</div></div>'
-        f'</div>'
+        f"</div>"
         f'<div class="location-row">'
         f'<span class="location-pin">📍</span>{location_name}</div>'
-        f'</div>',
+        f"</div>",
         unsafe_allow_html=True,
     )
     report_loc_ids = auth.get_report_location_ids()
     report_display_name = auth.get_report_display_name()
     all_locs = database.get_all_locations()
-
-    # ── Admin outlet quick-switcher ──────────────────────────────
-    if auth.is_admin() and all_locs and len(all_locs) > 1:
-        st.sidebar.markdown("##### Outlet")
-        _outlet_options = ["all"] + [
-            str(_loc["id"]) for _loc in sorted(all_locs, key=lambda x: x["name"])
-        ]
-
-        def _outlet_label(k: str) -> str:
-            if k == "all":
-                return "All outlets"
-            for _loc in all_locs:
-                if str(_loc["id"]) == k:
-                    return str(_loc["name"])
-            return k
-
-        _current = st.session_state.get("view_scope") or "all"
-        if _current not in _outlet_options:
-            _current = "all"
-        _idx = _outlet_options.index(_current)
-
-        def _on_outlet_change():
-            # Streamlit fires on_script_will_rerun callbacks before the widget
-            # is remounted; if session_state was cleared (login/logout, etc.)
-            # the key may be missing. Bail out silently in that case.
-            _new = st.session_state.get("sidebar_outlet_switcher")
-            if _new is None:
-                return
-            st.session_state.view_scope = _new
-            if _new != "all":
-                try:
-                    _nid = int(_new)
-                    st.session_state.location_id = _nid
-                    for _loc in all_locs:
-                        if _loc["id"] == _nid:
-                            st.session_state.location_name = _loc["name"]
-                            break
-                except (TypeError, ValueError):
-                    pass
-
-        st.sidebar.selectbox(
-            "Outlet",
-            options=_outlet_options,
-            index=_idx,
-            format_func=_outlet_label,
-            key="sidebar_outlet_switcher",
-            on_change=_on_outlet_change,
-            label_visibility="collapsed",
-        )
-        # Refresh derived values after potential change
-        report_loc_ids = auth.get_report_location_ids()
-        report_display_name = auth.get_report_display_name()
 
     location_id = st.session_state.location_id
 
@@ -181,7 +128,7 @@ else:
     st.sidebar.markdown(
         '<div class="sidebar-footer">'
         '<span class="sidebar-footer-text">Boteco Dashboard · v1.0</span>'
-        '</div>',
+        "</div>",
         unsafe_allow_html=True,
     )
 
