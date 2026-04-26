@@ -1,38 +1,28 @@
-"""Sidebar styling — base, account section, gradient refinement."""
+"""Sidebar styling — token-driven shell and account components."""
 
 SIDEBAR = r"""    /* ── Sidebar ────────────────────────────────────────────── */
     [data-testid="stSidebar"] {
-        background-color: var(--sidebar-bg) !important;
+        background-color: var(--sidebar-surface) !important;
         border-right: 1px solid var(--sidebar-border) !important;
     }
-    [data-testid="stSidebar"]::before {
-        content: '';
-        display: block;
-        height: 3px;
-        background: linear-gradient(90deg, var(--brand), var(--accent-amber));
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        z-index: 1;
-    }
 
-    /* Logo — white card so dark logo is visible on dark blue sidebar */
+    /* Logo area */
     [data-testid="stSidebar"] img {
-        background-color: #FFFFFF;
+        background-color: var(--surface-elevated);
+        border: 1px solid var(--sidebar-border);
         border-radius: var(--radius-md);
         padding: 8px;
         display: block;
     }
 
-    /* Sidebar text — white/light on dark blue */
+    /* Sidebar text */
     [data-testid="stSidebar"] p,
     [data-testid="stSidebar"] .stMarkdown p,
     [data-testid="stSidebar"] span {
-        color: rgba(255, 255, 255, 0.9) !important;
+        color: var(--sidebar-text) !important;
     }
     [data-testid="stSidebar"] strong {
-        color: #FFFFFF !important;
+        color: var(--sidebar-text) !important;
     }
     [data-testid="stSidebar"] h1,
     [data-testid="stSidebar"] h2,
@@ -40,45 +30,42 @@ SIDEBAR = r"""    /* ── Sidebar ──────────────�
     [data-testid="stSidebar"] h4,
     [data-testid="stSidebar"] h5,
     [data-testid="stSidebar"] h6 {
-        color: #FFFFFF !important;
+        color: var(--sidebar-text) !important;
         border-left: none !important;
         padding-left: 0 !important;
     }
     [data-testid="stSidebar"] .stCaption,
     [data-testid="stSidebar"] [data-testid="stCaptionContainer"],
-    [data-testid="stSidebar"] small {
-        color: rgba(255, 255, 255, 0.7) !important;
-    }
+    [data-testid="stSidebar"] small,
     [data-testid="stSidebar"] label {
-        color: rgba(255, 255, 255, 0.85) !important;
+        color: var(--sidebar-muted) !important;
     }
 
-    /* Sidebar dividers — subtle white line */
     [data-testid="stSidebar"] hr {
         margin: 1rem 0;
-        border-color: rgba(255, 255, 255, 0.2) !important;
+        border-color: var(--sidebar-active-border) !important;
     }
 
-    /* Sidebar logout button — outlined white style */
+    /* Sidebar button: active/selected tokenized style */
     [data-testid="stSidebar"] .stButton > button {
-        background: rgba(255, 255, 255, 0.12) !important;
-        color: #FFFFFF !important;
-        border: 1px solid rgba(255, 255, 255, 0.35) !important;
+        background: var(--btn-sidebar-bg) !important;
+        color: var(--btn-sidebar-fg) !important;
+        border: 1px solid var(--btn-sidebar-border) !important;
         min-height: 42px !important;
         font-weight: 600 !important;
     }
     [data-testid="stSidebar"] .stButton > button:hover {
-        background: rgba(255, 255, 255, 0.22) !important;
-        border-color: rgba(255, 255, 255, 0.55) !important;
+        background: var(--btn-sidebar-hover-bg) !important;
+        color: var(--btn-sidebar-hover-fg) !important;
+        border-color: var(--btn-sidebar-hover-border) !important;
     }
-
 """
 
 SIDEBAR_IMPROVEMENTS = r"""    /* ── Sidebar improvements ─────────────────────────────── */
     .sidebar-account-section {
-        background: rgba(255, 255, 255, 0.12);
+        background: var(--sidebar-account-bg);
         border-radius: var(--radius-md);
-        border: 1px solid rgba(255, 255, 255, 0.18);
+        border: 1px solid var(--sidebar-account-border);
         padding: 0.75rem;
         margin-bottom: 0.5rem;
     }
@@ -90,30 +77,27 @@ SIDEBAR_IMPROVEMENTS = r"""    /* ── Sidebar improvements ──────
     }
     .sidebar-account-section .user-name {
         font-weight: 600;
-        color: #fff;
+        color: var(--sidebar-text);
         font-size: 0.9rem;
         line-height: 1.2;
     }
     .sidebar-account-section .role-label {
         font-size: var(--font-size-caption);
-        color: rgba(255, 255, 255, 0.75);
+        color: var(--sidebar-muted);
         text-transform: uppercase;
         letter-spacing: 0.06em;
     }
     .sidebar-account-section .location-row {
         font-size: var(--font-size-caption);
-        color: rgba(255, 255, 255, 0.75);
+        color: var(--sidebar-muted);
         display: flex;
         align-items: center;
         gap: 0.35rem;
     }
     .sidebar-account-section .location-pin {
-        opacity: 0.6;
+        opacity: 0.7;
     }
     .sidebar-footer {
-        /* Flex push-to-bottom: Streamlit's sidebar inner is a flex column,
-           so margin-top:auto sinks this to the bottom without breaking on
-           short viewports. */
         margin-top: auto;
         padding-top: 1rem;
         text-align: center;
@@ -125,24 +109,26 @@ SIDEBAR_IMPROVEMENTS = r"""    /* ── Sidebar improvements ──────
     }
     .sidebar-footer-text {
         font-size: 0.68rem;
-        color: rgba(255, 255, 255, 0.55);
+        color: var(--sidebar-muted);
         letter-spacing: 0.04em;
     }
     .sidebar-user-badge {
         display: inline-flex;
         align-items: center;
         gap: 0.4rem;
-        background: rgba(255, 255, 255, 0.15);
+        background: var(--sidebar-account-bg);
+        border: 1px solid var(--sidebar-account-border);
         border-radius: var(--radius-sm);
         padding: 0.25rem 0.5rem;
         font-size: 0.85rem;
-        color: #fff;
+        color: var(--sidebar-text);
     }
     .sidebar-user-initials {
         width: 24px;
         height: 24px;
         border-radius: 50%;
-        background: rgba(255, 255, 255, 0.3);
+        background: var(--sidebar-avatar-bg);
+        color: var(--sidebar-avatar-fg);
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -150,16 +136,13 @@ SIDEBAR_IMPROVEMENTS = r"""    /* ── Sidebar improvements ──────
         font-weight: 600;
     }
 
-"""
-
-SIDEBAR_GRADIENT_REFINEMENT = r"""    /* ── Sidebar gradient refinement ──────────────────────── */
-    [data-testid="stSidebar"] {
-        background: linear-gradient(
-            175deg,
-            var(--brand) 0%,
-            var(--brand-dark) 60%,
-            var(--brand-darker) 100%
-        ) !important;
+    [data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] {
+        background: var(--sidebar-account-bg) !important;
+        border-color: var(--sidebar-active-border) !important;
     }
-
+    [data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] * {
+        color: var(--sidebar-text) !important;
+    }
 """
+
+SIDEBAR_GRADIENT_REFINEMENT = ""

@@ -76,6 +76,24 @@ class TestLightModeContrast:
         ratio = contrast_ratio("#FFFFFF", _tokens.PRIMARY)
         assert ratio >= AA_NORMAL_TEXT_MIN_RATIO
 
+    def test_sidebar_text_on_sidebar_background(self):
+        sidebar_bg = _token_string_hex("sidebar-bg")
+        sidebar_text = _token_string_hex("sidebar-text")
+        if not sidebar_bg or not sidebar_text:
+            pytest.skip("Sidebar foreground/background tokens are not explicitly defined as hex")
+
+        ratio = contrast_ratio(sidebar_text, sidebar_bg)
+        assert ratio >= AA_NORMAL_TEXT_MIN_RATIO
+
+    def test_sidebar_active_foreground_on_sidebar_active_background(self):
+        active_bg = _token_string_hex("sidebar-active-bg")
+        active_fg = _token_string_hex("sidebar-active-fg")
+        if not active_bg or not active_fg:
+            pytest.skip("Sidebar active tokens are not explicitly defined as hex")
+
+        ratio = contrast_ratio(active_fg, active_bg)
+        assert ratio >= AA_LARGE_TEXT_MIN_RATIO
+
     def test_error_on_error_background_if_available(self):
         error_bg = _token_string_hex("error-bg")
         if not error_bg:
