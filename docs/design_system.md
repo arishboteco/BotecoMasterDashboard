@@ -63,6 +63,26 @@ WCAG AA readability on the active KPI surface.
 2. **No new `!important` declarations** unless interacting with Streamlit/BaseWeb generated selectors.
 3. **Do not define colour inside tab/component files** if an approved token already exists.
 
+## Chart Colour Rules (Plotly)
+
+All chart colours must be sourced from semantic tokens exposed by `styles/_tokens.py`
+and consumed through `ui_theme.py` (no per-chart hex values).
+
+- **Chart background (`plot_bgcolor`)**: use `SURFACE_ELEVATED`.
+- **Paper background (`paper_bgcolor`)**: use `SURFACE_ELEVATED`.
+- **Global font colour**: use `TEXT` / `TEXT_PRIMARY`.
+- **Grid colour**: use `BORDER`.
+- **Axis line/zero-line colour**: use `BORDER_MEDIUM`.
+- **Tick colour**: use `TEXT_SECONDARY`.
+- **Categorical colour sequence**: prefer the restrained token palette
+  (`PRIMARY`, `PRIMARY_DARK`, `PRIMARY_LIGHT`, `SUCCESS`, `BORDER_STRONG`,
+  and `ERROR`) to avoid overly bright colour ramps.
+
+Readability rule:
+- Chart text must remain readable regardless of surrounding page surface. To enforce this,
+  charts must render on a stable elevated chart surface token rather than inheriting unknown
+  parent backgrounds.
+
 ## Semantic Alert Tokens (Unified Status Surfaces)
 
 All status surfaces (including upload warnings, import success confirmations,
