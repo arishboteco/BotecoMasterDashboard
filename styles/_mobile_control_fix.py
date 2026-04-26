@@ -97,6 +97,24 @@ MOBILE_CONTROL_FIX = r"""    /* ── Mobile/control consistency layer ──�
         opacity: 1 !important;
         -webkit-text-fill-color: var(--text) !important;
     }
+    .stSelectbox [data-baseweb="select"] input,
+    .stMultiSelect [data-baseweb="select"] input {
+        border: 0 !important;
+        outline: 0 !important;
+        box-shadow: none !important;
+        background: transparent !important;
+        padding: 0 !important;
+        min-height: 0 !important;
+        caret-color: transparent !important;
+    }
+    .stSelectbox [data-baseweb="select"] input:focus,
+    .stSelectbox [data-baseweb="select"] input:focus-visible,
+    .stMultiSelect [data-baseweb="select"] input:focus,
+    .stMultiSelect [data-baseweb="select"] input:focus-visible {
+        border: 0 !important;
+        outline: 0 !important;
+        box-shadow: none !important;
+    }
     .stSelectbox [data-baseweb="select"] svg,
     .stMultiSelect [data-baseweb="select"] svg {
         color: var(--text-muted) !important;
@@ -115,6 +133,8 @@ MOBILE_CONTROL_FIX = r"""    /* ── Mobile/control consistency layer ──�
     [role="option"] * {
         color: var(--text) !important;
         background: #FFFFFF !important;
+        opacity: 1 !important;
+        font-weight: 500 !important;
         -webkit-text-fill-color: var(--text) !important;
     }
     [data-baseweb="menu"] li:hover,
