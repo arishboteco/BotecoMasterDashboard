@@ -21,6 +21,9 @@ def date_nav(
     with prev_col:
         if st.button("\u2190", key=f"{session_key}_prev", width="stretch"):
             st.session_state[session_key] = selected_date - timedelta(days=1)
+    with next_col:
+        if st.button("\u2192", key=f"{session_key}_next", width="stretch"):
+            st.session_state[session_key] = selected_date + timedelta(days=1)
     with date_col:
         st.date_input(
             label,
@@ -30,9 +33,6 @@ def date_nav(
             label_visibility="collapsed",
             width="stretch",
         )
-    with next_col:
-        if st.button("\u2192", key=f"{session_key}_next", width="stretch"):
-            st.session_state[session_key] = selected_date + timedelta(days=1)
 
     return st.session_state[session_key]
 
