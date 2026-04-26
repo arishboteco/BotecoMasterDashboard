@@ -129,18 +129,47 @@ COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ─�
         margin-bottom: 0.55rem;
     }
     .report-date-nav [data-testid="stHorizontalBlock"] {
-        align-items: end;
-        gap: 0.65rem;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        max-width: 460px;
+        margin: 0 auto;
+    }
+    .report-date-nav [data-testid="stButton"] {
+        display: flex;
+        justify-content: center;
     }
     .report-date-nav [data-testid="stButton"] > button {
+        width: 44px !important;
+        min-width: 44px !important;
+        max-width: 44px !important;
+        height: 42px !important;
         min-height: 42px !important;
         max-height: 42px !important;
-        padding: 0 0.55rem !important;
-        font-size: 0.9rem !important;
-        font-weight: 700 !important;
+        padding: 0 !important;
+        font-size: 1rem !important;
+        font-weight: 600 !important;
+        border-radius: 999px !important;
+        color: var(--brand) !important;
+        background: var(--surface-elevated) !important;
+        border: 1px solid var(--border-subtle) !important;
+        transition: background var(--transition-fast),
+                    border-color var(--transition-fast),
+                    color var(--transition-fast);
+    }
+    .report-date-nav [data-testid="stButton"] > button:hover {
+        background: var(--brand-soft) !important;
+        border-color: var(--brand-light) !important;
+        color: var(--brand-dark) !important;
     }
     .report-date-nav [data-testid="stDateInput"] {
-        max-width: 260px;
+        max-width: 240px;
+        margin: 0 auto;
+    }
+    .report-date-nav [data-testid="stDateInput"] input {
+        text-align: center;
+        font-weight: 600;
+        letter-spacing: 0.02em;
     }
     .kpi-snapshot-card {
         padding: 0.95rem;
