@@ -123,6 +123,7 @@ STREAMLIT_THEME_DARK = {
 TOKEN_SYSTEM = f"""
     /* ── Light mode tokens (default) ─────────────────────────── */
     :root {{
+        color-scheme: light;
         /* Canonical semantic aliases */
         --COLOR_BG: {COLOR_BG};
         --COLOR_SURFACE: {COLOR_SURFACE};
@@ -285,12 +286,27 @@ TOKEN_SYSTEM = f"""
         --btn-form-submit-hover-bg: var(--brand-dark);
         --btn-form-submit-hover-fg: #FFFFFF;
         --btn-form-submit-hover-border: var(--brand-dark);
-        --btn-sidebar-bg: var(--sidebar-active-bg);
-        --btn-sidebar-fg: var(--sidebar-text);
-        --btn-sidebar-border: var(--sidebar-active-border);
-        --btn-sidebar-hover-bg: var(--sidebar-active-bg);
-        --btn-sidebar-hover-fg: var(--sidebar-text);
-        --btn-sidebar-hover-border: var(--sidebar-active-border);
+        --btn-sidebar-bg: #EBF4FF;
+        --btn-sidebar-fg: var(--brand-darker);
+        --btn-sidebar-border: rgba(255, 255, 255, 0.72);
+        --btn-sidebar-hover-bg: #DCEBFF;
+        --btn-sidebar-hover-fg: var(--brand-darker);
+        --btn-sidebar-hover-border: rgba(255, 255, 255, 0.88);
+        --btn-sidebar-active-bg: #CFE2FF;
+        --btn-sidebar-active-fg: var(--brand-darker);
+        --btn-sidebar-active-border: rgba(255, 255, 255, 0.96);
+        --btn-sidebar-disabled-bg: rgba(255, 255, 255, 0.22);
+        --btn-sidebar-disabled-fg: rgba(255, 255, 255, 0.74);
+        --btn-sidebar-disabled-border: rgba(255, 255, 255, 0.45);
+
+        --select-option-bg: var(--surface-elevated);
+        --select-option-fg: var(--text);
+        --select-option-hover-bg: var(--brand-soft);
+        --select-option-hover-fg: var(--brand-dark);
+        --select-option-selected-bg: #DCEBFF;
+        --select-option-selected-fg: var(--brand-darker);
+        --select-option-disabled-bg: var(--surface-elevated);
+        --select-option-disabled-fg: var(--text-muted);
 
         /* Navigation tabs */
         --tab-inactive-bg: transparent;
@@ -350,6 +366,7 @@ TOKEN_SYSTEM = f"""
     }}
 
     :root[data-theme="dark"] {{
+        color-scheme: dark;
         --COLOR_BG: {DARK_COLOR_BG};
         --COLOR_SURFACE: {DARK_COLOR_SURFACE};
         --COLOR_SURFACE_ELEVATED: {DARK_COLOR_SURFACE_ELEVATED};
@@ -399,6 +416,26 @@ TOKEN_SYSTEM = f"""
         --sidebar-account-border: rgba(241, 245, 249, 0.22);
         --sidebar-avatar-bg: rgba(241, 245, 249, 0.24);
         --sidebar-avatar-fg: var(--sidebar-text);
+        --btn-sidebar-bg: rgba(241, 245, 249, 0.16);
+        --btn-sidebar-fg: var(--sidebar-text);
+        --btn-sidebar-border: rgba(241, 245, 249, 0.4);
+        --btn-sidebar-hover-bg: rgba(241, 245, 249, 0.24);
+        --btn-sidebar-hover-fg: var(--sidebar-text);
+        --btn-sidebar-hover-border: rgba(241, 245, 249, 0.6);
+        --btn-sidebar-active-bg: rgba(241, 245, 249, 0.28);
+        --btn-sidebar-active-fg: var(--sidebar-text);
+        --btn-sidebar-active-border: rgba(241, 245, 249, 0.72);
+        --btn-sidebar-disabled-bg: rgba(241, 245, 249, 0.12);
+        --btn-sidebar-disabled-fg: rgba(241, 245, 249, 0.65);
+        --btn-sidebar-disabled-border: rgba(241, 245, 249, 0.36);
+        --select-option-bg: var(--surface-elevated);
+        --select-option-fg: var(--text);
+        --select-option-hover-bg: #1E3A5F;
+        --select-option-hover-fg: var(--text);
+        --select-option-selected-bg: #25466F;
+        --select-option-selected-fg: var(--text);
+        --select-option-disabled-bg: var(--surface-elevated);
+        --select-option-disabled-fg: var(--text-muted);
         --table-header-bg: {DARK_SURFACE_ELEVATED};
 
         --text-secondary: {DARK_TEXT_SECONDARY};
