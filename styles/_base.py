@@ -28,30 +28,6 @@ BASE_TYPOGRAPHY = r"""    /* ── Base typography ─────────�
         border-left: 3px solid var(--brand) !important;
     }
     h4, .stMarkdown h4, [data-testid="stMarkdownContainer"] h4 { font-size: 1.05rem !important; font-weight: 600 !important; }
-    button[data-baseweb="tab"] {
-        font-family: var(--font-body) !important;
-        font-size: 0.95rem !important;
-        font-weight: 500 !important;
-        letter-spacing: 0.02em;
-        padding: var(--tab-padding-y) var(--tab-padding-x) !important;
-        color: var(--text-muted) !important;
-        transition: color var(--transition-normal) ease, background-color var(--transition-normal) ease !important;
-    }
-    button[data-baseweb="tab"]:hover {
-        color: var(--brand) !important;
-        background-color: var(--brand-soft) !important;
-    }
-    button[data-baseweb="tab"][aria-selected="true"] {
-        color: var(--brand) !important;
-        font-weight: 600 !important;
-    }
-    [data-testid="stTabs"] [data-baseweb="tab-highlight"] {
-        background-color: var(--brand) !important;
-    }
-    [data-testid="stTabs"] [role="tablist"] {
-        border-bottom: 2px solid var(--border-subtle);
-        gap: 0;
-    }
     .stCaption, [data-testid="stCaption"], caption {
         color: var(--text-muted) !important;
         font-size: 0.85rem !important;
@@ -210,33 +186,48 @@ SECTION_HEADERS_REFINED_STYLING = r"""    /* ── Section headers — refined 
 """
 
 TAB_BAR_REFINEMENT = r"""    /* ── Tab bar refinement ────────────────────────────────── */
-    button[data-baseweb="tab"] {
-        letter-spacing: 0.01em !important;
-        min-height: 44px !important;
-    }
     [data-testid="stTabs"] [role="tablist"] {
         border-bottom: 2px solid var(--border-subtle) !important;
         padding-bottom: 0 !important;
         margin-bottom: 1rem;
         gap: 0.25rem !important;
     }
-    button[data-baseweb="tab"][aria-selected="true"] {
-        background-color: var(--brand-soft) !important;
+    button[data-baseweb="tab"] {
+        font-family: var(--font-body) !important;
+        font-size: 0.95rem !important;
+        font-weight: 500 !important;
+        letter-spacing: 0.01em !important;
+        min-height: 44px !important;
+        padding: var(--tab-padding-y) var(--tab-padding-x) !important;
+        color: var(--tab-inactive-fg) !important;
+        background-color: var(--tab-inactive-bg) !important;
+        border: 1px solid var(--tab-inactive-border) !important;
         border-radius: var(--radius-sm) var(--radius-sm) 0 0 !important;
+        transition:
+            color var(--transition-normal) ease,
+            background-color var(--transition-normal) ease,
+            border-color var(--transition-normal) ease !important;
     }
-    [data-testid="stTabs"] [role="tab"] p {
+    button[data-baseweb="tab"]:hover {
+        color: var(--tab-hover-fg) !important;
+        background-color: var(--tab-hover-bg) !important;
+        border-color: var(--tab-hover-border) !important;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] {
+        color: var(--tab-active-fg) !important;
+        background-color: var(--tab-active-bg) !important;
+        border-color: var(--tab-active-border) !important;
         font-weight: 600 !important;
     }
-    /* Dark mode: brighten tab hover/selected foreground for WCAG AA */
-    :root[data-theme="dark"] button[data-baseweb="tab"]:hover,
-    :root[data-theme="dark"] button[data-baseweb="tab"][aria-selected="true"] {
-        color: var(--brand-light) !important;
+    button[data-baseweb="tab"]:focus-visible {
+        outline: 2px solid var(--tab-focus-ring) !important;
+        outline-offset: 2px !important;
     }
-    @media (prefers-color-scheme: dark) {
-        :root:not([data-theme="light"]) button[data-baseweb="tab"]:hover,
-        :root:not([data-theme="light"]) button[data-baseweb="tab"][aria-selected="true"] {
-            color: var(--brand-light) !important;
-        }
+    [data-testid="stTabs"] [role="tab"] p {
+        font-weight: inherit !important;
+    }
+    [data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+        background-color: var(--tab-active-border) !important;
     }
 
 """

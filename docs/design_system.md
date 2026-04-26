@@ -81,3 +81,22 @@ All nested `p`/`span` labels in Streamlit button render paths must inherit foreg
 - `.stDownloadButton > button p/span`
 - `.stFormSubmitButton > button p/span`
 - sidebar button labels under `[data-testid="stSidebar"]`
+
+## Tab and Navigation State Tokens
+
+Tab styling must be token-driven and centralized (no per-component hard-coded tab colors).
+
+### Required states
+- Inactive tab: `--tab-inactive-bg`, `--tab-inactive-fg`, `--tab-inactive-border`
+- Hover tab: `--tab-hover-bg`, `--tab-hover-fg`, `--tab-hover-border`
+- Active tab: `--tab-active-bg`, `--tab-active-fg`, `--tab-active-border`
+- Focus state: `--tab-focus-ring`
+
+### Contrast requirement
+- Active tab text/background must meet **WCAG AA normal text contrast (≥ 4.5:1)**.
+- Do not assume white text is valid by default; only use it when the paired background token is verified to meet the ratio target.
+
+### Selector and duplication guidance
+- Keep tab behavior in one place (`styles/_base.py` tab refinement block).
+- Keep nested tab label inheritance in the contrast safety layer (`styles/_contrast_fix.py`).
+- Avoid redefining tab state colors in component modules unless adding new tokens in `styles/_tokens.py`.
