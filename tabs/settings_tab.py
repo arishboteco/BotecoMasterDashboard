@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from io import BytesIO
-from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import streamlit as st
@@ -13,29 +11,22 @@ import config
 import database
 import utils
 from auth import is_admin
-from tabs import TabContext
-from components.navigation import date_range_nav
-from components.forms import confirm_dialog
 from components import (
     classed_container,
     divider,
     filter_strip,
-    page_header,
     page_shell,
     primary_action_bar,
     section_title,
 )
+from components.forms import confirm_dialog
+from components.navigation import date_range_nav
+from tabs import TabContext
 
 
 def render(ctx: TabContext) -> None:
     """Render the Settings tab UI for admins and account display."""
     shell = page_shell()
-    with shell.hero:
-        page_header(
-            title="Settings and Administration",
-            subtitle="Manage outlets, user access, targets, exports, and maintenance controls.",
-            context="Admin controls",
-        )
 
     # ── Account info (all users) ──────────────────────────────────
     with shell.filters:

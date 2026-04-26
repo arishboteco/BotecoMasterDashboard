@@ -15,7 +15,6 @@ import utils
 from components import (
     classed_container,
     info_banner,
-    page_header,
     page_shell,
     primary_action_bar,
     section_title,
@@ -40,15 +39,6 @@ def _files_fingerprint(uploaded_files) -> str:
 def render(ctx: TabContext) -> None:
     """Render the Upload tab UI and handle import logic."""
     shell = page_shell()
-    with shell.hero:
-        page_header(
-            title="POS Ingestion",
-            subtitle=(
-                "Drop Petpooja exports, verify routing, then import with overwrite "
-                "protection for existing outlet/day data."
-            ),
-            context="Smart detection + multi-outlet routing",
-        )
 
     flash = st.session_state.pop("_import_summary_flash", None)
     if flash is not None:

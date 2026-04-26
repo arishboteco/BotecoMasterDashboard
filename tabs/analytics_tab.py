@@ -12,6 +12,10 @@ import config
 import database
 import scope
 import utils
+from components import classed_container, page_shell, section_title
+from components.feedback import empty_state
+from components.navigation import date_range_nav
+from tabs import TabContext
 from tabs.analytics_logic import resolve_period_window
 from tabs.analytics_sections import (
     render_overview,
@@ -20,10 +24,6 @@ from tabs.analytics_sections import (
     render_sales_performance,
     render_target_and_daily,
 )
-from tabs import TabContext
-from components.feedback import empty_state
-from components.navigation import date_range_nav
-from components import classed_container, page_header, page_shell, section_title
 
 # In-process cache registered with cache_manager for coordinated invalidation
 _RAW_SUMMARY_CACHE: dict = cache_manager.register("analytics_raw")
@@ -113,15 +113,6 @@ def _load_raw_summaries_cached(
 def render(ctx: TabContext) -> None:
     """Render the Analytics tab UI with charts and period analysis."""
     shell = page_shell()
-    with shell.hero:
-        page_header(
-            title="Sales Analytics",
-            subtitle=(
-                "Analyze trends, category mix, target achievement, and payment reconciliation "
-                "across your selected operating window."
-            ),
-            context="Period comparison and outlet filtering",
-        )
 
     with shell.filters:
         with classed_container(
