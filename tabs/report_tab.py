@@ -9,8 +9,6 @@ from urllib.parse import quote_plus
 
 import streamlit as st
 
-
-import cache_manager
 import clipboard_ui
 import database
 import scope
@@ -18,9 +16,7 @@ import sheet_reports as reports
 import ui_theme
 import utils
 from components.feedback import empty_state
-
-# In-process caches registered with cache_manager for coordinated invalidation
-_REPORT_CACHE: dict = cache_manager.register("report")
+from services import report_service
 
 
 def clear_report_cache() -> None:
@@ -28,17 +24,7 @@ def clear_report_cache() -> None:
 
     Called when new data is imported or when a user requests a refresh.
     """
-    cache_manager.invalidate("report")
-
-
-def _load_report_bundle_cached(location_ids: List[int], date_str: str):
-    """Load the daily report bundle with in-process cache."""
-    key = (tuple(location_ids), date_str)
-    if key in _REPORT_CACHE:
-        return _REPORT_CACHE[key]
-    outlets_bundle, summary = scope.get_daily_report_bundle(location_ids, date_str)
-    _REPORT_CACHE[key] = (outlets_bundle, summary)
-    return outlets_bundle, summary
+    report_service.clear_report_cache()
 
 
 from tabs import TabContext
@@ -52,61 +38,6 @@ from components import (
     page_shell,
     section_title,
 )
-
-
-def _build_mtd_maps(
-    location_ids: List[int], year: int, month: int, as_of_date: str
-) -> Tuple[dict, dict]:
-    start_date = f"{year}-{month:02d}-01"
-    cat_rows = database.get_category_sales_for_date_range(
-        location_ids, start_date, as_of_date
-    )
-    svc_rows = database.get_service_sales_for_date_range(
-        location_ids, start_date, as_of_date
-    )
-
-    mtd_cat = {
-        str(r.get("category") or ""): float(r.get("amount") or r.get("total") or 0)
-        for r in (cat_rows or [])
-        if str(r.get("category") or "").strip()
-    }
-    mtd_svc = {
-        str(r.get("service_type") or r.get("type") or ""): float(
-            r.get("amount") or r.get("total") or 0
-        )
-        for r in (svc_rows or [])
-        if str(r.get("service_type") or r.get("type") or "").strip()
-    }
-    return mtd_cat, mtd_svc
-
-
-_MTD_CACHE: dict = cache_manager.register("mtd")
-
-
-def _build_mtd_maps_cached(
-    location_ids: List[int], year: int, month: int, as_of_date: str
-) -> Tuple[dict, dict]:
-    key = (tuple(location_ids), year, month, as_of_date)
-    if key in _MTD_CACHE:
-        return _MTD_CACHE[key]
-    res = _build_mtd_maps(location_ids, year, month, as_of_date)
-    _MTD_CACHE[key] = res
-    return res
-
-
-_FOOT_CACHE: dict = cache_manager.register("foot")
-
-
-def _get_foot_rows_cached(location_ids: List[int], year: int, month: int):
-    key = (tuple(location_ids), year, month)
-    if key in _FOOT_CACHE:
-        return _FOOT_CACHE[key]
-    if len(location_ids) > 1:
-        rows = database.get_summaries_for_month_multi(location_ids, year, month)
-    else:
-        rows = database.get_summaries_for_month(location_ids[0], year, month)
-    _FOOT_CACHE[key] = rows
-    return rows
 
 
 def render(ctx: TabContext) -> None:
@@ -125,9 +56,7 @@ def render(ctx: TabContext) -> None:
     if "report_date" not in st.session_state:
         most_recent_date = database.get_most_recent_date_with_data(ctx.report_loc_ids)
         if most_recent_date:
-            st.session_state["report_date"] = datetime.strptime(
-                most_recent_date, "%Y-%m-%d"
-            ).date()
+            st.session_state["report_date"] = datetime.strptime(most_recent_date, "%Y-%m-%d").date()
         else:
             st.session_state["report_date"] = datetime.now().date()
 
@@ -145,7 +74,7 @@ def render(ctx: TabContext) -> None:
             )
 
     date_str = selected_date.strftime("%Y-%m-%d")
-    outlets_bundle, summary = _load_report_bundle_cached(ctx.report_loc_ids, date_str)
+    outlets_bundle, summary = report_service.load_report_bundle_cached(ctx.report_loc_ids, date_str)
 
     with shell.content:
         if summary:
@@ -157,19 +86,19 @@ def render(ctx: TabContext) -> None:
                 st.markdown("#### Daily KPI Snapshot")
                 kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
                 with kpi_col1:
-                    st.metric("Net Sales", utils.format_rupee_short(float(summary.get("net_total") or 0)))
+                    st.metric(
+                        "Net Sales", utils.format_rupee_short(float(summary.get("net_total") or 0))
+                    )
                 with kpi_col2:
                     st.metric("Covers", f"{int(summary.get('covers') or 0):,}")
                 with kpi_col3:
                     st.metric("APC", utils.format_rupee_short(float(summary.get("apc") or 0)))
                 st.markdown("</div>", unsafe_allow_html=True)
-    
+
             # ── Same weekday previous week comparison ──────────────
             _prev_date = selected_date - timedelta(days=7)
             _prev_date_str = _prev_date.strftime("%Y-%m-%d")
-            _prev_summary = scope.get_daily_summary_for_scope(
-                ctx.report_loc_ids, _prev_date_str
-            )
+            _prev_summary = scope.get_daily_summary_for_scope(ctx.report_loc_ids, _prev_date_str)
             _context_items = [
                 f'<span class="context-band-item"><strong>Date:</strong> {selected_date.strftime("%d %b %Y")}</span>',
                 f'<span class="context-band-item"><strong>Scope:</strong> {ctx.report_display_name}</span>',
@@ -181,7 +110,7 @@ def render(ctx: TabContext) -> None:
                 _curr_net = float(summary.get("net_total") or 0)
                 _curr_cov = int(summary.get("covers") or 0)
                 _curr_apc = float(summary.get("apc") or 0)
-    
+
                 def _delta_indicator(curr, prev, is_currency=True):
                     if prev is None or prev == 0:
                         return ""
@@ -198,14 +127,12 @@ def render(ctx: TabContext) -> None:
                         pct = abs(pct)
                     else:
                         return "\u2014"
-                    value = (
-                        utils.format_rupee_short(change) if is_currency else f"{int(change):,}"
-                    )
+                    value = utils.format_rupee_short(change) if is_currency else f"{int(change):,}"
                     return (
                         f'<span class="delta-chip {delta_class}">'
                         f"{arrow} {value} ({pct:+.2f}%)</span>"
                     )
-    
+
                 _net_cmp = _delta_indicator(_curr_net, _prev_net, is_currency=True)
                 _cov_cmp = _delta_indicator(_curr_cov, _prev_cov, is_currency=False)
                 _apc_cmp = _delta_indicator(_curr_apc, _prev_apc, is_currency=True)
@@ -219,15 +146,13 @@ def render(ctx: TabContext) -> None:
                 unsafe_allow_html=True,
             )
             divider()
-    
+
             # Individual PNG sections
-            per_outlet_sheet = (
-                [(n, d) for _i, n, d in outlets_bundle] if multi_outlet else None
-            )
+            per_outlet_sheet = [(n, d) for _i, n, d in outlets_bundle] if multi_outlet else None
             per_outlet_cat = None
             per_outlet_svc = None
             if len(ctx.report_loc_ids) > 1:
-                mtd_cat, mtd_svc = _build_mtd_maps_cached(
+                mtd_cat, mtd_svc = report_service.build_mtd_maps_cached(
                     ctx.report_loc_ids, y_m[0], y_m[1], date_str
                 )
                 _today = datetime.now().date()
@@ -237,7 +162,7 @@ def render(ctx: TabContext) -> None:
                 _days_since_monday = _today.weekday()
                 _current_week_monday = _today - timedelta(days=_days_since_monday)
                 _start_wk = (_current_week_monday - timedelta(weeks=3)).strftime("%Y-%m-%d")
-    
+
                 per_outlet_footfall_metrics = [
                     (
                         name,
@@ -246,20 +171,22 @@ def render(ctx: TabContext) -> None:
                     )
                     for lid, name, _ in outlets_bundle
                 ]
-                foot_rows = _get_foot_rows_cached(ctx.report_loc_ids, y_m[0], y_m[1])
+                foot_rows = report_service.get_foot_rows_cached(ctx.report_loc_ids, y_m[0], y_m[1])
                 per_outlet_footfall = None
                 per_outlet_cat = None
                 per_outlet_svc = None
             else:
-                mtd_cat, mtd_svc = _build_mtd_maps_cached(
+                mtd_cat, mtd_svc = report_service.build_mtd_maps_cached(
                     [ctx.report_loc_ids[0]], y_m[0], y_m[1], date_str
                 )
-                foot_rows = _get_foot_rows_cached([ctx.report_loc_ids[0]], y_m[0], y_m[1])
+                foot_rows = report_service.get_foot_rows_cached(
+                    [ctx.report_loc_ids[0]], y_m[0], y_m[1]
+                )
                 per_outlet_footfall = None
                 per_outlet_footfall_metrics = None
                 per_outlet_cat = None
                 per_outlet_svc = None
-    
+
             section_bufs = reports.generate_sheet_style_report_sections(
                 summary,
                 ctx.report_display_name,
@@ -273,7 +200,7 @@ def render(ctx: TabContext) -> None:
                 per_outlet_footfall_metrics=per_outlet_footfall_metrics,
                 daily_sales_history=foot_rows,
             )
-    
+
             def _footfall_sections() -> List[Tuple[str, str]]:
                 items: List[Tuple[str, str]] = []
                 for key in section_bufs.keys():
@@ -299,7 +226,7 @@ def render(ctx: TabContext) -> None:
                         else:
                             items.append((key, "Footfall"))
                 return items
-    
+
             if multi_outlet:
                 st.markdown(
                     '<div class="context-band context-band--muted">'
@@ -312,7 +239,7 @@ def render(ctx: TabContext) -> None:
                     "</div>",
                     unsafe_allow_html=True,
                 )
-    
+
             if multi_outlet and outlets_bundle:
                 filter_strip(
                     "Report scope",
@@ -327,30 +254,32 @@ def render(ctx: TabContext) -> None:
                     key="png_outlet_selector",
                     label_visibility="collapsed",
                 )
-    
+
                 if _selected_outlet != "All outlets":
                     _selected_lid = None
                     for lid, name, _ in outlets_bundle:
                         if name == _selected_outlet:
                             _selected_lid = lid
                             break
-    
+
                     _outlet_data = None
                     for lid, name, data in outlets_bundle:
                         if lid == _selected_lid:
                             _outlet_data = data
                             break
-    
+
                     _single_outlet_sheet = [(_selected_outlet, _outlet_data)]
                     _single_outlet_cat = None
                     _single_outlet_svc = None
                     _single_outlet_footfall_metrics = None
-    
+
                     if len(ctx.report_loc_ids) > 1:
                         _single_outlet_cat = [
                             (
                                 name,
-                                _build_mtd_maps_cached([lid], y_m[0], y_m[1], date_str)[0],
+                                report_service.build_mtd_maps_cached(
+                                    [lid], y_m[0], y_m[1], date_str
+                                )[0],
                             )
                             for lid, name, _ in outlets_bundle
                             if lid == _selected_lid
@@ -358,7 +287,9 @@ def render(ctx: TabContext) -> None:
                         _single_outlet_svc = [
                             (
                                 name,
-                                _build_mtd_maps_cached([lid], y_m[0], y_m[1], date_str)[1],
+                                report_service.build_mtd_maps_cached(
+                                    [lid], y_m[0], y_m[1], date_str
+                                )[1],
                             )
                             for lid, name, _ in outlets_bundle
                             if lid == _selected_lid
@@ -369,9 +300,7 @@ def render(ctx: TabContext) -> None:
                         _start_mo_str = _start_mo_dt.strftime("%Y-%m-%d")
                         _days_since_monday = _today.weekday()
                         _current_week_monday = _today - timedelta(days=_days_since_monday)
-                        _start_wk = (_current_week_monday - timedelta(weeks=3)).strftime(
-                            "%Y-%m-%d"
-                        )
+                        _start_wk = (_current_week_monday - timedelta(weeks=3)).strftime("%Y-%m-%d")
                         _single_outlet_footfall_metrics = [
                             (
                                 _selected_outlet,
@@ -383,22 +312,22 @@ def render(ctx: TabContext) -> None:
                                 ),
                             )
                         ]
-                        foot_rows = database.get_summaries_for_month(
-                            _selected_lid, y_m[0], y_m[1]
-                        )
+                        foot_rows = database.get_summaries_for_month(_selected_lid, y_m[0], y_m[1])
                     else:
-                        foot_rows = _get_foot_rows_cached([_selected_lid], y_m[0], y_m[1])
-    
+                        foot_rows = report_service.get_foot_rows_cached(
+                            [_selected_lid], y_m[0], y_m[1]
+                        )
+
                     _single_outlet_mtd_cat = None
                     _single_outlet_mtd_svc = None
-    
+
                     if len(ctx.report_loc_ids) > 1:
                         _single_outlet_mtd_cat, _single_outlet_mtd_svc = (
-                            _build_mtd_maps_cached(
+                            report_service.build_mtd_maps_cached(
                                 [_selected_lid], y_m[0], y_m[1], date_str
                             )
                         )
-    
+
                     _single_section_bufs = reports.generate_sheet_style_report_sections(
                         _outlet_data,
                         _selected_outlet,
@@ -412,7 +341,7 @@ def render(ctx: TabContext) -> None:
                         per_outlet_footfall_metrics=_single_outlet_footfall_metrics,
                         daily_sales_history=foot_rows,
                     )
-    
+
                     def _single_footfall_sections() -> List[Tuple[str, str]]:
                         items: List[Tuple[str, str]] = []
                         for key in _single_section_bufs.keys():
@@ -426,9 +355,7 @@ def render(ctx: TabContext) -> None:
                                 parts = key.split("__")
                                 if len(parts) >= 3:
                                     slug = parts[1].replace("_", " ")
-                                    items.append(
-                                        (key, f"Footfall Metrics ({slug.title()})")
-                                    )
+                                    items.append((key, f"Footfall Metrics ({slug.title()})"))
                                 else:
                                     items.append((key, "Footfall Metrics"))
                                 continue
@@ -440,7 +367,7 @@ def render(ctx: TabContext) -> None:
                                 else:
                                     items.append((key, "Footfall"))
                         return items
-    
+
                     with classed_container(
                         "tab-report-mobile-secondary",
                         "mobile-layout-secondary",
@@ -538,9 +465,7 @@ def render(ctx: TabContext) -> None:
                         with _cells[row_idx][col_idx]:
                             section_title(title, icon="image")
                             st.image(BytesIO(sec_bytes), width="stretch")
-                            _wa_text = (
-                                f"Boteco Bangalore EOD Report \u2013 {date_str} ({title})"
-                            )
+                            _wa_text = f"Boteco Bangalore EOD Report \u2013 {date_str} ({title})"
                             clipboard_ui.render_image_action_row(
                                 sec_bytes,
                                 f"boteco_{key}_{date_str}.png",
