@@ -10,38 +10,32 @@ import streamlit as st
 def date_nav(
     session_key: str = "report_date",
     label: str = "Select a date",
-    help_text: str = "Choose a date to view that day's report",
+    help_text: str | None = None,
 ) -> datetime:
-    """Render date navigation with prev/next buttons and date picker."""
+    """Render date navigation as a single responsive control row."""
     if session_key not in st.session_state:
         st.session_state[session_key] = datetime.now().date()
 
     selected_date = st.session_state[session_key]
-    date_display = selected_date.strftime("%a, %d %b %Y")
-
-    nav_col1, nav_col2, nav_col3 = st.columns([1, 4, 1])
-    with nav_col1:
+    prev_col, date_col, next_col = st.columns([1.1, 2.4, 1.1])
+    with prev_col:
         if st.button("\u2190 Prev", key=f"{session_key}_prev", width="stretch"):
             st.session_state[session_key] = selected_date - timedelta(days=1)
-    with nav_col2:
-        st.markdown(
-            f'<div class="date-display" style="text-align:center;">{date_display}</div>',
-            unsafe_allow_html=True,
+    with date_col:
+        picked = st.date_input(
+            label,
+            value=selected_date,
+            key=f"{session_key}_picker",
+            help=help_text,
+            format="YYYY-MM-DD",
+            label_visibility="collapsed",
+            width="stretch",
         )
-    with nav_col3:
+        if picked != selected_date:
+            st.session_state[session_key] = picked
+    with next_col:
         if st.button("Next \u2192", key=f"{session_key}_next", width="stretch"):
             st.session_state[session_key] = selected_date + timedelta(days=1)
-
-    # Use a canonical date format for the picker to minimize parsing overhead
-    picked = st.date_input(
-        label,
-        value=selected_date,
-        key=f"{session_key}_picker",
-        help=help_text,
-        format="YYYY-MM-DD",
-    )
-    if picked != selected_date:
-        st.session_state[session_key] = picked
 
     return st.session_state[session_key]
 
