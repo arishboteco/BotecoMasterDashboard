@@ -142,6 +142,7 @@ LOGIN_CSS = r"""
     footer { visibility: hidden !important; }
 
     /* ── Hide CookieController visual mount (blank box on top) ─────────── */
+    div[data-testid="stElementContainer"] > div[data-testid="stCustomComponentV1"],
     [data-testid="stCustomComponentV1"] {
         display: none !important;
         height: 0 !important;
