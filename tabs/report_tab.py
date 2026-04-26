@@ -105,11 +105,6 @@ def render(ctx: TabContext) -> None:
                 _cov_cmp = _delta_chip(float(_curr_cov), float(_prev_cov), is_currency=False)
                 _apc_cmp = _delta_chip(_curr_apc, _prev_apc, is_currency=True)
                 _comparison_chip = f'<span class="comparison-chip">Compared with {_prev_date.strftime("%d %b %Y")}</span>'
-                _scope_item = f'<span class="context-band-item"><strong>{ctx.report_display_name}</strong></span>'
-                _comparison_item = (
-                    f'<span class="context-band-item">Compared with '
-                    f"{_prev_date.strftime('%d %b %Y')}</span>"
-                )
                 st.markdown(
                     (
                         '<div class="kpi-primary-card kpi-snapshot-card">'
@@ -142,18 +137,6 @@ def render(ctx: TabContext) -> None:
                     unsafe_allow_html=True,
                 )
 
-            st.markdown(
-                (
-                    '<div class="context-band context-band--muted report-context-bar">'
-                    f"{_scope_item}"
-                    f"{_comparison_item}"
-                    f'<span class="context-band-item">Net {_net_cmp}</span>'
-                    f'<span class="context-band-item">Covers {_cov_cmp}</span>'
-                    f'<span class="context-band-item">APC {_apc_cmp}</span>'
-                    "</div>"
-                ),
-                unsafe_allow_html=True,
-            )
             divider()
 
             # Individual PNG sections

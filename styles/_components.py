@@ -263,10 +263,6 @@ COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ─�
     .kpi-helper .delta-chip--negative {
         color: var(--error) !important;
     }
-    .report-context-bar {
-        margin-top: 0.25rem;
-        margin-bottom: 0.75rem;
-    }
     .kpi-delta.is-positive { color: var(--kpi-delta-positive-fg) !important; }
     .kpi-delta.is-negative { color: var(--kpi-delta-negative-fg) !important; }
     @media (max-width: 900px) {
