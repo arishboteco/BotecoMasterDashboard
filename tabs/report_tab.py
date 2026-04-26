@@ -13,21 +13,7 @@ import clipboard_ui
 import database
 import scope
 import sheet_reports as reports
-import ui_theme
 import utils
-from components.feedback import empty_state
-from services import report_service
-
-
-def clear_report_cache() -> None:
-    """Clear cached per-date report data.
-
-    Called when new data is imported or when a user requests a refresh.
-    """
-    report_service.clear_report_cache()
-
-
-from tabs import TabContext
 from components import (
     classed_container,
     date_nav,
@@ -38,6 +24,17 @@ from components import (
     page_shell,
     section_title,
 )
+from components.feedback import empty_state
+from services import report_service
+from tabs import TabContext
+
+
+def clear_report_cache() -> None:
+    """Clear cached per-date report data.
+
+    Called when new data is imported or when a user requests a refresh.
+    """
+    report_service.clear_report_cache()
 
 
 def render(ctx: TabContext) -> None:
@@ -80,62 +77,77 @@ def render(ctx: TabContext) -> None:
         if summary:
             y_m = [int(x) for x in date_str.split("-")[:2]]
             multi_outlet = len(outlets_bundle) > 1
-
-            with classed_container("tab-report-mobile-kpis", "mobile-layout-stack"):
-                st.markdown('<div class="kpi-primary-card">', unsafe_allow_html=True)
-                st.markdown("#### Daily KPI Snapshot")
-                kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
-                with kpi_col1:
-                    st.metric(
-                        "Net Sales", utils.format_rupee_short(float(summary.get("net_total") or 0))
-                    )
-                with kpi_col2:
-                    st.metric("Covers", f"{int(summary.get('covers') or 0):,}")
-                with kpi_col3:
-                    st.metric("APC", utils.format_rupee_short(float(summary.get("apc") or 0)))
-                st.markdown("</div>", unsafe_allow_html=True)
-
-            # ── Same weekday previous week comparison ──────────────
             _prev_date = selected_date - timedelta(days=7)
             _prev_date_str = _prev_date.strftime("%Y-%m-%d")
             _prev_summary = scope.get_daily_summary_for_scope(ctx.report_loc_ids, _prev_date_str)
+
+            _curr_net = float(summary.get("net_total") or 0)
+            _curr_cov = int(summary.get("covers") or 0)
+            _curr_apc = float(summary.get("apc") or 0)
+            _prev_net = float(_prev_summary.get("net_total") or 0) if _prev_summary else 0.0
+            _prev_cov = int(_prev_summary.get("covers") or 0) if _prev_summary else 0
+            _prev_apc = float(_prev_summary.get("apc") or 0) if _prev_summary else 0.0
+
+            def _delta_chip(curr: float, prev: float, is_currency: bool = True) -> str:
+                if prev == 0:
+                    return '<span class="kpi-delta">No baseline</span>'
+                growth = utils.calculate_growth(curr, prev)
+                pct = growth["percentage"]
+                change = growth["change"]
+                if change > 0:
+                    arrow = "\u25b2"
+                    delta_class = "delta-chip--positive"
+                elif change < 0:
+                    arrow = "\u25bc"
+                    delta_class = "delta-chip--negative"
+                    change = abs(change)
+                    pct = abs(pct)
+                else:
+                    return '<span class="kpi-delta">No change</span>'
+                value = utils.format_rupee_short(change) if is_currency else f"{int(change):,}"
+                return (
+                    f'<span class="delta-chip {delta_class}">{arrow} {value} ({pct:+.2f}%)</span>'
+                )
+
+            with classed_container("tab-report-mobile-kpis", "mobile-layout-stack"):
+                st.markdown(
+                    (
+                        '<div class="kpi-primary-card kpi-snapshot-card">'
+                        '<div class="kpi-snapshot-head">'
+                        "<h4>Daily KPI Snapshot</h4>"
+                        f'<span class="kpi-snapshot-subhead">vs {_prev_date.strftime("%d %b %Y")}</span>'
+                        "</div>"
+                        '<div class="kpi-snapshot-grid">'
+                        '<div class="kpi-item kpi-combined">'
+                        '<span class="kpi-label">Net Sales</span>'
+                        f'<span class="kpi-value">{utils.format_rupee_short(_curr_net)}</span>'
+                        f"{_delta_chip(_curr_net, _prev_net, is_currency=True)}"
+                        "</div>"
+                        '<div class="kpi-item">'
+                        '<span class="kpi-label">Covers</span>'
+                        f'<span class="kpi-value">{_curr_cov:,}</span>'
+                        f"{_delta_chip(float(_curr_cov), float(_prev_cov), is_currency=False)}"
+                        "</div>"
+                        '<div class="kpi-item">'
+                        '<span class="kpi-label">APC</span>'
+                        f'<span class="kpi-value">{utils.format_rupee_short(_curr_apc)}</span>'
+                        f"{_delta_chip(_curr_apc, _prev_apc, is_currency=True)}"
+                        "</div>"
+                        "</div>"
+                        "</div>"
+                    ),
+                    unsafe_allow_html=True,
+                )
+
+            # ── Same weekday previous week comparison ──────────────
             _context_items = [
                 f'<span class="context-band-item"><strong>Date:</strong> {selected_date.strftime("%d %b %Y")}</span>',
                 f'<span class="context-band-item"><strong>Scope:</strong> {ctx.report_display_name}</span>',
             ]
             if _prev_summary:
-                _prev_net = float(_prev_summary.get("net_total") or 0)
-                _prev_cov = int(_prev_summary.get("covers") or 0)
-                _prev_apc = float(_prev_summary.get("apc") or 0)
-                _curr_net = float(summary.get("net_total") or 0)
-                _curr_cov = int(summary.get("covers") or 0)
-                _curr_apc = float(summary.get("apc") or 0)
-
-                def _delta_indicator(curr, prev, is_currency=True):
-                    if prev is None or prev == 0:
-                        return ""
-                    g = utils.calculate_growth(curr, prev)
-                    pct = g["percentage"]
-                    change = g["change"]
-                    if change > 0:
-                        arrow = "\u25b2"
-                        delta_class = "delta-chip--positive"
-                    elif change < 0:
-                        arrow = "\u25bc"
-                        delta_class = "delta-chip--negative"
-                        change = abs(change)
-                        pct = abs(pct)
-                    else:
-                        return "\u2014"
-                    value = utils.format_rupee_short(change) if is_currency else f"{int(change):,}"
-                    return (
-                        f'<span class="delta-chip {delta_class}">'
-                        f"{arrow} {value} ({pct:+.2f}%)</span>"
-                    )
-
-                _net_cmp = _delta_indicator(_curr_net, _prev_net, is_currency=True)
-                _cov_cmp = _delta_indicator(_curr_cov, _prev_cov, is_currency=False)
-                _apc_cmp = _delta_indicator(_curr_apc, _prev_apc, is_currency=True)
+                _net_cmp = _delta_chip(_curr_net, _prev_net, is_currency=True)
+                _cov_cmp = _delta_chip(float(_curr_cov), float(_prev_cov), is_currency=False)
+                _apc_cmp = _delta_chip(_curr_apc, _prev_apc, is_currency=True)
                 _context_items.append(
                     f'<span class="report-comparison-bar"><strong>vs {_prev_date.strftime("%d %b")}:</strong> '
                     f"Net {_net_cmp} | Covers {_cov_cmp} | APC {_apc_cmp}</span>"

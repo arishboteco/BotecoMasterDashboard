@@ -125,18 +125,46 @@ KPI_METRIC_VALUES = r"""    /* ── KPI metric values ────────
 """
 
 COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ───────────────────────── */
+    .kpi-snapshot-card {
+        padding: 0.8rem 0.9rem;
+        margin-bottom: 0.55rem;
+    }
+    .kpi-snapshot-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 0.5rem;
+        margin-bottom: 0.55rem;
+    }
+    .kpi-snapshot-head h4 {
+        margin: 0;
+        font-size: 1.05rem;
+        line-height: 1.2;
+    }
+    .kpi-snapshot-subhead {
+        color: var(--text-muted);
+        font-size: 0.76rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+    }
+    .kpi-snapshot-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.5rem;
+    }
     .kpi-item {
         display: flex;
         flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 0.35rem 0.5rem;
+        align-items: flex-start;
+        justify-content: flex-start;
+        padding: 0.5rem 0.6rem;
         border-radius: var(--radius-sm);
         background: var(--card-surface-normal);
         border: 1px solid var(--border-subtle);
-        text-align: center;
-        gap: 0.1rem;
-        min-height: 2.8rem;
+        text-align: left;
+        gap: 0.2rem;
+        min-height: 4.2rem;
     }
     .kpi-item.kpi-combined {
         border-left: 3px solid var(--accent-coral);
@@ -154,19 +182,24 @@ COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ─�
         font-family: var(--font-display) !important;
         color: var(--kpi-value-fg) !important;
         font-weight: 700 !important;
-        font-size: 0.85rem !important;
+        font-size: 2rem !important;
         line-height: 1.1;
         word-break: break-word;
     }
     .kpi-delta {
         font-family: var(--font-body) !important;
         color: var(--kpi-delta-neutral-fg) !important;
-        font-size: 0.55rem !important;
+        font-size: 0.74rem !important;
         font-weight: 500 !important;
         line-height: 1;
     }
     .kpi-delta.is-positive { color: var(--kpi-delta-positive-fg) !important; }
     .kpi-delta.is-negative { color: var(--kpi-delta-negative-fg) !important; }
+    @media (max-width: 900px) {
+        .kpi-snapshot-grid {
+            grid-template-columns: 1fr;
+        }
+    }
 
 """
 
