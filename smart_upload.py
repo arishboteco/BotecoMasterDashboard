@@ -493,7 +493,25 @@ def save_smart_upload_results(
         dynamic_files = [
             fr for fr in result.files if fr.kind == "dynamic_report" and fr.content and not fr.error
         ]
-        all_locations = database.get_all_locations() if dynamic_files else []
+        all_locations = []
+        if dynamic_files:
+            try:
+                all_locations = database.get_all_locations()
+            except (ValueError, TypeError, KeyError, RuntimeError) as ex:
+                logger.warning(
+                    (
+                        "Location preload failed in smart_upload.py "
+                        "uploaded_by=%s dynamic_files=%d error=%s"
+                    ),
+                    uploaded_by,
+                    len(dynamic_files),
+                    ex,
+                )
+                messages.append(
+                    "⚠️ Could not preload locations for dynamic report mapping; "
+                    "continuing with fallback resolution."
+                )
+
         for fr in dynamic_files:
             try:
                 raw_records, parse_notes = dynamic_report_parser.parse_dynamic_report_raw(
