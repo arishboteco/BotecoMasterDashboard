@@ -8,6 +8,14 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import database
 from boteco_logger import get_logger
+from db.table_names import (
+    SQLITE_DAILY_SUMMARIES,
+    SQLITE_ITEM_SALES,
+    SQLITE_SERVICE_SALES,
+    SUPABASE_BILL_ITEMS,
+    SUPABASE_CATEGORY_SUMMARY,
+    SUPABASE_DAILY_SUMMARY,
+)
 
 logger = get_logger(__name__)
 
@@ -115,22 +123,20 @@ def upsert_daily_summary_supabase(
         "order_count": data.get("order_count", 0),
     }
     result = (
-        supabase.table("daily_summary")
+        supabase.table(SUPABASE_DAILY_SUMMARY)
         .upsert(row_data, on_conflict="location_id,date")
         .execute()
     )
     return int(result.data[0]["id"])
 
 
-def upsert_daily_summaries_supabase_batch(
-    supabase: Any, rows: List[Dict[str, Any]]
-) -> None:
+def upsert_daily_summaries_supabase_batch(supabase: Any, rows: List[Dict[str, Any]]) -> None:
     """Bulk upsert daily_summary rows (one HTTP round-trip per chunk)."""
     if not rows:
         return
     for i in range(0, len(rows), _SUPABASE_ROW_CHUNK):
         chunk = rows[i : i + _SUPABASE_ROW_CHUNK]
-        supabase.table("daily_summary").upsert(
+        supabase.table(SUPABASE_DAILY_SUMMARY).upsert(
             chunk, on_conflict="location_id,date"
         ).execute()
 
@@ -150,15 +156,13 @@ def save_daily_summary(location_id: int, data: Dict[str, Any]) -> int:
     return _save_daily_summary_sqlite(location_id, date_str, data)
 
 
-def _save_daily_summary_sqlite(
-    location_id: int, date_str: str, data: Dict[str, Any]
-) -> int:
+def _save_daily_summary_sqlite(location_id: int, date_str: str, data: Dict[str, Any]) -> int:
     """Persist legacy daily_summaries + item_sales + service_sales."""
     with database.db_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            """
-            SELECT id FROM daily_summaries
+            f"""
+            SELECT id FROM {SQLITE_DAILY_SUMMARIES}
             WHERE location_id = ? AND date = ?
             """,
             (location_id, date_str),
@@ -167,8 +171,8 @@ def _save_daily_summary_sqlite(
         if row:
             summary_id = int(row["id"])
             cur.execute(
-                """
-                UPDATE daily_summaries SET
+                f"""
+                UPDATE {SQLITE_DAILY_SUMMARIES} SET
                     covers = ?, turns = ?, gross_total = ?, net_total = ?,
                     cash_sales = ?, card_sales = ?, gpay_sales = ?, zomato_sales = ?,
                     other_sales = ?, service_charge = ?, cgst = ?, sgst = ?,
@@ -206,8 +210,8 @@ def _save_daily_summary_sqlite(
             )
         else:
             cur.execute(
-                """
-                INSERT INTO daily_summaries (
+                f"""
+                INSERT INTO {SQLITE_DAILY_SUMMARIES} (
                     location_id, date, covers, turns, gross_total, net_total,
                     cash_sales, card_sales, gpay_sales, zomato_sales, other_sales,
                     service_charge, cgst, sgst, discount, complimentary, apc,
@@ -245,16 +249,16 @@ def _save_daily_summary_sqlite(
             )
             summary_id = int(cur.lastrowid)
 
-        cur.execute("DELETE FROM item_sales WHERE summary_id = ?", (summary_id,))
-        cur.execute("DELETE FROM service_sales WHERE summary_id = ?", (summary_id,))
+        cur.execute(f"DELETE FROM {SQLITE_ITEM_SALES} WHERE summary_id = ?", (summary_id,))
+        cur.execute(f"DELETE FROM {SQLITE_SERVICE_SALES} WHERE summary_id = ?", (summary_id,))
 
         for cat in data.get("categories") or []:
             name = str(cat.get("category", "") or "").strip()
             if not name:
                 continue
             cur.execute(
-                """
-                INSERT INTO item_sales (summary_id, item_name, category, qty, amount)
+                f"""
+                INSERT INTO {SQLITE_ITEM_SALES} (summary_id, item_name, category, qty, amount)
                 VALUES (?, ?, ?, ?, ?)
                 """,
                 (
@@ -271,8 +275,8 @@ def _save_daily_summary_sqlite(
             if not iname:
                 continue
             cur.execute(
-                """
-                INSERT INTO item_sales (summary_id, item_name, category, qty, amount)
+                f"""
+                INSERT INTO {SQLITE_ITEM_SALES} (summary_id, item_name, category, qty, amount)
                 VALUES (?, ?, ?, ?, ?)
                 """,
                 (
@@ -289,8 +293,8 @@ def _save_daily_summary_sqlite(
             if not stype:
                 continue
             cur.execute(
-                """
-                INSERT INTO service_sales (summary_id, service_type, amount)
+                f"""
+                INSERT INTO {SQLITE_SERVICE_SALES} (summary_id, service_type, amount)
                 VALUES (?, ?, ?)
                 """,
                 (summary_id, stype, float(svc.get("amount", 0) or 0)),
@@ -305,7 +309,7 @@ def save_bill_items(supabase: Any, records: List[Dict[str, Any]]) -> None:
     if not records:
         return
     for i in range(0, len(records), _SUPABASE_ROW_CHUNK):
-        supabase.table("bill_items").insert(records[i : i + _SUPABASE_ROW_CHUNK]).execute()
+        supabase.table(SUPABASE_BILL_ITEMS).insert(records[i : i + _SUPABASE_ROW_CHUNK]).execute()
 
 
 def save_category_summary(
@@ -324,7 +328,7 @@ def save_category_summary(
         "net_amount": round(net_amount, 2),
         "qty": qty,
     }
-    supabase.table("category_summary").upsert(
+    supabase.table(SUPABASE_CATEGORY_SUMMARY).upsert(
         row_data, on_conflict="location_id,date,category_name"
     ).execute()
 
@@ -345,7 +349,7 @@ def save_category_summary_batch(supabase: Any, records: List[Dict[str, Any]]) ->
     ]
     for i in range(0, len(normalized), _SUPABASE_ROW_CHUNK):
         chunk = normalized[i : i + _SUPABASE_ROW_CHUNK]
-        supabase.table("category_summary").upsert(
+        supabase.table(SUPABASE_CATEGORY_SUMMARY).upsert(
             chunk, on_conflict="location_id,date,category_name"
         ).execute()
 
@@ -353,28 +357,26 @@ def save_category_summary_batch(supabase: Any, records: List[Dict[str, Any]]) ->
 def delete_bill_items_by_date(supabase: Any, date: str, location_id: int) -> None:
     """Delete bill_items for a specific date and location (Supabase)."""
     restaurant = LOCATION_ID_TO_RESTAURANT.get(location_id, "Boteco")
-    supabase.table("bill_items").delete().eq("bill_date", date).eq(
+    supabase.table(SUPABASE_BILL_ITEMS).delete().eq("bill_date", date).eq(
         "restaurant", restaurant
     ).execute()
 
 
 def delete_daily_summary(supabase: Any, date: str, location_id: int) -> None:
     """Delete daily_summary row (Supabase)."""
-    supabase.table("daily_summary").delete().eq("date", date).eq(
+    supabase.table(SUPABASE_DAILY_SUMMARY).delete().eq("date", date).eq(
         "location_id", location_id
     ).execute()
 
 
 def delete_category_summary(supabase: Any, date: str, location_id: int) -> None:
     """Delete category_summary rows (Supabase)."""
-    supabase.table("category_summary").delete().eq("date", date).eq(
+    supabase.table(SUPABASE_CATEGORY_SUMMARY).delete().eq("date", date).eq(
         "location_id", location_id
     ).execute()
 
 
-def delete_bill_items_by_dates_locs(
-    supabase: Any, dates_locs: set
-) -> None:
+def delete_bill_items_by_dates_locs(supabase: Any, dates_locs: set) -> None:
     """Delete bill_items for multiple (date, location_id) pairs in few queries.
 
     Groups by restaurant to minimise round-trips (one query per restaurant).
@@ -384,14 +386,12 @@ def delete_bill_items_by_dates_locs(
         restaurant = LOCATION_ID_TO_RESTAURANT.get(loc_id, "Boteco")
         by_restaurant.setdefault(restaurant, []).append(date_str)
     for restaurant, date_list in by_restaurant.items():
-        supabase.table("bill_items").delete().in_(
-            "bill_date", date_list
-        ).eq("restaurant", restaurant).execute()
+        supabase.table(SUPABASE_BILL_ITEMS).delete().in_("bill_date", date_list).eq(
+            "restaurant", restaurant
+        ).execute()
 
 
-def delete_category_summary_batch(
-    supabase: Any, dates_locs: set
-) -> None:
+def delete_category_summary_batch(supabase: Any, dates_locs: set) -> None:
     """Delete category_summary for multiple (date, location_id) pairs in few queries.
 
     Groups by location_id to minimise round-trips (one query per location).
@@ -400,16 +400,16 @@ def delete_category_summary_batch(
     for date_str, loc_id in dates_locs:
         by_loc.setdefault(loc_id, []).append(date_str)
     for loc_id, date_list in by_loc.items():
-        supabase.table("category_summary").delete().in_(
-            "date", date_list
-        ).eq("location_id", loc_id).execute()
+        supabase.table(SUPABASE_CATEGORY_SUMMARY).delete().in_("date", date_list).eq(
+            "location_id", loc_id
+        ).execute()
 
 
 def clear_all_data(supabase: Any) -> None:
     """Clear operational tables (Supabase)."""
-    supabase.table("category_summary").delete().neq("id", 0).execute()
-    supabase.table("daily_summary").delete().neq("id", 0).execute()
-    supabase.table("bill_items").delete().neq("id", 0).execute()
+    supabase.table(SUPABASE_CATEGORY_SUMMARY).delete().neq("id", 0).execute()
+    supabase.table(SUPABASE_DAILY_SUMMARY).delete().neq("id", 0).execute()
+    supabase.table(SUPABASE_BILL_ITEMS).delete().neq("id", 0).execute()
 
 
 def wipe_all_data() -> Tuple[Dict[str, int], List[str]]:
@@ -425,7 +425,11 @@ def wipe_all_data() -> Tuple[Dict[str, int], List[str]]:
             if admin is None:
                 errors.append("Could not get Supabase client")
                 return counts, errors
-            for table in ["bill_items", "daily_summary", "category_summary"]:
+            for table in [
+                SUPABASE_BILL_ITEMS,
+                SUPABASE_DAILY_SUMMARY,
+                SUPABASE_CATEGORY_SUMMARY,
+            ]:
                 result = admin.table(table).select("id", count="exact").execute()
                 counts[table] = int(result.count or 0)
             clear_all_data(admin)
@@ -436,18 +440,18 @@ def wipe_all_data() -> Tuple[Dict[str, int], List[str]]:
     try:
         with database.db_connection() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT COUNT(*) FROM item_sales")
+            cur.execute(f"SELECT COUNT(*) FROM {SQLITE_ITEM_SALES}")
             counts["item_sales"] = int(cur.fetchone()[0])
-            cur.execute("SELECT COUNT(*) FROM service_sales")
+            cur.execute(f"SELECT COUNT(*) FROM {SQLITE_SERVICE_SALES}")
             counts["service_sales"] = int(cur.fetchone()[0])
             cur.execute("SELECT COUNT(*) FROM upload_history")
             counts["upload_history"] = int(cur.fetchone()[0])
-            cur.execute("SELECT COUNT(*) FROM daily_summaries")
+            cur.execute(f"SELECT COUNT(*) FROM {SQLITE_DAILY_SUMMARIES}")
             counts["daily_summaries"] = int(cur.fetchone()[0])
-            cur.execute("DELETE FROM item_sales")
-            cur.execute("DELETE FROM service_sales")
+            cur.execute(f"DELETE FROM {SQLITE_ITEM_SALES}")
+            cur.execute(f"DELETE FROM {SQLITE_SERVICE_SALES}")
             cur.execute("DELETE FROM upload_history")
-            cur.execute("DELETE FROM daily_summaries")
+            cur.execute(f"DELETE FROM {SQLITE_DAILY_SUMMARIES}")
             conn.commit()
     except Exception as e:
         errors.append(str(e))
@@ -534,16 +538,16 @@ def delete_daily_summary_for_location_date(location_id: int, date: str) -> bool:
     with database.db_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            "SELECT id FROM daily_summaries WHERE location_id = ? AND date = ?",
+            f"SELECT id FROM {SQLITE_DAILY_SUMMARIES} WHERE location_id = ? AND date = ?",
             (location_id, date),
         )
         row = cur.fetchone()
         if not row:
             return False
         sid = int(row["id"])
-        cur.execute("DELETE FROM item_sales WHERE summary_id = ?", (sid,))
-        cur.execute("DELETE FROM service_sales WHERE summary_id = ?", (sid,))
-        cur.execute("DELETE FROM daily_summaries WHERE id = ?", (sid,))
+        cur.execute(f"DELETE FROM {SQLITE_ITEM_SALES} WHERE summary_id = ?", (sid,))
+        cur.execute(f"DELETE FROM {SQLITE_SERVICE_SALES} WHERE summary_id = ?", (sid,))
+        cur.execute(f"DELETE FROM {SQLITE_DAILY_SUMMARIES} WHERE id = ?", (sid,))
         conn.commit()
     return True
 
@@ -560,7 +564,7 @@ def update_daily_summary_covers_only(
         client = database.get_supabase_client()
         if client is None:
             return False
-        client.table("daily_summary").update({"covers": covers}).eq(
+        client.table(SUPABASE_DAILY_SUMMARY).update({"covers": covers}).eq(
             "location_id", location_id
         ).eq("date", date).execute()
         return True
@@ -577,7 +581,7 @@ def update_daily_summary_covers_only(
     with database.db_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            f"UPDATE daily_summaries SET {', '.join(sets)} "
+            f"UPDATE {SQLITE_DAILY_SUMMARIES} SET {', '.join(sets)} "
             "WHERE location_id = ? AND date = ?",
             tuple(params),
         )
@@ -639,7 +643,7 @@ def delete_location(location_id: int) -> Tuple[bool, str]:
             return False, "Database unavailable"
         try:
             chk = (
-                client.table("daily_summary")
+                client.table(SUPABASE_DAILY_SUMMARY)
                 .select("id", count="exact")
                 .eq("location_id", location_id)
                 .limit(1)
@@ -655,7 +659,7 @@ def delete_location(location_id: int) -> Tuple[bool, str]:
     with database.db_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            "SELECT COUNT(*) FROM daily_summaries WHERE location_id = ?",
+            f"SELECT COUNT(*) FROM {SQLITE_DAILY_SUMMARIES} WHERE location_id = ?",
             (location_id,),
         )
         if int(cur.fetchone()[0]) > 0:
@@ -725,7 +729,5 @@ def update_location_settings(location_id: int, settings: Dict[str, Any]) -> None
             conn.commit()
     except Exception as e:
         if "UNIQUE constraint failed" in str(e):
-            raise ValueError(
-                f"A location named '{payload.get('name', '')}' already exists"
-            ) from e
+            raise ValueError(f"A location named '{payload.get('name', '')}' already exists") from e
         raise

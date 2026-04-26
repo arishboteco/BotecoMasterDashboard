@@ -5,7 +5,15 @@ from __future__ import annotations
 from typing import Dict, List, Optional
 
 import streamlit as st
+
 import boteco_logger
+from db.table_names import (
+    SQLITE_DAILY_SUMMARIES,
+    SQLITE_ITEM_SALES,
+    SQLITE_SERVICE_SALES,
+    SUPABASE_CATEGORY_SUMMARY,
+    SUPABASE_DAILY_SUMMARY,
+)
 
 logger = boteco_logger.get_logger(__name__)
 
@@ -15,7 +23,7 @@ _CATEGORY_ROW_PREFIX = "__category_row:"
 
 def _sqlite_daily_table() -> str:
     """Legacy local schema table name (Supabase uses singular daily_summary)."""
-    return "daily_summaries"
+    return SQLITE_DAILY_SUMMARIES
 
 
 def _sqlite_categories_for_summary(conn, summary_id: int) -> List[Dict]:
@@ -24,7 +32,7 @@ def _sqlite_categories_for_summary(conn, summary_id: int) -> List[Dict]:
     cur.execute(
         f"""
         SELECT category, qty, amount
-        FROM item_sales
+        FROM {SQLITE_ITEM_SALES}
         WHERE summary_id = ?
           AND item_name LIKE ?
         """,
@@ -46,9 +54,9 @@ def _sqlite_services_for_summary(conn, summary_id: int) -> List[Dict]:
     """Load Lunch/Dinner (or other) service splits saved in service_sales."""
     cur = conn.cursor()
     cur.execute(
-        """
+        f"""
         SELECT service_type, amount
-        FROM service_sales
+        FROM {SQLITE_SERVICE_SALES}
         WHERE summary_id = ?
         ORDER BY service_type
         """,
@@ -88,7 +96,7 @@ def peek_daily_net_sales(location_id: int, date: str) -> Optional[float]:
     if database.use_supabase():
         supabase = database.get_supabase_client()
         result = (
-            supabase.table("daily_summary")
+            supabase.table(SUPABASE_DAILY_SUMMARY)
             .select("net_total")
             .eq("location_id", location_id)
             .eq("date", date)
@@ -114,9 +122,7 @@ def peek_daily_net_sales(location_id: int, date: str) -> Optional[float]:
         return float(row["net_total"] or 0)
 
 
-def peek_existing_net_sales_batch(
-    location_id: int, dates: List[str]
-) -> Dict[str, float]:
+def peek_existing_net_sales_batch(location_id: int, dates: List[str]) -> Dict[str, float]:
     """Return {date: net_total} for dates that already have data.
 
     Single query instead of one per date — used by upload overlap detection.
@@ -129,16 +135,13 @@ def peek_existing_net_sales_batch(
     if database.use_supabase():
         supabase = database.get_supabase_client()
         result = (
-            supabase.table("daily_summary")
+            supabase.table(SUPABASE_DAILY_SUMMARY)
             .select("date,net_total")
             .eq("location_id", location_id)
             .in_("date", dates)
             .execute()
         )
-        return {
-            row["date"]: float(row["net_total"] or 0)
-            for row in result.data
-        }
+        return {row["date"]: float(row["net_total"] or 0) for row in result.data}
     else:
         tbl = _sqlite_daily_table()
         placeholders = ",".join("?" for _ in dates)
@@ -149,15 +152,10 @@ def peek_existing_net_sales_batch(
                 f"WHERE location_id = ? AND date IN ({placeholders})",
                 [location_id] + list(dates),
             )
-            return {
-                row["date"]: float(row["net_total"] or 0)
-                for row in cursor.fetchall()
-            }
+            return {row["date"]: float(row["net_total"] or 0) for row in cursor.fetchall()}
 
 
-def _detail_lists_for_daily_summary(
-    location_id: int, date: str
-) -> tuple[List[Dict], List[Dict]]:
+def _detail_lists_for_daily_summary(location_id: int, date: str) -> tuple[List[Dict], List[Dict]]:
     """Build categories + services lists for PNG/report bundle (Supabase schema).
 
     daily_summary rows do not embed these; they live in category_summary and are
@@ -169,9 +167,7 @@ def _detail_lists_for_daily_summary(
     )
 
     cats_out: List[Dict] = []
-    cat_rows = get_category_sales_for_date_range(
-        [location_id], date, date
-    )
+    cat_rows = get_category_sales_for_date_range([location_id], date, date)
     for r in cat_rows or []:
         name = str(r.get("category") or "").strip()
         if not name:
@@ -205,7 +201,7 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
     if database.use_supabase():
         supabase = database.get_supabase_client()
         result = (
-            supabase.table("daily_summary")
+            supabase.table(SUPABASE_DAILY_SUMMARY)
             .select("*")
             .eq("location_id", location_id)
             .eq("date", date)
@@ -247,14 +243,10 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
                 try:
                     from database_analytics import get_service_sales_for_date_range
 
-                    svcs = get_service_sales_for_date_range(
-                        [location_id], date, date
-                    )
+                    svcs = get_service_sales_for_date_range([location_id], date, date)
                     d["services"] = [
                         {
-                            "type": str(
-                                s.get("type") or s.get("service_type") or ""
-                            ),
+                            "type": str(s.get("type") or s.get("service_type") or ""),
                             "amount": float(s.get("amount") or 0),
                         }
                         for s in (svcs or [])
@@ -262,7 +254,10 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
                     ]
                 except (ValueError, TypeError, KeyError, RuntimeError) as ex:
                     logger.warning(
-                        "Service fallback query failed in database_reads.py location_id=%s date=%s error=%s",
+                        (
+                            "Service fallback query failed in database_reads.py "
+                            "location_id=%s date=%s error=%s"
+                        ),
                         location_id,
                         date,
                         ex,
@@ -281,7 +276,7 @@ def get_summaries_for_date_range(
     if database.use_supabase():
         supabase = database.get_supabase_client()
         result = (
-            supabase.table("daily_summary")
+            supabase.table(SUPABASE_DAILY_SUMMARY)
             .select("*")
             .eq("location_id", location_id)
             .gte("date", start_date)
@@ -329,7 +324,7 @@ def get_summaries_for_date_range_multi(
     if database.use_supabase():
         supabase = database.get_supabase_client()
         result = (
-            supabase.table("daily_summary")
+            supabase.table(SUPABASE_DAILY_SUMMARY)
             .select("*")
             .in_("location_id", location_ids)
             .gte("date", start_date)
@@ -366,7 +361,7 @@ def get_category_totals_for_date_range(
     if database.use_supabase():
         supabase = database.get_supabase_client()
         result = (
-            supabase.table("category_summary")
+            supabase.table(SUPABASE_CATEGORY_SUMMARY)
             .select("*")
             .in_("location_id", location_ids)
             .gte("date", start_date)
@@ -387,7 +382,7 @@ def get_category_totals_for_date_range(
                     i.category AS category_name,
                     SUM(i.amount) AS net_amount,
                     SUM(i.qty) AS qty
-                FROM item_sales i
+                FROM {SQLITE_ITEM_SALES} i
                 INNER JOIN {tbl} ds ON ds.id = i.summary_id
                 WHERE ds.location_id IN ({placeholders})
                   AND ds.date >= ? AND ds.date <= ?
@@ -416,9 +411,7 @@ def get_category_mtd_totals(
     return get_category_totals_for_date_range(location_ids, start_date, "2999-12-31")
 
 
-def get_mtd_totals_multi(
-    location_ids: List[int], year: int, month: int
-) -> Dict[str, float]:
+def get_mtd_totals_multi(location_ids: List[int], year: int, month: int) -> Dict[str, float]:
     """Get MTD totals across all locations for a month."""
     summaries = get_summaries_for_date_range_multi(
         location_ids,
@@ -443,9 +436,7 @@ def get_mtd_totals_multi(
     return totals
 
 
-def get_summaries_for_month_multi(
-    location_ids: List[int], year: int, month: int
-) -> List[Dict]:
+def get_summaries_for_month_multi(location_ids: List[int], year: int, month: int) -> List[Dict]:
     """Get daily summaries for a specific month across multiple locations."""
     start_date = f"{year}-{month:02d}-01"
     if month == 12:
@@ -463,7 +454,7 @@ def get_most_recent_date_with_data(location_ids: List[int]) -> Optional[str]:
     if database.use_supabase():
         supabase = database.get_supabase_client()
         result = (
-            supabase.table("daily_summary")
+            supabase.table(SUPABASE_DAILY_SUMMARY)
             .select("date")
             .in_("location_id", location_ids)
             .order("date", desc=True)
@@ -498,7 +489,7 @@ def get_recent_summaries(location_id: int, weeks: int = 8) -> List[Dict]:
     if database.use_supabase():
         supabase = database.get_supabase_client()
         result = (
-            supabase.table("daily_summary")
+            supabase.table(SUPABASE_DAILY_SUMMARY)
             .select("*")
             .eq("location_id", location_id)
             .order("date", desc=True)
@@ -577,7 +568,7 @@ def get_all_summaries_for_export(
             for loc in supabase.table("locations").select("id,name").execute().data
         }
 
-        query = supabase.table("daily_summary").select("*")
+        query = supabase.table(SUPABASE_DAILY_SUMMARY).select("*")
 
         if location_ids:
             query = query.in_("location_id", location_ids)
