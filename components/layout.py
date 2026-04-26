@@ -54,17 +54,15 @@ def page_header(
     subtitle: str,
     context: Optional[str] = None,
 ) -> None:
-    """Render a consistent page hero block."""
+    """Render a compact single-row page header block."""
     context_html = ""
     if context:
         context_html = f'<span class="page-hero-context">{escape(context)}</span>'
     st.markdown(
-        f'<section class="page-hero">'
-        f'<div class="page-hero-content">'
-        f'<p class="page-hero-kicker">Operations</p>'
+        f'<section class="page-hero page-hero--compact" aria-label="{escape(subtitle)}">'
         f'<h2 class="page-hero-title">{escape(title)}</h2>'
-        f'<p class="page-hero-subtitle">{escape(subtitle)}</p>'
-        f"</div>{context_html}</section>",
+        f"{context_html}"
+        f"</section>",
         unsafe_allow_html=True,
     )
 
