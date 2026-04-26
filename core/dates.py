@@ -1,10 +1,17 @@
-"""Shared date-range helpers for analytics and database boundaries."""
+"""Shared date-range helpers for analytics and database boundaries.
+
+Date-boundary convention:
+* ``month_bounds(year, month)`` returns ``(start_inclusive, end_exclusive)``.
+* Database/query helpers that use inclusive upper bounds (``<= end``) must
+  convert the exclusive value to the prior date before querying.
+* Query helpers that use exclusive upper bounds (``< end``) can use the value
+  from ``month_bounds`` directly.
+"""
 
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from typing import Iterable
-
 
 ISO_DATE_FORMAT = "%Y-%m-%d"
 

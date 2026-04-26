@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 import streamlit as st
 
 import boteco_logger
+from core.dates import month_bounds
 from db.table_names import (
     SQLITE_DAILY_SUMMARIES,
     SQLITE_ITEM_SALES,
@@ -24,6 +26,12 @@ _CATEGORY_ROW_PREFIX = "__category_row:"
 def _sqlite_daily_table() -> str:
     """Legacy local schema table name (Supabase uses singular daily_summary)."""
     return SQLITE_DAILY_SUMMARIES
+
+
+def _inclusive_end_from_exclusive(date_str: str) -> str:
+    """Convert YYYY-MM-DD exclusive boundary to inclusive previous date."""
+    day = datetime.strptime(date_str, "%Y-%m-%d").date()
+    return (day - timedelta(days=1)).strftime("%Y-%m-%d")
 
 
 def _sqlite_categories_for_summary(conn, summary_id: int) -> List[Dict]:
@@ -304,11 +312,8 @@ def get_summaries_for_date_range(
 @st.cache_data(ttl=600)
 def get_summaries_for_month(location_id: int, year: int, month: int) -> List[Dict]:
     """Get daily summaries for a specific month."""
-    start_date = f"{year}-{month:02d}-01"
-    if month == 12:
-        end_date = f"{year + 1}-01-01"
-    else:
-        end_date = f"{year}-{month + 1:02d}-01"
+    start_date, exclusive_end_date = month_bounds(year, month)
+    end_date = _inclusive_end_from_exclusive(exclusive_end_date)
 
     return get_summaries_for_date_range(location_id, start_date, end_date)
 
@@ -438,11 +443,8 @@ def get_mtd_totals_multi(location_ids: List[int], year: int, month: int) -> Dict
 
 def get_summaries_for_month_multi(location_ids: List[int], year: int, month: int) -> List[Dict]:
     """Get daily summaries for a specific month across multiple locations."""
-    start_date = f"{year}-{month:02d}-01"
-    if month == 12:
-        end_date = f"{year + 1}-01-01"
-    else:
-        end_date = f"{year}-{month + 1:02d}-01"
+    start_date, exclusive_end_date = month_bounds(year, month)
+    end_date = _inclusive_end_from_exclusive(exclusive_end_date)
 
     return get_summaries_for_date_range_multi(location_ids, start_date, end_date)
 
