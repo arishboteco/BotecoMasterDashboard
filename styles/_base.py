@@ -79,7 +79,17 @@ LAYOUT_SPACING = r"""    /* ── Layout & spacing ─────────�
     }
     .main .block-container {
         max-width: 1200px;
-        padding: 1.1rem 1.5rem 1.75rem !important;
+        padding: 0.8rem 1.25rem 1.1rem !important;
+    }
+    /* Compact vertical rhythm across all tabs */
+    [data-testid="stTabs"] [role="tabpanel"] {
+        padding-top: 0.2rem;
+    }
+    [data-testid="stVerticalBlock"] {
+        gap: 0.45rem !important;
+    }
+    [data-testid="element-container"] {
+        margin-bottom: 0.2rem;
     }
     .page-hero {
         display: flex;
@@ -124,7 +134,7 @@ LAYOUT_SPACING = r"""    /* ── Layout & spacing ─────────�
         white-space: nowrap;
     }
     .section-stack {
-        margin-top: var(--space-section-y);
+        margin-top: 0.9rem;
     }
     .section-stack:first-child {
         margin-top: 0;
@@ -189,7 +199,7 @@ TAB_BAR_REFINEMENT = r"""    /* ── Tab bar refinement ───────�
     [data-testid="stTabs"] [role="tablist"] {
         border-bottom: 2px solid var(--border-subtle) !important;
         padding-bottom: 0 !important;
-        margin-bottom: 1rem;
+        margin-bottom: 0.6rem;
         gap: 0.25rem !important;
     }
     button[data-baseweb="tab"] {
