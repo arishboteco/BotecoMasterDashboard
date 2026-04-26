@@ -54,16 +54,6 @@ def render(ctx: TabContext) -> None:
             "mobile-layout-filters",
             "mobile-layout-secondary",
         ):
-            with st.expander("How it works", expanded=False, key="how_it_works_expander"):
-                st.markdown(
-                    "**Just drop all your Petpooja downloads at once.** The system will:\n\n"
-                    "1. **Auto-detect** each file type from its content (not filename)\n"
-                    "2. **Auto-route** data to the correct outlet using the Restaurant column\n"
-                    "3. **Skip** redundant files (Group Wise, All Restaurant, Comparison)\n"
-                    "4. **Merge** data for the same date from multiple files\n\n"
-                    "Saving for the same **outlet + date** overwrites that day's data."
-                )
-
             section_title(
                 "Step 1 · Drop source files",
                 "Include any Petpooja exports. Dynamic Report CSV is preferred for tax accuracy.",
