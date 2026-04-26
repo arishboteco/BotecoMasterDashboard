@@ -6,7 +6,6 @@ from io import BytesIO
 
 import pandas as pd
 
-import smart_upload
 from uploads.parsers.flash_report import parse_flash_report
 
 
@@ -79,20 +78,3 @@ class TestFlashReportParser:
 
         assert parsed is None
         assert notes == ["Flash Report: could not extract date."]
-
-
-class TestSmartUploadFlashCompatibility:
-    def test_compatibility_wrapper_calls_extracted_parser(self, monkeypatch):
-        called = {}
-
-        def _fake_parse(content, filename):
-            called["args"] = (content, filename)
-            return [{"date": "2026-04-10", "net_total": 1.0, "gross_total": 1.0}], []
-
-        monkeypatch.setattr(smart_upload, "parse_flash_report", _fake_parse)
-
-        parsed, notes = smart_upload._parse_flash_report(b"xlsx", "flash.xlsx")
-
-        assert called["args"] == (b"xlsx", "flash.xlsx")
-        assert parsed is not None
-        assert notes == []

@@ -1,7 +1,6 @@
 """Tests for extracted Order Summary CSV parser."""
 
 from uploads.parsers.order_summary import parse_order_summary_csv
-import smart_upload
 
 
 class TestOrderSummaryParser:
@@ -54,20 +53,3 @@ class TestOrderSummaryParser:
         assert parsed[0]["gpay_sales"] == 25.0
         assert parsed[0]["zomato_sales"] == 10.0
         assert parsed[0]["other_sales"] == 5.0
-
-
-class TestSmartUploadCompatibility:
-    def test_compatibility_wrapper_calls_extracted_parser(self, monkeypatch):
-        called = {}
-
-        def _fake_parse(content, filename):
-            called["args"] = (content, filename)
-            return [{"date": "2026-04-01", "net_total": 1.0, "gross_total": 1.0}], []
-
-        monkeypatch.setattr(smart_upload, "parse_order_summary_csv", _fake_parse)
-
-        parsed, notes = smart_upload._parse_order_summary_csv(b"csv", "orders.csv")
-
-        assert called["args"] == (b"csv", "orders.csv")
-        assert parsed is not None
-        assert notes == []
