@@ -142,29 +142,6 @@ COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ─�
     .report-date-nav [data-testid="stDateInput"] {
         max-width: 260px;
     }
-    .report-scope-chip-wrap {
-        display: flex;
-        flex-direction: column;
-        gap: 0.3rem;
-    }
-    .report-scope-label {
-        font-size: 0.73rem;
-        color: var(--text-secondary);
-        font-weight: 600;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-    }
-    .report-scope-chip {
-        display: inline-flex;
-        align-items: center;
-        min-height: 42px;
-        padding: 0 0.75rem;
-        border-radius: var(--radius-md);
-        border: 1px solid var(--border-subtle);
-        background: var(--surface);
-        color: var(--text);
-        font-weight: 600;
-    }
     .kpi-snapshot-card {
         padding: 0.95rem;
         margin-bottom: 0.55rem;
