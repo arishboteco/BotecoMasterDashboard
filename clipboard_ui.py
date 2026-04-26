@@ -536,7 +536,19 @@ def render_share_images_button(
     )
     fallback_url_json = json.dumps(fallback_url)
 
-    html = """<div class="whatsapp-btn-container">
+    html = """<style>
+html, body {{
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}}
+.whatsapp-btn-container {{
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}}
+</style>
+<div class="whatsapp-btn-container">
   <button id="{uid}_btn" type="button" style="{stl}">{whatsapp_icon}<span>{label}</span></button>
   <span id="{uid}_msg" class="whatsapp-msg"></span>
 </div>
