@@ -23,13 +23,11 @@ VISUAL_POLISH = r"""    /* ── Final visual polish layer ──────�
         --accent-teal: #54C5D0;
         --accent-green: #A2D06E;
         --accent-coral: #005AAB;
-
         --surface: #FFFFFF;
         --surface-elevated: #FFFFFF;
         --surface-raised: #FFFFFF;
         --surface-muted: #F6FAFE;
         --table-header-bg: #F3F7FC;
-
         --text: #1E293B;
         --text-secondary: #475569;
         --text-muted: #64748B;
@@ -37,216 +35,200 @@ VISUAL_POLISH = r"""    /* ── Final visual polish layer ──────�
         --border-subtle: #E2E8F0;
         --border-medium: #CBD5E1;
         --border-strong: #94A3B8;
-
-        --shadow-card: 0 8px 20px rgba(15, 23, 42, 0.055), 0 1px 3px rgba(15, 23, 42, 0.04);
-        --shadow-card-hover: 0 12px 26px rgba(15, 23, 42, 0.08), 0 2px 6px rgba(15, 23, 42, 0.045);
-        --shadow-focus: 0 0 0 3px rgba(0, 90, 171, 0.14);
-        --radius-xl: 20px;
-
-        /* Card / KPI surfaces */
-        --card-surface-normal: var(--surface);
-        --card-surface-elevated: var(--surface-elevated);
-        --card-surface-kpi-primary: var(--surface);
-        --card-surface-report-section: var(--surface-muted);
-        --card-surface-empty-state: var(--surface-elevated);
-
-        /* KPI readability */
-        --kpi-label-fg: var(--text-secondary);
-        --kpi-value-fg: var(--text);
-        --kpi-delta-neutral-fg: var(--text-secondary);
-        --kpi-delta-positive-fg: #15803D;
-        --kpi-delta-negative-fg: #B91C1C;
+        --shadow-card: 0 2px 8px rgba(15, 23, 42, 0.05);
+        --shadow-card-hover: 0 8px 20px rgba(15, 23, 42, 0.08);
+        --shadow-focus: 0 0 0 3px rgba(0, 90, 171, 0.18);
+        --radius-xl: 16px;
+        --font-size-kicker: 12px;
+        --font-size-page-title: 26px;
+        --font-size-section-title: 17px;
+        --font-size-body: 15px;
+        --font-size-label: 12px;
+        --font-size-caption: 13px;
+        --font-size-kpi: 32px;
+        --control-height: 42px;
     }
 
+    .app-shell,
     .stApp,
     .main,
     [data-testid="stAppViewContainer"],
     [data-testid="stAppViewContainer"] > .main {
-        background: #FFFFFF !important;
+        background: var(--surface-muted) !important;
         color: var(--text) !important;
     }
 
     .main .block-container {
-        max-width: 1280px !important;
-        padding: 1.25rem 1.6rem 2rem !important;
+        max-width: 1240px !important;
+        padding: var(--spacing-6) var(--spacing-8) var(--spacing-8) !important;
     }
 
-    /* Hero and section surfaces: calm, white, and clearly grouped. */
-    .page-hero {
-        background: var(--surface-elevated) !important;
-        border: 1px solid var(--border-subtle) !important;
-        border-top: 4px solid var(--brand) !important;
-        border-radius: var(--radius-xl) !important;
-        box-shadow: var(--shadow-card) !important;
-        padding: 1.15rem 1.25rem !important;
-    }
-    .page-hero-kicker {
-        color: var(--brand) !important;
-        font-weight: 700 !important;
-    }
-    .page-hero-title {
-        color: var(--text) !important;
-        letter-spacing: -0.03em !important;
-    }
-    .page-hero-subtitle {
-        color: var(--text-secondary) !important;
-    }
-    .page-hero-context {
-        background: var(--brand-soft) !important;
-        border-color: rgba(0, 90, 171, 0.18) !important;
-        color: var(--brand-dark) !important;
-    }
-
-    h2, h3,
-    .stMarkdown h2, .stMarkdown h3,
-    [data-testid="stMarkdownContainer"] h2,
-    [data-testid="stMarkdownContainer"] h3 {
-        border-left-color: var(--accent-amber) !important;
-    }
-
-    /* App navigation: simple pill tabs, strong active state, no dark shell. */
+    .top-tabs [data-testid="stTabs"] [role="tablist"],
     [data-testid="stTabs"] [role="tablist"] {
         position: sticky;
         top: 0;
         z-index: 20;
         display: inline-flex !important;
-        width: auto !important;
-        max-width: 100%;
-        gap: 0.3rem !important;
-        padding: 0.35rem !important;
-        margin: 0 0 1.15rem !important;
+        gap: var(--spacing-2) !important;
+        padding: var(--spacing-2) !important;
+        margin: 0 0 var(--spacing-6) !important;
         border: 1px solid var(--border-subtle) !important;
         border-radius: 999px !important;
-        background: #FFFFFF !important;
-        box-shadow: var(--shadow-card) !important;
+        background: var(--surface-elevated) !important;
+        box-shadow: var(--shadow-sm) !important;
     }
     button[data-baseweb="tab"] {
-        min-height: 40px !important;
-        padding: 0.5rem 1rem !important;
+        min-height: var(--control-height) !important;
+        padding: 0 var(--spacing-4) !important;
         border-radius: 999px !important;
-        color: var(--text-secondary) !important;
-    }
-    button[data-baseweb="tab"]:hover {
-        background: var(--brand-soft) !important;
-        color: var(--brand-dark) !important;
-        transform: translateY(-1px);
+        font-size: 0.92rem !important;
     }
     button[data-baseweb="tab"][aria-selected="true"] {
         color: #FFFFFF !important;
         background: var(--brand) !important;
-        box-shadow: inset 0 -3px 0 var(--accent-amber), 0 6px 14px rgba(0, 90, 171, 0.16) !important;
+        box-shadow: inset 0 -3px 0 var(--accent-amber) !important;
     }
     [data-testid="stTabs"] [data-baseweb="tab-highlight"] {
         display: none !important;
     }
 
-    /* Elevated content surfaces: use white cards and subtle depth. */
+    .page-header,
+    .page-hero {
+        background: var(--surface-elevated) !important;
+        border: 1px solid var(--border-subtle) !important;
+        border-radius: var(--radius-xl) !important;
+        box-shadow: var(--shadow-sm) !important;
+        padding: var(--spacing-6) !important;
+        margin-bottom: var(--spacing-6) !important;
+    }
+    .page-hero {
+        border-top: 3px solid var(--brand) !important;
+    }
+    .page-hero-kicker {
+        font-size: var(--font-size-kicker) !important;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--brand) !important;
+        font-weight: 700 !important;
+    }
+    .page-hero-title {
+        font-size: var(--font-size-page-title) !important;
+        font-weight: 700 !important;
+        line-height: 1.2 !important;
+        color: var(--text) !important;
+        margin: var(--spacing-2) 0 var(--spacing-1) !important;
+    }
+    .page-hero-subtitle {
+        color: var(--text-secondary) !important;
+        font-size: 0.95rem !important;
+    }
+    .page-hero-context {
+        align-self: flex-start;
+        border-radius: 999px;
+        padding: 0.35rem 0.65rem;
+        color: var(--brand-dark) !important;
+        background: var(--brand-soft) !important;
+        border: 1px solid rgba(0, 90, 171, 0.2) !important;
+    }
+
+    .section-title,
+    .section-block-title {
+        font-size: var(--font-size-section-title);
+        font-weight: 600;
+        color: var(--text);
+    }
+    .section-block-subtitle {
+        font-size: var(--font-size-caption);
+    }
+
+    .section-card,
     [data-testid="stVerticalBlockBorderWrapper"],
     [data-testid="stExpander"],
     [data-testid="stDataFrame"],
-    [data-testid="stPlotlyChart"] {
-        border: 1px solid var(--border-subtle) !important;
-        border-radius: var(--radius-lg) !important;
-        background: #FFFFFF !important;
-        box-shadow: var(--shadow-card) !important;
-    }
-    [data-testid="stVerticalBlockBorderWrapper"],
-    [data-testid="stExpander"],
-    [data-testid="stPlotlyChart"] {
-        overflow: hidden !important;
-    }
-    [data-testid="stVerticalBlockBorderWrapper"]:hover,
-    [data-testid="stExpander"]:hover,
-    [data-testid="stPlotlyChart"]:hover {
-        box-shadow: var(--shadow-card-hover) !important;
-        transform: translateY(-1px);
-    }
-    [data-testid="stPlotlyChart"] {
-        padding: 0.65rem !important;
-    }
-
-    .metric-card,
+    [data-testid="stPlotlyChart"],
     .kpi-primary-card,
     .kpi-secondary-card,
     .report-section-card,
-    .upload-zone,
     .context-band,
-    .info-banner,
-    .empty-state,
-    .filter-strip,
-    .date-display {
-        border-color: var(--border-subtle) !important;
-        background: var(--card-surface-normal) !important;
-        box-shadow: var(--shadow-card) !important;
-    }
-    .metric-card,
-    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMetric"] {
-        border-left: none !important;
-        background: var(--card-surface-elevated) !important;
-    }
-    .kpi-primary-card {
-        background: var(--card-surface-kpi-primary) !important;
-        border-top: 3px solid var(--brand) !important;
-    }
-    .kpi-secondary-card,
-    .report-section-card {
-        background: var(--card-surface-report-section) !important;
-    }
-    .empty-state {
-        background: var(--card-surface-empty-state) !important;
-    }
-
-    div[data-testid="stMetricValue"] {
-        letter-spacing: -0.035em !important;
-        line-height: 1.05 !important;
-        color: var(--kpi-value-fg) !important;
-    }
-    div[data-testid="stMetricLabel"] {
-        color: var(--kpi-label-fg) !important;
-    }
-
-    /* Buttons: clear hierarchy, brand blue for primary actions, amber only as a highlight. */
-    .stButton > button {
-        border-radius: var(--radius-md) !important;
+    .info-banner {
+        border: 1px solid var(--border-subtle) !important;
+        border-radius: var(--radius-lg) !important;
+        background: var(--surface-elevated) !important;
         box-shadow: var(--shadow-sm) !important;
     }
-    .stButton > button:hover {
-        transform: translateY(-1px);
-        box-shadow: var(--shadow-md) !important;
+
+    .filter-row,
+    .filter-strip {
+        min-height: var(--control-height);
+        border-radius: var(--radius-md) !important;
+        padding: var(--spacing-2) var(--spacing-3) !important;
+        gap: var(--spacing-2);
+        margin-bottom: var(--spacing-3);
     }
+
+    .kpi-grid,
+    .kpi-snapshot-grid {
+        gap: var(--spacing-3) !important;
+    }
+    .kpi-card,
+    .kpi-item {
+        border-radius: var(--radius-md) !important;
+        border: 1px solid var(--border-subtle) !important;
+        padding: var(--spacing-3) !important;
+        min-height: 120px;
+    }
+    .kpi-label {
+        font-size: var(--font-size-label) !important;
+        letter-spacing: 0.05em;
+    }
+    .kpi-value {
+        font-size: var(--font-size-kpi) !important;
+        line-height: 1.1;
+    }
+    .delta-chip {
+        font-size: var(--font-size-caption);
+        font-weight: 600;
+    }
+
+    .btn,
+    .stButton > button,
+    .stDownloadButton > button,
+    .stFormSubmitButton > button {
+        min-height: var(--control-height) !important;
+        border-radius: var(--radius-md) !important;
+        font-size: 0.9rem !important;
+        font-weight: 600 !important;
+    }
+    .btn-primary,
     .stButton > button[kind="primary"] {
         background: var(--brand) !important;
         color: #FFFFFF !important;
-        border: 1px solid var(--brand) !important;
-        box-shadow: 0 6px 14px rgba(0, 90, 171, 0.16) !important;
+        border-color: var(--brand) !important;
     }
-    .stButton > button[kind="primary"]:hover {
-        background: var(--brand-dark) !important;
-        border-color: var(--brand-dark) !important;
-    }
+    .btn-secondary,
     .stButton > button[kind="secondary"] {
-        background: #FFFFFF !important;
+        background: var(--surface-elevated) !important;
         color: var(--brand-dark) !important;
-        border: 1px solid var(--border-medium) !important;
+        border-color: var(--border-medium) !important;
     }
+    .btn-secondary:hover,
     .stButton > button[kind="secondary"]:hover {
         background: var(--brand-soft) !important;
         border-color: var(--brand-light) !important;
     }
 
-    /* Inputs and selectors: white controls on a white app, with clearer focus. */
+    .form-control,
     .stTextInput input,
     .stNumberInput input,
     .stDateInput input,
     .stTextArea textarea,
     .stSelectbox [data-baseweb="select"],
     .stMultiSelect [data-baseweb="select"] {
-        min-height: 42px !important;
+        min-height: var(--control-height) !important;
         border-radius: var(--radius-md) !important;
         border-color: var(--border-medium) !important;
-        background: #FFFFFF !important;
+        background: var(--surface-elevated) !important;
         color: var(--text) !important;
-        box-shadow: var(--shadow-sm) !important;
     }
     .stTextInput input:focus,
     .stNumberInput input:focus,
@@ -258,30 +240,23 @@ VISUAL_POLISH = r"""    /* ── Final visual polish layer ──────�
         box-shadow: var(--shadow-focus) !important;
     }
 
-    /* File uploader: visible destination area, still clean and brand-aligned. */
-    .upload-zone-container [data-testid="stFileUploaderDropzone"] {
-        min-height: 164px !important;
-        border: 1.5px dashed rgba(0, 90, 171, 0.45) !important;
-        background: #FFFFFF !important;
-        box-shadow: var(--shadow-card) !important;
-    }
-    .upload-zone-container [data-testid="stFileUploaderDropzone"]:hover {
-        border-color: var(--brand) !important;
-        background: var(--brand-soft) !important;
-        box-shadow: var(--shadow-card-hover) !important;
+    .info-bar,
+    .context-band {
+        padding: var(--spacing-3) var(--spacing-4) !important;
+        font-size: var(--font-size-caption);
+        color: var(--text-secondary);
     }
 
-    /* Tables: readable, neutral, and dense-data friendly. */
-    [data-testid="stDataFrame"] th {
-        background: var(--table-header-bg) !important;
-        color: var(--brand-dark) !important;
+    .sidebar,
+    [data-testid="stSidebar"] {
+        box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.1);
     }
-    [data-testid="stDataFrame"] td {
-        border-bottom-color: var(--border-subtle) !important;
-        color: var(--text) !important;
+    .sidebar-account-section {
+        padding: var(--spacing-4) !important;
+        border-radius: var(--radius-lg) !important;
     }
-    [data-testid="stDataFrame"] tr:hover {
-        background-color: var(--brand-soft) !important;
+    [data-testid="stSidebar"] .stButton > button {
+        min-height: var(--control-height) !important;
     }
 
     @media (max-width: 768px) {
