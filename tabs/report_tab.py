@@ -426,11 +426,6 @@ def render(ctx: TabContext) -> None:
 
             with classed_container("tab-report-mobile-secondary", "mobile-layout-secondary"):
                 with st.expander("Individual PNG sections", expanded=True):
-                    info_banner(
-                        "Section-level exports",
-                        tone="info",
-                        icon="dashboard",
-                    )
                     _sec_meta = [
                         ("sales_summary", "Sales summary"),
                         ("category", "Category sales"),
