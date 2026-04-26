@@ -42,6 +42,20 @@ VISUAL_POLISH = r"""    /* ── Final visual polish layer ──────�
         --shadow-card-hover: 0 12px 26px rgba(15, 23, 42, 0.08), 0 2px 6px rgba(15, 23, 42, 0.045);
         --shadow-focus: 0 0 0 3px rgba(0, 90, 171, 0.14);
         --radius-xl: 20px;
+
+        /* Card / KPI surfaces */
+        --card-surface-normal: var(--surface);
+        --card-surface-elevated: var(--surface-elevated);
+        --card-surface-kpi-primary: var(--surface);
+        --card-surface-report-section: var(--surface-muted);
+        --card-surface-empty-state: var(--surface-elevated);
+
+        /* KPI readability */
+        --kpi-label-fg: var(--text-secondary);
+        --kpi-value-fg: var(--text);
+        --kpi-delta-neutral-fg: var(--text-secondary);
+        --kpi-delta-positive-fg: #15803D;
+        --kpi-delta-negative-fg: #B91C1C;
     }
 
     .stApp,
@@ -154,6 +168,7 @@ VISUAL_POLISH = r"""    /* ── Final visual polish layer ──────�
     .metric-card,
     .kpi-primary-card,
     .kpi-secondary-card,
+    .report-section-card,
     .upload-zone,
     .context-band,
     .info-banner,
@@ -161,41 +176,33 @@ VISUAL_POLISH = r"""    /* ── Final visual polish layer ──────�
     .filter-strip,
     .date-display {
         border-color: var(--border-subtle) !important;
-        background: #FFFFFF !important;
+        background: var(--card-surface-normal) !important;
         box-shadow: var(--shadow-card) !important;
     }
     .metric-card,
     [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMetric"] {
-        position: relative;
         border-left: none !important;
-        background: #FFFFFF !important;
-    }
-    .metric-card::before,
-    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMetric"]::before {
-        content: "";
-        position: absolute;
-        inset: 0 auto 0 0;
-        width: 4px;
-        background: var(--brand);
-        border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+        background: var(--card-surface-elevated) !important;
     }
     .kpi-primary-card {
+        background: var(--card-surface-kpi-primary) !important;
         border-top: 3px solid var(--brand) !important;
     }
-    .kpi-secondary-card {
-        background: var(--surface-muted) !important;
+    .kpi-secondary-card,
+    .report-section-card {
+        background: var(--card-surface-report-section) !important;
+    }
+    .empty-state {
+        background: var(--card-surface-empty-state) !important;
     }
 
     div[data-testid="stMetricValue"] {
         letter-spacing: -0.035em !important;
         line-height: 1.05 !important;
-        color: var(--text) !important;
+        color: var(--kpi-value-fg) !important;
     }
     div[data-testid="stMetricLabel"] {
-        color: var(--text-muted) !important;
-    }
-    div[data-testid="stMetricDelta"] {
-        color: var(--brand-dark) !important;
+        color: var(--kpi-label-fg) !important;
     }
 
     /* Buttons: clear hierarchy, brand blue for primary actions, amber only as a highlight. */

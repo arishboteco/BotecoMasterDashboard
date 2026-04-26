@@ -47,6 +47,16 @@ BORDER_STRONG = "#94A3B8"
 
 SUCCESS = "#15803D"
 ERROR = "#B91C1C"
+CARD_SURFACE_NORMAL = "#FFFFFF"
+CARD_SURFACE_ELEVATED = "#FFFFFF"
+CARD_SURFACE_KPI_PRIMARY = "#FFFFFF"
+CARD_SURFACE_REPORT_SECTION = "#EEF3F8"
+CARD_SURFACE_EMPTY_STATE = "#FFFFFF"
+KPI_LABEL_FG = TEXT_SECONDARY
+KPI_VALUE_FG = TEXT
+KPI_DELTA_NEUTRAL_FG = TEXT_SECONDARY
+KPI_DELTA_POSITIVE_FG = SUCCESS
+KPI_DELTA_NEGATIVE_FG = ERROR
 
 # ── Canonical semantic tokens (dark) ──────────────────────────────────────────
 DARK_COLOR_BG = "#0F172A"
@@ -267,6 +277,18 @@ TOKEN_SYSTEM = f"""
         --tab-active-fg: #FFFFFF;
         --tab-active-border: var(--brand-dark);
         --tab-focus-ring: var(--brand);
+
+        /* Card / KPI semantic tokens */
+        --card-surface-normal: {CARD_SURFACE_NORMAL};
+        --card-surface-elevated: {CARD_SURFACE_ELEVATED};
+        --card-surface-kpi-primary: {CARD_SURFACE_KPI_PRIMARY};
+        --card-surface-report-section: {CARD_SURFACE_REPORT_SECTION};
+        --card-surface-empty-state: {CARD_SURFACE_EMPTY_STATE};
+        --kpi-label-fg: {KPI_LABEL_FG};
+        --kpi-value-fg: {KPI_VALUE_FG};
+        --kpi-delta-neutral-fg: {KPI_DELTA_NEUTRAL_FG};
+        --kpi-delta-positive-fg: {KPI_DELTA_POSITIVE_FG};
+        --kpi-delta-negative-fg: {KPI_DELTA_NEGATIVE_FG};
 
         /* Icon */
         --icon-size: 18px;

@@ -35,6 +35,26 @@ Use the following semantic tokens for colour decisions:
 - `info-bg`
 - `info-text`
 
+## Card and KPI Surface Tokens
+
+Card surfaces must use semantic card tokens (not component-local hex values):
+
+- `--card-surface-normal`
+- `--card-surface-elevated`
+- `--card-surface-kpi-primary`
+- `--card-surface-report-section`
+- `--card-surface-empty-state`
+
+### KPI readability tokens
+
+- Labels: `--kpi-label-fg` (must remain readable against KPI card surfaces)
+- Values: `--kpi-value-fg` (high-contrast primary metric text)
+- Delta (semantic): use `--kpi-delta-positive-fg`, `--kpi-delta-negative-fg`, and
+  `--kpi-delta-neutral-fg`
+
+Delta states must preserve semantic meaning (up/down/neutral) while maintaining
+WCAG AA readability on the active KPI surface.
+
 ## Implementation Rules
 
 1. **No raw hex colours outside token files** unless explicitly justified in code comments and reviewed.
