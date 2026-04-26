@@ -142,19 +142,16 @@ LOGIN_CSS = r"""
     footer { visibility: hidden !important; }
 
     /* ── Hide CookieController visual mount (blank box on top) ─────────── */
-    div[data-testid="stElementContainer"] > div[data-testid="stCustomComponentV1"],
-    [data-testid="stCustomComponentV1"] {
+    iframe[title="cookie_controller"] {
+        display: none !important;
+        height: 0 !important;
+    }
+    div[data-testid="stElementContainer"]:has(iframe[title="cookie_controller"]) {
         display: none !important;
         height: 0 !important;
         min-height: 0 !important;
         margin: 0 !important;
         padding: 0 !important;
-    }
-    iframe[title="cookie_controller"],
-    iframe[src*="cookie_controller"] {
-        display: none !important;
-        height: 0 !important;
-        min-height: 0 !important;
     }
 
     /* ── Image centering ──────────────────────────────── */
