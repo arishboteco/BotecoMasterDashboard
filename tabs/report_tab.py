@@ -258,25 +258,7 @@ def render(ctx: TabContext) -> None:
                             items.append((key, "Footfall"))
                 return items
 
-            if multi_outlet:
-                st.markdown(
-                    '<div class="context-band context-band--muted">'
-                    '<span class="context-band-item microtext">'
-                    "<strong>Note:</strong> Category and service sections use combined MTD for all outlets in scope."
-                    "</span>"
-                    '<span class="context-band-item microtext">'
-                    "<strong>Footfall:</strong> Metrics are shown per outlet."
-                    "</span>"
-                    "</div>",
-                    unsafe_allow_html=True,
-                )
-
             if multi_outlet and outlets_bundle:
-                filter_strip(
-                    "Report scope",
-                    "Choose a single outlet or all outlets for PNG export.",
-                    icon="tune",
-                )
                 _outlet_options = ["All outlets"] + [name for _i, name, _ in outlets_bundle]
                 _selected_outlet = st.radio(
                     "Select outlet for PNG report",
