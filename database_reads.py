@@ -9,6 +9,7 @@ import streamlit as st
 
 import boteco_logger
 from core.dates import month_bounds
+from db.category_rows import CATEGORY_ROW_PREFIX
 from db.table_names import (
     SQLITE_DAILY_SUMMARIES,
     SQLITE_ITEM_SALES,
@@ -18,9 +19,6 @@ from db.table_names import (
 )
 
 logger = boteco_logger.get_logger(__name__)
-
-# Must match database_writes._CATEGORY_ROW_PREFIX (avoid importing database_writes here).
-_CATEGORY_ROW_PREFIX = "__category_row:"
 
 
 def _sqlite_daily_table() -> str:
@@ -44,7 +42,7 @@ def _sqlite_categories_for_summary(conn, summary_id: int) -> List[Dict]:
         WHERE summary_id = ?
           AND item_name LIKE ?
         """,
-        (summary_id, f"{_CATEGORY_ROW_PREFIX}%"),
+        (summary_id, f"{CATEGORY_ROW_PREFIX}%"),
     )
     out: List[Dict] = []
     for r in cur.fetchall():
@@ -398,7 +396,7 @@ def get_category_totals_for_date_range(
                     *location_ids,
                     start_date,
                     end_date,
-                    f"{_CATEGORY_ROW_PREFIX}%",
+                    f"{CATEGORY_ROW_PREFIX}%",
                 ),
             )
             rows = cursor.fetchall()
