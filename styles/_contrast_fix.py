@@ -43,4 +43,43 @@ CONTRAST_FIX = r"""    /* ── Contrast safety layer (scoped selectors only) �
         color: var(--text) !important;
     }
 
+    /* Streamlit semantic alerts: shared tokenized surfaces for upload, validation, import status. */
+    [data-testid="stAlert"] {
+        background: var(--alert-neutral-bg) !important;
+        color: var(--alert-neutral-text) !important;
+        border: 1px solid var(--alert-neutral-border) !important;
+        border-radius: var(--radius-sm) !important;
+    }
+    [data-testid="stAlert"] * {
+        color: inherit !important;
+    }
+    [data-testid="stAlert"][kind="success"],
+    [data-testid="stAlert"][kind="positive"],
+    [data-testid="stAlert"] [data-baseweb="notification"][kind="success"],
+    [data-testid="stAlert"] [data-baseweb="notification"][kind="positive"] {
+        background: var(--alert-success-bg) !important;
+        color: var(--alert-success-text) !important;
+        border-color: var(--alert-success-border) !important;
+    }
+    [data-testid="stAlert"][kind="error"],
+    [data-testid="stAlert"][kind="negative"],
+    [data-testid="stAlert"] [data-baseweb="notification"][kind="error"],
+    [data-testid="stAlert"] [data-baseweb="notification"][kind="negative"] {
+        background: var(--alert-error-bg) !important;
+        color: var(--alert-error-text) !important;
+        border-color: var(--alert-error-border) !important;
+    }
+    [data-testid="stAlert"][kind="warning"],
+    [data-testid="stAlert"] [data-baseweb="notification"][kind="warning"] {
+        background: var(--alert-warning-bg) !important;
+        color: var(--alert-warning-text) !important;
+        border-color: var(--alert-warning-border) !important;
+    }
+    [data-testid="stAlert"][kind="info"],
+    [data-testid="stAlert"] [data-baseweb="notification"][kind="info"] {
+        background: var(--alert-info-bg) !important;
+        color: var(--alert-info-text) !important;
+        border-color: var(--alert-info-border) !important;
+    }
+
 """

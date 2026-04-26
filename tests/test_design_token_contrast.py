@@ -56,6 +56,20 @@ def _token_string_hex(token_name: str) -> str | None:
 
 
 class TestLightModeContrast:
+    @pytest.mark.parametrize(
+        ("foreground", "background"),
+        [
+            (_tokens.COLOR_SUCCESS_TEXT, _tokens.COLOR_SUCCESS_BG),
+            (_tokens.COLOR_ERROR_TEXT, _tokens.COLOR_ERROR_BG),
+            (_tokens.COLOR_WARNING_TEXT, _tokens.COLOR_WARNING_BG),
+            (_tokens.COLOR_INFO_TEXT, _tokens.COLOR_INFO_BG),
+            (_tokens.COLOR_NEUTRAL_TEXT, _tokens.COLOR_NEUTRAL_BG),
+        ],
+    )
+    def test_semantic_alert_pairs_meet_aa(self, foreground: str, background: str):
+        ratio = contrast_ratio(foreground, background)
+        assert ratio >= AA_NORMAL_TEXT_MIN_RATIO
+
     def test_text_on_surface_elevated(self):
         ratio = contrast_ratio(_tokens.TEXT, _tokens.SURFACE_ELEVATED)
         assert ratio >= AA_NORMAL_TEXT_MIN_RATIO
@@ -143,6 +157,20 @@ class TestLightModeContrast:
 
 
 class TestDarkModeContrast:
+    @pytest.mark.parametrize(
+        ("foreground", "background"),
+        [
+            (_tokens.DARK_COLOR_SUCCESS_TEXT, _tokens.DARK_COLOR_SUCCESS_BG),
+            (_tokens.DARK_COLOR_ERROR_TEXT, _tokens.DARK_COLOR_ERROR_BG),
+            (_tokens.DARK_COLOR_WARNING_TEXT, _tokens.DARK_COLOR_WARNING_BG),
+            (_tokens.DARK_COLOR_INFO_TEXT, _tokens.DARK_COLOR_INFO_BG),
+            (_tokens.DARK_COLOR_NEUTRAL_TEXT, _tokens.DARK_COLOR_NEUTRAL_BG),
+        ],
+    )
+    def test_dark_semantic_alert_pairs_meet_aa(self, foreground: str, background: str):
+        ratio = contrast_ratio(foreground, background)
+        assert ratio >= AA_NORMAL_TEXT_MIN_RATIO
+
     def test_dark_text_on_dark_surface(self):
         ratio = contrast_ratio(_tokens.DARK_TEXT, _tokens.DARK_SURFACE)
         assert ratio >= AA_NORMAL_TEXT_MIN_RATIO
