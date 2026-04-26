@@ -132,7 +132,7 @@ COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ─�
         justify-content: center;
         padding: 0.35rem 0.5rem;
         border-radius: var(--radius-sm);
-        background: var(--surface);
+        background: var(--card-surface-normal);
         border: 1px solid var(--border-subtle);
         text-align: center;
         gap: 0.1rem;
@@ -143,7 +143,7 @@ COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ─�
     }
     .kpi-label {
         font-family: var(--font-body) !important;
-        color: var(--text-secondary) !important;
+        color: var(--kpi-label-fg) !important;
         font-weight: 500 !important;
         text-transform: uppercase;
         font-size: 0.75rem !important;
@@ -152,7 +152,7 @@ COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ─�
     }
     .kpi-value {
         font-family: var(--font-display) !important;
-        color: var(--text) !important;
+        color: var(--kpi-value-fg) !important;
         font-weight: 700 !important;
         font-size: 0.85rem !important;
         line-height: 1.1;
@@ -160,11 +160,13 @@ COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ─�
     }
     .kpi-delta {
         font-family: var(--font-body) !important;
-        color: var(--text-secondary) !important;
+        color: var(--kpi-delta-neutral-fg) !important;
         font-size: 0.55rem !important;
         font-weight: 500 !important;
         line-height: 1;
     }
+    .kpi-delta.is-positive { color: var(--kpi-delta-positive-fg) !important; }
+    .kpi-delta.is-negative { color: var(--kpi-delta-negative-fg) !important; }
 
 """
 
@@ -172,7 +174,7 @@ METRIC_CARDS_CONTAINERS = r"""    /* ── Metric cards & containers ───�
     /* Shared elevated-surface base (merged from .metric-card + stMetric wrapper) */
     .metric-card,
     [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMetric"] {
-        background: var(--surface);
+        background: var(--card-surface-elevated);
         box-shadow: var(--shadow-sm);
         transition: transform var(--transition-normal) ease, box-shadow var(--transition-normal) ease;
     }
@@ -188,7 +190,7 @@ METRIC_CARDS_CONTAINERS = r"""    /* ── Metric cards & containers ───�
         border-left: 4px solid var(--brand);
     }
     [data-testid="stVerticalBlockBorderWrapper"] {
-        background: var(--surface) !important;
+        background: var(--card-surface-normal) !important;
         border-color: var(--border-subtle) !important;
         border-radius: var(--radius-lg) !important;
         box-shadow: var(--shadow-sm) !important;
@@ -206,15 +208,16 @@ METRIC_CARDS_CONTAINERS = r"""    /* ── Metric cards & containers ───�
     .kpi-primary-card {
         border: 1px solid var(--border-subtle);
         border-radius: var(--radius-lg);
-        background: var(--surface);
+        background: var(--card-surface-kpi-primary);
         box-shadow: var(--shadow-sm);
         padding: var(--space-card-padding);
         margin-bottom: var(--space-section-y);
     }
-    .kpi-secondary-card {
+    .kpi-secondary-card,
+    .report-section-card {
         border: 1px solid var(--border-subtle);
         border-radius: var(--radius-md);
-        background: var(--surface-elevated);
+        background: var(--card-surface-report-section);
         padding: calc(var(--space-card-padding) * 0.9);
         margin-top: 0.4rem;
         margin-bottom: var(--space-section-y);
@@ -679,7 +682,7 @@ EMPTY_STATE = r"""    /* ── Empty state ────────────
     .empty-state {
         text-align: center;
         padding: 2rem;
-        background: var(--surface);
+        background: var(--card-surface-empty-state);
         border: 1px dashed var(--border-medium);
         border-radius: var(--radius-md);
     }

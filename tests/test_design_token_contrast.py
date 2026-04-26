@@ -116,6 +116,31 @@ class TestLightModeContrast:
         # decorative in some components, but keeping AA target explicit avoids silent regressions.
         assert ratio >= AA_NORMAL_TEXT_MIN_RATIO
 
+    def test_kpi_label_on_kpi_primary_card_surface(self):
+        ratio = contrast_ratio(_tokens.KPI_LABEL_FG, _tokens.CARD_SURFACE_KPI_PRIMARY)
+        assert ratio >= AA_NORMAL_TEXT_MIN_RATIO
+
+    def test_kpi_value_on_kpi_primary_card_surface(self):
+        ratio = contrast_ratio(_tokens.KPI_VALUE_FG, _tokens.CARD_SURFACE_KPI_PRIMARY)
+        assert ratio >= AA_NORMAL_TEXT_MIN_RATIO
+
+    def test_kpi_delta_semantic_colors_on_kpi_primary_card_surface(self):
+        positive_ratio = contrast_ratio(
+            _tokens.KPI_DELTA_POSITIVE_FG,
+            _tokens.CARD_SURFACE_KPI_PRIMARY,
+        )
+        negative_ratio = contrast_ratio(
+            _tokens.KPI_DELTA_NEGATIVE_FG,
+            _tokens.CARD_SURFACE_KPI_PRIMARY,
+        )
+        neutral_ratio = contrast_ratio(
+            _tokens.KPI_DELTA_NEUTRAL_FG,
+            _tokens.CARD_SURFACE_KPI_PRIMARY,
+        )
+        assert positive_ratio >= AA_NORMAL_TEXT_MIN_RATIO
+        assert negative_ratio >= AA_NORMAL_TEXT_MIN_RATIO
+        assert neutral_ratio >= AA_NORMAL_TEXT_MIN_RATIO
+
 
 class TestDarkModeContrast:
     def test_dark_text_on_dark_surface(self):
