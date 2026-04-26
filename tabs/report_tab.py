@@ -66,8 +66,7 @@ def render(ctx: TabContext) -> None:
             section_title("Filters", "Choose a day and outlet scope.", icon="filter_alt")
             selected_date = date_nav(
                 session_key="report_date",
-                label="Select a date",
-                help_text="Choose a date to view that day's report",
+                label="Report date",
             )
 
     date_str = selected_date.strftime("%Y-%m-%d")
