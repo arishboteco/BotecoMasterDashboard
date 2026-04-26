@@ -93,7 +93,7 @@ LAYOUT_SPACING = r"""    /* ── Layout & spacing ─────────�
     }
     .page-hero {
         display: flex;
-        align-items: flex-start;
+        align-items: center;
         justify-content: space-between;
         gap: 1rem;
         border: 1px solid var(--border-subtle);
@@ -112,7 +112,7 @@ LAYOUT_SPACING = r"""    /* ── Layout & spacing ─────────�
         font-weight: 600;
     }
     .page-hero-title {
-        margin: 0.15rem 0;
+        margin: 0;
         font-size: 1.35rem;
         color: var(--text);
         border-left: none !important;

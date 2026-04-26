@@ -98,11 +98,12 @@ VISUAL_POLISH = r"""    /* ── Final visual polish layer ──────�
         border: 1px solid var(--border-subtle) !important;
         border-radius: var(--radius-xl) !important;
         box-shadow: var(--shadow-sm) !important;
-        padding: var(--spacing-6) !important;
+        padding: var(--spacing-4) var(--spacing-6) !important;
         margin-bottom: var(--spacing-6) !important;
     }
     .page-hero {
         border-top: 3px solid var(--brand) !important;
+        align-items: center !important;
     }
     .page-hero-kicker {
         font-size: var(--font-size-kicker) !important;
@@ -116,7 +117,7 @@ VISUAL_POLISH = r"""    /* ── Final visual polish layer ──────�
         font-weight: 700 !important;
         line-height: 1.2 !important;
         color: var(--text) !important;
-        margin: var(--spacing-2) 0 var(--spacing-1) !important;
+        margin: 0 !important;
     }
     .page-hero-subtitle {
         color: var(--text-secondary) !important;
