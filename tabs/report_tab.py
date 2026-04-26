@@ -62,12 +62,26 @@ def render(ctx: TabContext) -> None:
             "tab-report-mobile-filters",
             "mobile-layout-stack",
             "mobile-layout-filters",
+            "report-filter-shell",
         ):
-            section_title("Filters", "Choose a day and outlet scope.", icon="filter_alt")
-            selected_date = date_nav(
-                session_key="report_date",
-                label="Report date",
-            )
+            filter_strip("Report context", "Choose day and scope.", icon="tune")
+            with classed_container("report-date-nav"):
+                nav_col, scope_col = st.columns([3, 2])
+                with nav_col:
+                    selected_date = date_nav(
+                        session_key="report_date",
+                        label="Report date",
+                    )
+                with scope_col:
+                    st.markdown(
+                        (
+                            '<div class="report-scope-chip-wrap">'
+                            '<span class="report-scope-label">Scope</span>'
+                            f'<span class="report-scope-chip">{ctx.report_display_name}</span>'
+                            "</div>"
+                        ),
+                        unsafe_allow_html=True,
+                    )
 
     date_str = selected_date.strftime("%Y-%m-%d")
     outlets_bundle, summary = report_service.load_report_bundle_cached(ctx.report_loc_ids, date_str)
@@ -109,28 +123,40 @@ def render(ctx: TabContext) -> None:
                 )
 
             with classed_container("tab-report-mobile-kpis", "mobile-layout-stack"):
+                _net_cmp = _delta_chip(_curr_net, _prev_net, is_currency=True)
+                _cov_cmp = _delta_chip(float(_curr_cov), float(_prev_cov), is_currency=False)
+                _apc_cmp = _delta_chip(_curr_apc, _prev_apc, is_currency=True)
+                _comparison_chip = f'<span class="comparison-chip">Compared with {_prev_date.strftime("%d %b %Y")}</span>'
+                _scope_item = f'<span class="context-band-item"><strong>{ctx.report_display_name}</strong></span>'
+                _comparison_item = (
+                    f'<span class="context-band-item">Compared with '
+                    f"{_prev_date.strftime('%d %b %Y')}</span>"
+                )
                 st.markdown(
                     (
                         '<div class="kpi-primary-card kpi-snapshot-card">'
                         '<div class="kpi-snapshot-head">'
+                        '<div class="kpi-snapshot-title-wrap">'
                         "<h4>Daily KPI Snapshot</h4>"
-                        f'<span class="kpi-snapshot-subhead">vs {_prev_date.strftime("%d %b %Y")}</span>'
+                        '<span class="kpi-snapshot-title-sub">Selected day performance</span>'
+                        "</div>"
+                        f"{_comparison_chip}"
                         "</div>"
                         '<div class="kpi-snapshot-grid">'
-                        '<div class="kpi-item kpi-combined">'
+                        '<div class="kpi-item">'
                         '<span class="kpi-label">Net Sales</span>'
                         f'<span class="kpi-value">{utils.format_rupee_short(_curr_net)}</span>'
-                        f"{_delta_chip(_curr_net, _prev_net, is_currency=True)}"
+                        f'<span class="kpi-helper">{_net_cmp}</span>'
                         "</div>"
                         '<div class="kpi-item">'
                         '<span class="kpi-label">Covers</span>'
                         f'<span class="kpi-value">{_curr_cov:,}</span>'
-                        f"{_delta_chip(float(_curr_cov), float(_prev_cov), is_currency=False)}"
+                        f'<span class="kpi-helper">{_cov_cmp}</span>'
                         "</div>"
                         '<div class="kpi-item">'
                         '<span class="kpi-label">APC</span>'
                         f'<span class="kpi-value">{utils.format_rupee_short(_curr_apc)}</span>'
-                        f"{_delta_chip(_curr_apc, _prev_apc, is_currency=True)}"
+                        f'<span class="kpi-helper">{_apc_cmp}</span>'
                         "</div>"
                         "</div>"
                         "</div>"
@@ -138,22 +164,16 @@ def render(ctx: TabContext) -> None:
                     unsafe_allow_html=True,
                 )
 
-            # ── Same weekday previous week comparison ──────────────
-            _context_items = [
-                f'<span class="context-band-item"><strong>Date:</strong> {selected_date.strftime("%d %b %Y")}</span>',
-                f'<span class="context-band-item"><strong>Scope:</strong> {ctx.report_display_name}</span>',
-            ]
-            if _prev_summary:
-                _net_cmp = _delta_chip(_curr_net, _prev_net, is_currency=True)
-                _cov_cmp = _delta_chip(float(_curr_cov), float(_prev_cov), is_currency=False)
-                _apc_cmp = _delta_chip(_curr_apc, _prev_apc, is_currency=True)
-                _context_items.append(
-                    f'<span class="report-comparison-bar"><strong>vs {_prev_date.strftime("%d %b")}:</strong> '
-                    f"Net {_net_cmp} | Covers {_cov_cmp} | APC {_apc_cmp}</span>"
-                )
-
             st.markdown(
-                f'<div class="context-band context-band--muted">{"".join(_context_items)}</div>',
+                (
+                    '<div class="context-band context-band--muted report-context-bar">'
+                    f"{_scope_item}"
+                    f"{_comparison_item}"
+                    f'<span class="context-band-item">Net {_net_cmp}</span>'
+                    f'<span class="context-band-item">Covers {_cov_cmp}</span>'
+                    f'<span class="context-band-item">APC {_apc_cmp}</span>'
+                    "</div>"
+                ),
                 unsafe_allow_html=True,
             )
             divider()
@@ -274,7 +294,7 @@ def render(ctx: TabContext) -> None:
                             break
 
                     _outlet_data = None
-                    for lid, name, data in outlets_bundle:
+                    for lid, _name, data in outlets_bundle:
                         if lid == _selected_lid:
                             _outlet_data = data
                             break

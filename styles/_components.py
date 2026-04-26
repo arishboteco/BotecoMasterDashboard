@@ -125,28 +125,84 @@ KPI_METRIC_VALUES = r"""    /* ── KPI metric values ────────
 """
 
 COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ───────────────────────── */
+    .report-filter-shell {
+        margin-bottom: 0.55rem;
+    }
+    .report-date-nav [data-testid="stHorizontalBlock"] {
+        align-items: end;
+        gap: 0.65rem;
+    }
+    .report-date-nav [data-testid="stButton"] > button {
+        min-height: 42px !important;
+        max-height: 42px !important;
+        padding: 0 0.55rem !important;
+        font-size: 0.9rem !important;
+        font-weight: 700 !important;
+    }
+    .report-date-nav [data-testid="stDateInput"] {
+        max-width: 260px;
+    }
+    .report-scope-chip-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+    }
+    .report-scope-label {
+        font-size: 0.73rem;
+        color: var(--text-secondary);
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+    .report-scope-chip {
+        display: inline-flex;
+        align-items: center;
+        min-height: 42px;
+        padding: 0 0.75rem;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border-subtle);
+        background: var(--surface);
+        color: var(--text);
+        font-weight: 600;
+    }
     .kpi-snapshot-card {
-        padding: 0.8rem 0.9rem;
+        padding: 0.95rem;
         margin-bottom: 0.55rem;
     }
     .kpi-snapshot-head {
         display: flex;
-        align-items: baseline;
+        align-items: flex-start;
         justify-content: space-between;
-        gap: 0.5rem;
-        margin-bottom: 0.55rem;
+        gap: 0.65rem;
+        margin-bottom: 0.8rem;
+    }
+    .kpi-snapshot-title-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
     }
     .kpi-snapshot-head h4 {
         margin: 0;
         font-size: 1.05rem;
+        color: var(--text);
         line-height: 1.2;
     }
-    .kpi-snapshot-subhead {
-        color: var(--text-muted);
-        font-size: 0.76rem;
-        font-weight: 600;
-        letter-spacing: 0.02em;
-        text-transform: uppercase;
+    .kpi-snapshot-title-sub {
+        color: var(--text-secondary);
+        font-size: 0.79rem;
+        font-weight: 500;
+    }
+    .comparison-chip {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--brand-light);
+        background: var(--brand-soft);
+        color: var(--brand-dark);
+        border-radius: 999px;
+        padding: 0.35rem 0.7rem;
+        font-size: 0.78rem;
+        font-weight: 700;
+        white-space: nowrap;
     }
     .kpi-snapshot-grid {
         display: grid;
@@ -158,46 +214,68 @@ COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ─�
         flex-direction: column;
         align-items: flex-start;
         justify-content: flex-start;
-        padding: 0.5rem 0.6rem;
+        padding: 0.75rem;
         border-radius: var(--radius-sm);
         background: var(--card-surface-normal);
         border: 1px solid var(--border-subtle);
         text-align: left;
-        gap: 0.2rem;
-        min-height: 4.2rem;
-    }
-    .kpi-item.kpi-combined {
-        border-left: 3px solid var(--accent-coral);
+        gap: 0.32rem;
+        min-height: 4.8rem;
     }
     .kpi-label {
         font-family: var(--font-body) !important;
-        color: var(--kpi-label-fg) !important;
-        font-weight: 500 !important;
+        color: var(--text-secondary) !important;
+        font-weight: 600 !important;
         text-transform: uppercase;
-        font-size: 0.75rem !important;
-        letter-spacing: 0.03em;
+        font-size: 0.74rem !important;
+        letter-spacing: 0.06em;
         line-height: 1;
     }
     .kpi-value {
         font-family: var(--font-display) !important;
         color: var(--kpi-value-fg) !important;
         font-weight: 700 !important;
-        font-size: 2rem !important;
+        font-size: 1.9rem !important;
         line-height: 1.1;
         word-break: break-word;
     }
-    .kpi-delta {
+    .kpi-helper {
+        display: inline-flex;
+        align-items: center;
+    }
+    .kpi-delta,
+    .kpi-helper .delta-chip {
         font-family: var(--font-body) !important;
         color: var(--kpi-delta-neutral-fg) !important;
-        font-size: 0.74rem !important;
-        font-weight: 500 !important;
-        line-height: 1;
+        font-size: 0.82rem !important;
+        font-weight: 600 !important;
+        line-height: 1.3;
+    }
+    .kpi-helper .delta-chip--positive {
+        color: var(--success) !important;
+    }
+    .kpi-helper .delta-chip--negative {
+        color: var(--error) !important;
+    }
+    .report-context-bar {
+        margin-top: 0.25rem;
+        margin-bottom: 0.75rem;
     }
     .kpi-delta.is-positive { color: var(--kpi-delta-positive-fg) !important; }
     .kpi-delta.is-negative { color: var(--kpi-delta-negative-fg) !important; }
     @media (max-width: 900px) {
+        .report-date-nav [data-testid="stHorizontalBlock"] {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        .report-date-nav [data-testid="stDateInput"] {
+            max-width: 100%;
+        }
         .kpi-snapshot-grid {
             grid-template-columns: 1fr;
+        }
+        .comparison-chip {
+            white-space: normal;
         }
     }
 
