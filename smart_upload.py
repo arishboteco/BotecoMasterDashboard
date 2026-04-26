@@ -17,7 +17,6 @@ Supports:
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, field
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -30,6 +29,7 @@ import file_detector
 import pos_parser
 import timing_parser
 import boteco_logger
+from uploads.models import DayResult, FileResult, SmartUploadResult
 
 logger = boteco_logger.get_logger(__name__)
 
@@ -72,45 +72,6 @@ def _primary_file_type(source_kinds: List[str]) -> str:
         if kind in source_kinds:
             return kind
     return "item_order_details"
-
-
-# ---------------------------------------------------------------------------
-# Result types
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class FileResult:
-    """Per-file detection and parsing outcome."""
-
-    filename: str
-    kind: str
-    kind_label: str
-    importable: bool
-    notes: List[str] = field(default_factory=list)
-    error: Optional[str] = None
-    content: Optional[bytes] = None
-
-
-@dataclass
-class DayResult:
-    """Parsed + merged data ready for one calendar date."""
-
-    date: str
-    merged: Dict[str, Any]
-    source_kinds: List[str] = field(default_factory=list)
-    errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-
-
-@dataclass
-class SmartUploadResult:
-    """Full result returned by process_smart_upload()."""
-
-    files: List[FileResult]
-    days: List[DayResult]
-    global_notes: List[str] = field(default_factory=list)
-    location_results: Dict[int, List[DayResult]] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -173,10 +134,7 @@ def _parse_order_summary_csv(
 
     if pay_col:
         work_df["bucket"] = (
-            df.loc[work_df.index, pay_col]
-            .fillna("")
-            .astype(str)
-            .map(pos_parser.payment_bucket)
+            df.loc[work_df.index, pay_col].fillna("").astype(str).map(pos_parser.payment_bucket)
         )
         work_df["bucket"] = work_df["bucket"].where(
             work_df["bucket"].isin(("cash", "card", "gpay", "zomato")),
@@ -202,7 +160,9 @@ def _parse_order_summary_csv(
                 "zomato": float(day_bucket.at[day, "zomato"])
                 if "zomato" in day_bucket.columns
                 else 0.0,
-                "other": float(day_bucket.at[day, "other"]) if "other" in day_bucket.columns else 0.0,
+                "other": float(day_bucket.at[day, "other"])
+                if "other" in day_bucket.columns
+                else 0.0,
                 "discount": 0.0,
                 "service_charge": 0.0,
                 "covers": 0,
@@ -271,9 +231,7 @@ def _parse_flash_report(
                 else ""
             )
             if val and val.lower() != "nan":
-                date_str = pos_parser.cell_date_to_iso(val) or pos_parser.parse_date(
-                    val
-                )
+                date_str = pos_parser.cell_date_to_iso(val) or pos_parser.parse_date(val)
         if date_str:
             break
 
@@ -285,8 +243,7 @@ def _parse_flash_report(
     for i in range(len(df)):
         label = pos_parser.norm_header(df.iloc[i, 0])
         if label == "orders" or (
-            "my amount"
-            in " ".join(pos_parser.norm_header(v) for v in df.iloc[i].values)
+            "my amount" in " ".join(pos_parser.norm_header(v) for v in df.iloc[i].values)
         ):
             summary_row = i
             break
@@ -379,9 +336,7 @@ def _parse_flash_report(
                 if cat_name.lower() == "total":
                     break
                 continue
-            cat_amount = (
-                pos_parser.f(df.iloc[i, amt_col]) if amt_col < len(df.columns) else 0.0
-            )
+            cat_amount = pos_parser.f(df.iloc[i, amt_col]) if amt_col < len(df.columns) else 0.0
             if cat_amount > 0:
                 categories.append(
                     {
@@ -439,6 +394,7 @@ def process_smart_upload(
         parse/save notes for the upload batch.
     """
     import time
+
     _t0 = time.monotonic()
 
     file_results: List[FileResult] = []
@@ -493,18 +449,14 @@ def process_smart_upload(
     for fname, content in classified.get("dynamic_report", []):
         fr_match = filename_to_fr.get(fname)
         try:
-            parsed, dr_notes = dynamic_report_parser.parse_dynamic_report(
-                content, fname
-            )
+            parsed, dr_notes = dynamic_report_parser.parse_dynamic_report(content, fname)
             for n in dr_notes:
                 global_notes.append(n)
             if parsed:
                 fragments.extend(parsed)
                 dynamic_dates = {f["date"] for f in parsed}
                 if fr_match:
-                    fr_match.notes.append(
-                        f"Parsed {len(parsed)} day(s) from Dynamic Report."
-                    )
+                    fr_match.notes.append(f"Parsed {len(parsed)} day(s) from Dynamic Report.")
             else:
                 note = f"Dynamic Report {fname}: no data rows found."
                 global_notes.append(note)
@@ -535,17 +487,11 @@ def process_smart_upload(
                             )
                 if fr_match:
                     if new_days > 0:
-                        fr_match.notes.append(
-                            f"Added {new_days} day(s) not in Dynamic Report."
-                        )
+                        fr_match.notes.append(f"Added {new_days} day(s) not in Dynamic Report.")
                     elif dynamic_dates:
-                        fr_match.notes.append(
-                            "All dates already covered by Dynamic Report."
-                        )
+                        fr_match.notes.append("All dates already covered by Dynamic Report.")
                     else:
-                        fr_match.notes.append(
-                            f"Parsed {len(parsed)} day(s) of sales data."
-                        )
+                        fr_match.notes.append(f"Parsed {len(parsed)} day(s) of sales data.")
             else:
                 note = f"Item Report {fname}: no data rows found."
                 global_notes.append(note)
@@ -558,9 +504,7 @@ def process_smart_upload(
             if fr_match:
                 fr_match.error = str(ex)
 
-    item_dates = {
-        f["date"] for f in fragments if f.get("file_type") == "item_order_details"
-    }
+    item_dates = {f["date"] for f in fragments if f.get("file_type") == "item_order_details"}
 
     # 4c. Order Summary CSV (backup — only for dates not covered by Item Report)
     for fname, content in classified.get("order_summary_csv", []):
@@ -581,9 +525,7 @@ def process_smart_upload(
                                 f"Date {p['date']} already covered by Item Report — skipped."
                             )
                 if fr_match and new_days > 0:
-                    fr_match.notes.append(
-                        f"Added {new_days} day(s) not in Item Report."
-                    )
+                    fr_match.notes.append(f"Added {new_days} day(s) not in Item Report.")
         except _PARSE_EXCEPTIONS as ex:
             logger.exception("Failed parsing order_summary_csv file=%s", fname)
             note = f"Error parsing Order Summary {fname}: {ex}"
@@ -691,12 +633,16 @@ def process_smart_upload(
             # Basic validation / coercion (log when we fill in missing values)
             if not merged.get("net_total") and merged.get("gross_total"):
                 logger.warning(
-                    "net_total missing for %s — defaulting to gross_total (\u20b9%s)", d, merged["gross_total"]
+                    "net_total missing for %s — defaulting to gross_total (\u20b9%s)",
+                    d,
+                    merged["gross_total"],
                 )
                 merged["net_total"] = float(merged["gross_total"])
             if not merged.get("gross_total") and merged.get("net_total"):
                 logger.warning(
-                    "gross_total missing for %s — defaulting to net_total (\u20b9%s)", d, merged["net_total"]
+                    "gross_total missing for %s — defaulting to net_total (\u20b9%s)",
+                    d,
+                    merged["net_total"],
                 )
                 merged["gross_total"] = float(merged["net_total"])
 
@@ -746,12 +692,16 @@ def process_smart_upload(
 
             if not merged.get("net_total") and merged.get("gross_total"):
                 logger.warning(
-                    "net_total missing for %s — defaulting to gross_total (\u20b9%s)", d, merged["gross_total"]
+                    "net_total missing for %s — defaulting to gross_total (\u20b9%s)",
+                    d,
+                    merged["gross_total"],
                 )
                 merged["net_total"] = float(merged["gross_total"])
             if not merged.get("gross_total") and merged.get("net_total"):
                 logger.warning(
-                    "gross_total missing for %s — defaulting to net_total (\u20b9%s)", d, merged["net_total"]
+                    "gross_total missing for %s — defaulting to net_total (\u20b9%s)",
+                    d,
+                    merged["net_total"],
                 )
                 merged["gross_total"] = float(merged["net_total"])
 
@@ -816,6 +766,7 @@ def save_smart_upload_results(
     Returns (saved_count, skipped_count, messages).
     """
     import time
+
     _save_t0 = time.monotonic()
 
     from database import use_supabase, get_supabase_client
@@ -880,7 +831,9 @@ def save_smart_upload_results(
                         "service_charge": round(float(merged.get("service_charge", 0) or 0), 2),
                         "gst_on_service_charge": 0,  # already folded into cgst/sgst by parser
                         "cancelled_amount": 0,  # cancelled bills excluded by parser
-                        "complementary_amount": round(float(merged.get("complimentary", 0) or 0), 2),
+                        "complementary_amount": round(
+                            float(merged.get("complimentary", 0) or 0), 2
+                        ),
                         "cash_sales": round(float(merged.get("cash_sales", 0) or 0), 2),
                         "card_sales": round(float(merged.get("card_sales", 0) or 0), 2),
                         "gpay_sales": round(float(merged.get("gpay_sales", 0) or 0), 2),
@@ -1022,9 +975,7 @@ def save_smart_upload_results(
                     )
 
                 db_writes.save_bill_items(client, raw_records)
-                messages.append(
-                    f"Saved {len(raw_records)} bill items from {fr.filename}"
-                )
+                messages.append(f"Saved {len(raw_records)} bill items from {fr.filename}")
             except (ValueError, TypeError, KeyError, RuntimeError) as ex:
                 messages.append(f"⚠️ Error saving bill items from {fr.filename}: {ex}")
                 logger.exception(
