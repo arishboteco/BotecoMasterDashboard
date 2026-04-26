@@ -141,17 +141,27 @@ LOGIN_CSS = r"""
     #MainMenu { visibility: hidden !important; }
     footer { visibility: hidden !important; }
 
-    /* ── Hide CookieController visual mount (blank box on top) ─────────── */
-    iframe[title="cookie_controller"] {
+    /* ── Hide CookieController visual mount / blank box ────────────────── */
+    iframe[title*="cookie"],
+    iframe[src*="streamlit_cookies"],
+    iframe[src*="cookie"] {
         display: none !important;
         height: 0 !important;
+        min-height: 0 !important;
+        visibility: hidden !important;
     }
-    div[data-testid="stElementContainer"]:has(iframe[title="cookie_controller"]) {
+
+    /* Hide the Streamlit wrapper around the cookie iframe */
+    div[data-testid="stElementContainer"]:has(iframe[title*="cookie"]),
+    div[data-testid="stElementContainer"]:has(iframe[src*="cookie"]),
+    div[data-testid="stVerticalBlock"]:has(iframe[title*="cookie"]),
+    div[data-testid="stVerticalBlock"]:has(iframe[src*="cookie"]) {
         display: none !important;
         height: 0 !important;
         min-height: 0 !important;
         margin: 0 !important;
         padding: 0 !important;
+        overflow: hidden !important;
     }
 
     /* ── Image centering ──────────────────────────────── */
