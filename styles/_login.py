@@ -141,6 +141,21 @@ LOGIN_CSS = r"""
     #MainMenu { visibility: hidden !important; }
     footer { visibility: hidden !important; }
 
+    /* ── Hide CookieController visual mount (blank box on top) ─────────── */
+    [data-testid="stCustomComponentV1"] {
+        display: none !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    iframe[title="cookie_controller"],
+    iframe[src*="cookie_controller"] {
+        display: none !important;
+        height: 0 !important;
+        min-height: 0 !important;
+    }
+
     /* ── Image centering ──────────────────────────────── */
     .login-card [data-testid="stImage"] {
         display: flex;
