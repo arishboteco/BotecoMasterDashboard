@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import calendar
 import hashlib
 import logging
 from datetime import datetime
@@ -10,16 +9,11 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
-import config
 import database
 import file_detector
-import smart_upload
 import tabs.analytics_tab as analytics_tab
-import utils
-from database_reads import clear_location_cache, peek_existing_net_sales_batch
 import tabs.report_tab as report_tab
-from auth import is_admin
-from tabs import TabContext
+import utils
 from components import (
     classed_container,
     info_banner,
@@ -29,6 +23,10 @@ from components import (
     section_title,
     workflow_steps,
 )
+from database_reads import clear_location_cache
+from services import upload_service
+from services.upload_service import ImportOptions
+from tabs import TabContext
 
 logger = logging.getLogger("boteco")
 
@@ -59,8 +57,7 @@ def render(ctx: TabContext) -> None:
     if flash is not None:
         sd, sk, nc = flash
         st.success(
-            f"Last import: **{sd}** day(s) saved, **{sk}** day(s) skipped, "
-            f"**{nc}** note(s)."
+            f"Last import: **{sd}** day(s) saved, **{sk}** day(s) skipped, **{nc}** note(s)."
         )
 
     with shell.filters:
@@ -91,7 +88,8 @@ def render(ctx: TabContext) -> None:
                 accept_multiple_files=True,
                 help=(
                     "Drop Item Reports, Dynamic Reports, Timing Reports, Order Summaries, "
-                    "Flash Reports — anything from Petpooja. The system figures out what each file is."
+                    "Flash Reports — anything from Petpooja. "
+                    "The system figures out what each file is."
                 ),
                 key="smart_upload_files",
                 label_visibility="collapsed",
@@ -108,7 +106,8 @@ def render(ctx: TabContext) -> None:
             st.session_state.pop("_upload_result", None)
             st.session_state.pop("_upload_fingerprint", None)
             info_banner(
-                "No files selected yet. Download reports from Petpooja and drop any combination here.",
+                "No files selected yet. Download reports from Petpooja "
+                "and drop any combination here.",
                 tone="neutral",
                 icon="upload",
             )
@@ -148,14 +147,10 @@ def render(ctx: TabContext) -> None:
                         f"({total_mb:.1f} MB)…"
                     )
                     with st.status(_parse_label, expanded=False) as _status:
-                        upload_result = smart_upload.process_smart_upload(
-                            files_payload,
-                            ctx.location_id,
+                        upload_result = upload_service.preview_upload(
+                            files_payload, ctx.location_id
                         )
-                        _days = sum(
-                            len(days)
-                            for days in upload_result.location_results.values()
-                        )
+                        _days = sum(len(days) for days in upload_result.location_results.values())
                         _outlets = len(upload_result.location_results)
                         _status.update(
                             label=(
@@ -171,38 +166,28 @@ def render(ctx: TabContext) -> None:
                     st.session_state["_upload_fingerprint"] = fp
                 else:
                     upload_result = st.session_state["_upload_result"]
-    
+
                 loc_name_map = {loc["id"]: loc["name"] for loc in ctx.all_locs}
-    
+
                 # Show detected outlets
                 if upload_result.location_results:
                     outlet_names = [
-                        loc_name_map.get(lid, str(lid))
-                        for lid in upload_result.location_results
+                        loc_name_map.get(lid, str(lid)) for lid in upload_result.location_results
                     ]
                     st.info(f"Auto-detected outlets: **{'**, **'.join(outlet_names)}**")
-    
+
                 # Collect overlaps — one batch query per location instead of per-day
-                overlap_rows: list = []
-                for lid, days in upload_result.location_results.items():
-                    valid_dates = [day.date for day in days if not day.errors]
-                    if not valid_dates:
-                        continue
-                    existing = peek_existing_net_sales_batch(lid, valid_dates)
-                    ovr_name = loc_name_map.get(lid, str(lid))
-                    for date_str, net_val in existing.items():
-                        overlap_rows.append((ovr_name, date_str, net_val))
-    
+                overlap_rows = upload_service.find_overlaps(upload_result)
+
                 must_confirm_replace = len(overlap_rows) > 0
                 if overlap_rows:
                     lines = "\n".join(
-                        f"- **{n}** \u2014 **{d}** \u2014 saved net sales {utils.format_currency(v)}"
-                        for n, d, v in overlap_rows
+                        f"- **{loc_name_map.get(lid, str(lid))}** \u2014 **{d}** \u2014 "
+                        f"saved net sales {utils.format_currency(v)}"
+                        for lid, d, v in overlap_rows
                     )
-                    st.warning(
-                        "These dates already have data and will be **replaced**:\n" + lines
-                    )
-    
+                    st.warning("These dates already have data and will be **replaced**:\n" + lines)
+
                 if must_confirm_replace:
                     confirm_replace = st.checkbox(
                         "I understand existing days listed above will be replaced.",
@@ -210,9 +195,9 @@ def render(ctx: TabContext) -> None:
                     )
                 else:
                     confirm_replace = True
-    
+
                 import_blocked = must_confirm_replace and not confirm_replace
-    
+
                 with classed_container(
                     "tab-upload-mobile-primary-action",
                     "mobile-layout-primary-action",
@@ -233,32 +218,11 @@ def render(ctx: TabContext) -> None:
                                 st.caption(note)
                             if fr.error:
                                 st.error(f"**{fr.filename}**: {fr.error}")
-    
+
                         uploaded_by = st.session_state.get("username") or "user"
-                        loc_settings = database.get_location_settings(ctx.location_id)
-                        monthly_tgt = (
-                            loc_settings.get(
-                                "target_monthly_sales", config.MONTHLY_TARGET
-                            )
-                            if loc_settings
-                            else config.MONTHLY_TARGET
-                        )
-                        _now = datetime.now()
-                        _fallback_daily = utils.compute_daily_target(
-                            float(monthly_tgt), _now.year, _now.month
-                        )
-                        daily_tgt = (
-                            loc_settings.get("target_daily_sales", _fallback_daily)
-                            if loc_settings
-                            else _fallback_daily
-                        )
-                        sc_setting = (
-                            loc_settings.get("seat_count") if loc_settings else None
-                        )
-    
+
                         _save_total_days = sum(
-                            len(days)
-                            for days in upload_result.location_results.values()
+                            len(days) for days in upload_result.location_results.values()
                         )
                         _save_label = (
                             f"Saving {_save_total_days} day"
@@ -267,13 +231,10 @@ def render(ctx: TabContext) -> None:
                         )
                         with st.status(_save_label, expanded=False) as _save_status:
                             saved_days, skipped_validation, save_messages = (
-                                smart_upload.save_smart_upload_results(
+                                upload_service.import_upload(
                                     upload_result,
-                                    ctx.location_id,
-                                    uploaded_by,
-                                    monthly_target=float(monthly_tgt),
-                                    daily_target=float(daily_tgt),
-                                    seat_count=(int(sc_setting) if sc_setting else None),
+                                    ctx,
+                                    options=ImportOptions(uploaded_by=uploaded_by),
                                 )
                             )
                             _save_status.update(
@@ -299,48 +260,47 @@ def render(ctx: TabContext) -> None:
                             f"{skipped_validation} day(s) skipped."
                         ]
                         all_save_messages.extend(save_messages)
-    
+
                         for lid in upload_result.location_results:
                             clear_location_cache(lid)
-    
+
                         for msg in all_save_messages:
                             st.info(msg)
-    
+
                         # Show data quality warnings from validation
-                        for lid, day_results in upload_result.location_results.items():
+                        for _lid, day_results in upload_result.location_results.items():
                             for day_result in day_results:
-                                for w in (day_result.warnings or []):
+                                for w in day_result.warnings or []:
                                     st.warning(f"⚠️ {day_result.date}: {w}")
-                                # Inform when Item Report fallback parser was used (50/50 CGST/SGST split)
-                                if (
-                                    "item_order_details" in (day_result.source_kinds or [])
-                                    and "dynamic_report" not in (day_result.source_kinds or [])
-                                ):
+                                # Inform when Item Report fallback parser was used
+                                # (50/50 CGST/SGST split)
+                                if "item_order_details" in (
+                                    day_result.source_kinds or []
+                                ) and "dynamic_report" not in (day_result.source_kinds or []):
                                     st.info(
                                         "ℹ️ Tax split estimated as 50/50 CGST/SGST for "
-                                        f"{day_result.date}. For exact breakdown, upload the Dynamic Report CSV."
+                                        f"{day_result.date}. For exact breakdown, "
+                                        "upload the Dynamic Report CSV."
                                     )
-    
+
                         # Also clear analytics cache to reflect new data in analytics tab
                         analytics_tab.clear_analytics_cache()
-    
+
                         # Clear cached upload result so it's not stale after save
                         st.session_state.pop("_upload_result", None)
                         st.session_state.pop("_upload_fingerprint", None)
-    
+
                         note_count = len(upload_result.global_notes)
-    
+
                         if total_saved > 0:
                             most_recent_date = database.get_most_recent_date_with_data(
                                 ctx.report_loc_ids
                             )
                             if most_recent_date:
-                                latest_date = datetime.strptime(
-                                    most_recent_date, "%Y-%m-%d"
-                                ).date()
+                                latest_date = datetime.strptime(most_recent_date, "%Y-%m-%d").date()
                                 st.session_state["report_date"] = latest_date
                                 st.session_state["report_date_picker"] = latest_date
-    
+
                         st.session_state["_import_summary_flash"] = (
                             total_saved,
                             total_skipped,
@@ -349,7 +309,7 @@ def render(ctx: TabContext) -> None:
                         # Clear report cache so next render pulls fresh data and then trigger rerun
                         report_tab.clear_report_cache()
                         st.rerun()
-    
+
     with shell.footer_actions:
         section_title(
             "Recent import activity",
@@ -369,9 +329,7 @@ def render(ctx: TabContext) -> None:
                 "uploaded_by": "Imported by",
                 "uploaded_at": "When",
             }
-            hdf = hdf.rename(
-                columns={k: v for k, v in rename.items() if k in hdf.columns}
-            )
+            hdf = hdf.rename(columns={k: v for k, v in rename.items() if k in hdf.columns})
             if "Day" in hdf.columns:
                 hdf["Day"] = hdf["Day"].apply(
                     lambda x: (
