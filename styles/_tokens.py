@@ -149,6 +149,16 @@ TOKEN_SYSTEM = f"""
         --surface-muted: {SURFACE_MUTED};
         --sidebar-bg: {PRIMARY};
         --sidebar-border: {PRIMARY_DARK};
+        --sidebar-surface: var(--sidebar-bg);
+        --sidebar-text: #FFFFFF;
+        --sidebar-muted: rgba(255, 255, 255, 0.78);
+        --sidebar-active-bg: rgba(255, 255, 255, 0.16);
+        --sidebar-active-fg: var(--sidebar-text);
+        --sidebar-active-border: rgba(255, 255, 255, 0.4);
+        --sidebar-account-bg: rgba(255, 255, 255, 0.12);
+        --sidebar-account-border: rgba(255, 255, 255, 0.24);
+        --sidebar-avatar-bg: rgba(255, 255, 255, 0.28);
+        --sidebar-avatar-fg: var(--sidebar-text);
         --table-header-bg: #EEF2F7;
 
         /* Text palette */
@@ -239,12 +249,12 @@ TOKEN_SYSTEM = f"""
         --btn-form-submit-hover-bg: var(--brand-dark);
         --btn-form-submit-hover-fg: #FFFFFF;
         --btn-form-submit-hover-border: var(--brand-dark);
-        --btn-sidebar-bg: var(--surface-elevated);
-        --btn-sidebar-fg: var(--text);
-        --btn-sidebar-border: var(--border-subtle);
-        --btn-sidebar-hover-bg: var(--brand-soft);
-        --btn-sidebar-hover-fg: var(--brand-dark);
-        --btn-sidebar-hover-border: var(--brand-light);
+        --btn-sidebar-bg: var(--sidebar-active-bg);
+        --btn-sidebar-fg: var(--sidebar-text);
+        --btn-sidebar-border: var(--sidebar-active-border);
+        --btn-sidebar-hover-bg: var(--sidebar-active-bg);
+        --btn-sidebar-hover-fg: var(--sidebar-text);
+        --btn-sidebar-hover-border: var(--sidebar-active-border);
 
         /* Navigation tabs */
         --tab-inactive-bg: transparent;
@@ -329,6 +339,16 @@ TOKEN_SYSTEM = f"""
         --surface-muted: {DARK_SURFACE_MUTED};
         --sidebar-bg: {DARK_SURFACE};
         --sidebar-border: {DARK_SURFACE_ELEVATED};
+        --sidebar-surface: var(--sidebar-bg);
+        --sidebar-text: {DARK_TEXT};
+        --sidebar-muted: rgba(241, 245, 249, 0.78);
+        --sidebar-active-bg: rgba(241, 245, 249, 0.16);
+        --sidebar-active-fg: var(--sidebar-text);
+        --sidebar-active-border: rgba(241, 245, 249, 0.4);
+        --sidebar-account-bg: rgba(241, 245, 249, 0.1);
+        --sidebar-account-border: rgba(241, 245, 249, 0.22);
+        --sidebar-avatar-bg: rgba(241, 245, 249, 0.24);
+        --sidebar-avatar-fg: var(--sidebar-text);
         --table-header-bg: {DARK_SURFACE_ELEVATED};
 
         --text-secondary: {DARK_TEXT_SECONDARY};
@@ -409,6 +429,16 @@ TOKEN_SYSTEM = f"""
         --surface-muted: {DARK_SURFACE_MUTED};
         --sidebar-bg: {DARK_SURFACE};
         --sidebar-border: {DARK_SURFACE_ELEVATED};
+        --sidebar-surface: var(--sidebar-bg);
+        --sidebar-text: {DARK_TEXT};
+        --sidebar-muted: rgba(241, 245, 249, 0.78);
+        --sidebar-active-bg: rgba(241, 245, 249, 0.16);
+        --sidebar-active-fg: var(--sidebar-text);
+        --sidebar-active-border: rgba(241, 245, 249, 0.4);
+        --sidebar-account-bg: rgba(241, 245, 249, 0.1);
+        --sidebar-account-border: rgba(241, 245, 249, 0.22);
+        --sidebar-avatar-bg: rgba(241, 245, 249, 0.24);
+        --sidebar-avatar-fg: var(--sidebar-text);
         --table-header-bg: {DARK_SURFACE_ELEVATED};
         --text-secondary: {DARK_TEXT_SECONDARY};
         --text-muted: {DARK_TEXT_MUTED};

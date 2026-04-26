@@ -31,6 +31,12 @@ CONTRAST_FIX = r"""    /* ── Contrast safety layer (scoped selectors only) �
         color: var(--text-secondary) !important;
     }
 
+    [data-testid="stSidebar"] [data-testid="stWidgetLabel"],
+    [data-testid="stSidebar"] [data-testid="stWidgetLabel"] p,
+    [data-testid="stSidebar"] [data-testid="stWidgetLabel"] span {
+        color: var(--sidebar-muted) !important;
+    }
+
     /* DataFrame cells: ensure rendered cell text inherits accessible table color. */
     [data-testid="stDataFrame"] td,
     [data-testid="stDataFrame"] td * {

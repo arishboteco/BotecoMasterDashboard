@@ -100,3 +100,29 @@ Tab styling must be token-driven and centralized (no per-component hard-coded ta
 - Keep tab behavior in one place (`styles/_base.py` tab refinement block).
 - Keep nested tab label inheritance in the contrast safety layer (`styles/_contrast_fix.py`).
 - Avoid redefining tab state colors in component modules unless adding new tokens in `styles/_tokens.py`.
+
+
+## Sidebar Token Rules
+
+Sidebar treatment is standardized as a **dark rail** in both light and dark app modes.
+Do not introduce component-level overrides that switch the sidebar to a light shell.
+
+### Required sidebar semantic tokens
+- `--sidebar-surface`: sidebar background surface
+- `--sidebar-text`: default sidebar foreground text
+- `--sidebar-muted`: muted labels/captions in sidebar
+- `--sidebar-border`: sidebar shell border
+- `--sidebar-active-bg`, `--sidebar-active-fg`, `--sidebar-active-border`: selected/active controls
+- `--sidebar-account-bg`, `--sidebar-account-border`: account card and badge surface
+- `--sidebar-avatar-bg`, `--sidebar-avatar-fg`: initials/avatar chip
+
+### Component mapping
+- Logo area: use `--surface-elevated` + `--sidebar-border` to keep logo readable on dark rail.
+- Account card: use sidebar account tokens; no hard-coded white overlays.
+- Outlet switcher/select controls: use active/sidebar tokens for background, text, and border.
+- Logout button: must use sidebar button tokens (`--btn-sidebar-*`) mapped to active/sidebar semantic tokens.
+
+### Prohibited sidebar patterns
+- No white/light forced sidebar backgrounds in late CSS layers.
+- No sidebar gradient overrides outside canonical sidebar module.
+- No raw hex sidebar text/button colors outside `styles/_tokens.py`.
