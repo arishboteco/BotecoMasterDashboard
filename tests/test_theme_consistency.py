@@ -10,11 +10,14 @@ CI catches accidental drift.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pytest
 
 import ui_theme
 from styles import _tokens
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _extract_tokens(css: str, scope_selector: str) -> dict[str, str]:
@@ -60,3 +63,62 @@ def test_ui_theme_matches_css_token(attr, token, light_tokens):
         f"{attr} = {py_value} but {token} = {css_value} "
         "(drift between ui_theme.py and styles/_tokens.py)"
     )
+
+
+def _read_file(rel_path: str) -> str:
+    return (REPO_ROOT / rel_path).read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "tab_file,required_classes",
+    [
+        (
+            "tabs/upload_tab.py",
+            [
+                "tab-upload-mobile-filters",
+                "tab-upload-mobile-primary-action",
+                "mobile-layout-secondary",
+            ],
+        ),
+        (
+            "tabs/report_tab.py",
+            [
+                "tab-report-mobile-filters",
+                "tab-report-mobile-kpis",
+                "tab-report-mobile-secondary",
+                "tab-report-mobile-primary-action",
+            ],
+        ),
+        (
+            "tabs/analytics_tab.py",
+            [
+                "tab-analytics-mobile-filters",
+                "tab-analytics-mobile-sections",
+                "tab-analytics-mobile-secondary",
+            ],
+        ),
+        (
+            "tabs/settings_tab.py",
+            [
+                "tab-settings-mobile-filters",
+                "tab-settings-mobile-export-filters",
+                "tab-settings-mobile-primary-action",
+            ],
+        ),
+    ],
+)
+def test_mobile_wrapper_classes_present(tab_file: str, required_classes: list[str]) -> None:
+    """Prevent responsive wrapper regressions in tab layouts."""
+    source = _read_file(tab_file)
+    missing = [cls for cls in required_classes if cls not in source]
+    assert not missing, f"missing responsive wrapper class hooks in {tab_file}: {missing}"
+
+
+def test_responsive_css_uses_explicit_mobile_layout_hooks() -> None:
+    """Ensure responsive stacking relies on explicit wrappers, not broad selectors."""
+    css = _read_file("styles/_responsive.py")
+    assert "mobile-layout-stack" in css
+    assert "mobile-layout-filters" in css
+    assert "mobile-layout-primary-action" in css
+    assert "mobile-layout-secondary" in css
+    assert ":has([data-testid=" not in css, "remove selector-driven mobile inference rules"

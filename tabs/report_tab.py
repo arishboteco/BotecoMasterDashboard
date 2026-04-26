@@ -43,6 +43,7 @@ def _load_report_bundle_cached(location_ids: List[int], date_str: str):
 
 from tabs import TabContext
 from components import (
+    classed_container,
     date_nav,
     divider,
     filter_strip,
@@ -131,12 +132,17 @@ def render(ctx: TabContext) -> None:
             st.session_state["report_date"] = datetime.now().date()
 
     with shell.filters:
-        section_title("Filters", "Choose a day and outlet scope.", icon="filter_alt")
-        selected_date = date_nav(
-            session_key="report_date",
-            label="Select a date",
-            help_text="Choose a date to view that day's report",
-        )
+        with classed_container(
+            "tab-report-mobile-filters",
+            "mobile-layout-stack",
+            "mobile-layout-filters",
+        ):
+            section_title("Filters", "Choose a day and outlet scope.", icon="filter_alt")
+            selected_date = date_nav(
+                session_key="report_date",
+                label="Select a date",
+                help_text="Choose a date to view that day's report",
+            )
 
     date_str = selected_date.strftime("%Y-%m-%d")
     outlets_bundle, summary = _load_report_bundle_cached(ctx.report_loc_ids, date_str)
@@ -146,16 +152,17 @@ def render(ctx: TabContext) -> None:
             y_m = [int(x) for x in date_str.split("-")[:2]]
             multi_outlet = len(outlets_bundle) > 1
 
-            st.markdown('<div class="kpi-primary-card">', unsafe_allow_html=True)
-            st.markdown("#### Daily KPI Snapshot")
-            kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
-            with kpi_col1:
-                st.metric("Net Sales", utils.format_rupee_short(float(summary.get("net_total") or 0)))
-            with kpi_col2:
-                st.metric("Covers", f"{int(summary.get('covers') or 0):,}")
-            with kpi_col3:
-                st.metric("APC", utils.format_rupee_short(float(summary.get("apc") or 0)))
-            st.markdown("</div>", unsafe_allow_html=True)
+            with classed_container("tab-report-mobile-kpis", "mobile-layout-stack"):
+                st.markdown('<div class="kpi-primary-card">', unsafe_allow_html=True)
+                st.markdown("#### Daily KPI Snapshot")
+                kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
+                with kpi_col1:
+                    st.metric("Net Sales", utils.format_rupee_short(float(summary.get("net_total") or 0)))
+                with kpi_col2:
+                    st.metric("Covers", f"{int(summary.get('covers') or 0):,}")
+                with kpi_col3:
+                    st.metric("APC", utils.format_rupee_short(float(summary.get("apc") or 0)))
+                st.markdown("</div>", unsafe_allow_html=True)
     
             # ── Same weekday previous week comparison ──────────────
             _prev_date = selected_date - timedelta(days=7)
@@ -434,28 +441,87 @@ def render(ctx: TabContext) -> None:
                                     items.append((key, "Footfall"))
                         return items
     
-                    with st.expander("PNG Report", expanded=True):
-                        info_banner(
-                            "Primary share bundle",
-                            tone="info",
-                            icon="ios_share",
-                        )
-                        _sec_meta = [
-                            ("sales_summary", "Sales summary"),
-                            ("category", "Category sales"),
-                            ("service", "Service sales"),
-                        ]
-                        _sec_meta.extend(_single_footfall_sections())
-    
-                        _first_five = _sec_meta[:5]
-                        if _first_five:
-                            _share_files = [
-                                (
-                                    f"boteco_{key}_{date_str}.png",
-                                    _single_section_bufs[key].getvalue(),
-                                )
-                                for key, _ in _first_five
+                    with classed_container(
+                        "tab-report-mobile-secondary",
+                        "mobile-layout-secondary",
+                    ):
+                        with st.expander("PNG Report", expanded=True):
+                            info_banner(
+                                "Primary share bundle",
+                                tone="info",
+                                icon="ios_share",
+                            )
+                            _sec_meta = [
+                                ("sales_summary", "Sales summary"),
+                                ("category", "Category sales"),
+                                ("service", "Service sales"),
                             ]
+                            _sec_meta.extend(_single_footfall_sections())
+
+                            _first_five = _sec_meta[:5]
+                            if _first_five:
+                                _share_files = [
+                                    (
+                                        f"boteco_{key}_{date_str}.png",
+                                        _single_section_bufs[key].getvalue(),
+                                    )
+                                    for key, _ in _first_five
+                                ]
+                                with classed_container(
+                                    "tab-report-mobile-primary-action",
+                                    "mobile-layout-primary-action",
+                                ):
+                                    clipboard_ui.render_share_images_button(
+                                        _share_files,
+                                        "WhatsApp",
+                                        f"share_5_pngs_{date_str}",
+                                        height=48,
+                                        primary=True,
+                                    )
+
+                            rows = max(1, (len(_sec_meta) + 1) // 2)
+                            _cells = [st.columns(2) for _ in range(rows)]
+                            for idx, (key, title) in enumerate(_sec_meta):
+                                sec_bytes = _single_section_bufs[key].getvalue()
+                                row_idx, col_idx = divmod(idx, 2)
+                                with _cells[row_idx][col_idx]:
+                                    section_title(title, icon="image")
+                                    st.image(BytesIO(sec_bytes), width="stretch")
+                                    _wa_text = f"Boteco {_selected_outlet} EOD Report \u2013 {date_str} ({title})"
+                                    clipboard_ui.render_image_action_row(
+                                        sec_bytes,
+                                        f"boteco_{key}_{date_str}.png",
+                                        f"action_row_{key}_{date_str}",
+                                        share_text=_wa_text,
+                                        fallback_url=f"https://wa.me/?text={quote_plus(_wa_text)}",
+                                    )
+                    return
+
+            with classed_container("tab-report-mobile-secondary", "mobile-layout-secondary"):
+                with st.expander("Individual PNG sections", expanded=True):
+                    info_banner(
+                        "Section-level exports",
+                        tone="info",
+                        icon="dashboard",
+                    )
+                    _sec_meta = [
+                        ("sales_summary", "Sales summary"),
+                        ("category", "Category sales"),
+                        ("service", "Service sales"),
+                    ]
+                    _sec_meta.extend(_footfall_sections())
+
+                    # Combined share button for first 5 PNG sections
+                    _first_five = _sec_meta[:5]
+                    if _first_five:
+                        _share_files = [
+                            (f"boteco_{key}_{date_str}.png", section_bufs[key].getvalue())
+                            for key, _ in _first_five
+                        ]
+                        with classed_container(
+                            "tab-report-mobile-primary-action",
+                            "mobile-layout-primary-action",
+                        ):
                             clipboard_ui.render_share_images_button(
                                 _share_files,
                                 "WhatsApp",
@@ -463,71 +529,25 @@ def render(ctx: TabContext) -> None:
                                 height=48,
                                 primary=True,
                             )
-    
-                        rows = max(1, (len(_sec_meta) + 1) // 2)
-                        _cells = [st.columns(2) for _ in range(rows)]
-                        for idx, (key, title) in enumerate(_sec_meta):
-                            sec_bytes = _single_section_bufs[key].getvalue()
-                            row_idx, col_idx = divmod(idx, 2)
-                            with _cells[row_idx][col_idx]:
-                                section_title(title, icon="image")
-                                st.image(BytesIO(sec_bytes), width="stretch")
-                                _wa_text = f"Boteco {_selected_outlet} EOD Report \u2013 {date_str} ({title})"
-                                clipboard_ui.render_image_action_row(
-                                    sec_bytes,
-                                    f"boteco_{key}_{date_str}.png",
-                                    f"action_row_{key}_{date_str}",
-                                    share_text=_wa_text,
-                                    fallback_url=f"https://wa.me/?text={quote_plus(_wa_text)}",
-                                )
-                    return
-    
-            with st.expander("Individual PNG sections", expanded=True):
-                info_banner(
-                    "Section-level exports",
-                    tone="info",
-                    icon="dashboard",
-                )
-                _sec_meta = [
-                    ("sales_summary", "Sales summary"),
-                    ("category", "Category sales"),
-                    ("service", "Service sales"),
-                ]
-                _sec_meta.extend(_footfall_sections())
-    
-                # Combined share button for first 5 PNG sections
-                _first_five = _sec_meta[:5]
-                if _first_five:
-                    _share_files = [
-                        (f"boteco_{key}_{date_str}.png", section_bufs[key].getvalue())
-                        for key, _ in _first_five
-                    ]
-                    clipboard_ui.render_share_images_button(
-                        _share_files,
-                        "WhatsApp",
-                        f"share_5_pngs_{date_str}",
-                        height=48,
-                        primary=True,
-                    )
-    
-                rows = max(1, (len(_sec_meta) + 1) // 2)
-                _cells = [st.columns(2) for _ in range(rows)]
-                for idx, (key, title) in enumerate(_sec_meta):
-                    sec_bytes = section_bufs[key].getvalue()
-                    row_idx, col_idx = divmod(idx, 2)
-                    with _cells[row_idx][col_idx]:
-                        section_title(title, icon="image")
-                        st.image(BytesIO(sec_bytes), width="stretch")
-                        _wa_text = (
-                            f"Boteco Bangalore EOD Report \u2013 {date_str} ({title})"
-                        )
-                        clipboard_ui.render_image_action_row(
-                            sec_bytes,
-                            f"boteco_{key}_{date_str}.png",
-                            f"action_row_{key}_{date_str}",
-                            share_text=_wa_text,
-                            fallback_url=f"https://wa.me/?text={quote_plus(_wa_text)}",
-                        )
+
+                    rows = max(1, (len(_sec_meta) + 1) // 2)
+                    _cells = [st.columns(2) for _ in range(rows)]
+                    for idx, (key, title) in enumerate(_sec_meta):
+                        sec_bytes = section_bufs[key].getvalue()
+                        row_idx, col_idx = divmod(idx, 2)
+                        with _cells[row_idx][col_idx]:
+                            section_title(title, icon="image")
+                            st.image(BytesIO(sec_bytes), width="stretch")
+                            _wa_text = (
+                                f"Boteco Bangalore EOD Report \u2013 {date_str} ({title})"
+                            )
+                            clipboard_ui.render_image_action_row(
+                                sec_bytes,
+                                f"boteco_{key}_{date_str}.png",
+                                f"action_row_{key}_{date_str}",
+                                share_text=_wa_text,
+                                fallback_url=f"https://wa.me/?text={quote_plus(_wa_text)}",
+                            )
         else:
             empty_state(
                 message="No data for this date",

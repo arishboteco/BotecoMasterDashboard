@@ -21,6 +21,7 @@ import tabs.report_tab as report_tab
 from auth import is_admin
 from tabs import TabContext
 from components import (
+    classed_container,
     info_banner,
     page_header,
     page_shell,
@@ -63,37 +64,43 @@ def render(ctx: TabContext) -> None:
         )
 
     with shell.filters:
-        with st.expander("How it works", expanded=False, key="how_it_works_expander"):
-            st.markdown(
-                "**Just drop all your Petpooja downloads at once.** The system will:\n\n"
-                "1. **Auto-detect** each file type from its content (not filename)\n"
-                "2. **Auto-route** data to the correct outlet using the Restaurant column\n"
-                "3. **Skip** redundant files (Group Wise, All Restaurant, Comparison)\n"
-                "4. **Merge** data for the same date from multiple files\n\n"
-                "Saving for the same **outlet + date** overwrites that day's data."
+        with classed_container(
+            "tab-upload-mobile-filters",
+            "mobile-layout-stack",
+            "mobile-layout-filters",
+            "mobile-layout-secondary",
+        ):
+            with st.expander("How it works", expanded=False, key="how_it_works_expander"):
+                st.markdown(
+                    "**Just drop all your Petpooja downloads at once.** The system will:\n\n"
+                    "1. **Auto-detect** each file type from its content (not filename)\n"
+                    "2. **Auto-route** data to the correct outlet using the Restaurant column\n"
+                    "3. **Skip** redundant files (Group Wise, All Restaurant, Comparison)\n"
+                    "4. **Merge** data for the same date from multiple files\n\n"
+                    "Saving for the same **outlet + date** overwrites that day's data."
+                )
+
+            section_title(
+                "Step 1 · Drop source files",
+                "Include any Petpooja exports. Dynamic Report CSV is preferred for tax accuracy.",
+                icon="upload_file",
+            )
+            uploaded_files = st.file_uploader(
+                "Petpooja exports (XLSX, XLS, CSV — any report type)",
+                type=["xlsx", "xls", "csv"],
+                accept_multiple_files=True,
+                help=(
+                    "Drop Item Reports, Dynamic Reports, Timing Reports, Order Summaries, "
+                    "Flash Reports — anything from Petpooja. The system figures out what each file is."
+                ),
+                key="smart_upload_files",
+                label_visibility="collapsed",
             )
 
-        section_title(
-            "Step 1 · Drop source files",
-            "Include any Petpooja exports. Dynamic Report CSV is preferred for tax accuracy.",
-            icon="upload_file",
-        )
-        uploaded_files = st.file_uploader(
-            "Petpooja exports (XLSX, XLS, CSV — any report type)",
-            type=["xlsx", "xls", "csv"],
-            accept_multiple_files=True,
-            help=(
-                "Drop Item Reports, Dynamic Reports, Timing Reports, Order Summaries, "
-                "Flash Reports — anything from Petpooja. The system figures out what each file is."
-            ),
-            key="smart_upload_files",
-            label_visibility="collapsed",
-        )
-
-        workflow_steps(
-            ["Drop files", "Review detection", "Confirm and import"],
-            active_index=0 if not uploaded_files else 1,
-        )
+            workflow_steps(
+                ["Drop files", "Review detection", "Confirm and import"],
+                active_index=0 if not uploaded_files else 1,
+            )
 
     with shell.content:
         if not uploaded_files:
@@ -206,11 +213,15 @@ def render(ctx: TabContext) -> None:
     
                 import_blocked = must_confirm_replace and not confirm_replace
     
-                import_clicked, _ = primary_action_bar(
-                    f"Import {importable_count} file(s) \u2192 save to database",
-                    primary_key="smart_import_btn",
-                    primary_disabled=import_blocked,
-                )
+                with classed_container(
+                    "tab-upload-mobile-primary-action",
+                    "mobile-layout-primary-action",
+                ):
+                    import_clicked, _ = primary_action_bar(
+                        f"Import {importable_count} file(s) \u2192 save to database",
+                        primary_key="smart_import_btn",
+                        primary_disabled=import_blocked,
+                    )
                 if import_clicked:
                     if must_confirm_replace and not confirm_replace:
                         st.error("Confirm replacement above to import.")
