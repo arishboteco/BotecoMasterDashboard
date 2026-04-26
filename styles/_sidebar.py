@@ -8,11 +8,11 @@ SIDEBAR = r"""    /* ── Sidebar ──────────────�
 
     /* Logo area */
     [data-testid="stSidebar"] img {
-        background-color: var(--surface-elevated);
-        border: 1px solid var(--sidebar-border);
-        border-radius: var(--radius-md);
-        padding: 8px;
+        border: 0;
+        border-radius: 0;
+        padding: 0;
         display: block;
+        margin: 0 auto 0.5rem auto;
     }
 
     /* Sidebar text */
@@ -58,6 +58,15 @@ SIDEBAR = r"""    /* ── Sidebar ──────────────�
         background: var(--btn-sidebar-hover-bg) !important;
         color: var(--btn-sidebar-hover-fg) !important;
         border-color: var(--btn-sidebar-hover-border) !important;
+    }
+    [data-testid="stSidebar"] .stButton > button:focus,
+    [data-testid="stSidebar"] .stButton > button:focus-visible,
+    [data-testid="stSidebar"] .stButton > button:active {
+        color: var(--btn-sidebar-fg) !important;
+    }
+    [data-testid="stSidebar"] .stButton > button::selection {
+        color: var(--btn-sidebar-fg) !important;
+        background: rgba(59, 130, 246, 0.2);
     }
 """
 
