@@ -86,20 +86,24 @@ ruff format <path>                             # format only touched files (do n
 ## Architecture
 
 ### Key Modules
-| File | Purpose |
+| File/Folder | Purpose |
 |------|---------|
-| `app.py` | Main Streamlit app (4 tabs: Upload, Report, Analytics, Settings) |
-| `database.py` | SQLite database layer & schema |
-| `pos_parser.py` | Parses Item Report XLSX files (line-item sales data) |
-| `timing_parser.py` | Parses Restaurant Timing Report XLSX |
-| `smart_upload.py` | Orchestrates multi-file upload pipeline |
-| `file_detector.py` | Auto-detects Petpooja export file types by content |
-| `sheet_reports.py` | PNG report image generation + WhatsApp text formatter |
-| `scope.py` | Multi-location report aggregation |
-| `auth.py` | Authentication & session management |
-| `utils.py` | Helper functions (formatting, dates, growth calc) |
-| `config.py` | Configuration constants & env resolution |
-| `ui_theme.py` | Shared UI constants and Plotly theme defaults |
+| `app.py` | Main Streamlit app shell: bootstrap + auth gate + tab rendering |
+| `tabs/` | UI tabs (`upload_tab.py`, `report_tab.py`, `analytics_tab.py`, `settings_tab.py`) |
+| `services/upload_service.py` | Upload preview/import wrapper with overlap checks and options |
+| `services/report_service.py` | Cached report data loaders (bundle, MTD maps, footfall rows) |
+| `services/cache_invalidation.py` | Central post-import cache invalidation across read/report/analytics layers |
+| `smart_upload.py` | Multi-file ingest orchestrator (detect, parse, merge, save) |
+| `uploads/` | Upload domain package: models, routing, merge logic, dedicated parsers |
+| `database.py` | DB facade + bootstrap/migrations + SQLite/Supabase mode switching |
+| `database_reads.py` / `database_writes.py` / `database_auth.py` / `database_analytics.py` | Split DB responsibilities by concern |
+| `repositories/` | Protocol-based repository interfaces and default DB-backed implementations |
+| `scope.py` | Multi-location aggregation for report/analytics consumers |
+| `sheet_reports.py` | PNG report generation and WhatsApp text formatter |
+| `auth.py` / `auth_permissions.py` | Session/cookie authentication and role/location permission checks |
+| `core/` | Shared domain models and date utilities |
+| `components/` + `styles/` | Reusable UI components and theme/style system |
+| `config.py`, `utils.py`, `ui_theme.py` | Configuration, formatting/math helpers, Plotly/UI theme defaults |
 
 ### Data Flow
 Files uploaded → `file_detector.py` classifies → `smart_upload.py` orchestrates parsing → `pos_parser.py`/`timing_parser.py` extract data → `database.py` stores → `scope.py` aggregates → `sheet_reports.py` generates output.
@@ -110,9 +114,11 @@ Files uploaded → `file_detector.py` classifies → `smart_upload.py` orchestra
 - Multi-tenancy: locations (outlets) have separate data; admin users view all, managers scoped to their location.
 
 ## Testing
-- Framework: pytest (default config, no `pytest.ini` or `conftest.py`).
-- Tests in `tests/` directory, class-based grouping (e.g., `class TestF:`).
-- Currently only `tests/test_pos_parser.py` exists — tests pure helper functions from `pos_parser.py`.
+- Framework: pytest (`pytest.ini` and `tests/conftest.py` are present).
+- Tests in `tests/` cover parser, upload pipeline, services, repositories, cache behavior,
+  analytics logic, theming/style guardrails, and database modules.
+- Example focused suites: `tests/test_upload_service.py`, `tests/test_sales_repository.py`,
+  `tests/test_cache_invalidation.py`, `tests/test_database_phase4_modules.py`.
 
 ## Context7 Usage
 - Always use Context7 when library/API documentation, code generation, setup, or configuration steps are needed — do not wait for explicit requests.
