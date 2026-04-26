@@ -1,7 +1,7 @@
 """Tests for smart_upload save metadata behavior."""
 
-from smart_upload import DayResult, FileResult, SmartUploadResult
 import smart_upload
+from smart_upload import DayResult, FileResult, SmartUploadResult
 
 
 class TestPrimaryFileType:
@@ -92,9 +92,7 @@ class TestProcessSmartUpload:
             smart_upload.file_detector,
             "detect_and_describe",
             lambda content, fname: (
-                "item_order_details"
-                if fname.endswith(".xlsx")
-                else "order_summary_csv",
+                "item_order_details" if fname.endswith(".xlsx") else "order_summary_csv",
                 "label",
             ),
         )
@@ -149,9 +147,7 @@ class TestProcessSmartUpload:
             "merge_upload_fragments",
             lambda frags: dict(frags[0]),
         )
-        monkeypatch.setattr(
-            smart_upload.pos_parser, "validate_data", lambda data: (True, [], [])
-        )
+        monkeypatch.setattr(smart_upload.pos_parser, "validate_data", lambda data: (True, [], []))
         monkeypatch.setattr(
             smart_upload.database,
             "get_all_locations",
@@ -170,10 +166,9 @@ class TestProcessSmartUpload:
 
 class TestParseOrderSummaryCsv:
     def test_accepts_successorder_status_rows(self):
-        content = (
-            "date,my_amount,status,payment_type\n"
-            "2026-04-01,100,SuccessOrder,GPay\n"
-        ).encode("utf-8")
+        content = ("date,my_amount,status,payment_type\n2026-04-01,100,SuccessOrder,GPay\n").encode(
+            "utf-8"
+        )
 
         parsed, notes = smart_upload._parse_order_summary_csv(content, "orders.csv")
 
@@ -186,8 +181,7 @@ class TestParseOrderSummaryCsv:
 
     def test_accepts_success_order_status_with_space(self):
         content = (
-            "date,my_amount,status,payment_type\n"
-            "2026-04-01,120,Success Order,Card\n"
+            "date,my_amount,status,payment_type\n2026-04-01,120,Success Order,Card\n"
         ).encode("utf-8")
 
         parsed, notes = smart_upload._parse_order_summary_csv(content, "orders.csv")
@@ -200,10 +194,9 @@ class TestParseOrderSummaryCsv:
         assert parsed[0]["card_sales"] == 120.0
 
     def test_accepts_success_order_status_with_hyphen_and_case(self):
-        content = (
-            "date,my_amount,status,payment_type\n"
-            "2026-04-01,90,SUCCESS-ORDER,Cash\n"
-        ).encode("utf-8")
+        content = ("date,my_amount,status,payment_type\n2026-04-01,90,SUCCESS-ORDER,Cash\n").encode(
+            "utf-8"
+        )
 
         parsed, notes = smart_upload._parse_order_summary_csv(content, "orders.csv")
 
@@ -216,11 +209,190 @@ class TestParseOrderSummaryCsv:
 
     def test_rejects_complimentary_status_even_if_success_like(self):
         content = (
-            "date,my_amount,status,payment_type\n"
-            "2026-04-01,90,Success Complimentary,Cash\n"
+            "date,my_amount,status,payment_type\n2026-04-01,90,Success Complimentary,Cash\n"
         ).encode("utf-8")
 
         parsed, notes = smart_upload._parse_order_summary_csv(content, "orders.csv")
 
         assert notes == []
         assert parsed is None
+
+
+class TestRoutingAndMergeExtraction:
+    def test_known_restaurant_maps_to_correct_location(self, monkeypatch):
+        monkeypatch.setattr(
+            smart_upload.file_detector, "detect_and_describe", lambda c, f: ("dynamic_report", "d")
+        )
+        monkeypatch.setattr(smart_upload.file_detector, "is_importable", lambda k: True)
+        monkeypatch.setattr(smart_upload.file_detector, "is_skippable", lambda k: False)
+        monkeypatch.setattr(
+            smart_upload.dynamic_report_parser,
+            "parse_dynamic_report",
+            lambda c, f: (
+                [
+                    {
+                        "date": "2026-04-01",
+                        "restaurant": "Boteco",
+                        "file_type": "dynamic_report",
+                        "net_total": 100.0,
+                        "gross_total": 100.0,
+                        "covers": 1,
+                    }
+                ],
+                [],
+            ),
+        )
+        monkeypatch.setattr(
+            smart_upload.database,
+            "get_all_locations",
+            lambda: [{"id": 11, "name": "Boteco - Indiqube"}],
+        )
+        monkeypatch.setattr(
+            smart_upload.pos_parser,
+            "group_fragments_by_date",
+            lambda fragments: {"2026-04-01": fragments},
+        )
+        monkeypatch.setattr(
+            smart_upload.pos_parser, "merge_upload_fragments", lambda frags: dict(frags[0])
+        )
+        monkeypatch.setattr(smart_upload.pos_parser, "validate_data", lambda data: (True, [], []))
+
+        result = smart_upload.process_smart_upload([("dyn.csv", b"x")], location_id=99)
+
+        assert 11 in result.location_results
+        assert [d.date for d in result.location_results[11]] == ["2026-04-01"]
+
+    def test_unknown_restaurant_is_skipped_with_note(self, monkeypatch):
+        monkeypatch.setattr(
+            smart_upload.file_detector, "detect_and_describe", lambda c, f: ("dynamic_report", "d")
+        )
+        monkeypatch.setattr(smart_upload.file_detector, "is_importable", lambda k: True)
+        monkeypatch.setattr(smart_upload.file_detector, "is_skippable", lambda k: False)
+        monkeypatch.setattr(
+            smart_upload.dynamic_report_parser,
+            "parse_dynamic_report",
+            lambda c, f: (
+                [
+                    {
+                        "date": "2026-04-01",
+                        "restaurant": "Unknown Outlet",
+                        "file_type": "dynamic_report",
+                    }
+                ],
+                [],
+            ),
+        )
+        monkeypatch.setattr(
+            smart_upload.database,
+            "get_all_locations",
+            lambda: [{"id": 11, "name": "Boteco - Indiqube"}],
+        )
+
+        result = smart_upload.process_smart_upload([("dyn.csv", b"x")], location_id=11)
+
+        assert result.location_results == {}
+        assert any("Unknown restaurant 'Unknown Outlet'" in n for n in result.global_notes)
+
+    def test_untagged_fragments_route_to_fallback_location(self, monkeypatch):
+        monkeypatch.setattr(
+            smart_upload.file_detector,
+            "detect_and_describe",
+            lambda c, f: ("item_order_details", "item"),
+        )
+        monkeypatch.setattr(smart_upload.file_detector, "is_importable", lambda k: True)
+        monkeypatch.setattr(smart_upload.file_detector, "is_skippable", lambda k: False)
+        monkeypatch.setattr(
+            smart_upload.pos_parser,
+            "parse_item_order_details",
+            lambda c, f: [
+                {
+                    "date": "2026-04-02",
+                    "file_type": "item_order_details",
+                    "net_total": 50.0,
+                    "gross_total": 50.0,
+                    "covers": 1,
+                }
+            ],
+        )
+        monkeypatch.setattr(
+            smart_upload.database,
+            "get_all_locations",
+            lambda: [{"id": 11, "name": "Boteco - Indiqube"}],
+        )
+        monkeypatch.setattr(
+            smart_upload.pos_parser,
+            "group_fragments_by_date",
+            lambda fragments: {"2026-04-02": fragments},
+        )
+        monkeypatch.setattr(
+            smart_upload.pos_parser, "merge_upload_fragments", lambda frags: dict(frags[0])
+        )
+        monkeypatch.setattr(smart_upload.pos_parser, "validate_data", lambda data: (True, [], []))
+
+        result = smart_upload.process_smart_upload([("item.xlsx", b"x")], location_id=77)
+
+        assert 77 in result.location_results
+        assert [d.date for d in result.location_results[77]] == ["2026-04-02"]
+
+    def test_dynamic_report_beats_item_report_on_same_date(self, monkeypatch):
+        monkeypatch.setattr(
+            smart_upload.file_detector,
+            "detect_and_describe",
+            lambda c, f: ("dynamic_report", "d")
+            if f.endswith(".csv")
+            else ("item_order_details", "i"),
+        )
+        monkeypatch.setattr(smart_upload.file_detector, "is_importable", lambda k: True)
+        monkeypatch.setattr(smart_upload.file_detector, "is_skippable", lambda k: False)
+        monkeypatch.setattr(
+            smart_upload.dynamic_report_parser,
+            "parse_dynamic_report",
+            lambda c, f: (
+                [
+                    {
+                        "date": "2026-04-03",
+                        "restaurant": "Boteco",
+                        "file_type": "dynamic_report",
+                        "net_total": 200.0,
+                        "gross_total": 200.0,
+                        "covers": 2,
+                    }
+                ],
+                [],
+            ),
+        )
+        monkeypatch.setattr(
+            smart_upload.pos_parser,
+            "parse_item_order_details",
+            lambda c, f: [
+                {
+                    "date": "2026-04-03",
+                    "file_type": "item_order_details",
+                    "net_total": 10.0,
+                    "gross_total": 10.0,
+                    "covers": 1,
+                }
+            ],
+        )
+        monkeypatch.setattr(
+            smart_upload.database,
+            "get_all_locations",
+            lambda: [{"id": 11, "name": "Boteco - Indiqube"}],
+        )
+        monkeypatch.setattr(
+            smart_upload.pos_parser,
+            "group_fragments_by_date",
+            lambda fragments: {"2026-04-03": fragments},
+        )
+        monkeypatch.setattr(
+            smart_upload.pos_parser, "merge_upload_fragments", lambda frags: dict(frags[0])
+        )
+        monkeypatch.setattr(smart_upload.pos_parser, "validate_data", lambda data: (True, [], []))
+
+        result = smart_upload.process_smart_upload(
+            [("dyn.csv", b"x"), ("item.xlsx", b"x")], location_id=11
+        )
+
+        day = result.location_results[11][0]
+        assert day.source_kinds == ["dynamic_report"]
+        assert day.merged["file_type"] == "dynamic_report"
