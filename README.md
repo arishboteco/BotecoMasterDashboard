@@ -77,52 +77,63 @@ On startup, `app.py` calls `database.bootstrap()`, which initializes schema, run
 
 ## Current Architecture Map
 
-Database responsibilities are split by module:
+The refactor split responsibilities into feature-oriented layers:
 
-- `database.py`
-  - Facade / compatibility layer
-  - Connection management, bootstrap, Supabase client creation, shared migrations
-  - Delegates read/write/auth/analytics calls to specialized modules
+- **App shell + tabs**
+  - `app.py` boots DB/auth/theme, then renders tab modules in `tabs/`.
+  - `tabs/upload_tab.py`, `tabs/report_tab.py`, `tabs/analytics_tab.py`, `tabs/settings_tab.py`
+    own tab UI composition.
 
-- `database_reads.py`
-  - Query/read-oriented operations (summaries, locations, exports, settings reads)
+- **Service layer (`services/`)**
+  - `services/upload_service.py`: upload preview + import orchestration wrapper.
+  - `services/report_service.py`: cached report bundle + MTD/footfall loaders.
+  - `services/cache_invalidation.py`: coordinated post-import invalidation.
+  - `services/location_resolver.py`: location alias/name resolution helpers.
 
-- `database_writes.py`
-  - Mutation/upsert operations (daily summaries, uploads, location updates, cleanup)
+- **Upload pipeline (`uploads/` + parsers)**
+  - `smart_upload.py`: top-level multi-file classification/merge/save orchestration.
+  - `uploads/router.py`: restaurant-tag routing to location IDs.
+  - `uploads/merge.py`: per-date fragment merge rules.
+  - `uploads/parsers/`: focused parsers (`order_summary.py`, `flash_report.py`).
+  - Legacy/specialized parsers remain at root (`dynamic_report_parser.py`, `pos_parser.py`, `timing_parser.py`).
 
-- `database_auth.py`
-  - User auth lifecycle (create/verify users, sessions, failed login lockouts)
+- **Data layer**
+  - `database.py`: primary DB facade, bootstrap/migrations, SQLite/Supabase switching.
+  - `database_reads.py`, `database_writes.py`, `database_auth.py`, `database_analytics.py`:
+    split query/mutation/auth/analytics modules.
+  - `repositories/`: protocol-first repository interfaces (`sales_repository.py`,
+    `category_repository.py`) backed by database facade functions.
+  - `db/`: table-name and category-row constants.
 
-- `database_analytics.py`
-  - Aggregate/reporting queries (top items, category/service trends, date-range analytics)
+- **Domain + presentation support**
+  - `core/`: shared models/date helpers.
+  - `components/` + `styles/`: reusable UI building blocks and style tokens.
+  - `scope.py` + `sheet_reports.py`: report aggregation + PNG/WhatsApp formatting.
+  - `auth.py` + `auth_permissions.py`: login/session restoration and scope guards.
 
 ## File Structure
 ```text
 BotecoMasterDashboard/
 ├── app.py
 ├── auth.py
-├── boteco_logger.py
+├── auth_permissions.py
+├── cache_manager.py
 ├── config.py
+├── core/
+├── db/
 ├── database.py
 ├── database_auth.py
 ├── database_reads.py
 ├── database_writes.py
 ├── database_analytics.py
-├── file_detector.py
-├── pos_parser.py
-├── scope.py
-├── sheet_reports.py
-├── smart_upload.py
-├── timing_parser.py
-├── ui_theme.py
-├── utils.py
+├── repositories/
+├── services/
+├── uploads/
 ├── tabs/
 ├── components/
 ├── styles/
 ├── tests/
-├── scripts/
-└── data/
-    └── boteco.db
+└── docs/
 ```
 
 ## Testing
