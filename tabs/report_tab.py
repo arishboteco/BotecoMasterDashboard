@@ -20,7 +20,6 @@ from components import (
     divider,
     filter_strip,
     info_banner,
-    page_header,
     page_shell,
     section_title,
 )
@@ -40,15 +39,6 @@ def clear_report_cache() -> None:
 def render(ctx: TabContext) -> None:
     """Render the Daily Report tab UI."""
     shell = page_shell()
-    with shell.hero:
-        page_header(
-            title="Daily Sales Report",
-            subtitle=(
-                "Track day-level sales health, compare with same weekday last week, and "
-                "share report-ready PNG sections."
-            ),
-            context=ctx.report_display_name,
-        )
     # Date selector with Prev/Next navigation
     if "report_date" not in st.session_state:
         most_recent_date = database.get_most_recent_date_with_data(ctx.report_loc_ids)
