@@ -12,7 +12,9 @@ CONTRAST_FIX = r"""    /* ── Contrast safety layer (scoped selectors only) �
     .stDownloadButton > button p,
     .stDownloadButton > button span,
     .stFormSubmitButton > button p,
-    .stFormSubmitButton > button span {
+    .stFormSubmitButton > button span,
+    [data-testid="stSidebar"] .stButton > button p,
+    [data-testid="stSidebar"] .stButton > button span {
         color: inherit !important;
     }
 
