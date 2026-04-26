@@ -129,7 +129,6 @@ def show_login_form():
     # Centered login card with logo and branding
     col_l, col_c, col_r = st.columns([1, 2, 1])
     with col_c:
-        st.markdown('<div class="login-card">', unsafe_allow_html=True)
         st.image("logo.png", width=160)
         st.markdown(
             '<div class="login-title">Boteco Dashboard</div>'
@@ -217,7 +216,6 @@ def show_login_form():
                 st.warning("Please enter both username and password")
 
         st.markdown("</div>", unsafe_allow_html=True)  # login-form-wrap
-        st.markdown("</div>", unsafe_allow_html=True)  # login-card
 
 
 def show_setup_form():
