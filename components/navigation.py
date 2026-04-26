@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import streamlit as st
 
@@ -11,31 +11,49 @@ def date_nav(
     session_key: str = "report_date",
     label: str = "Select a date",
     help_text: str | None = None,
-) -> datetime:
+) -> date:
     """Render date navigation as a single responsive control row."""
+    picker_key = f"{session_key}_picker"
+
     if session_key not in st.session_state:
         st.session_state[session_key] = datetime.now().date()
+    if picker_key not in st.session_state:
+        st.session_state[picker_key] = st.session_state[session_key]
 
-    selected_date = st.session_state[session_key]
+    def _shift_day(amount: int) -> None:
+        st.session_state[session_key] = st.session_state[session_key] + timedelta(days=amount)
+        st.session_state[picker_key] = st.session_state[session_key]
+
+    def _sync_from_picker() -> None:
+        st.session_state[session_key] = st.session_state[picker_key]
+
     prev_col, date_col, next_col = st.columns([1.1, 2.4, 1.1])
     with prev_col:
-        if st.button("\u2190 Prev", key=f"{session_key}_prev", width="stretch"):
-            st.session_state[session_key] = selected_date - timedelta(days=1)
+        st.button(
+            "\u2190",
+            key=f"{session_key}_prev",
+            width="stretch",
+            on_click=_shift_day,
+            args=(-1,),
+        )
     with date_col:
-        picked = st.date_input(
+        st.date_input(
             label,
-            value=selected_date,
-            key=f"{session_key}_picker",
+            key=picker_key,
             help=help_text,
             format="YYYY-MM-DD",
             label_visibility="collapsed",
             width="stretch",
+            on_change=_sync_from_picker,
         )
-        if picked != selected_date:
-            st.session_state[session_key] = picked
     with next_col:
-        if st.button("Next \u2192", key=f"{session_key}_next", width="stretch"):
-            st.session_state[session_key] = selected_date + timedelta(days=1)
+        st.button(
+            "\u2192",
+            key=f"{session_key}_next",
+            width="stretch",
+            on_click=_shift_day,
+            args=(1,),
+        )
 
     return st.session_state[session_key]
 
