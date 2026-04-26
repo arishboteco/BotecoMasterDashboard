@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import database
 from boteco_logger import get_logger
+from db.category_rows import CATEGORY_ROW_PREFIX
 from db.table_names import (
     SQLITE_DAILY_SUMMARIES,
     SQLITE_ITEM_SALES,
@@ -30,9 +31,6 @@ LOCATION_ID_TO_RESTAURANT = {
     1: "Boteco",
     2: "Boteco - Bagmane",
 }
-
-# Prefix for synthetic item_sales rows that represent category aggregates (SQLite only).
-_CATEGORY_ROW_PREFIX = "__category_row:"
 
 # PostgREST performs best with modest payload sizes; large CSVs are split across requests.
 _SUPABASE_ROW_CHUNK = 500
@@ -263,7 +261,7 @@ def _save_daily_summary_sqlite(location_id: int, date_str: str, data: Dict[str, 
                 """,
                 (
                     summary_id,
-                    f"{_CATEGORY_ROW_PREFIX}{name}",
+                    f"{CATEGORY_ROW_PREFIX}{name}",
                     name,
                     int(cat.get("qty", 0) or 0),
                     float(cat.get("amount", 0) or 0),

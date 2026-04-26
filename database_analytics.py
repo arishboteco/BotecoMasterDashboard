@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Set
 import streamlit as st
 
 from core.dates import month_bounds
+from db.category_rows import CATEGORY_ROW_PREFIX
 
 
 def _bill_items_success(status: Any) -> bool:
@@ -549,8 +550,6 @@ def get_top_items_for_date_range(
     else:
         if not location_ids:
             return []
-        from database_reads import _CATEGORY_ROW_PREFIX
-
         with database.db_connection() as conn:
             cur = conn.cursor()
             placeholders = ",".join("?" * len(location_ids))
@@ -570,7 +569,7 @@ def get_top_items_for_date_range(
                     *location_ids,
                     start_date,
                     end_date,
-                    f"{_CATEGORY_ROW_PREFIX}%",
+                    f"{CATEGORY_ROW_PREFIX}%",
                     limit,
                 ),
             )
