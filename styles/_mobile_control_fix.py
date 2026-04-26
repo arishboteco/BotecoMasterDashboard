@@ -85,7 +85,7 @@ MOBILE_CONTROL_FIX = r"""    /* ── Mobile/control consistency layer ──�
     }
     .stSelectbox [data-baseweb="select"],
     .stMultiSelect [data-baseweb="select"] {
-        background: #FFFFFF !important;
+        background: var(--surface-elevated) !important;
         border: 1px solid var(--border-medium) !important;
         border-radius: var(--radius-md) !important;
         box-shadow: var(--shadow-sm) !important;
@@ -124,32 +124,66 @@ MOBILE_CONTROL_FIX = r"""    /* ── Mobile/control consistency layer ──�
     [data-baseweb="popover"] > div,
     [data-baseweb="menu"],
     [role="listbox"] {
-        background: #FFFFFF !important;
+        background: var(--select-option-bg) !important;
         color: var(--text) !important;
         border-color: var(--border-subtle) !important;
     }
     [data-baseweb="menu"] li,
     [role="option"],
     [role="option"] * {
-        color: var(--text) !important;
-        background: #FFFFFF !important;
+        color: var(--select-option-fg) !important;
+        background: var(--select-option-bg) !important;
         opacity: 1 !important;
         font-weight: 500 !important;
-        -webkit-text-fill-color: var(--text) !important;
+        -webkit-text-fill-color: var(--select-option-fg) !important;
     }
     [data-baseweb="menu"] li:hover,
-    [role="option"]:hover,
+    [role="option"]:hover {
+        background: var(--select-option-hover-bg) !important;
+        color: var(--select-option-hover-fg) !important;
+        -webkit-text-fill-color: var(--select-option-hover-fg) !important;
+    }
+    [data-baseweb="menu"] li[aria-selected="true"],
     [aria-selected="true"][role="option"] {
-        background: var(--brand-soft) !important;
-        color: var(--brand-dark) !important;
-        -webkit-text-fill-color: var(--brand-dark) !important;
+        background: var(--select-option-selected-bg) !important;
+        color: var(--select-option-selected-fg) !important;
+        -webkit-text-fill-color: var(--select-option-selected-fg) !important;
+    }
+    [data-baseweb="menu"] li[aria-disabled="true"],
+    [aria-disabled="true"][role="option"] {
+        background: var(--select-option-disabled-bg) !important;
+        color: var(--select-option-disabled-fg) !important;
+        -webkit-text-fill-color: var(--select-option-disabled-fg) !important;
+    }
+
+    /* Native select fallback controls */
+    .stSelectbox select,
+    select {
+        background-color: var(--surface-elevated) !important;
+        color: var(--text) !important;
+        border: 1px solid var(--border-medium) !important;
+    }
+    .stSelectbox select option,
+    select option {
+        background-color: var(--select-option-bg) !important;
+        color: var(--select-option-fg) !important;
+    }
+    .stSelectbox select option:checked,
+    select option:checked {
+        background-color: var(--select-option-selected-bg) !important;
+        color: var(--select-option-selected-fg) !important;
+    }
+    .stSelectbox select option:disabled,
+    select option:disabled {
+        background-color: var(--select-option-disabled-bg) !important;
+        color: var(--select-option-disabled-fg) !important;
     }
 
     /* Sidebar selectbox had dark background with almost invisible text in the
        screenshot. Make it match the light sidebar. */
     [data-testid="stSidebar"] .stSelectbox [data-baseweb="select"],
     [data-testid="stSidebar"] .stMultiSelect [data-baseweb="select"] {
-        background: #FFFFFF !important;
+        background: var(--surface-elevated) !important;
         border: 1px solid var(--border-medium) !important;
         box-shadow: var(--shadow-sm) !important;
     }

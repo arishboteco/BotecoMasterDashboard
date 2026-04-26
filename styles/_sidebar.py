@@ -62,7 +62,14 @@ SIDEBAR = r"""    /* ── Sidebar ──────────────�
     [data-testid="stSidebar"] .stButton > button:focus,
     [data-testid="stSidebar"] .stButton > button:focus-visible,
     [data-testid="stSidebar"] .stButton > button:active {
+        background: var(--btn-sidebar-active-bg) !important;
         color: var(--btn-sidebar-fg) !important;
+        border-color: var(--btn-sidebar-active-border) !important;
+    }
+    [data-testid="stSidebar"] .stButton > button:disabled {
+        background: var(--btn-sidebar-disabled-bg) !important;
+        color: var(--btn-sidebar-disabled-fg) !important;
+        border-color: var(--btn-sidebar-disabled-border) !important;
     }
     [data-testid="stSidebar"] .stButton > button::selection {
         color: var(--btn-sidebar-fg) !important;
