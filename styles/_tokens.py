@@ -8,6 +8,25 @@ Public exports:
 from __future__ import annotations
 
 # ── Canonical semantic tokens (light) ─────────────────────────────────────────
+COLOR_BG = "#F7FAFC"
+COLOR_SURFACE = "#FFFFFF"
+COLOR_SURFACE_ELEVATED = "#FFFFFF"
+COLOR_TEXT_PRIMARY = "#1E293B"
+COLOR_TEXT_SECONDARY = "#475569"
+COLOR_TEXT_MUTED = "#64748B"
+COLOR_BORDER = "#E2E8F0"
+COLOR_PRIMARY = "#005AAB"
+COLOR_PRIMARY_HOVER = "#004080"
+COLOR_PRIMARY_SOFT = "#EBF4FF"
+COLOR_SUCCESS_BG = "#F0FDF4"
+COLOR_SUCCESS_TEXT = "#15803D"
+COLOR_WARNING_BG = "#FFFBEB"
+COLOR_WARNING_TEXT = "#B45309"
+COLOR_ERROR_BG = "#FEF2F2"
+COLOR_ERROR_TEXT = "#B91C1C"
+COLOR_INFO_BG = "#EFF6FF"
+COLOR_INFO_TEXT = "#1D4ED8"
+
 PRIMARY = "#005AAB"
 PRIMARY_DARK = "#004080"
 PRIMARY_LIGHT = "#2D7AC9"
@@ -30,6 +49,25 @@ SUCCESS = "#15803D"
 ERROR = "#B91C1C"
 
 # ── Canonical semantic tokens (dark) ──────────────────────────────────────────
+DARK_COLOR_BG = "#0F172A"
+DARK_COLOR_SURFACE = "#1E293B"
+DARK_COLOR_SURFACE_ELEVATED = "#334155"
+DARK_COLOR_TEXT_PRIMARY = "#F1F5F9"
+DARK_COLOR_TEXT_SECONDARY = "#CBD5E1"
+DARK_COLOR_TEXT_MUTED = "#94A3B8"
+DARK_COLOR_BORDER = "#334155"
+DARK_COLOR_PRIMARY = "#2D7AC9"
+DARK_COLOR_PRIMARY_HOVER = "#1F5FA8"
+DARK_COLOR_PRIMARY_SOFT = "#1E3A5F"
+DARK_COLOR_SUCCESS_BG = "#052E16"
+DARK_COLOR_SUCCESS_TEXT = "#86EFAC"
+DARK_COLOR_WARNING_BG = "#451A03"
+DARK_COLOR_WARNING_TEXT = "#FCD34D"
+DARK_COLOR_ERROR_BG = "#450A0A"
+DARK_COLOR_ERROR_TEXT = "#FCA5A5"
+DARK_COLOR_INFO_BG = "#1E1B4B"
+DARK_COLOR_INFO_TEXT = "#A5B4FC"
+
 DARK_PRIMARY = "#2D7AC9"
 DARK_PRIMARY_DARK = "#1F5FA8"
 DARK_PRIMARY_LIGHT = "#5A97D6"
@@ -72,6 +110,25 @@ TOKEN_SYSTEM = f"""
     /* ── Light mode tokens (default) ─────────────────────────── */
     :root {{
         /* Canonical semantic aliases */
+        --COLOR_BG: {COLOR_BG};
+        --COLOR_SURFACE: {COLOR_SURFACE};
+        --COLOR_SURFACE_ELEVATED: {COLOR_SURFACE_ELEVATED};
+        --COLOR_TEXT_PRIMARY: {COLOR_TEXT_PRIMARY};
+        --COLOR_TEXT_SECONDARY: {COLOR_TEXT_SECONDARY};
+        --COLOR_TEXT_MUTED: {COLOR_TEXT_MUTED};
+        --COLOR_BORDER: {COLOR_BORDER};
+        --COLOR_PRIMARY: {COLOR_PRIMARY};
+        --COLOR_PRIMARY_HOVER: {COLOR_PRIMARY_HOVER};
+        --COLOR_PRIMARY_SOFT: {COLOR_PRIMARY_SOFT};
+        --COLOR_SUCCESS_BG: {COLOR_SUCCESS_BG};
+        --COLOR_SUCCESS_TEXT: {COLOR_SUCCESS_TEXT};
+        --COLOR_WARNING_BG: {COLOR_WARNING_BG};
+        --COLOR_WARNING_TEXT: {COLOR_WARNING_TEXT};
+        --COLOR_ERROR_BG: {COLOR_ERROR_BG};
+        --COLOR_ERROR_TEXT: {COLOR_ERROR_TEXT};
+        --COLOR_INFO_BG: {COLOR_INFO_BG};
+        --COLOR_INFO_TEXT: {COLOR_INFO_TEXT};
+
         --primary: {PRIMARY};
         --surface: {SURFACE};
         --text: {TEXT};
@@ -114,6 +171,9 @@ TOKEN_SYSTEM = f"""
         --success-bg: #F0FDF4;
         --success-text: var(--success);
         --success-border: #BBF7D0;
+        --warning-bg: #FFFBEB;
+        --warning-text: #B45309;
+        --warning-border: #FDE68A;
         --error-bg: #FEF2F2;
         --error-text: var(--error);
         --error-border: #FECACA;
@@ -187,6 +247,25 @@ TOKEN_SYSTEM = f"""
     }}
 
     :root[data-theme="dark"] {{
+        --COLOR_BG: {DARK_COLOR_BG};
+        --COLOR_SURFACE: {DARK_COLOR_SURFACE};
+        --COLOR_SURFACE_ELEVATED: {DARK_COLOR_SURFACE_ELEVATED};
+        --COLOR_TEXT_PRIMARY: {DARK_COLOR_TEXT_PRIMARY};
+        --COLOR_TEXT_SECONDARY: {DARK_COLOR_TEXT_SECONDARY};
+        --COLOR_TEXT_MUTED: {DARK_COLOR_TEXT_MUTED};
+        --COLOR_BORDER: {DARK_COLOR_BORDER};
+        --COLOR_PRIMARY: {DARK_COLOR_PRIMARY};
+        --COLOR_PRIMARY_HOVER: {DARK_COLOR_PRIMARY_HOVER};
+        --COLOR_PRIMARY_SOFT: {DARK_COLOR_PRIMARY_SOFT};
+        --COLOR_SUCCESS_BG: {DARK_COLOR_SUCCESS_BG};
+        --COLOR_SUCCESS_TEXT: {DARK_COLOR_SUCCESS_TEXT};
+        --COLOR_WARNING_BG: {DARK_COLOR_WARNING_BG};
+        --COLOR_WARNING_TEXT: {DARK_COLOR_WARNING_TEXT};
+        --COLOR_ERROR_BG: {DARK_COLOR_ERROR_BG};
+        --COLOR_ERROR_TEXT: {DARK_COLOR_ERROR_TEXT};
+        --COLOR_INFO_BG: {DARK_COLOR_INFO_BG};
+        --COLOR_INFO_TEXT: {DARK_COLOR_INFO_TEXT};
+
         --primary: {DARK_PRIMARY};
         --surface: {DARK_SURFACE};
         --text: {DARK_TEXT};
@@ -223,6 +302,9 @@ TOKEN_SYSTEM = f"""
         --success-bg: #052E16;
         --success-text: var(--success);
         --success-border: #166534;
+        --warning-bg: #451A03;
+        --warning-text: #FCD34D;
+        --warning-border: #B45309;
         --error-bg: #450A0A;
         --error-text: var(--error);
         --error-border: #7F1D1D;
@@ -237,6 +319,25 @@ TOKEN_SYSTEM = f"""
 
     .stApp.stAppDark,
     .stApp.stAppDarkTheme {{
+        --COLOR_BG: {DARK_COLOR_BG};
+        --COLOR_SURFACE: {DARK_COLOR_SURFACE};
+        --COLOR_SURFACE_ELEVATED: {DARK_COLOR_SURFACE_ELEVATED};
+        --COLOR_TEXT_PRIMARY: {DARK_COLOR_TEXT_PRIMARY};
+        --COLOR_TEXT_SECONDARY: {DARK_COLOR_TEXT_SECONDARY};
+        --COLOR_TEXT_MUTED: {DARK_COLOR_TEXT_MUTED};
+        --COLOR_BORDER: {DARK_COLOR_BORDER};
+        --COLOR_PRIMARY: {DARK_COLOR_PRIMARY};
+        --COLOR_PRIMARY_HOVER: {DARK_COLOR_PRIMARY_HOVER};
+        --COLOR_PRIMARY_SOFT: {DARK_COLOR_PRIMARY_SOFT};
+        --COLOR_SUCCESS_BG: {DARK_COLOR_SUCCESS_BG};
+        --COLOR_SUCCESS_TEXT: {DARK_COLOR_SUCCESS_TEXT};
+        --COLOR_WARNING_BG: {DARK_COLOR_WARNING_BG};
+        --COLOR_WARNING_TEXT: {DARK_COLOR_WARNING_TEXT};
+        --COLOR_ERROR_BG: {DARK_COLOR_ERROR_BG};
+        --COLOR_ERROR_TEXT: {DARK_COLOR_ERROR_TEXT};
+        --COLOR_INFO_BG: {DARK_COLOR_INFO_BG};
+        --COLOR_INFO_TEXT: {DARK_COLOR_INFO_TEXT};
+
         --primary: {DARK_PRIMARY};
         --surface: {DARK_SURFACE};
         --text: {DARK_TEXT};
@@ -267,6 +368,9 @@ TOKEN_SYSTEM = f"""
         --success-bg: #052E16;
         --success-text: var(--success);
         --success-border: #166534;
+        --warning-bg: #451A03;
+        --warning-text: #FCD34D;
+        --warning-border: #B45309;
         --error-bg: #450A0A;
         --error-text: var(--error);
         --error-border: #7F1D1D;
@@ -285,6 +389,25 @@ TOKEN_SYSTEM = f"""
 
     @media (prefers-color-scheme: dark) {{
         :root:not([data-theme="light"]) {{
+            --COLOR_BG: {DARK_COLOR_BG};
+            --COLOR_SURFACE: {DARK_COLOR_SURFACE};
+            --COLOR_SURFACE_ELEVATED: {DARK_COLOR_SURFACE_ELEVATED};
+            --COLOR_TEXT_PRIMARY: {DARK_COLOR_TEXT_PRIMARY};
+            --COLOR_TEXT_SECONDARY: {DARK_COLOR_TEXT_SECONDARY};
+            --COLOR_TEXT_MUTED: {DARK_COLOR_TEXT_MUTED};
+            --COLOR_BORDER: {DARK_COLOR_BORDER};
+            --COLOR_PRIMARY: {DARK_COLOR_PRIMARY};
+            --COLOR_PRIMARY_HOVER: {DARK_COLOR_PRIMARY_HOVER};
+            --COLOR_PRIMARY_SOFT: {DARK_COLOR_PRIMARY_SOFT};
+            --COLOR_SUCCESS_BG: {DARK_COLOR_SUCCESS_BG};
+            --COLOR_SUCCESS_TEXT: {DARK_COLOR_SUCCESS_TEXT};
+            --COLOR_WARNING_BG: {DARK_COLOR_WARNING_BG};
+            --COLOR_WARNING_TEXT: {DARK_COLOR_WARNING_TEXT};
+            --COLOR_ERROR_BG: {DARK_COLOR_ERROR_BG};
+            --COLOR_ERROR_TEXT: {DARK_COLOR_ERROR_TEXT};
+            --COLOR_INFO_BG: {DARK_COLOR_INFO_BG};
+            --COLOR_INFO_TEXT: {DARK_COLOR_INFO_TEXT};
+
             --primary: {DARK_PRIMARY};
             --surface: {DARK_SURFACE};
             --text: {DARK_TEXT};
@@ -315,6 +438,9 @@ TOKEN_SYSTEM = f"""
             --success-bg: #052E16;
             --success-text: var(--success);
             --success-border: #166534;
+            --warning-bg: #451A03;
+            --warning-text: #FCD34D;
+            --warning-border: #B45309;
             --error-bg: #450A0A;
             --error-text: var(--error);
             --error-border: #7F1D1D;
