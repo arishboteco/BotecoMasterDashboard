@@ -1,12 +1,14 @@
-from typing import List, Optional
 from datetime import datetime, timedelta
+from typing import List, Optional
 
 import streamlit as st
-import database
+from streamlit_cookies_controller import CookieController
+
+import auth_permissions
 import boteco_logger
 import config
+import database
 import styles
-from streamlit_cookies_controller import CookieController
 
 _COOKIE_NAME = "boteco_session"
 _COOKIE_EXPIRY_DAYS = 30
@@ -138,12 +140,9 @@ def show_login_form():
 
         with st.form("login_form"):
             username = st.text_input("Username", placeholder="Enter username")
-            password = st.text_input(
-                "Password", type="password", placeholder="Enter password"
-            )
+            password = st.text_input("Password", type="password", placeholder="Enter password")
             st.markdown(
-                '<div id="login-caps-hint" class="login-caps-hint">'
-                '⚠ Caps Lock is ON</div>',
+                '<div id="login-caps-hint" class="login-caps-hint">⚠ Caps Lock is ON</div>',
                 unsafe_allow_html=True,
             )
             remember = st.checkbox("Remember me for 30 days", value=True)
@@ -175,9 +174,7 @@ def show_login_form():
             if username and password:
                 locked, mins_left = database.is_login_locked(username)
                 if locked:
-                    st.error(
-                        f"Too many failed attempts. Try again in about {mins_left} minute(s)."
-                    )
+                    st.error(f"Too many failed attempts. Try again in about {mins_left} minute(s).")
                     return
 
                 user = database.verify_user(username, password)
@@ -186,16 +183,14 @@ def show_login_form():
                     # "Remember me" unchecked → session cookie (no expires);
                     # checked → persistent cookie for _COOKIE_EXPIRY_DAYS
                     session_days = _COOKIE_EXPIRY_DAYS if remember else 1
-                    token = database.create_user_session(
-                        user["id"], days=session_days
-                    )
+                    token = database.create_user_session(user["id"], days=session_days)
                     cm = _get_cookie_manager()
                     if cm is not None:
                         try:
                             cookie_kwargs = {}
                             if remember:
-                                cookie_kwargs["expires"] = (
-                                    datetime.now() + timedelta(days=session_days)
+                                cookie_kwargs["expires"] = datetime.now() + timedelta(
+                                    days=session_days
                                 )
                             cm.set(_COOKIE_NAME, token, **cookie_kwargs)
                         except TypeError as ex:
@@ -221,8 +216,8 @@ def show_login_form():
             else:
                 st.warning("Please enter both username and password")
 
-        st.markdown('</div>', unsafe_allow_html=True)  # login-form-wrap
-        st.markdown('</div>', unsafe_allow_html=True)  # login-card
+        st.markdown("</div>", unsafe_allow_html=True)  # login-form-wrap
+        st.markdown("</div>", unsafe_allow_html=True)  # login-card
 
 
 def show_setup_form():
@@ -232,9 +227,7 @@ def show_setup_form():
     st.caption("One-time setup — create the first admin and default location.")
 
     with st.form("setup_form"):
-        st.text_input(
-            "Username", key="setup_username", placeholder="Enter admin username"
-        )
+        st.text_input("Username", key="setup_username", placeholder="Enter admin username")
         st.text_input(
             "Password",
             key="setup_password",
@@ -277,9 +270,7 @@ def show_setup_form():
                 return
 
             if len(password) < config.MIN_PASSWORD_LENGTH:
-                st.error(
-                    f"Password must be at least {config.MIN_PASSWORD_LENGTH} characters"
-                )
+                st.error(f"Password must be at least {config.MIN_PASSWORD_LENGTH} characters")
                 return
 
             if not str(location_name).strip():
@@ -343,43 +334,21 @@ def require_auth():
         st.stop()
 
 
-def is_admin():
-    """Check if current user is admin."""
-    return st.session_state.get("user_role") == "admin"
+def is_admin() -> bool:
+    """Backward-compatible wrapper for admin role checks."""
+    return auth_permissions.is_admin()
 
 
-def is_manager():
-    """Check if current user is manager or admin."""
-    role = st.session_state.get("user_role")
-    return role in ["admin", "manager"]
+def is_manager() -> bool:
+    """Backward-compatible wrapper for manager role checks."""
+    return auth_permissions.is_manager()
 
 
 def get_report_location_ids() -> List[int]:
-    """Locations included in Daily Report / Analytics for the current scope."""
-    locs = database.get_all_locations()
-    vs = st.session_state.get("view_scope")
-    if is_admin() and vs == "all":
-        return [l["id"] for l in sorted(locs, key=lambda x: x["name"])]
-    if vs and str(vs) != "all":
-        try:
-            return [int(vs)]
-        except (TypeError, ValueError) as ex:
-            logger.warning(
-                "Invalid view_scope in auth.py user=%s view_scope=%s error=%s",
-                st.session_state.get("username") or "anonymous",
-                vs,
-                ex,
-            )
-    lid = st.session_state.get("location_id")
-    return [int(lid)] if lid is not None else [1]
+    """Backward-compatible wrapper for report location scope resolution."""
+    return auth_permissions.get_report_location_ids()
 
 
 def get_report_display_name() -> str:
-    locs = database.get_all_locations()
-    ids = get_report_location_ids()
-    if len(ids) > 1:
-        return "All locations"
-    for loc in locs:
-        if loc["id"] == ids[0]:
-            return str(loc["name"])
-    return st.session_state.get("location_name") or "Boteco"
+    """Backward-compatible wrapper for report scope display naming."""
+    return auth_permissions.get_report_display_name()
