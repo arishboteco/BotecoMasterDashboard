@@ -166,6 +166,21 @@ def filter_strip(
     )
 
 
+@contextmanager
+def classed_container(*classes: str) -> Generator[None, None, None]:
+    """Wrap child Streamlit elements in a lightweight HTML class hook."""
+    normalized = [cls.strip() for cls in classes if cls and cls.strip()]
+    class_attr = " ".join(normalized)
+    st.markdown(
+        f'<div class="{escape(class_attr)}">' if class_attr else "<div>",
+        unsafe_allow_html=True,
+    )
+    try:
+        yield
+    finally:
+        st.markdown("</div>", unsafe_allow_html=True)
+
+
 def primary_action_bar(
     primary_label: str,
     primary_key: str,

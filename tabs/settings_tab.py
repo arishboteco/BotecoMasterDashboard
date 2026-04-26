@@ -17,6 +17,7 @@ from tabs import TabContext
 from components.navigation import date_range_nav
 from components.forms import confirm_dialog
 from components import (
+    classed_container,
     divider,
     filter_strip,
     page_header,
@@ -38,15 +39,20 @@ def render(ctx: TabContext) -> None:
 
     # ── Account info (all users) ──────────────────────────────────
     with shell.filters:
-        section_title("Your account", icon="person")
-        with st.container(border=True):
-            ac1, ac2, ac3 = st.columns(3)
-            with ac1:
-                st.markdown(f"**Username:** {st.session_state.username}")
-            with ac2:
-                st.markdown(f"**Role:** {st.session_state.user_role.title()}")
-            with ac3:
-                st.markdown(f"**Home location:** {st.session_state.location_name}")
+        with classed_container(
+            "tab-settings-mobile-filters",
+            "mobile-layout-stack",
+            "mobile-layout-filters",
+        ):
+            section_title("Your account", icon="person")
+            with st.container(border=True):
+                ac1, ac2, ac3 = st.columns(3)
+                with ac1:
+                    st.markdown(f"**Username:** {st.session_state.username}")
+                with ac2:
+                    st.markdown(f"**Role:** {st.session_state.user_role.title()}")
+                with ac3:
+                    st.markdown(f"**Home location:** {st.session_state.location_name}")
 
     if not is_admin():
         st.info(
@@ -371,25 +377,26 @@ def render(ctx: TabContext) -> None:
     )
     filter_strip("Export filters", "Pick outlet and date range", icon="filter_alt")
 
-    exp_c1, exp_c2 = st.columns([1, 2])
-    with exp_c1:
-        exp_loc_opts = {"all": "All outlets"}
-        exp_loc_opts.update(
-            {str(loc["id"]): loc["name"] for loc in (ctx.all_locs or [])}
-        )
-        exp_loc = st.selectbox(
-            "Outlet",
-            options=list(exp_loc_opts.keys()),
-            format_func=lambda k: exp_loc_opts[k],
-            key="export_outlet",
-        )
-    with exp_c2:
-        exp_start, exp_end = date_range_nav(
-            session_key_start="export_start",
-            session_key_end="export_end",
-            label_start="From date",
-            label_end="To date",
-        )
+    with classed_container("tab-settings-mobile-export-filters", "mobile-layout-stack"):
+        exp_c1, exp_c2 = st.columns([1, 2])
+        with exp_c1:
+            exp_loc_opts = {"all": "All outlets"}
+            exp_loc_opts.update(
+                {str(loc["id"]): loc["name"] for loc in (ctx.all_locs or [])}
+            )
+            exp_loc = st.selectbox(
+                "Outlet",
+                options=list(exp_loc_opts.keys()),
+                format_func=lambda k: exp_loc_opts[k],
+                key="export_outlet",
+            )
+        with exp_c2:
+            exp_start, exp_end = date_range_nav(
+                session_key_start="export_start",
+                session_key_end="export_end",
+                label_start="From date",
+                label_end="To date",
+            )
 
     exp_loc_ids = [int(exp_loc)] if exp_loc != "all" else None
 
@@ -444,11 +451,15 @@ def render(ctx: TabContext) -> None:
             "I understand this will permanently delete ALL operational data",
             key="wipe_all_confirm",
         )
-        wipe_clicked, _ = primary_action_bar(
-            "Wipe All Data",
-            primary_key="wipe_all_btn",
-            primary_disabled=not wipe_confirm,
-        )
+        with classed_container(
+            "tab-settings-mobile-primary-action",
+            "mobile-layout-primary-action",
+        ):
+            wipe_clicked, _ = primary_action_bar(
+                "Wipe All Data",
+                primary_key="wipe_all_btn",
+                primary_disabled=not wipe_confirm,
+            )
         if wipe_clicked:
             counts, errors = database.wipe_all_data()
             st.cache_data.clear()

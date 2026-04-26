@@ -79,36 +79,41 @@ MOBILE_TOUCH_IMPROVEMENTS = r"""    /* ── Mobile touch improvements ──�
         [data-testid="stVerticalBlock"] {
             gap: 0.5rem !important;
         }
-        /* Stack column layouts only when a child is wide content that would
-           squish to illegibility on narrow screens (charts, tables, metrics,
-           form inputs). Icon rows and centering layouts with [1,2,1] / [1,4,1]
-           spacers stay horizontal. Requires :has() — Chrome 105+, Safari 15.4+,
-           Firefox 121+; older browsers keep the row layout (harmless fallback). */
-        [data-testid="stHorizontalBlock"]:is(
-            :has([data-testid="stPlotlyChart"]),
-            :has([data-testid="stDataFrame"]),
-            :has([data-testid="stMetric"]),
-            :has([data-testid="stTextInput"]),
-            :has([data-testid="stNumberInput"]),
-            :has([data-testid="stSelectbox"]),
-            :has([data-testid="stDateInput"]),
-            :has([data-testid="stTextArea"]),
-            :has([data-testid="stFileUploader"])
-        ) {
+        .mobile-layout-stack [data-testid="stHorizontalBlock"] {
             flex-direction: column !important;
+            gap: 0.55rem !important;
         }
-        [data-testid="stHorizontalBlock"]:is(
-            :has([data-testid="stPlotlyChart"]),
-            :has([data-testid="stDataFrame"]),
-            :has([data-testid="stMetric"]),
-            :has([data-testid="stTextInput"]),
-            :has([data-testid="stNumberInput"]),
-            :has([data-testid="stSelectbox"]),
-            :has([data-testid="stDateInput"]),
-            :has([data-testid="stTextArea"]),
-            :has([data-testid="stFileUploader"])
-        ) > div {
+        .mobile-layout-stack [data-testid="stHorizontalBlock"] > div {
             width: 100% !important;
+        }
+        .mobile-layout-filters {
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            background: var(--surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            padding: 0.6rem;
+            margin-bottom: 0.65rem;
+        }
+        .mobile-layout-secondary details,
+        .mobile-layout-secondary [data-testid="stExpander"] {
+            margin-top: 0.4rem;
+        }
+        .mobile-layout-primary-action {
+            position: sticky;
+            bottom: 0.35rem;
+            z-index: 60;
+            background: linear-gradient(
+                180deg,
+                color-mix(in srgb, var(--surface) 0%, transparent),
+                var(--surface) 35%
+            );
+            padding-top: 0.45rem;
+        }
+        .mobile-layout-primary-action .stButton > button,
+        .mobile-layout-primary-action [data-testid="baseButton-primary"] {
+            box-shadow: 0 6px 20px color-mix(in srgb, var(--brand) 25%, transparent);
         }
         /* Scrollable tables on mobile */
         [data-testid="stDataFrame"] {
@@ -135,4 +140,3 @@ RESPONSIVE_PLOTLY_HEIGHT = r"""    /* ── Responsive Plotly chart height ─�
     }
 
 """
-

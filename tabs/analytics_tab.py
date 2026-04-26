@@ -23,7 +23,7 @@ from tabs.analytics_sections import (
 from tabs import TabContext
 from components.feedback import empty_state
 from components.navigation import date_range_nav
-from components import page_header, page_shell, section_title
+from components import classed_container, page_header, page_shell, section_title
 
 # In-process cache registered with cache_manager for coordinated invalidation
 _RAW_SUMMARY_CACHE: dict = cache_manager.register("analytics_raw")
@@ -124,36 +124,41 @@ def render(ctx: TabContext) -> None:
         )
 
     with shell.filters:
-        section_title("Filters", "Choose period and scope for analytics.", icon="filter_alt")
-        col_per1, col_per2 = st.columns([2, 3])
-        with col_per1:
-            default_period = "Last Month"
-            if "analysis_period" not in st.session_state:
-                st.session_state.analysis_period = default_period
-            analysis_period = st.selectbox(
-                "Time Period",
-                [
-                    "This Week",
-                    "Last Week",
-                    "Last 7 Days",
-                    "This Month",
-                    "Last Month",
-                    "Last 30 Days",
-                    "Custom",
-                ],
-                key="analysis_period",
-            )
-
-        custom_start = None
-        custom_end = None
-        if analysis_period == "Custom":
-            with col_per2:
-                custom_start, custom_end = date_range_nav(
-                    session_key_start="analytics_custom_start",
-                    session_key_end="analytics_custom_end",
-                    label_start="From",
-                    label_end="To",
+        with classed_container(
+            "tab-analytics-mobile-filters",
+            "mobile-layout-stack",
+            "mobile-layout-filters",
+        ):
+            section_title("Filters", "Choose period and scope for analytics.", icon="filter_alt")
+            col_per1, col_per2 = st.columns([2, 3])
+            with col_per1:
+                default_period = "Last Month"
+                if "analysis_period" not in st.session_state:
+                    st.session_state.analysis_period = default_period
+                analysis_period = st.selectbox(
+                    "Time Period",
+                    [
+                        "This Week",
+                        "Last Week",
+                        "Last 7 Days",
+                        "This Month",
+                        "Last Month",
+                        "Last 30 Days",
+                        "Custom",
+                    ],
+                    key="analysis_period",
                 )
+
+            custom_start = None
+            custom_end = None
+            if analysis_period == "Custom":
+                with col_per2:
+                    custom_start, custom_end = date_range_nav(
+                        session_key_start="analytics_custom_start",
+                        session_key_end="analytics_custom_end",
+                        label_start="From",
+                        label_end="To",
+                    )
     start_date, end_date, prior_start, prior_end, _ = resolve_period_window(
         analysis_period,
         custom_start=custom_start,
@@ -177,14 +182,19 @@ def render(ctx: TabContext) -> None:
         if _current in _loc_options:
             _default_idx = _loc_options.index(_current)
         with shell.filters:
-            selected_outlet = st.radio(
-                "Select outlet",
-                options=_loc_options,
-                horizontal=True,
-                index=_default_idx,
-                key="analytics_outlet_radio",
-                label_visibility="collapsed",
-            )
+            with classed_container(
+                "tab-analytics-mobile-filters",
+                "mobile-layout-stack",
+                "mobile-layout-filters",
+            ):
+                selected_outlet = st.radio(
+                    "Select outlet",
+                    options=_loc_options,
+                    horizontal=True,
+                    index=_default_idx,
+                    key="analytics_outlet_radio",
+                    label_visibility="collapsed",
+                )
         st.session_state.analytics_outlet_scope = selected_outlet
 
         if selected_outlet != "All outlets":
@@ -273,31 +283,34 @@ def render(ctx: TabContext) -> None:
             )
             st.markdown("</div>", unsafe_allow_html=True)
 
-            st.markdown('<div class="section-stack">', unsafe_allow_html=True)
-            render_sales_performance(
-                df,
-                df_raw,
-                multi_analytics,
-                prior_df=prior_df,
-                analysis_period=analysis_period,
-            )
-            render_revenue_breakdown(
-                analytics_loc_ids,
-                start_str,
-                end_str,
-                df,
-                start_date,
-            )
-            render_target_and_daily(
-                analytics_loc_ids,
-                start_date,
-                df,
-                df_raw,
-                multi_analytics,
-                analysis_period=analysis_period,
-            )
-            render_payment_reconciliation(analytics_loc_ids, start_str, end_str)
-            st.markdown("</div>", unsafe_allow_html=True)
+            with classed_container("tab-analytics-mobile-sections", "mobile-layout-stack"):
+                st.markdown('<div class="section-stack">', unsafe_allow_html=True)
+                render_sales_performance(
+                    df,
+                    df_raw,
+                    multi_analytics,
+                    prior_df=prior_df,
+                    analysis_period=analysis_period,
+                )
+                with classed_container("tab-analytics-mobile-secondary", "mobile-layout-secondary"):
+                    with st.expander("Revenue, Targets, and Reconciliation", expanded=False):
+                        render_revenue_breakdown(
+                            analytics_loc_ids,
+                            start_str,
+                            end_str,
+                            df,
+                            start_date,
+                        )
+                        render_target_and_daily(
+                            analytics_loc_ids,
+                            start_date,
+                            df,
+                            df_raw,
+                            multi_analytics,
+                            analysis_period=analysis_period,
+                        )
+                        render_payment_reconciliation(analytics_loc_ids, start_str, end_str)
+                st.markdown("</div>", unsafe_allow_html=True)
 
         else:
             empty_state(

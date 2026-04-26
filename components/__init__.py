@@ -24,6 +24,7 @@ from components.layout import (
     info_banner,
     primary_action_bar,
     filter_strip,
+    classed_container,
 )
 
 __all__ = [
@@ -48,4 +49,5 @@ __all__ = [
     "info_banner",
     "primary_action_bar",
     "filter_strip",
+    "classed_container",
 ]
