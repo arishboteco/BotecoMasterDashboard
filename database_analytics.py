@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Set
 
 import streamlit as st
 
+from core.dates import month_bounds
+
 
 def _bill_items_success(status: Any) -> bool:
     """Match Petpooja / CSV bill status (case-insensitive)."""
@@ -226,9 +228,7 @@ def get_category_sales_for_date_range(
     else:
         from database_reads import get_category_totals_for_date_range
 
-        rows = get_category_totals_for_date_range(
-            location_ids, start_date, end_date
-        )
+        rows = get_category_totals_for_date_range(location_ids, start_date, end_date)
         cat_totals: Dict[str, Dict[str, Any]] = {}
         for row in rows:
             cat = row.get("category_name") or "Uncategorized"
@@ -433,7 +433,7 @@ def get_super_category_mtd_totals(
     """Get super category totals for MTD."""
     import database
 
-    start_date = f"{year}-{month:02d}-01"
+    start_date, _ = month_bounds(year, month)
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
