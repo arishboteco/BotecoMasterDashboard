@@ -558,8 +558,8 @@ def ensure_default_locations():
     _impl()
 
 
-def create_admin_user(username: str, password: str):
-    """Create admin user if not exists."""
+def create_admin_user(username: str, password: str) -> None:
+    """Create the default admin user when missing."""
     from database_auth import create_admin_user as _impl
 
     _impl(username, password)
@@ -701,16 +701,16 @@ def get_summaries_for_month(location_id: int, year: int, month: int) -> List[Dic
 
 
 def get_category_mtd_totals(
-    location_id: int, year: int, month: int
-) -> Dict[str, float]:
-    """Sum category sales amounts for calendar month (all days in month)."""
+    location_ids: List[int], year: int, month: int
+) -> List[Dict]:
+    """Return category rows from month start onward for the given locations."""
     from database_reads import get_category_mtd_totals as _impl
 
-    return _impl(location_id, year, month)
+    return _impl(location_ids, year, month)
 
 
 def get_service_mtd_totals(location_id: int, year: int, month: int) -> Dict[str, float]:
-    """Sum service_sales amounts for calendar month."""
+    """Legacy facade: delegates to database_reads.get_service_mtd_totals()."""
     from database_reads import get_service_mtd_totals as _impl
 
     return _impl(location_id, year, month)
@@ -718,8 +718,8 @@ def get_service_mtd_totals(location_id: int, year: int, month: int) -> Dict[str,
 
 def get_mtd_totals_multi(
     location_ids: List[int], year: int, month: int
-) -> Tuple[Dict[str, float], Dict[str, float]]:
-    """Fetch both category and service MTD totals across multiple locations."""
+) -> Dict[str, float]:
+    """Fetch aggregate MTD summary totals across multiple locations."""
     from database_reads import get_mtd_totals_multi as _impl
 
     return _impl(location_ids, year, month)
@@ -780,6 +780,7 @@ def get_weekly_footfall_multi(
 def get_category_mtd_totals_multi(
     location_ids: List[int], year: int, month: int
 ) -> Dict[str, float]:
+    """Legacy facade: delegates to database_analytics.get_category_mtd_totals_multi()."""
     from database_analytics import get_category_mtd_totals_multi as _impl
 
     return _impl(location_ids, year, month)
@@ -788,6 +789,7 @@ def get_category_mtd_totals_multi(
 def get_service_mtd_totals_multi(
     location_ids: List[int], year: int, month: int
 ) -> Dict[str, float]:
+    """Legacy facade: delegates to database_analytics.get_service_mtd_totals_multi()."""
     from database_analytics import get_service_mtd_totals_multi as _impl
 
     return _impl(location_ids, year, month)
@@ -813,7 +815,7 @@ def get_location_settings(location_id: int) -> Optional[Dict]:
     return _impl(location_id)
 
 
-def update_location_settings(location_id: int, settings: Dict):
+def update_location_settings(location_id: int, settings: Dict[str, Any]) -> None:
     """Update location settings."""
     from database_writes import update_location_settings as _impl
 
@@ -836,7 +838,7 @@ def get_recent_summaries(location_id: int, weeks: int = 8) -> List[Dict]:
 
 def save_upload_record(
     location_id: int, date: str, filename: str, file_type: str, uploaded_by: str
-):
+) -> None:
     """Save upload record."""
     from database_writes import save_upload_record as _impl
 
@@ -975,7 +977,7 @@ def clear_failed_login(username: str) -> None:
     _impl(username)
 
 
-def bootstrap():
+def bootstrap() -> None:
     """Initialize database and ensure default locations exist. Call explicitly from app.py."""
     logger.info("Bootstrapping database")
     init_database()

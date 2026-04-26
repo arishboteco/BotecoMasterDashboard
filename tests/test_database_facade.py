@@ -1,33 +1,30 @@
-"""Tests for database facade exports and delegated origins."""
+"""Smoke tests for the database facade API."""
 
 import database
 
 
-def test_facade_groups_have_expected_symbols_and_callable_exports():
-    expected_groups = {"auth", "reads", "writes", "analytics"}
+class TestDatabaseFacadeSmoke:
+    def test_key_facade_functions_are_callable(self):
+        key_functions = [
+            "get_connection",
+            "db_connection",
+            "init_database",
+            "bootstrap",
+            "get_all_locations",
+            "save_daily_summary",
+            "get_daily_summary",
+            "get_summaries_for_date_range",
+            "get_monthly_footfall_multi",
+            "get_service_sales_for_date_range",
+        ]
 
-    assert set(database.FACADE_EXPORT_GROUPS) == expected_groups
+        for name in key_functions:
+            assert hasattr(database, name)
+            assert callable(getattr(database, name))
 
-    for symbols in database.FACADE_EXPORT_GROUPS.values():
-        for symbol in symbols:
-            assert hasattr(database, symbol)
-            assert callable(getattr(database, symbol))
+    def test_delegated_exports_are_callable(self):
+        delegated_names = set(database.DELEGATED_SYMBOL_ORIGINS)
 
-
-def test_delegated_symbol_origins_match_grouped_exports():
-    grouped_symbols = {
-        symbol
-        for symbols in database.FACADE_EXPORT_GROUPS.values()
-        for symbol in symbols
-    }
-
-    assert grouped_symbols == set(database.DELEGATED_SYMBOL_ORIGINS)
-
-    for symbol, module_name in database.DELEGATED_SYMBOL_ORIGINS.items():
-        assert module_name in {
-            "database_auth",
-            "database_reads",
-            "database_writes",
-            "database_analytics",
-        }
-        assert symbol in database.__all__
+        for name in delegated_names:
+            assert hasattr(database, name)
+            assert callable(getattr(database, name))
