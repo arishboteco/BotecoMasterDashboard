@@ -1,7 +1,9 @@
 """Reusable UI components — buttons, metrics, alerts, tables, date nav, WhatsApp, actions, empty state, dividers."""
 
 BUTTON_SYSTEM = r"""    /* ── Button system ──────────────────────────────────────── */
-    .stButton > button {
+    .stButton > button,
+    .stDownloadButton > button,
+    .stFormSubmitButton > button {
         font-family: var(--font-body) !important;
         border-radius: var(--radius-sm) !important;
         font-weight: 500 !important;
@@ -9,30 +11,84 @@ BUTTON_SYSTEM = r"""    /* ── Button system ──────────�
         min-height: var(--btn-height-md) !important;
         line-height: 1.4 !important;
         padding: var(--btn-padding-y) var(--btn-padding-x) !important;
+        background-color: var(--btn-default-bg) !important;
+        color: var(--btn-default-fg) !important;
+        border: 1px solid var(--btn-default-border) !important;
     }
-    .stButton > button:active {
+    .stButton > button:hover {
+        background-color: var(--btn-default-hover-bg) !important;
+        color: var(--btn-default-hover-fg) !important;
+        border-color: var(--btn-default-hover-border) !important;
+    }
+    .stButton > button:active,
+    .stDownloadButton > button:active,
+    .stFormSubmitButton > button:active {
         transform: scale(0.98) !important;
         transition: transform var(--transition-fast) ease !important;
     }
     .stButton > button[kind="primary"] {
-        background-color: var(--brand) !important;
-        color: #FFFFFF !important;
-        border: none !important;
+        background-color: var(--btn-primary-bg) !important;
+        color: var(--btn-primary-fg) !important;
+        border: 1px solid var(--btn-primary-border) !important;
         box-shadow: var(--shadow-sm) !important;
     }
     .stButton > button[kind="primary"]:hover {
-        background-color: var(--brand-dark) !important;
+        background-color: var(--btn-primary-hover-bg) !important;
+        color: var(--btn-primary-hover-fg) !important;
+        border-color: var(--btn-primary-hover-border) !important;
         box-shadow: var(--shadow-md) !important;
     }
     .stButton > button[kind="secondary"] {
-        background-color: var(--surface) !important;
-        color: var(--text) !important;
-        border: 1px solid var(--border-subtle) !important;
+        background-color: var(--btn-default-bg) !important;
+        color: var(--btn-default-fg) !important;
+        border: 1px solid var(--btn-default-border) !important;
     }
     .stButton > button[kind="secondary"]:hover {
-        background-color: var(--brand-soft) !important;
-        border-color: var(--brand) !important;
-        color: var(--brand-dark) !important;
+        background-color: var(--btn-default-hover-bg) !important;
+        border-color: var(--btn-default-hover-border) !important;
+        color: var(--btn-default-hover-fg) !important;
+    }
+    .stButton > button:disabled,
+    .stDownloadButton > button:disabled,
+    .stFormSubmitButton > button:disabled {
+        background-color: var(--btn-disabled-bg) !important;
+        color: var(--btn-disabled-fg) !important;
+        border-color: var(--btn-disabled-border) !important;
+        opacity: 1 !important;
+        cursor: not-allowed !important;
+        box-shadow: none !important;
+    }
+    .stDownloadButton > button {
+        background-color: var(--btn-download-bg) !important;
+        color: var(--btn-download-fg) !important;
+        border-color: var(--btn-download-border) !important;
+    }
+    .stDownloadButton > button:hover {
+        background-color: var(--btn-download-hover-bg) !important;
+        color: var(--btn-download-hover-fg) !important;
+        border-color: var(--btn-download-hover-border) !important;
+    }
+    .stFormSubmitButton > button {
+        background-color: var(--btn-form-submit-bg) !important;
+        color: var(--btn-form-submit-fg) !important;
+        border-color: var(--btn-form-submit-border) !important;
+        box-shadow: var(--shadow-sm) !important;
+    }
+    .stFormSubmitButton > button:hover {
+        background-color: var(--btn-form-submit-hover-bg) !important;
+        color: var(--btn-form-submit-hover-fg) !important;
+        border-color: var(--btn-form-submit-hover-border) !important;
+        box-shadow: var(--shadow-md) !important;
+    }
+    [data-testid="stSidebar"] .stButton > button {
+        background-color: var(--btn-sidebar-bg) !important;
+        color: var(--btn-sidebar-fg) !important;
+        border-color: var(--btn-sidebar-border) !important;
+    }
+    [data-testid="stSidebar"] .stButton > button:hover {
+        background-color: var(--btn-sidebar-hover-bg) !important;
+        color: var(--btn-sidebar-hover-fg) !important;
+        border-color: var(--btn-sidebar-hover-border) !important;
     }
     .stButton > button.destructive {
         background-color: transparent !important;
@@ -43,11 +99,6 @@ BUTTON_SYSTEM = r"""    /* ── Button system ──────────�
         background-color: var(--error-bg) !important;
         border-color: var(--error-text) !important;
     }
-    .stButton > button.destructive:disabled {
-        opacity: 0.5 !important;
-        cursor: not-allowed !important;
-    }
-
 """
 
 KPI_METRIC_VALUES = r"""    /* ── KPI metric values ──────────────────────────────────── */
