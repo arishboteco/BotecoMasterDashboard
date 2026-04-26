@@ -227,25 +227,39 @@ METRIC_CARDS_CONTAINERS = r"""    /* ── Metric cards & containers ───�
 
 ALERT_STATUS_BOXES = r"""    /* ── Alert / status boxes ───────────────────────────────── */
     .success-box {
-        background: var(--success-bg);
-        color: var(--success-text);
+        background: var(--alert-success-bg);
+        color: var(--alert-success-text);
         padding: 1rem;
         border-radius: var(--radius-sm);
-        border: 1px solid var(--success-border);
+        border: 1px solid var(--alert-success-border);
     }
     .error-box {
-        background: var(--error-bg);
-        color: var(--error-text);
+        background: var(--alert-error-bg);
+        color: var(--alert-error-text);
         padding: 1rem;
         border-radius: var(--radius-sm);
-        border: 1px solid var(--error-border);
+        border: 1px solid var(--alert-error-border);
+    }
+    .warning-box {
+        background: var(--alert-warning-bg);
+        color: var(--alert-warning-text);
+        padding: 1rem;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--alert-warning-border);
     }
     .info-box {
-        background: var(--info-bg);
-        color: var(--info-text);
+        background: var(--alert-info-bg);
+        color: var(--alert-info-text);
         padding: 1rem;
         border-radius: var(--radius-sm);
-        border: 1px solid var(--info-border);
+        border: 1px solid var(--alert-info-border);
+    }
+    .neutral-box {
+        background: var(--alert-neutral-bg);
+        color: var(--alert-neutral-text);
+        padding: 1rem;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--alert-neutral-border);
     }
 
 """
@@ -618,36 +632,36 @@ WORKFLOW_AND_SURFACES = r"""    /* ── Workflow and surface polish ───�
         color: var(--text-secondary);
     }
     .info-banner--info {
-        background: var(--info-bg);
-        border-color: var(--info-border);
+        background: var(--alert-info-bg);
+        border-color: var(--alert-info-border);
     }
     .info-banner--info .info-banner-icon,
     .info-banner--info .info-banner-text {
-        color: var(--info-text);
+        color: var(--alert-info-text);
     }
     .info-banner--success {
-        background: var(--success-bg);
-        border-color: var(--success-border);
+        background: var(--alert-success-bg);
+        border-color: var(--alert-success-border);
     }
     .info-banner--success .info-banner-icon,
     .info-banner--success .info-banner-text {
-        color: var(--success-text);
+        color: var(--alert-success-text);
     }
     .info-banner--warning {
-        background: rgba(251, 191, 36, 0.14);
-        border-color: rgba(217, 119, 6, 0.35);
+        background: var(--alert-warning-bg);
+        border-color: var(--alert-warning-border);
     }
     .info-banner--warning .info-banner-icon,
     .info-banner--warning .info-banner-text {
-        color: #92400e;
+        color: var(--alert-warning-text);
     }
     .info-banner--error {
-        background: var(--error-bg);
-        border-color: var(--error-border);
+        background: var(--alert-error-bg);
+        border-color: var(--alert-error-border);
     }
     .info-banner--error .info-banner-icon,
     .info-banner--error .info-banner-text {
-        color: var(--error-text);
+        color: var(--alert-error-text);
     }
     .filter-strip {
         display: inline-flex;
@@ -682,8 +696,8 @@ EMPTY_STATE = r"""    /* ── Empty state ────────────
     .empty-state {
         text-align: center;
         padding: 2rem;
-        background: var(--card-surface-empty-state);
-        border: 1px dashed var(--border-medium);
+        background: var(--alert-neutral-bg);
+        border: 1px dashed var(--alert-neutral-border);
         border-radius: var(--radius-md);
     }
     .empty-state-icon {
@@ -713,7 +727,7 @@ EMPTY_STATE = r"""    /* ── Empty state ────────────
         margin-bottom: 0.5rem;
     }
     .empty-state-desc {
-        color: var(--text-secondary);
+        color: var(--alert-neutral-text);
         font-size: 0.9rem;
         line-height: 1.5;
     }

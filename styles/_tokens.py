@@ -26,6 +26,8 @@ COLOR_ERROR_BG = "#FEF2F2"
 COLOR_ERROR_TEXT = "#B91C1C"
 COLOR_INFO_BG = "#EFF6FF"
 COLOR_INFO_TEXT = "#1D4ED8"
+COLOR_NEUTRAL_BG = "#F8FAFC"
+COLOR_NEUTRAL_TEXT = "#334155"
 
 PRIMARY = "#005AAB"
 PRIMARY_DARK = "#004080"
@@ -77,6 +79,8 @@ DARK_COLOR_ERROR_BG = "#450A0A"
 DARK_COLOR_ERROR_TEXT = "#FCA5A5"
 DARK_COLOR_INFO_BG = "#1E1B4B"
 DARK_COLOR_INFO_TEXT = "#A5B4FC"
+DARK_COLOR_NEUTRAL_BG = "#1E293B"
+DARK_COLOR_NEUTRAL_TEXT = "#E2E8F0"
 
 DARK_PRIMARY = "#2D7AC9"
 DARK_PRIMARY_DARK = "#1F5FA8"
@@ -138,6 +142,8 @@ TOKEN_SYSTEM = f"""
         --COLOR_ERROR_TEXT: {COLOR_ERROR_TEXT};
         --COLOR_INFO_BG: {COLOR_INFO_BG};
         --COLOR_INFO_TEXT: {COLOR_INFO_TEXT};
+        --COLOR_NEUTRAL_BG: {COLOR_NEUTRAL_BG};
+        --COLOR_NEUTRAL_TEXT: {COLOR_NEUTRAL_TEXT};
 
         --primary: {PRIMARY};
         --surface: {SURFACE};
@@ -200,6 +206,26 @@ TOKEN_SYSTEM = f"""
         --info-bg: #EFF6FF;
         --info-text: #1D4ED8;
         --info-border: #BFDBFE;
+        --neutral-bg: #F8FAFC;
+        --neutral-text: #334155;
+        --neutral-border: #CBD5E1;
+
+        /* Unified semantic alert tokens */
+        --alert-success-bg: var(--success-bg);
+        --alert-success-text: var(--success-text);
+        --alert-success-border: var(--success-border);
+        --alert-error-bg: var(--error-bg);
+        --alert-error-text: var(--error-text);
+        --alert-error-border: var(--error-border);
+        --alert-warning-bg: var(--warning-bg);
+        --alert-warning-text: var(--warning-text);
+        --alert-warning-border: var(--warning-border);
+        --alert-info-bg: var(--info-bg);
+        --alert-info-text: var(--info-text);
+        --alert-info-border: var(--info-border);
+        --alert-neutral-bg: var(--neutral-bg);
+        --alert-neutral-text: var(--neutral-text);
+        --alert-neutral-border: var(--neutral-border);
 
         /* Typography */
         --font-display: 'Plus Jakarta Sans', sans-serif;
@@ -342,6 +368,8 @@ TOKEN_SYSTEM = f"""
         --COLOR_ERROR_TEXT: {DARK_COLOR_ERROR_TEXT};
         --COLOR_INFO_BG: {DARK_COLOR_INFO_BG};
         --COLOR_INFO_TEXT: {DARK_COLOR_INFO_TEXT};
+        --COLOR_NEUTRAL_BG: {DARK_COLOR_NEUTRAL_BG};
+        --COLOR_NEUTRAL_TEXT: {DARK_COLOR_NEUTRAL_TEXT};
 
         --primary: {DARK_PRIMARY};
         --surface: {DARK_SURFACE};
@@ -398,6 +426,26 @@ TOKEN_SYSTEM = f"""
         --info-bg: #1E1B4B;
         --info-text: #A5B4FC;
         --info-border: #3730A3;
+        --neutral-bg: #1E293B;
+        --neutral-text: #E2E8F0;
+        --neutral-border: #475569;
+
+        /* Unified semantic alert tokens */
+        --alert-success-bg: var(--success-bg);
+        --alert-success-text: var(--success-text);
+        --alert-success-border: var(--success-border);
+        --alert-error-bg: var(--error-bg);
+        --alert-error-text: var(--error-text);
+        --alert-error-border: var(--error-border);
+        --alert-warning-bg: var(--warning-bg);
+        --alert-warning-text: var(--warning-text);
+        --alert-warning-border: var(--warning-border);
+        --alert-info-bg: var(--info-bg);
+        --alert-info-text: var(--info-text);
+        --alert-info-border: var(--info-border);
+        --alert-neutral-bg: var(--neutral-bg);
+        --alert-neutral-text: var(--neutral-text);
+        --alert-neutral-border: var(--neutral-border);
 
         --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
         --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.3);
@@ -434,6 +482,8 @@ TOKEN_SYSTEM = f"""
         --COLOR_ERROR_TEXT: {DARK_COLOR_ERROR_TEXT};
         --COLOR_INFO_BG: {DARK_COLOR_INFO_BG};
         --COLOR_INFO_TEXT: {DARK_COLOR_INFO_TEXT};
+        --COLOR_NEUTRAL_BG: {DARK_COLOR_NEUTRAL_BG};
+        --COLOR_NEUTRAL_TEXT: {DARK_COLOR_NEUTRAL_TEXT};
 
         --primary: {DARK_PRIMARY};
         --surface: {DARK_SURFACE};
@@ -484,6 +534,26 @@ TOKEN_SYSTEM = f"""
         --info-bg: #1E1B4B;
         --info-text: #A5B4FC;
         --info-border: #3730A3;
+        --neutral-bg: #1E293B;
+        --neutral-text: #E2E8F0;
+        --neutral-border: #475569;
+
+        /* Unified semantic alert tokens */
+        --alert-success-bg: var(--success-bg);
+        --alert-success-text: var(--success-text);
+        --alert-success-border: var(--success-border);
+        --alert-error-bg: var(--error-bg);
+        --alert-error-text: var(--error-text);
+        --alert-error-border: var(--error-border);
+        --alert-warning-bg: var(--warning-bg);
+        --alert-warning-text: var(--warning-text);
+        --alert-warning-border: var(--warning-border);
+        --alert-info-bg: var(--info-bg);
+        --alert-info-text: var(--info-text);
+        --alert-info-border: var(--info-border);
+        --alert-neutral-bg: var(--neutral-bg);
+        --alert-neutral-text: var(--neutral-text);
+        --alert-neutral-border: var(--neutral-border);
         --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
         --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.3);
         --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.45), 0 4px 6px -4px rgba(0,0,0,0.3);
@@ -524,6 +594,8 @@ TOKEN_SYSTEM = f"""
             --COLOR_ERROR_TEXT: {DARK_COLOR_ERROR_TEXT};
             --COLOR_INFO_BG: {DARK_COLOR_INFO_BG};
             --COLOR_INFO_TEXT: {DARK_COLOR_INFO_TEXT};
+            --COLOR_NEUTRAL_BG: {DARK_COLOR_NEUTRAL_BG};
+            --COLOR_NEUTRAL_TEXT: {DARK_COLOR_NEUTRAL_TEXT};
 
             --primary: {DARK_PRIMARY};
             --surface: {DARK_SURFACE};
@@ -564,6 +636,26 @@ TOKEN_SYSTEM = f"""
             --info-bg: #1E1B4B;
             --info-text: #A5B4FC;
             --info-border: #3730A3;
+            --neutral-bg: #1E293B;
+            --neutral-text: #E2E8F0;
+            --neutral-border: #475569;
+
+            /* Unified semantic alert tokens */
+            --alert-success-bg: var(--success-bg);
+            --alert-success-text: var(--success-text);
+            --alert-success-border: var(--success-border);
+            --alert-error-bg: var(--error-bg);
+            --alert-error-text: var(--error-text);
+            --alert-error-border: var(--error-border);
+            --alert-warning-bg: var(--warning-bg);
+            --alert-warning-text: var(--warning-text);
+            --alert-warning-border: var(--warning-border);
+            --alert-info-bg: var(--info-bg);
+            --alert-info-text: var(--info-text);
+            --alert-info-border: var(--info-border);
+            --alert-neutral-bg: var(--neutral-bg);
+            --alert-neutral-text: var(--neutral-text);
+            --alert-neutral-border: var(--neutral-border);
             --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
             --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.3);
             --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.45), 0 4px 6px -4px rgba(0,0,0,0.3);

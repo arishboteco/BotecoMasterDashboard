@@ -34,6 +34,8 @@ Use the following semantic tokens for colour decisions:
 - `error-text`
 - `info-bg`
 - `info-text`
+- `neutral-bg`
+- `neutral-text`
 
 ## Card and KPI Surface Tokens
 
@@ -60,6 +62,20 @@ WCAG AA readability on the active KPI surface.
 1. **No raw hex colours outside token files** unless explicitly justified in code comments and reviewed.
 2. **No new `!important` declarations** unless interacting with Streamlit/BaseWeb generated selectors.
 3. **Do not define colour inside tab/component files** if an approved token already exists.
+
+## Semantic Alert Tokens (Unified Status Surfaces)
+
+All status surfaces (including upload warnings, import success confirmations,
+empty states, and validation messages) must use the same alert token family:
+
+- `--alert-success-bg`, `--alert-success-text`, `--alert-success-border`
+- `--alert-error-bg`, `--alert-error-text`, `--alert-error-border`
+- `--alert-warning-bg`, `--alert-warning-text`, `--alert-warning-border`
+- `--alert-info-bg`, `--alert-info-text`, `--alert-info-border`
+- `--alert-neutral-bg`, `--alert-neutral-text`, `--alert-neutral-border`
+
+Each foreground/background pair in this family must meet **WCAG AA normal text
+contrast (≥ 4.5:1)**.
 
 ## Scope and Rollout
 
