@@ -11,8 +11,6 @@ import streamlit as st
 
 import database
 import file_detector
-import tabs.analytics_tab as analytics_tab
-import tabs.report_tab as report_tab
 import utils
 from components import (
     classed_container,
@@ -23,8 +21,7 @@ from components import (
     section_title,
     workflow_steps,
 )
-from database_reads import clear_location_cache
-from services import upload_service
+from services import cache_invalidation, upload_service
 from services.upload_service import ImportOptions
 from tabs import TabContext
 
@@ -261,9 +258,6 @@ def render(ctx: TabContext) -> None:
                         ]
                         all_save_messages.extend(save_messages)
 
-                        for lid in upload_result.location_results:
-                            clear_location_cache(lid)
-
                         for msg in all_save_messages:
                             st.info(msg)
 
@@ -283,8 +277,9 @@ def render(ctx: TabContext) -> None:
                                         "upload the Dynamic Report CSV."
                                     )
 
-                        # Also clear analytics cache to reflect new data in analytics tab
-                        analytics_tab.clear_analytics_cache()
+                        cache_invalidation.invalidate_after_import(
+                            list(upload_result.location_results.keys())
+                        )
 
                         # Clear cached upload result so it's not stale after save
                         st.session_state.pop("_upload_result", None)
@@ -306,8 +301,6 @@ def render(ctx: TabContext) -> None:
                             total_skipped,
                             note_count,
                         )
-                        # Clear report cache so next render pulls fresh data and then trigger rerun
-                        report_tab.clear_report_cache()
                         st.rerun()
 
     with shell.footer_actions:
