@@ -146,6 +146,22 @@ TOKEN_SYSTEM = f"""
         --COLOR_NEUTRAL_BG: {COLOR_NEUTRAL_BG};
         --COLOR_NEUTRAL_TEXT: {COLOR_NEUTRAL_TEXT};
 
+        /* Semantic design-system aliases */
+        --color-bg: var(--COLOR_BG);
+        --color-surface: var(--COLOR_SURFACE);
+        --color-surface-muted: var(--surface-muted);
+        --color-border: var(--COLOR_BORDER);
+        --color-border-strong: var(--border-strong);
+        --color-text-primary: var(--COLOR_TEXT_PRIMARY);
+        --color-text-secondary: var(--COLOR_TEXT_SECONDARY);
+        --color-text-muted: var(--COLOR_TEXT_MUTED);
+        --color-primary: var(--COLOR_PRIMARY);
+        --color-primary-hover: var(--COLOR_PRIMARY_HOVER);
+        --color-primary-soft: var(--COLOR_PRIMARY_SOFT);
+        --color-accent: var(--accent-amber);
+        --color-success: var(--success);
+        --color-danger: var(--error);
+
         --primary: {PRIMARY};
         --surface: {SURFACE};
         --text: {TEXT};
@@ -235,13 +251,30 @@ TOKEN_SYSTEM = f"""
         --font-size-sm: 14px;
         --font-size-base: 16px;
         --font-size-lg: 18px;
+        --font-size-xl: 24px;
+        --font-size-2xl: 28px;
+        --font-size-display: 32px;
+        --font-size-caption: 13px;
+        --font-size-label: 12px;
+        --font-size-kpi: 32px;
+        --font-weight-regular: 400;
+        --font-weight-medium: 500;
+        --font-weight-semibold: 600;
+        --font-weight-bold: 700;
 
         /* Spacing scale (4px base) */
-        --spacing-xs: 4px;
-        --spacing-sm: 8px;
-        --spacing-md: 16px;
-        --spacing-lg: 24px;
-        --spacing-xl: 32px;
+        --spacing-1: 4px;
+        --spacing-2: 8px;
+        --spacing-3: 12px;
+        --spacing-4: 16px;
+        --spacing-6: 24px;
+        --spacing-8: 32px;
+        --spacing-10: 40px;
+        --spacing-xs: var(--spacing-1);
+        --spacing-sm: var(--spacing-2);
+        --spacing-md: var(--spacing-4);
+        --spacing-lg: var(--spacing-6);
+        --spacing-xl: var(--spacing-8);
 
         /* Shadows */
         --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
