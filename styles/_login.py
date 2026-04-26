@@ -89,6 +89,12 @@ LOGIN_CSS = r"""
     .login-form-wrap {
         text-align: left;
     }
+    .login-form-wrap div[data-testid="stForm"] {
+        border: none !important;
+        padding: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+    }
     .login-footer {
         margin-top: 1.25rem;
         font-family: 'Inter', sans-serif;
