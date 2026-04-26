@@ -28,11 +28,15 @@ pytest tests/test_pos_parser.py::TestF::test_f_returns_float -v  # run single te
 ```
 
 ### Lint
-No linter config currently exists. `.ruff_cache/` suggests Ruff was used previously. To add:
+Ruff is configured in `pyproject.toml` with:
+- line length = 100
+- rules: `E` (pycodestyle), `F` (pyflakes), `I` (import sorting), `B` (bugbear)
+
+Use these exact commands:
 ```bash
-ruff check .                      # lint
-ruff check . --fix                # auto-fix
-ruff format .                     # format
+ruff check . --select E,F,I,B                 # lint repository with configured baseline rules
+ruff check <path> --select E,F,I,B --fix      # apply safe auto-fixes to a specific file/folder
+ruff format <path>                             # format only touched files (do not run repo-wide yet)
 ```
 
 ## Code Style
