@@ -28,6 +28,7 @@ import dynamic_report_parser
 import file_detector
 import pos_parser
 import timing_parser
+from services.location_resolver import resolve_location_id
 from uploads.merge import merge_fragments_by_date
 from uploads.models import DayResult, FileResult, SmartUploadResult
 from uploads.parsers.flash_report import parse_flash_report
@@ -65,25 +66,6 @@ def _primary_file_type(source_kinds: List[str]) -> str:
         if kind in source_kinds:
             return kind
     return "item_order_details"
-
-
-# ---------------------------------------------------------------------------
-# Internal parsers for non-Item-Report types
-# ---------------------------------------------------------------------------
-
-
-def _parse_order_summary_csv(
-    content: bytes, filename: str
-) -> Tuple[Optional[List[Dict[str, Any]]], List[str]]:
-    """Compatibility wrapper around extracted Order Summary parser."""
-    return parse_order_summary_csv(content, filename)
-
-
-def _parse_flash_report(
-    content: bytes, filename: str
-) -> Tuple[Optional[List[Dict[str, Any]]], List[str]]:
-    """Compatibility wrapper around extracted Flash Report parser."""
-    return parse_flash_report(content, filename)
 
 
 # ---------------------------------------------------------------------------
@@ -223,7 +205,7 @@ def process_smart_upload(
     for fname, content in classified.get("order_summary_csv", []):
         fr_match = filename_to_fr.get(fname)
         try:
-            parsed, notes_csv = _parse_order_summary_csv(content, fname)
+            parsed, notes_csv = parse_order_summary_csv(content, fname)
             for n in notes_csv:
                 global_notes.append(n)
             if parsed:
@@ -250,7 +232,7 @@ def process_smart_upload(
     for fname, content in classified.get("flash_report", []):
         fr_match = filename_to_fr.get(fname)
         try:
-            parsed, notes_fl = _parse_flash_report(content, fname)
+            parsed, notes_fl = parse_flash_report(content, fname)
             for n in notes_fl:
                 global_notes.append(n)
             if parsed:
@@ -511,6 +493,7 @@ def save_smart_upload_results(
         dynamic_files = [
             fr for fr in result.files if fr.kind == "dynamic_report" and fr.content and not fr.error
         ]
+        all_locations = database.get_all_locations() if dynamic_files else []
         for fr in dynamic_files:
             try:
                 raw_records, parse_notes = dynamic_report_parser.parse_dynamic_report_raw(
@@ -526,7 +509,12 @@ def save_smart_upload_results(
                 file_dates_locs: set = set()
                 for rec in raw_records:
                     rname = (str(rec.get("restaurant") or "")).strip() or "Boteco"
-                    loc = db_writes._get_location_id(rname)
+                    loc = resolve_location_id(
+                        restaurant_name=rname,
+                        locations=all_locations,
+                        aliases=config.RESTAURANT_NAME_MAP,
+                        fallback_location_id=1,
+                    )
                     file_dates_locs.add((rec.get("bill_date", ""), loc))
 
                 # Batch-delete existing bill_items for these dates/locations (idempotent re-upload)

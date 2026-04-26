@@ -68,7 +68,10 @@ def test_parse_order_summary_csv_large_synthetic():
     n_rows = 50000
     df = pd.DataFrame(
         {
-            "date": ["2026-04-01 10:30:00" if i % 2 == 0 else "2026-04-02 19:45:00" for i in range(n_rows)],
+            "date": [
+                "2026-04-01 10:30:00" if i % 2 == 0 else "2026-04-02 19:45:00"
+                for i in range(n_rows)
+            ],
             "my_amount": [100 + (i % 7) for i in range(n_rows)],
             "status": ["success" if i % 11 else "cancelled" for i in range(n_rows)],
             "payment_type": ["Cash" if i % 3 == 0 else "Card" for i in range(n_rows)],
@@ -77,7 +80,7 @@ def test_parse_order_summary_csv_large_synthetic():
     content = df.to_csv(index=False).encode("utf-8")
 
     start = time.perf_counter()
-    out, notes = smart_upload._parse_order_summary_csv(content, "orders.csv")
+    out, notes = smart_upload.parse_order_summary_csv(content, "orders.csv")
     elapsed = time.perf_counter() - start
 
     assert notes == []

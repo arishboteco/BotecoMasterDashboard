@@ -113,7 +113,7 @@ class TestProcessSmartUpload:
         )
         monkeypatch.setattr(
             smart_upload,
-            "_parse_order_summary_csv",
+            "parse_order_summary_csv",
             lambda content, fname: (
                 [
                     {
@@ -170,7 +170,7 @@ class TestParseOrderSummaryCsv:
             "utf-8"
         )
 
-        parsed, notes = smart_upload._parse_order_summary_csv(content, "orders.csv")
+        parsed, notes = smart_upload.parse_order_summary_csv(content, "orders.csv")
 
         assert notes == []
         assert parsed is not None
@@ -184,7 +184,7 @@ class TestParseOrderSummaryCsv:
             "date,my_amount,status,payment_type\n2026-04-01,120,Success Order,Card\n"
         ).encode("utf-8")
 
-        parsed, notes = smart_upload._parse_order_summary_csv(content, "orders.csv")
+        parsed, notes = smart_upload.parse_order_summary_csv(content, "orders.csv")
 
         assert notes == []
         assert parsed is not None
@@ -198,7 +198,7 @@ class TestParseOrderSummaryCsv:
             "utf-8"
         )
 
-        parsed, notes = smart_upload._parse_order_summary_csv(content, "orders.csv")
+        parsed, notes = smart_upload.parse_order_summary_csv(content, "orders.csv")
 
         assert notes == []
         assert parsed is not None
@@ -212,7 +212,7 @@ class TestParseOrderSummaryCsv:
             "date,my_amount,status,payment_type\n2026-04-01,90,Success Complimentary,Cash\n"
         ).encode("utf-8")
 
-        parsed, notes = smart_upload._parse_order_summary_csv(content, "orders.csv")
+        parsed, notes = smart_upload.parse_order_summary_csv(content, "orders.csv")
 
         assert notes == []
         assert parsed is None

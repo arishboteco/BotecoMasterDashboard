@@ -20,13 +20,6 @@ from db.table_names import (
 
 logger = get_logger(__name__)
 
-# Restaurant CSV column value → location_id (Supabase / app convention)
-RESTAURANT_MAP = {
-    "Boteco": 1,
-    "Boteco - Indiqube": 1,
-    "Boteco - Bagmane": 2,
-}
-
 LOCATION_ID_TO_RESTAURANT = {
     1: "Boteco",
     2: "Boteco - Bagmane",
@@ -34,11 +27,6 @@ LOCATION_ID_TO_RESTAURANT = {
 
 # PostgREST performs best with modest payload sizes; large CSVs are split across requests.
 _SUPABASE_ROW_CHUNK = 500
-
-
-def _get_location_id(restaurant: str) -> int:
-    """Map restaurant name from Dynamic Report CSV to location_id."""
-    return RESTAURANT_MAP.get(restaurant, 1)
 
 
 def ensure_default_locations() -> None:
