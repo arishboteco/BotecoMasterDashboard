@@ -9,7 +9,6 @@ from typing import Generator, Iterable, Optional, Tuple
 
 import streamlit as st
 
-
 ICON_FALLBACKS = {
     "upload_file": "↥",
     "fact_check": "✓",
@@ -65,7 +64,7 @@ def page_header(
         f'<p class="page-hero-kicker">Operations</p>'
         f'<h2 class="page-hero-title">{escape(title)}</h2>'
         f'<p class="page-hero-subtitle">{escape(subtitle)}</p>'
-        f'</div>{context_html}</section>',
+        f"</div>{context_html}</section>",
         unsafe_allow_html=True,
     )
 
@@ -93,14 +92,9 @@ def page_shell() -> PageShell:
 
 
 def _icon_html(icon: str, class_name: str) -> str:
-    """Render an icon with a text fallback that does not leak ligature names."""
+    """Render a safe icon marker without exposing ligature text."""
     fallback = ICON_FALLBACKS.get(icon, "•")
-    return (
-        f'<span class="{class_name}" aria-hidden="true">'
-        f'<span class="material-symbols-outlined {class_name}__glyph">{escape(icon)}</span>'
-        f'<span class="{class_name}__fallback">{escape(fallback)}</span>'
-        f'</span>'
-    )
+    return f'<span class="{class_name}" aria-hidden="true">{escape(fallback)}</span>'
 
 
 def section_title(
@@ -109,13 +103,11 @@ def section_title(
     icon: str = "widgets",
 ) -> None:
     """Render a compact section heading with consistent hierarchy and spacing."""
-    subtitle_html = (
-        f'<p class="section-block-subtitle">{escape(subtitle)}</p>' if subtitle else ""
-    )
+    subtitle_html = f'<p class="section-block-subtitle">{escape(subtitle)}</p>' if subtitle else ""
     st.markdown(
         f'<div class="section-block">'
         f'<div class="section-block-title">'
-        f'{_icon_html(icon, "section-block-icon")}'
+        f"{_icon_html(icon, 'section-block-icon')}"
         f"<span>{escape(title)}</span>"
         f"</div>"
         f"{subtitle_html}"
@@ -164,7 +156,7 @@ def info_banner(
     resolved_icon = icon or icon_by_tone[safe_tone]
     st.markdown(
         f'<div class="info-banner info-banner--{safe_tone}">'
-        f'{_icon_html(resolved_icon, "info-banner-icon")}'
+        f"{_icon_html(resolved_icon, 'info-banner-icon')}"
         f'<span class="info-banner-text">{escape(message)}</span>'
         f"</div>",
         unsafe_allow_html=True,
@@ -178,13 +170,11 @@ def filter_strip(
 ) -> None:
     """Render a compact filter strip header used before filter controls."""
     subtitle_html = (
-        f'<span class="filter-strip-subtitle">{escape(subtitle)}</span>'
-        if subtitle
-        else ""
+        f'<span class="filter-strip-subtitle">{escape(subtitle)}</span>' if subtitle else ""
     )
     st.markdown(
         f'<div class="filter-strip">'
-        f'{_icon_html(icon, "filter-strip-icon")}'
+        f"{_icon_html(icon, 'filter-strip-icon')}"
         f'<span class="filter-strip-title">{escape(title)}</span>'
         f"{subtitle_html}"
         f"</div>",
