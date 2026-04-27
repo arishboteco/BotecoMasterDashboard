@@ -1,7 +1,6 @@
 """Tests for chart_builders module."""
 
 import pandas as pd
-import pytest
 from tabs import chart_builders
 
 

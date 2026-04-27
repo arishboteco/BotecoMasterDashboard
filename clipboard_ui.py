@@ -147,9 +147,6 @@ def render_image_action_row(
     hover_fg = ui_theme.BRAND_PRIMARY
     success_color = ui_theme.BRAND_GREEN
     error_color = ui_theme.BRAND_ERROR
-    msg_success = ui_theme.MSG_SUCCESS
-    msg_warning = ui_theme.MSG_WARNING
-    msg_error = ui_theme.MSG_ERROR
 
     html = f"""
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..24,400,0,0&display=swap" rel="stylesheet">

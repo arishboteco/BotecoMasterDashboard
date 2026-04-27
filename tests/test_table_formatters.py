@@ -1,7 +1,6 @@
 """Tests for table_formatters module."""
 
 import pandas as pd
-import pytest
 from tabs import table_formatters
 
 

@@ -175,7 +175,8 @@ def render(ctx: TabContext) -> None:
             if st.button("Delete outlet", key="del_loc_btn", type="secondary"):
                 st.session_state["_pending_loc_delete"] = del_loc_id
 
-            def _do_delete_outlet(_id=st.session_state.get("_pending_loc_delete")):
+            def _do_delete_outlet():
+                _id = st.session_state.get("_pending_loc_delete")
                 ok, msg = database.delete_location(_id)
                 st.session_state.pop("_pending_loc_delete", None)
                 st.session_state["_outlet_delete_result"] = (ok, msg)
@@ -339,11 +340,9 @@ def render(ctx: TabContext) -> None:
 
             _current_user = st.session_state.username
 
-            def _do_delete_user(
-                _id=st.session_state.get("_pending_user_delete"),
-                _actor=_current_user,
-            ):
-                ok, msg = database.delete_user(_id, _actor)
+            def _do_delete_user():
+                _id = st.session_state.get("_pending_user_delete")
+                ok, msg = database.delete_user(_id, _current_user)
                 st.session_state.pop("_pending_user_delete", None)
                 st.session_state["_user_delete_result"] = (ok, msg)
                 st.rerun()
