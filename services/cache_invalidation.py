@@ -5,7 +5,6 @@ from __future__ import annotations
 import tabs.analytics_tab as analytics_tab
 import tabs.report_tab as report_tab
 from database_reads import clear_location_cache
-from services import report_service
 
 
 def invalidate_after_import(location_ids: list[int]) -> None:
@@ -29,13 +28,3 @@ def invalidate_analytics() -> None:
 def invalidate_location_reads(location_id: int) -> None:
     """Invalidate location-scoped cached database reads."""
     clear_location_cache(location_id)
-
-
-def invalidate_footfall_caches(location_id: int) -> None:
-    """Invalidate caches impacted by a manual footfall override change."""
-    invalidate_location_reads(location_id)
-    invalidate_analytics()
-    invalidate_reports()
-    report_service._REPORT_CACHE.clear()
-    report_service._FOOT_CACHE.clear()
-    report_service._MTD_CACHE.clear()

@@ -203,7 +203,6 @@ def _detail_lists_for_daily_summary(location_id: int, date: str) -> tuple[List[D
 def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
     """Get daily summary for a specific date."""
     import database
-    from services.footfall_override_service import apply_overrides
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
@@ -215,8 +214,7 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
             .execute()
         )
         if not result.data:
-            rows = apply_overrides([], [location_id], date, date)
-            return rows[0] if rows else None
+            return None
         d = dict(result.data[0])
         try:
             cats, svcs = _detail_lists_for_daily_summary(location_id, date)
@@ -231,8 +229,7 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
             )
             d.setdefault("categories", [])
             d.setdefault("services", [])
-        rows = apply_overrides([d], [location_id], date, date)
-        return rows[0] if rows else None
+        return d
     else:
         tbl = _sqlite_daily_table()
         with database.db_connection() as conn:
@@ -243,8 +240,7 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
             )
             row = cursor.fetchone()
             if not row:
-                rows = apply_overrides([], [location_id], date, date)
-                return rows[0] if rows else None
+                return None
             d = dict(row)
             sid = int(d["id"])
             d["categories"] = _sqlite_categories_for_summary(conn, sid)
@@ -272,8 +268,7 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
                         date,
                         ex,
                     )
-        rows = apply_overrides([d], [location_id], date, date)
-        return rows[0] if rows else None
+        return d
 
 
 def get_summaries_for_date_range(
@@ -283,7 +278,6 @@ def get_summaries_for_date_range(
 ) -> List[Dict]:
     """Get daily summaries for a date range."""
     import database
-    from services.footfall_override_service import apply_overrides
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
@@ -296,12 +290,7 @@ def get_summaries_for_date_range(
             .order("date")
             .execute()
         )
-        return apply_overrides(
-            [dict(row) for row in result.data],
-            [location_id],
-            start_date,
-            end_date,
-        )
+        return result.data
     else:
         tbl = _sqlite_daily_table()
         with database.db_connection() as conn:
@@ -315,7 +304,7 @@ def get_summaries_for_date_range(
                 (location_id, start_date, end_date),
             )
             rows = cursor.fetchall()
-        return apply_overrides([dict(row) for row in rows], [location_id], start_date, end_date)
+        return [dict(row) for row in rows]
 
 
 @st.cache_data(ttl=600)
@@ -334,7 +323,6 @@ def get_summaries_for_date_range_multi(
 ) -> List[Dict]:
     """Get daily summaries for multiple locations."""
     import database
-    from services.footfall_override_service import apply_overrides
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
@@ -347,12 +335,7 @@ def get_summaries_for_date_range_multi(
             .order("date")
             .execute()
         )
-        return apply_overrides(
-            [dict(row) for row in result.data],
-            location_ids,
-            start_date,
-            end_date,
-        )
+        return result.data
     else:
         tbl = _sqlite_daily_table()
         with database.db_connection() as conn:
@@ -367,7 +350,7 @@ def get_summaries_for_date_range_multi(
                 (*location_ids, start_date, end_date),
             )
             rows = cursor.fetchall()
-        return apply_overrides([dict(row) for row in rows], location_ids, start_date, end_date)
+        return [dict(row) for row in rows]
 
 
 def get_category_totals_for_date_range(
