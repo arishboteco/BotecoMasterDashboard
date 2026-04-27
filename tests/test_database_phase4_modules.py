@@ -72,3 +72,23 @@ def test_phase7_performance_indexes_exist(initialized_db):
 
     assert "idx_daily_summaries_date" in names
     assert "idx_daily_summaries_date_location" in names
+
+
+def test_database_writes_ignores_supabase_location_seed_errors(monkeypatch):
+    import database_writes
+
+    class _FailingQuery:
+        def select(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            raise RuntimeError("new row violates row-level security policy for table locations")
+
+    class _FailingClient:
+        def table(self, _name):
+            return _FailingQuery()
+
+    monkeypatch.setattr(database_writes.database, "use_supabase", lambda: True)
+    monkeypatch.setattr(database_writes.database, "get_supabase_client", lambda: _FailingClient())
+
+    database_writes.ensure_default_locations()

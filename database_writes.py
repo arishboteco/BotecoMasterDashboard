@@ -37,25 +37,31 @@ def ensure_default_locations() -> None:
         client = get_supabase_client()
         if client is None:
             return
-        existing = client.table("locations").select("id,name").execute()
-        existing_names = {row["name"] for row in (existing.data or [])}
-        defaults = [
-            {
-                "id": 1,
-                "name": "Boteco - Indiqube",
-                "target_monthly_sales": 5000000.0,
-                "target_daily_sales": 166666.66666666666,
-            },
-            {
-                "id": 2,
-                "name": "Boteco - Bagmane",
-                "target_monthly_sales": 5000000.0,
-                "target_daily_sales": 166666.66666666666,
-            },
-        ]
-        for loc in defaults:
-            if loc["name"] not in existing_names:
-                client.table("locations").upsert(loc, on_conflict="id").execute()
+        try:
+            existing = client.table("locations").select("id,name").execute()
+            existing_names = {row["name"] for row in (existing.data or [])}
+            defaults = [
+                {
+                    "id": 1,
+                    "name": "Boteco - Indiqube",
+                    "target_monthly_sales": 5000000.0,
+                    "target_daily_sales": 166666.66666666666,
+                },
+                {
+                    "id": 2,
+                    "name": "Boteco - Bagmane",
+                    "target_monthly_sales": 5000000.0,
+                    "target_daily_sales": 166666.66666666666,
+                },
+            ]
+            for loc in defaults:
+                if loc["name"] not in existing_names:
+                    client.table("locations").upsert(loc, on_conflict="id").execute()
+        except Exception:
+            logger.warning(
+                "Skipping default location seed for Supabase (likely RLS-restricted credentials)",
+                exc_info=True,
+            )
         return
 
     with database.db_connection() as conn:
