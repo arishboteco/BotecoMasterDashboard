@@ -12,7 +12,6 @@ import styles
 import ui_theme
 from tabs import TabContext
 from tabs.analytics_tab import render as render_analytics
-from tabs.footfall_tab import render as render_footfall
 from tabs.report_tab import render as render_report
 from tabs.settings_tab import render as render_settings
 from tabs.upload_tab import render as render_upload
@@ -140,17 +139,13 @@ else:
     )
 
     # Tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(
-        ["Upload", "Report", "Footfall", "Analytics", "Settings"]
-    )
+    tab1, tab2, tab3, tab4 = st.tabs(["Upload", "Report", "Analytics", "Settings"])
 
     with tab1:
         render_upload(ctx)
     with tab2:
         render_report(ctx)
     with tab3:
-        render_footfall(ctx)
-    with tab4:
         render_analytics(ctx)
-    with tab5:
+    with tab4:
         render_settings(ctx)
