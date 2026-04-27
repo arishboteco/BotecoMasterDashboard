@@ -29,14 +29,27 @@ def _utcnow() -> datetime:
 
 def create_admin_user(username: str, password: str) -> None:
     """Create admin user if not exists."""
+    normalized_username = username.strip()
+    if not normalized_username:
+        return
+
     if database.use_supabase():
         supabase = database.get_supabase_client()
         try:
-            result = supabase.table("users").select("id").eq("username", username).execute()
+            result = (
+                supabase.table("users")
+                .select("id, username")
+                .eq("username", normalized_username)
+                .execute()
+            )
             if not result.data:
                 password_hash = database._hash_password(password)
                 supabase.table("users").insert(
-                    {"username": username, "password_hash": password_hash, "role": "admin"}
+                    {
+                        "username": normalized_username,
+                        "password_hash": password_hash,
+                        "role": "admin",
+                    }
                 ).execute()
         except APIError as exc:
             if exc.code == "42501":
@@ -45,7 +58,7 @@ def create_admin_user(username: str, password: str) -> None:
     else:
         with database.db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
+            cursor.execute("SELECT id FROM users WHERE username = ?", (normalized_username,))
             if cursor.fetchone() is None:
                 password_hash = database._hash_password(password)
                 cursor.execute(
@@ -53,21 +66,36 @@ def create_admin_user(username: str, password: str) -> None:
                     INSERT INTO users (username, password_hash, role)
                     VALUES (?, ?, 'admin')
                     """,
-                    (username, password_hash),
+                    (normalized_username, password_hash),
                 )
                 conn.commit()
 
 
 def verify_user(username: str, password: str) -> Optional[Dict]:
     """Verify user credentials using secure password verification."""
+    normalized_username = _norm_username(username)
+    stripped_username = (username or "").strip()
+    if not stripped_username:
+        return None
+
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = supabase.table("users").select("*").eq("username", username).execute()
+        result = supabase.table("users").select("*").execute()
 
         if not result.data:
             return None
 
-        row = result.data[0]
+        row = next(
+            (
+                item
+                for item in result.data
+                if (item.get("username") or "").strip() == stripped_username
+                or (item.get("username") or "").strip().lower() == normalized_username
+            ),
+            None,
+        )
+        if not row:
+            return None
         if database._verify_password(password, row["password_hash"]):
             row.pop("password_hash", None)
             if row.get("location_id"):
@@ -89,9 +117,9 @@ def verify_user(username: str, password: str) -> Optional[Dict]:
                 SELECT u.*, l.name as location_name
                 FROM users u
                 LEFT JOIN locations l ON u.location_id = l.id
-                WHERE u.username = ?
+                WHERE LOWER(TRIM(u.username)) = ?
                 """,
-                (username,),
+                (normalized_username,),
             )
             row = cursor.fetchone()
 
