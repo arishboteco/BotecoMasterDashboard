@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import streamlit as st
 
@@ -45,6 +45,114 @@ def _apply_overrides_range(
     from services.footfall_override_service import apply_overrides
 
     return apply_overrides(summaries, location_ids, start_date, end_date)
+
+
+def _reconcile_cover_split(lunch: int, dinner: int, covers: int) -> tuple[int, int]:
+    """Scale a derived Lunch/Dinner split so it preserves stored total covers."""
+    raw_total = lunch + dinner
+    if raw_total <= 0 or covers <= 0 or raw_total == covers:
+        return lunch, dinner
+    scaled_lunch = round(covers * (lunch / raw_total))
+    return scaled_lunch, covers - scaled_lunch
+
+
+def _hydrate_supabase_footfall_splits(
+    summaries: List[Dict], location_ids: List[int], start_date: str, end_date: str
+) -> List[Dict]:
+    """Derive missing Lunch/Dinner covers from Supabase bill_items pax timestamps."""
+    if not summaries or not location_ids:
+        return summaries
+
+    import database
+    from database_analytics import (
+        _bill_items_success,
+        _hour_from_created_datetime,
+        _service_type_from_created_datetime,
+    )
+    from database_writes import LOCATION_ID_TO_RESTAURANT
+
+    restaurant_to_location = {
+        restaurant: int(location_id)
+        for location_id, restaurant in LOCATION_ID_TO_RESTAURANT.items()
+        if int(location_id) in {int(lid) for lid in location_ids}
+    }
+    if not restaurant_to_location:
+        return summaries
+
+    supabase = database.get_supabase_client()
+    result = (
+        supabase.table("bill_items")
+        .select("restaurant,bill_date,bill_no,created_date_time,pax,bill_status")
+        .in_("restaurant", list(restaurant_to_location.keys()))
+        .gte("bill_date", start_date)
+        .lte("bill_date", end_date)
+        .execute()
+    )
+
+    bills: Dict[tuple[int, str, str], Dict[str, Any]] = {}
+    for row in result.data or []:
+        if not _bill_items_success(row.get("bill_status")):
+            continue
+        location_id = restaurant_to_location.get(str(row.get("restaurant") or ""))
+        bill_no = str(row.get("bill_no") or "").strip()
+        if location_id is None or not bill_no:
+            continue
+        date = str(row.get("bill_date") or "")[:10]
+        if not date:
+            continue
+        key = (location_id, date, bill_no)
+        bucket = bills.setdefault(
+            key,
+            {"pax": 0, "created_date_time": row.get("created_date_time")},
+        )
+        bucket["pax"] = max(int(bucket.get("pax") or 0), int(row.get("pax") or 0))
+        if bucket.get("created_date_time") is None:
+            bucket["created_date_time"] = row.get("created_date_time")
+
+    grouped: Dict[tuple[int, str], List[Dict[str, Any]]] = {}
+    for (location_id, date, _bill_no), bill in bills.items():
+        if int(bill.get("pax") or 0) <= 0:
+            continue
+        grouped.setdefault((location_id, date), []).append(bill)
+
+    split_by_key: Dict[tuple[int, str], Dict[str, int]] = {}
+    for key, day_bills in grouped.items():
+        hours = [
+            hour
+            for bill in day_bills
+            if (hour := _hour_from_created_datetime(bill.get("created_date_time"))) is not None
+        ]
+        is_pos_12h_clock = bool(hours) and max(hours) <= 12
+        split = {"lunch_covers": 0, "dinner_covers": 0}
+        for bill in day_bills:
+            service_type = _service_type_from_created_datetime(
+                bill.get("created_date_time"), is_pos_12h_clock
+            )
+            pax = int(bill.get("pax") or 0)
+            if service_type == "Lunch":
+                split["lunch_covers"] += pax
+            else:
+                split["dinner_covers"] += pax
+        split_by_key[key] = split
+
+    hydrated: List[Dict] = []
+    for summary in summaries:
+        out = dict(summary)
+        if out.get("lunch_covers") is not None or out.get("dinner_covers") is not None:
+            hydrated.append(out)
+            continue
+        loc = out.get("location_id")
+        date = str(out.get("date") or "")[:10]
+        split = split_by_key.get((int(loc), date)) if loc is not None and date else None
+        if split:
+            covers = int(out.get("covers") or 0)
+            lunch, dinner = _reconcile_cover_split(
+                int(split["lunch_covers"]), int(split["dinner_covers"]), covers
+            )
+            out["lunch_covers"] = lunch
+            out["dinner_covers"] = dinner
+        hydrated.append(out)
+    return hydrated
 
 
 def _inclusive_end_from_exclusive(date_str: str) -> str:
@@ -314,6 +422,7 @@ def get_summaries_for_date_range(
             .execute()
         )
         rows = list(result.data or [])
+        rows = _hydrate_supabase_footfall_splits(rows, [location_id], start_date, end_date)
     else:
         tbl = _sqlite_daily_table()
         with database.db_connection() as conn:
@@ -359,6 +468,7 @@ def get_summaries_for_date_range_multi(
             .execute()
         )
         rows = list(result.data or [])
+        rows = _hydrate_supabase_footfall_splits(rows, list(location_ids), start_date, end_date)
     else:
         tbl = _sqlite_daily_table()
         with database.db_connection() as conn:

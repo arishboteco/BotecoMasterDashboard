@@ -39,6 +39,40 @@ class _BillItemsClient:
         return _BillItemsQuery(self.rows)
 
 
+class _TableQuery:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def select(self, _columns):
+        return self
+
+    def eq(self, _column, _value):
+        return self
+
+    def in_(self, _column, _values):
+        return self
+
+    def gte(self, _column, _value):
+        return self
+
+    def lte(self, _column, _value):
+        return self
+
+    def order(self, _column, desc=False):
+        return self
+
+    def execute(self):
+        return SimpleNamespace(data=self.rows)
+
+
+class _TablesClient:
+    def __init__(self, tables):
+        self.tables = tables
+
+    def table(self, table_name):
+        return _TableQuery(self.tables.get(table_name, []))
+
+
 def test_supabase_client_prefers_service_key_for_server_side_reads(monkeypatch):
     created = []
 
@@ -140,6 +174,59 @@ class TestGetServiceSalesForDateRange:
             {"type": "Lunch", "amount": 8115.01},
             {"type": "Dinner", "amount": 5245.01},
         ]
+
+
+class TestSupabaseFootfallSplits:
+    def test_get_summaries_derives_lunch_dinner_covers_from_bill_items(
+        self, monkeypatch
+    ):
+        import database_reads
+
+        client = _TablesClient(
+            {
+                "daily_summary": [
+                    {
+                        "location_id": 2,
+                        "date": "2026-04-22",
+                        "covers": 9,
+                        "net_total": 1000.0,
+                    }
+                ],
+                "bill_items": [
+                    {
+                        "restaurant": "Boteco - Bagmane",
+                        "bill_date": "2026-04-22",
+                        "bill_no": "L1",
+                        "created_date_time": "2026-04-22 12:30:00",
+                        "pax": 2,
+                        "bill_status": "SuccessOrder",
+                    },
+                    {
+                        "restaurant": "Boteco - Bagmane",
+                        "bill_date": "2026-04-22",
+                        "bill_no": "L2",
+                        "created_date_time": "2026-04-22 02:10:00",
+                        "pax": 3,
+                        "bill_status": "SuccessOrder",
+                    },
+                    {
+                        "restaurant": "Boteco - Bagmane",
+                        "bill_date": "2026-04-22",
+                        "bill_no": "D1",
+                        "created_date_time": "2026-04-22 08:45:00",
+                        "pax": 4,
+                        "bill_status": "SuccessOrder",
+                    },
+                ],
+            }
+        )
+        monkeypatch.setattr(database, "use_supabase", lambda: True)
+        monkeypatch.setattr(database, "get_supabase_client", lambda: client)
+
+        rows = database_reads.get_summaries_for_date_range(2, "2026-04-22", "2026-04-22")
+
+        assert rows[0]["lunch_covers"] == 5
+        assert rows[0]["dinner_covers"] == 4
 
 
 class TestGetMonthlyFootfallMulti:
