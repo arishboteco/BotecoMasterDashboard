@@ -28,6 +28,32 @@ def _restaurants_for_location_ids(location_ids: List[int]) -> List[str]:
     return [LOCATION_ID_TO_RESTAURANT.get(int(lid), "Boteco") for lid in location_ids]
 
 
+def _service_type_from_created_datetime(created_date_time: Any) -> str | None:
+    """Classify a bill timestamp into Lunch/Dinner using POS local bill time."""
+    if created_date_time is None:
+        return None
+    if hasattr(created_date_time, "hour"):
+        hour = int(created_date_time.hour)
+        return "Lunch" if hour < 18 else "Dinner"
+
+    value = str(created_date_time).strip()
+    if value in ("", "nan", "None"):
+        return None
+
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        try:
+            import pandas as pd
+
+            dt = pd.Timestamp(value)
+        except (ValueError, TypeError):
+            return None
+    if getattr(dt, "hour", None) is None:
+        return None
+    return "Lunch" if int(dt.hour) < 18 else "Dinner"
+
+
 def _fetch_daily_summary_rows(
     location_ids: List[int],
     start_date: str,
@@ -288,22 +314,9 @@ def get_service_sales_for_date_range(
             if net <= 0:
                 continue
 
-            cdt = row.get("created_date_time")
-            if cdt:
-                from datetime import datetime
-
-                try:
-                    if isinstance(cdt, str):
-                        dt = datetime.fromisoformat(cdt.replace("Z", "+00:00"))
-                    else:
-                        dt = cdt
-                    hour = dt.hour
-                    if 12 <= hour < 17:
-                        lunch_total += net
-                    else:
-                        dinner_total += net
-                except (ValueError, TypeError, AttributeError):
-                    dinner_total += net
+            service_type = _service_type_from_created_datetime(row.get("created_date_time"))
+            if service_type == "Lunch":
+                lunch_total += net
             else:
                 dinner_total += net
 
@@ -370,22 +383,9 @@ def get_daily_service_sales_for_date_range(
             if date not in daily:
                 daily[date] = {"date": date, "Lunch": 0.0, "Dinner": 0.0}
 
-            cdt = row.get("created_date_time")
-            if cdt:
-                from datetime import datetime
-
-                try:
-                    if isinstance(cdt, str):
-                        dt = datetime.fromisoformat(cdt.replace("Z", "+00:00"))
-                    else:
-                        dt = cdt
-                    hour = dt.hour
-                    if 12 <= hour < 17:
-                        daily[date]["Lunch"] += net
-                    else:
-                        daily[date]["Dinner"] += net
-                except (ValueError, TypeError, AttributeError):
-                    daily[date]["Dinner"] += net
+            service_type = _service_type_from_created_datetime(row.get("created_date_time"))
+            if service_type == "Lunch":
+                daily[date]["Lunch"] += net
             else:
                 daily[date]["Dinner"] += net
 
