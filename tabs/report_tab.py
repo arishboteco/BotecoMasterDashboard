@@ -21,7 +21,6 @@ from components import (
     filter_strip,
     info_banner,
     page_shell,
-    section_title,
 )
 from components.feedback import empty_state
 from services import report_service
@@ -388,7 +387,6 @@ def render(ctx: TabContext) -> None:
                                 sec_bytes = _single_section_bufs[key].getvalue()
                                 row_idx, col_idx = divmod(idx, 2)
                                 with _cells[row_idx][col_idx]:
-                                    section_title(title, icon="image")
                                     st.image(BytesIO(sec_bytes), width="stretch")
                                     _wa_text = (
                                         f"Boteco {_selected_outlet} EOD Report \u2013 "
@@ -437,7 +435,6 @@ def render(ctx: TabContext) -> None:
                         sec_bytes = section_bufs[key].getvalue()
                         row_idx, col_idx = divmod(idx, 2)
                         with _cells[row_idx][col_idx]:
-                            section_title(title, icon="image")
                             st.image(BytesIO(sec_bytes), width="stretch")
                             _wa_text = f"Boteco Bangalore EOD Report \u2013 {date_str} ({title})"
                             clipboard_ui.render_image_action_row(
