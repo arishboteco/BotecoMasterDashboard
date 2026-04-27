@@ -21,29 +21,27 @@ rendered to PDF and converted to PNG via PyMuPDF, then stacked with Pillow.
 
 import os
 import re
-from io import BytesIO
 from datetime import datetime, timedelta
+from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
 from xml.sax.saxutils import escape
 
+import fitz
 import streamlit as st
-
+from PIL import Image as PILImage
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.platypus import (
-    SimpleDocTemplate,
-    Table,
-    TableStyle,
-    Spacer,
-    Flowable,
-    Paragraph,
-)
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-
-import fitz
-from PIL import Image as PILImage
+from reportlab.platypus import (
+    Flowable,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 import config
 from exceptions import ReportGenerationError
@@ -360,7 +358,10 @@ def build_verbose_daily_summary(report_data: Dict[str, Any]) -> str:
         f"Forecast month-end: {_r(forecast['forecast_month_end_sales'])} "
         f"({forecast['forecast_target_pct']:.0f}% of target)."
         if forecast["forecast_target_pct"] is not None
-        else f"Forecast month-end: {_r(forecast['forecast_month_end_sales'])}; target comparison unavailable."
+        else (
+            f"Forecast month-end: {_r(forecast['forecast_month_end_sales'])}; "
+            "target comparison unavailable."
+        )
     )
     line_3 = (
         "Comparison to previous day/week benchmark unavailable due to incomplete history."
@@ -478,7 +479,7 @@ def _render_elements_to_png(
         w, h = flowable.wrap(avail_w, 100000)
         total_height += h
 
-    page_h = total_height + top_margin + bottom_margin + 4
+    page_h = total_height + top_margin + bottom_margin + 24
     if page_h < 100:
         page_h = 100
 
@@ -1305,6 +1306,8 @@ def _build_category(
     rows.append(tot_cells)
 
     all_rows = prefix + rows
+    total_row_idx = len(all_rows) - 1
+    last_col_idx = len(col_w) - 1
     tbl = Table(all_rows, colWidths=col_w)
     style_cmds = [
         ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
@@ -1320,9 +1323,9 @@ def _build_category(
             style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(C_BAND)))
     style_cmds.extend(
         [
-            ("BACKGROUND", (0, -1), (-1, -1), _hex(C_BANNER)),
-            ("TEXTCOLOR", (0, -1), (-1, -1), _hex(C_WHITE)),
-            ("FONTNAME", (0, -1), (-1, -1), FONT_BOLD),
+            ("BACKGROUND", (0, total_row_idx), (last_col_idx, total_row_idx), _hex(C_BANNER)),
+            ("TEXTCOLOR", (0, total_row_idx), (last_col_idx, total_row_idx), _hex(C_WHITE)),
+            ("FONTNAME", (0, total_row_idx), (last_col_idx, total_row_idx), FONT_BOLD),
         ]
     )
 
@@ -1478,6 +1481,8 @@ def _build_service(
     rows.append(tot_cells)
 
     all_rows = prefix + rows
+    total_row_idx = len(all_rows) - 1
+    last_col_idx = len(col_w) - 1
     tbl = Table(all_rows, colWidths=col_w)
     style_cmds = [
         ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
@@ -1493,9 +1498,9 @@ def _build_service(
             style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(C_BAND)))
     style_cmds.extend(
         [
-            ("BACKGROUND", (0, -1), (-1, -1), _hex(C_BANNER)),
-            ("TEXTCOLOR", (0, -1), (-1, -1), _hex(C_WHITE)),
-            ("FONTNAME", (0, -1), (-1, -1), FONT_BOLD),
+            ("BACKGROUND", (0, total_row_idx), (last_col_idx, total_row_idx), _hex(C_BANNER)),
+            ("TEXTCOLOR", (0, total_row_idx), (last_col_idx, total_row_idx), _hex(C_WHITE)),
+            ("FONTNAME", (0, total_row_idx), (last_col_idx, total_row_idx), FONT_BOLD),
         ]
     )
 

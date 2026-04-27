@@ -1,6 +1,24 @@
 """Formatting tests for sheet report helpers."""
 
+from PIL import Image
+
 import sheet_reports
+
+
+def _has_dark_footer_band(buf) -> bool:
+    buf.seek(0)
+    image = Image.open(buf).convert("RGB")
+    sample_xs = (image.width // 4, image.width // 2, (image.width * 3) // 4)
+    dark_rows = 0
+    for y in range(image.height // 2, max(image.height - 8, image.height // 2)):
+        dark_samples = 0
+        for x in sample_xs:
+            r, g, b = image.getpixel((x, y))
+            if r < 60 and g < 90 and b < 130:
+                dark_samples += 1
+        if dark_samples >= 2:
+            dark_rows += 1
+    return dark_rows >= 8
 
 
 class TestRupeeFormatting:
@@ -84,3 +102,33 @@ class TestCategorySuperCategoryDisplay:
         assert "\u20b91,800" in element_texts, (
             f"Expected '₹1,800' in output, got: {element_texts}"
         )
+
+
+class TestCategoryServiceTotalRows:
+    def test_category_png_shows_total_footer_row(self):
+        sections = sheet_reports.generate_sheet_style_report_sections(
+            {
+                "date": "2026-04-08",
+                "categories": [
+                    {"category": "Food", "amount": 800.0},
+                    {"category": "Liquor", "amount": 450.0},
+                ],
+            },
+            mtd_category={"Food": 1800.0, "Liquor": 900.0},
+        )
+
+        assert _has_dark_footer_band(sections["category"])
+
+    def test_service_png_shows_total_footer_row(self):
+        sections = sheet_reports.generate_sheet_style_report_sections(
+            {
+                "date": "2026-04-08",
+                "services": [
+                    {"service_type": "Lunch", "amount": 700.0},
+                    {"service_type": "Dinner", "amount": 950.0},
+                ],
+            },
+            mtd_service={"Lunch": 1400.0, "Dinner": 2100.0},
+        )
+
+        assert _has_dark_footer_band(sections["service"])
