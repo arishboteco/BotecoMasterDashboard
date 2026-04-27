@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from datetime import date as date_cls
+from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import streamlit as st
 
 import database
+from boteco_logger import get_logger
 from components import (
     classed_container,
     divider,
@@ -17,25 +19,63 @@ from components import (
     page_shell,
     section_title,
 )
+from db.table_names import SQLITE_DAILY_SUMMARIES, SUPABASE_DAILY_SUMMARY
 from repositories.footfall_override_repository import (
     get_footfall_override_repository,
 )
 from services.cache_invalidation import invalidate_footfall_caches
 from tabs import TabContext
 
+logger = get_logger(__name__)
+
 # Service-classification cutoffs match dynamic_report_parser.py and pos_parser.py.
 LUNCH_HOURS = "12:00 – 17:59"
 DINNER_HOURS = "18:00 onwards"
 
+# Number of days of history to show in the "Recent overrides" table.
+_RECENT_OVERRIDES_WINDOW_DAYS = 90
+_RECENT_OVERRIDES_LIMIT = 14
+
 
 def _pos_covers_for(location_id: int, date_str: str) -> Dict[str, Optional[int]]:
     """Return raw POS-derived covers (without override overlay) for display."""
+    if database.use_supabase():
+        try:
+            client = database.get_supabase_client()
+            result = (
+                client.table(SUPABASE_DAILY_SUMMARY)
+                .select("covers,lunch_covers,dinner_covers")
+                .eq("location_id", location_id)
+                .eq("date", date_str)
+                .limit(1)
+                .execute()
+            )
+            rows = result.data or []
+        except Exception as ex:
+            logger.warning("Supabase POS covers lookup failed: %s", ex)
+            rows = []
+        if not rows:
+            return {"covers": None, "lunch_covers": None, "dinner_covers": None}
+        row = rows[0]
+        return {
+            "covers": int(row["covers"]) if row.get("covers") is not None else None,
+            "lunch_covers": (
+                int(row["lunch_covers"])
+                if row.get("lunch_covers") is not None
+                else None
+            ),
+            "dinner_covers": (
+                int(row["dinner_covers"])
+                if row.get("dinner_covers") is not None
+                else None
+            ),
+        }
     with database.db_connection() as conn:
         cur = conn.cursor()
         cur.execute(
-            """
+            f"""
             SELECT covers, lunch_covers, dinner_covers
-            FROM daily_summaries
+            FROM {SQLITE_DAILY_SUMMARIES}
             WHERE location_id = ? AND date = ?
             """,
             (location_id, date_str),
@@ -55,23 +95,18 @@ def _pos_covers_for(location_id: int, date_str: str) -> Dict[str, Optional[int]]
 
 
 def _recent_overrides(
-    location_id: int, days: int = 14
+    location_id: int, limit: int = _RECENT_OVERRIDES_LIMIT
 ) -> List[Dict[str, Any]]:
-    """Fetch the most recent override rows for an outlet."""
-    with database.db_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT date, lunch_covers, dinner_covers, note, edited_by, edited_at
-            FROM footfall_overrides
-            WHERE location_id = ?
-            ORDER BY date DESC
-            LIMIT ?
-            """,
-            (location_id, days),
-        )
-        rows = cur.fetchall()
-    return [dict(r) for r in rows]
+    """Fetch the most recent override rows for an outlet (across both backends)."""
+    today = date_cls.today()
+    start_date = (today - timedelta(days=_RECENT_OVERRIDES_WINDOW_DAYS)).strftime(
+        "%Y-%m-%d"
+    )
+    end_date = today.strftime("%Y-%m-%d")
+    repo = get_footfall_override_repository()
+    rows = repo.get_for_range([location_id], start_date, end_date)
+    rows.sort(key=lambda r: str(r.get("date") or ""), reverse=True)
+    return rows[:limit]
 
 
 def _default_outlet_id(ctx: TabContext) -> Optional[int]:
