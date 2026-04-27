@@ -146,13 +146,18 @@ _use_supabase_override: bool | None = None
 
 
 def _create_supabase_client():
-    """Create a fresh Supabase client instance. Returns None if not configured."""
+    """Create a fresh Supabase client instance. Returns None if not configured.
+
+    Streamlit runs server-side, so prefer the service-role key when present to
+    avoid RLS filtering operational dashboard reads to empty results.
+    """
     if not config.SUPABASE_URL or not config.SUPABASE_KEY:
         return None
     try:
         from supabase import create_client
 
-        return create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
+        key = config.SUPABASE_SERVICE_KEY or config.SUPABASE_KEY
+        return create_client(config.SUPABASE_URL, key)
     except ImportError:
         logger.warning("supabase package not installed")
         return None
@@ -162,7 +167,7 @@ def _create_supabase_client():
 
 
 def get_supabase_client():
-    """Get or create Supabase client (anon key, subject to RLS).
+    """Get or create Supabase client for server-side app operations.
 
     Lazily initialises on first call. Use reset_supabase_client() to force
     re-creation after a connection failure.

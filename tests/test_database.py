@@ -1,8 +1,31 @@
 """Tests for database footfall queries."""
 
+import sys
+from types import SimpleNamespace
+
 import pytest
+
 import config
 import database
+
+
+def test_supabase_client_prefers_service_key_for_server_side_reads(monkeypatch):
+    created = []
+
+    def fake_create_client(url, key):
+        created.append((url, key))
+        return {"url": url, "key": key}
+
+    monkeypatch.setattr(config, "SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setattr(config, "SUPABASE_KEY", "anon-key")
+    monkeypatch.setattr(config, "SUPABASE_SERVICE_KEY", "service-key")
+    monkeypatch.setattr(database, "_supabase_client", None)
+    monkeypatch.setitem(sys.modules, "supabase", SimpleNamespace(create_client=fake_create_client))
+
+    client = database.get_supabase_client()
+
+    assert client == {"url": "https://example.supabase.co", "key": "service-key"}
+    assert created == [("https://example.supabase.co", "service-key")]
 
 
 class TestGetMonthlyFootfallMulti:
@@ -197,7 +220,10 @@ class TestSessionTokens:
         plain_legacy_token = "legacy-token-123"
         with database.db_connection() as conn:
             conn.execute(
-                "INSERT INTO user_sessions (token, user_id, expires_at) VALUES (?, ?, datetime('now', '+1 day'))",
+                """
+                INSERT INTO user_sessions (token, user_id, expires_at)
+                VALUES (?, ?, datetime('now', '+1 day'))
+                """,
                 (plain_legacy_token, int(user["id"])),
             )
             conn.commit()
