@@ -28,15 +28,3 @@ def invalidate_analytics() -> None:
 def invalidate_location_reads(location_id: int) -> None:
     """Invalidate location-scoped cached database reads."""
     clear_location_cache(location_id)
-
-
-def invalidate_footfall_caches(location_ids: list[int]) -> None:
-    """Invalidate every cache that surfaces footfall numbers.
-
-    Called after a manual footfall override is created, updated, or deleted so
-    the next read recomputes covers from the merged (POS + override) view.
-    """
-    for location_id in location_ids:
-        invalidate_location_reads(location_id)
-    invalidate_analytics()
-    invalidate_reports()

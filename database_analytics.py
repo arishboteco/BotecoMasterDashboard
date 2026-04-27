@@ -34,54 +34,40 @@ def _fetch_daily_summary_rows(
     end_date: str,
     columns: tuple[str, ...],
 ) -> List[Dict[str, Any]]:
-    """Fetch daily summary rows for SQLite or Supabase with shared filtering.
-
-    Manual footfall overrides are overlaid on top of the result, and synthetic
-    rows are injected for dates that have an override but no daily_summaries row.
-    """
+    """Fetch daily summary rows for SQLite or Supabase with shared filtering."""
     import database
-    from services.footfall_override_service import apply_overrides
 
     if not location_ids:
         return []
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        # location_id and date are needed by the override merge layer; ensure
-        # the projection includes them even if the caller didn't ask for them.
-        select_cols = set(columns) | {"location_id", "date"}
         result = (
             supabase.table("daily_summary")
-            .select(",".join(sorted(select_cols)))
+            .select(",".join(columns))
             .in_("location_id", location_ids)
             .gte("date", start_date)
             .lte("date", end_date)
             .order("date")
             .execute()
         )
-        rows = [dict(row) for row in (result.data or [])]
-    else:
-        # Always include location_id (needed for override merging); the caller
-        # filters by `columns` on its consumer side via .get(...).
-        select_cols = list(columns)
-        if "location_id" not in select_cols:
-            select_cols = ["location_id", *select_cols]
-        placeholders = ",".join("?" * len(location_ids))
-        with database.db_connection() as conn:
-            cur = conn.cursor()
-            cur.execute(
-                f"""
-                SELECT {", ".join(select_cols)}
-                FROM daily_summaries
-                WHERE location_id IN ({placeholders})
-                  AND date >= ? AND date <= ?
-                ORDER BY date
-                """,
-                (*location_ids, start_date, end_date),
-            )
-            rows = [dict(row) for row in cur.fetchall()]
+        return [dict(row) for row in (result.data or [])]
 
-    return apply_overrides(rows, location_ids, start_date, end_date)
+    placeholders = ",".join("?" * len(location_ids))
+    with database.db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""
+            SELECT {", ".join(columns)}
+            FROM daily_summaries
+            WHERE location_id IN ({placeholders})
+              AND date >= ? AND date <= ?
+            ORDER BY date
+            """,
+            (*location_ids, start_date, end_date),
+        )
+        rows = cur.fetchall()
+    return [dict(row) for row in rows]
 
 
 def _week_key(date_str: str) -> str:
@@ -317,15 +303,25 @@ def get_service_sales_for_date_range(
                 {"type": "Lunch", "amount": 0.0},
                 {"type": "Dinner", "amount": 0.0},
             ]
-        rows = _fetch_daily_summary_rows(
-            location_ids,
-            start_date,
-            end_date,
-            ("date", "lunch_covers", "dinner_covers", "net_total"),
-        )
-        lunch_c = sum(float(r.get("lunch_covers") or 0) for r in rows)
-        dinner_c = sum(float(r.get("dinner_covers") or 0) for r in rows)
-        net = sum(float(r.get("net_total") or 0) for r in rows)
+        with database.db_connection() as conn:
+            cur = conn.cursor()
+            placeholders = ",".join("?" * len(location_ids))
+            cur.execute(
+                f"""
+                SELECT
+                    COALESCE(SUM(lunch_covers), 0) AS sum_lunch,
+                    COALESCE(SUM(dinner_covers), 0) AS sum_dinner,
+                    COALESCE(SUM(net_total), 0) AS sum_net
+                FROM daily_summaries
+                WHERE location_id IN ({placeholders})
+                  AND date >= ? AND date <= ?
+                """,
+                (*location_ids, start_date, end_date),
+            )
+            row = cur.fetchone()
+        lunch_c = float(row["sum_lunch"] or 0)
+        dinner_c = float(row["sum_dinner"] or 0)
+        net = float(row["sum_net"] or 0)
         total_c = lunch_c + dinner_c
         if total_c <= 0:
             split_l, split_d = 0.5 * net, 0.5 * net
@@ -393,32 +389,26 @@ def get_daily_service_sales_for_date_range(
     else:
         if not location_ids:
             return []
-        rows = _fetch_daily_summary_rows(
-            location_ids,
-            start_date,
-            end_date,
-            ("date", "net_total", "lunch_covers", "dinner_covers"),
-        )
-        # Aggregate per-date across multiple outlets so the split is computed
-        # on combined cover counts, matching the multi-outlet ratio.
-        per_date: Dict[str, Dict[str, float]] = {}
-        for row in rows:
-            d = str(row.get("date") or "")[:10]
-            if not d:
-                continue
-            bucket = per_date.setdefault(
-                d, {"net": 0.0, "lunch": 0.0, "dinner": 0.0}
+        with database.db_connection() as conn:
+            cur = conn.cursor()
+            placeholders = ",".join("?" * len(location_ids))
+            cur.execute(
+                f"""
+                SELECT date, net_total, lunch_covers, dinner_covers
+                FROM daily_summaries
+                WHERE location_id IN ({placeholders})
+                  AND date >= ? AND date <= ?
+                ORDER BY date
+                """,
+                (*location_ids, start_date, end_date),
             )
-            bucket["net"] += float(row.get("net_total") or 0)
-            bucket["lunch"] += float(row.get("lunch_covers") or 0)
-            bucket["dinner"] += float(row.get("dinner_covers") or 0)
-
+            rows = cur.fetchall()
         out = []
-        for d in sorted(per_date.keys()):
-            b = per_date[d]
-            net = b["net"]
-            lc = b["lunch"]
-            dc = b["dinner"]
+        for row in rows:
+            d = str(row["date"])
+            net = float(row["net_total"] or 0)
+            lc = int(row["lunch_covers"] or 0)
+            dc = int(row["dinner_covers"] or 0)
             tot = lc + dc
             if tot > 0:
                 lunch_amt = net * (lc / tot)
