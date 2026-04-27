@@ -709,6 +709,13 @@ def delete_user(user_id: int, current_username: str) -> Tuple[bool, str]:
     return _impl(user_id, current_username)
 
 
+def reset_password(username: str, new_password: str) -> Tuple[bool, str]:
+    """Reset password for a user identified by username."""
+    from database_auth import reset_password as _impl
+
+    return _impl(username, new_password)
+
+
 # ── Location management ───────────────────────────────────────────────────────
 
 
@@ -1062,6 +1069,7 @@ AUTH_EXPORTS = [
     "create_user",
     "update_user",
     "delete_user",
+    "reset_password",
     "create_user_session",
     "validate_session_token",
     "delete_session_token",
@@ -1126,6 +1134,7 @@ DELEGATED_SYMBOL_ORIGINS = {
     "create_user": "database_auth",
     "update_user": "database_auth",
     "delete_user": "database_auth",
+    "reset_password": "database_auth",
     "create_user_session": "database_auth",
     "validate_session_token": "database_auth",
     "delete_session_token": "database_auth",

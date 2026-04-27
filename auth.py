@@ -215,6 +215,41 @@ def show_login_form():
             else:
                 st.warning("Please enter both username and password")
 
+        with st.expander("Forgot password? Reset here", expanded=False):
+            with st.form("reset_password_form"):
+                reset_username = st.text_input(
+                    "Username",
+                    key="reset_username",
+                    placeholder="Enter your username",
+                )
+                reset_new_password = st.text_input(
+                    "New password",
+                    key="reset_new_password",
+                    type="password",
+                    placeholder="Enter new password",
+                )
+                reset_confirm_password = st.text_input(
+                    "Confirm new password",
+                    key="reset_confirm_password",
+                    type="password",
+                    placeholder="Confirm new password",
+                )
+                reset_submit = st.form_submit_button("Reset password", width="stretch")
+
+            if reset_submit:
+                if not reset_username or not reset_new_password:
+                    st.warning("Username and new password are required.")
+                elif reset_new_password != reset_confirm_password:
+                    st.error("Passwords do not match.")
+                elif len(reset_new_password) < config.MIN_PASSWORD_LENGTH:
+                    st.error(f"Password must be at least {config.MIN_PASSWORD_LENGTH} characters.")
+                else:
+                    ok, msg = database.reset_password(reset_username, reset_new_password)
+                    if ok:
+                        st.success(msg)
+                    else:
+                        st.error(msg)
+
         st.markdown("</div>", unsafe_allow_html=True)  # login-form-wrap
 
 
