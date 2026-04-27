@@ -57,11 +57,20 @@ def ensure_default_locations() -> None:
             for loc in defaults:
                 if loc["name"] not in existing_names:
                     client.table("locations").upsert(loc, on_conflict="id").execute()
-        except Exception:
-            logger.warning(
-                "Skipping default location seed for Supabase (likely RLS-restricted credentials)",
-                exc_info=True,
+        except Exception as exc:
+            error_text = str(exc).lower()
+            is_rls_error = (
+                "row-level security policy" in error_text or "code': '42501'" in error_text
             )
+            if is_rls_error:
+                logger.info(
+                    "Skipping default location seed for Supabase due to RLS policy restrictions."
+                )
+            else:
+                logger.warning(
+                    "Skipping default location seed for Supabase due to unexpected error.",
+                    exc_info=True,
+                )
         return
 
     with database.db_connection() as conn:

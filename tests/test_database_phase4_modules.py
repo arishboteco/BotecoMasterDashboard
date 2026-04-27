@@ -92,3 +92,37 @@ def test_database_writes_ignores_supabase_location_seed_errors(monkeypatch):
     monkeypatch.setattr(database_writes.database, "get_supabase_client", lambda: _FailingClient())
 
     database_writes.ensure_default_locations()
+
+
+def test_database_writes_ignores_supabase_rls_upsert_errors(monkeypatch):
+    import database_writes
+
+    class _Query:
+        data = []
+        _operation = "read"
+
+        def select(self, *_args, **_kwargs):
+            self._operation = "read"
+            return self
+
+        def upsert(self, *_args, **_kwargs):
+            self._operation = "write"
+            return self
+
+        def execute(self):
+            if self._operation == "write":
+                raise RuntimeError(
+                    'new row violates row-level security policy for table "locations"'
+                )
+            return self
+
+    class _Client:
+        def table(self, name):
+            if name == "locations":
+                return _Query()
+            raise AssertionError("Unexpected table name")
+
+    monkeypatch.setattr(database_writes.database, "use_supabase", lambda: True)
+    monkeypatch.setattr(database_writes.database, "get_supabase_client", lambda: _Client())
+
+    database_writes.ensure_default_locations()
