@@ -405,12 +405,17 @@ def is_login_locked(username: str) -> Tuple[bool, int]:
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = (
-            supabase.table("auth_login_attempts")
-            .select("failed_count, locked_until")
-            .eq("username", un)
-            .execute()
-        )
+        try:
+            result = (
+                supabase.table("auth_login_attempts")
+                .select("failed_count, locked_until")
+                .eq("username", un)
+                .execute()
+            )
+        except APIError as exc:
+            if exc.code == "42501":
+                return False, 0
+            raise
 
         if not result.data:
             return False, 0
@@ -423,9 +428,13 @@ def is_login_locked(username: str) -> Tuple[bool, int]:
         now = datetime.now(timezone.utc)
         until = datetime.fromisoformat(locked_until.replace("Z", "+00:00"))
         if until <= now:
-            supabase.table("auth_login_attempts").update(
-                {"failed_count": 0, "locked_until": None}
-            ).eq("username", un).execute()
+            try:
+                supabase.table("auth_login_attempts").update(
+                    {"failed_count": 0, "locked_until": None}
+                ).eq("username", un).execute()
+            except APIError as exc:
+                if exc.code != "42501":
+                    raise
             return False, 0
 
         remaining = max(1, int(math.ceil((until - now).total_seconds() / 60.0)))
@@ -478,12 +487,17 @@ def record_failed_login(username: str) -> Tuple[bool, int]:
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = (
-            supabase.table("auth_login_attempts")
-            .select("failed_count")
-            .eq("username", un)
-            .execute()
-        )
+        try:
+            result = (
+                supabase.table("auth_login_attempts")
+                .select("failed_count")
+                .eq("username", un)
+                .execute()
+            )
+        except APIError as exc:
+            if exc.code == "42501":
+                return False, 0
+            raise
         failed = result.data[0]["failed_count"] if result.data else 0
         failed += 1
 
@@ -491,14 +505,19 @@ def record_failed_login(username: str) -> Tuple[bool, int]:
         if failed >= int(config.MAX_LOGIN_ATTEMPTS):
             locked_until = (_utcnow() + timedelta(minutes=config.LOGIN_LOCKOUT_MINUTES)).isoformat()
 
-        if result.data:
-            supabase.table("auth_login_attempts").update(
-                {"failed_count": failed, "locked_until": locked_until}
-            ).eq("username", un).execute()
-        else:
-            supabase.table("auth_login_attempts").insert(
-                {"username": un, "failed_count": failed, "locked_until": locked_until}
-            ).execute()
+        try:
+            if result.data:
+                supabase.table("auth_login_attempts").update(
+                    {"failed_count": failed, "locked_until": locked_until}
+                ).eq("username", un).execute()
+            else:
+                supabase.table("auth_login_attempts").insert(
+                    {"username": un, "failed_count": failed, "locked_until": locked_until}
+                ).execute()
+        except APIError as exc:
+            if exc.code == "42501":
+                return False, 0
+            raise
 
         return is_login_locked(un)
     else:
@@ -539,7 +558,11 @@ def clear_failed_login(username: str) -> None:
         return
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        supabase.table("auth_login_attempts").delete().eq("username", un).execute()
+        try:
+            supabase.table("auth_login_attempts").delete().eq("username", un).execute()
+        except APIError as exc:
+            if exc.code != "42501":
+                raise
     else:
         with database.db_connection() as conn:
             conn.execute("DELETE FROM auth_login_attempts WHERE username = ?", (un,))
