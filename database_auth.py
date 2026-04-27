@@ -221,69 +221,6 @@ def create_user(
         return True, f"User '{username}' created."
 
 
-def reset_password(username: str, new_password: str) -> Tuple[bool, str]:
-    """Reset a user's password by username from the login recovery flow."""
-    normalized_username = _norm_username(username)
-    if not normalized_username:
-        return False, "Username is required."
-    if len(new_password) < config.MIN_PASSWORD_LENGTH:
-        return (
-            False,
-            f"Password must be at least {config.MIN_PASSWORD_LENGTH} characters.",
-        )
-
-    password_hash = database._hash_password(new_password)
-
-    if database.use_supabase():
-        supabase = database.get_supabase_client()
-        result = supabase.table("users").select("id, username").execute()
-        if not result.data:
-            return False, "User not found."
-
-        row = next(
-            (
-                item
-                for item in result.data
-                if _norm_username(item.get("username") or "") == normalized_username
-            ),
-            None,
-        )
-        if not row:
-            return False, "User not found."
-
-        (
-            supabase.table("users")
-            .update({"password_hash": password_hash})
-            .eq("id", row["id"])
-            .execute()
-        )
-    else:
-        with database.db_connection() as conn:
-            row = conn.execute(
-                """
-                SELECT id
-                FROM users
-                WHERE LOWER(TRIM(username)) = ?
-                """,
-                (normalized_username,),
-            ).fetchone()
-            if not row:
-                return False, "User not found."
-
-            conn.execute(
-                """
-                UPDATE users
-                SET password_hash = ?
-                WHERE id = ?
-                """,
-                (password_hash, row["id"]),
-            )
-            conn.commit()
-
-    clear_failed_login(normalized_username)
-    return True, f"Password reset successful for '{normalized_username}'."
-
-
 def update_user(
     user_id: int,
     role: Optional[str] = None,

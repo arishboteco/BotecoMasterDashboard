@@ -262,6 +262,9 @@ class TestPasswordPolicy:
         assert not ok
         assert str(config.MIN_PASSWORD_LENGTH) in msg
 
+    def test_public_password_reset_is_not_exposed(self):
+        assert not hasattr(database, "reset_password")
+
 
 class TestLoginLockout:
     def test_locks_after_max_failed_attempts_and_clears(self, initialized_db):
