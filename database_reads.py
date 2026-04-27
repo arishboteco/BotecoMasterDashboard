@@ -26,6 +26,27 @@ def _sqlite_daily_table() -> str:
     return SQLITE_DAILY_SUMMARIES
 
 
+def _apply_override_single(
+    summary: Optional[Dict], location_id: int, date: str
+) -> Optional[Dict]:
+    """Overlay manual footfall override on a single summary (or build synthetic)."""
+    from services.footfall_override_service import apply_override_to_single
+
+    return apply_override_to_single(summary, location_id, date)
+
+
+def _apply_overrides_range(
+    summaries: List[Dict],
+    location_ids: List[int],
+    start_date: str,
+    end_date: str,
+) -> List[Dict]:
+    """Overlay manual footfall overrides over a range query and inject synthetics."""
+    from services.footfall_override_service import apply_overrides
+
+    return apply_overrides(summaries, location_ids, start_date, end_date)
+
+
 def _inclusive_end_from_exclusive(date_str: str) -> str:
     """Convert YYYY-MM-DD exclusive boundary to inclusive previous date."""
     day = datetime.strptime(date_str, "%Y-%m-%d").date()
@@ -213,23 +234,25 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
             .eq("date", date)
             .execute()
         )
-        if not result.data:
-            return None
-        d = dict(result.data[0])
-        try:
-            cats, svcs = _detail_lists_for_daily_summary(location_id, date)
-            d["categories"] = cats
-            d["services"] = svcs
-        except (ValueError, TypeError, KeyError, RuntimeError) as ex:
-            logger.warning(
-                "Detail list hydration failed in database_reads.py location_id=%s date=%s error=%s",
-                location_id,
-                date,
-                ex,
-            )
-            d.setdefault("categories", [])
-            d.setdefault("services", [])
-        return d
+        if result.data:
+            d = dict(result.data[0])
+            try:
+                cats, svcs = _detail_lists_for_daily_summary(location_id, date)
+                d["categories"] = cats
+                d["services"] = svcs
+            except (ValueError, TypeError, KeyError, RuntimeError) as ex:
+                logger.warning(
+                    "Detail list hydration failed in database_reads.py "
+                    "location_id=%s date=%s error=%s",
+                    location_id,
+                    date,
+                    ex,
+                )
+                d.setdefault("categories", [])
+                d.setdefault("services", [])
+        else:
+            d = None
+        return _apply_override_single(d, location_id, date)
     else:
         tbl = _sqlite_daily_table()
         with database.db_connection() as conn:
@@ -240,7 +263,7 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
             )
             row = cursor.fetchone()
             if not row:
-                return None
+                return _apply_override_single(None, location_id, date)
             d = dict(row)
             sid = int(d["id"])
             d["categories"] = _sqlite_categories_for_summary(conn, sid)
@@ -268,7 +291,7 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
                         date,
                         ex,
                     )
-        return d
+        return _apply_override_single(d, location_id, date)
 
 
 def get_summaries_for_date_range(
@@ -290,7 +313,7 @@ def get_summaries_for_date_range(
             .order("date")
             .execute()
         )
-        return result.data
+        rows = list(result.data or [])
     else:
         tbl = _sqlite_daily_table()
         with database.db_connection() as conn:
@@ -303,8 +326,8 @@ def get_summaries_for_date_range(
                 """,
                 (location_id, start_date, end_date),
             )
-            rows = cursor.fetchall()
-        return [dict(row) for row in rows]
+            rows = [dict(row) for row in cursor.fetchall()]
+    return _apply_overrides_range(rows, [location_id], start_date, end_date)
 
 
 @st.cache_data(ttl=600)
@@ -335,7 +358,7 @@ def get_summaries_for_date_range_multi(
             .order("date")
             .execute()
         )
-        return result.data
+        rows = list(result.data or [])
     else:
         tbl = _sqlite_daily_table()
         with database.db_connection() as conn:
@@ -349,8 +372,8 @@ def get_summaries_for_date_range_multi(
                 """,
                 (*location_ids, start_date, end_date),
             )
-            rows = cursor.fetchall()
-        return [dict(row) for row in rows]
+            rows = [dict(row) for row in cursor.fetchall()]
+    return _apply_overrides_range(rows, list(location_ids), start_date, end_date)
 
 
 def get_category_totals_for_date_range(
@@ -578,17 +601,13 @@ def get_all_summaries_for_export(
             query = query.lte("date", end_date)
 
         result = query.order("date").execute()
-
-        for row in result.data:
-            row["location"] = location_map.get(row["location_id"], "")
-
-        return result.data
+        rows = list(result.data or [])
     else:
         tbl = _sqlite_daily_table()
         with database.db_connection() as conn:
             cursor = conn.cursor()
             sql = f"SELECT * FROM {tbl} WHERE 1=1"
-            params = []
+            params: list = []
 
             if location_ids:
                 placeholders = ",".join("?" * len(location_ids))
@@ -606,7 +625,18 @@ def get_all_summaries_for_export(
             sql += " ORDER BY date"
 
             cursor.execute(sql, params)
-            return [dict(row) for row in cursor.fetchall()]
+            rows = [dict(row) for row in cursor.fetchall()]
+        location_map = {loc["id"]: loc["name"] for loc in get_all_locations()}
+
+    if start_date and end_date:
+        scope_ids = list(location_ids) if location_ids else list(location_map.keys())
+        rows = _apply_overrides_range(rows, scope_ids, start_date, end_date)
+
+    for row in rows:
+        if "location" not in row or not row.get("location"):
+            row["location"] = location_map.get(row.get("location_id"), "")
+
+    return rows
 
 
 def clear_location_cache(location_id: int) -> None:

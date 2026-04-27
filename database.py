@@ -378,6 +378,28 @@ def init_database():
         )
     """)
 
+    # Manual footfall overrides — survive POS re-uploads; may exist without a daily_summaries row.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS footfall_overrides (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            location_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            lunch_covers INTEGER,
+            dinner_covers INTEGER,
+            note TEXT,
+            edited_by TEXT,
+            edited_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(location_id, date),
+            FOREIGN KEY (location_id) REFERENCES locations(id)
+        )
+    """)
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_footfall_overrides_loc_date
+        ON footfall_overrides(location_id, date)
+        """
+    )
+
     # Migrations
     cursor.execute("PRAGMA table_info(daily_summaries)")
     _ds_cols = {row[1] for row in cursor.fetchall()}
