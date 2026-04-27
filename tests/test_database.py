@@ -109,6 +109,38 @@ class TestGetServiceSalesForDateRange:
             {"type": "Dinner", "amount": 600.0},
         ]
 
+    def test_supabase_uses_pos_12h_heuristic_when_all_hours_are_12_or_less(
+        self, monkeypatch
+    ):
+        rows = [
+            {
+                "created_date_time": "2026-04-26 12:51:40",
+                "net_amount": 1690.01,
+                "bill_status": "SuccessOrder",
+            },
+            {
+                "created_date_time": "2026-04-26 01:00:13",
+                "net_amount": 6425.0,
+                "bill_status": "SuccessOrder",
+            },
+            {
+                "created_date_time": "2026-04-26 08:59:51",
+                "net_amount": 5245.01,
+                "bill_status": "SuccessOrder",
+            },
+        ]
+        monkeypatch.setattr(database, "use_supabase", lambda: True)
+        monkeypatch.setattr(database, "get_supabase_client", lambda: _BillItemsClient(rows))
+
+        result = database_analytics.get_service_sales_for_date_range(
+            [2], "2026-04-26", "2026-04-26"
+        )
+
+        assert result == [
+            {"type": "Lunch", "amount": 8115.01},
+            {"type": "Dinner", "amount": 5245.01},
+        ]
+
 
 class TestGetMonthlyFootfallMulti:
     def test_returns_empty_for_no_data(self, initialized_db):

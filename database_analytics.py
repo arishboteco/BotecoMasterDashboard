@@ -28,13 +28,12 @@ def _restaurants_for_location_ids(location_ids: List[int]) -> List[str]:
     return [LOCATION_ID_TO_RESTAURANT.get(int(lid), "Boteco") for lid in location_ids]
 
 
-def _service_type_from_created_datetime(created_date_time: Any) -> str | None:
-    """Classify a bill timestamp into Lunch/Dinner using POS local bill time."""
+def _hour_from_created_datetime(created_date_time: Any) -> int | None:
+    """Parse POS bill timestamp and return the stored hour."""
     if created_date_time is None:
         return None
     if hasattr(created_date_time, "hour"):
-        hour = int(created_date_time.hour)
-        return "Lunch" if hour < 18 else "Dinner"
+        return int(created_date_time.hour)
 
     value = str(created_date_time).strip()
     if value in ("", "nan", "None"):
@@ -51,7 +50,29 @@ def _service_type_from_created_datetime(created_date_time: Any) -> str | None:
             return None
     if getattr(dt, "hour", None) is None:
         return None
-    return "Lunch" if int(dt.hour) < 18 else "Dinner"
+    return int(dt.hour)
+
+
+def _uses_pos_12h_clock(rows: List[Dict[str, Any]]) -> bool:
+    """Detect Petpooja exports stored as 12-hour timestamps without AM/PM."""
+    hours = [
+        hour
+        for row in rows
+        if (hour := _hour_from_created_datetime(row.get("created_date_time"))) is not None
+    ]
+    return bool(hours) and max(hours) <= 12
+
+
+def _service_type_from_created_datetime(
+    created_date_time: Any, is_pos_12h_clock: bool = False
+) -> str | None:
+    """Classify a bill timestamp into Lunch/Dinner using POS local bill time."""
+    hour = _hour_from_created_datetime(created_date_time)
+    if hour is None:
+        return None
+    if is_pos_12h_clock:
+        return "Dinner" if 6 <= hour <= 11 else "Lunch"
+    return "Lunch" if hour < 18 else "Dinner"
 
 
 def _fetch_daily_summary_rows(
@@ -287,8 +308,8 @@ def get_service_sales_for_date_range(
 ) -> List[Dict[str, Any]]:
     """Get service period (Lunch/Dinner) sales from bill_items.
 
-    Lunch: 12 PM - 5 PM (12:00 to 16:59)
-    Dinner: Everything else
+    Lunch: before 6 PM. Petpooja exports may store 12-hour times without AM/PM;
+    for those files, 6-11 are treated as PM dinner hours.
     """
     import database
 
@@ -307,14 +328,20 @@ def get_service_sales_for_date_range(
         lunch_total = 0.0
         dinner_total = 0.0
 
-        for row in result.data:
-            if not _bill_items_success(row.get("bill_status")):
-                continue
-            net = row.get("net_amount", 0) or 0
-            if net <= 0:
-                continue
+        rows = [
+            row
+            for row in (result.data or [])
+            if _bill_items_success(row.get("bill_status"))
+            and (row.get("net_amount", 0) or 0) > 0
+        ]
+        is_pos_12h_clock = _uses_pos_12h_clock(rows)
 
-            service_type = _service_type_from_created_datetime(row.get("created_date_time"))
+        for row in rows:
+            net = row.get("net_amount", 0) or 0
+
+            service_type = _service_type_from_created_datetime(
+                row.get("created_date_time"), is_pos_12h_clock
+            )
             if service_type == "Lunch":
                 lunch_total += net
             else:
@@ -371,23 +398,30 @@ def get_daily_service_sales_for_date_range(
             .execute()
         )
 
+        rows = [
+            row
+            for row in (result.data or [])
+            if _bill_items_success(row.get("bill_status"))
+            and (row.get("net_amount", 0) or 0) > 0
+        ]
+        rows_by_date: Dict[str, List[Dict[str, Any]]] = {}
+        for row in rows:
+            rows_by_date.setdefault(str(row["bill_date"]), []).append(row)
+
         daily = {}
-        for row in result.data:
-            if not _bill_items_success(row.get("bill_status")):
-                continue
-            net = row.get("net_amount", 0) or 0
-            if net <= 0:
-                continue
+        for date, day_rows in rows_by_date.items():
+            is_pos_12h_clock = _uses_pos_12h_clock(day_rows)
+            daily[date] = {"date": date, "Lunch": 0.0, "Dinner": 0.0}
+            for row in day_rows:
+                net = row.get("net_amount", 0) or 0
 
-            date = row["bill_date"]
-            if date not in daily:
-                daily[date] = {"date": date, "Lunch": 0.0, "Dinner": 0.0}
-
-            service_type = _service_type_from_created_datetime(row.get("created_date_time"))
-            if service_type == "Lunch":
-                daily[date]["Lunch"] += net
-            else:
-                daily[date]["Dinner"] += net
+                service_type = _service_type_from_created_datetime(
+                    row.get("created_date_time"), is_pos_12h_clock
+                )
+                if service_type == "Lunch":
+                    daily[date]["Lunch"] += net
+                else:
+                    daily[date]["Dinner"] += net
 
         return sorted(daily.values(), key=lambda x: x["date"])
     else:
