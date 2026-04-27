@@ -554,26 +554,6 @@ class _EmptyDataFlowable(Flowable):
         canvas.drawCentredString(self.fwidth / 2, 6, self.text)
 
 
-class _SubsectionLabelFlowable(Flowable):
-    """Bold colored label for sub-sections (Monthly, Weekly)."""
-
-    def __init__(self, width: float, text: str, color: str = C_BRAND):
-        Flowable.__init__(self)
-        self.fwidth = width
-        self.text = text
-        self.color = color
-        self.height = FONT_SIZE_ROW + 4
-
-    def wrap(self, availWidth, availHeight):
-        return (self.fwidth, self.height)
-
-    def draw(self):
-        canvas = self.canv
-        canvas.setFont(FONT_BOLD, FONT_SIZE_ROW)
-        canvas.setFillColor(_hex(self.color))
-        canvas.drawString(BANNER_PAD_LEFT, 2, self.text)
-
-
 # ═══════════════════════════════════════════════════════════════════════════
 # Table building helpers
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1724,7 +1704,6 @@ def _build_footfall_metrics(
     ]
 
     if monthly:
-        elements.append(_SubsectionLabelFlowable(avail_w, "Monthly"))
         headers = [
             "Month",
             "Footfall",
@@ -1830,7 +1809,6 @@ def _build_footfall_metrics(
         elements.append(Spacer(1, GAP_ABOVE_SECTION_LABEL))
 
     if weekly:
-        elements.append(_SubsectionLabelFlowable(avail_w, "Weekly"))
         headers = [
             "Week",
             "Footfall",
