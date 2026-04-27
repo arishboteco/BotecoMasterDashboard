@@ -2,30 +2,31 @@
 
 from __future__ import annotations
 
-from components.kpi import kpi_row, KpiMetric
-from components.tables import data_table
-from components.navigation import date_nav, date_range_nav
-from components.forms import confirm_dialog
 from components.feedback import (
-    toast,
     empty_state,
     skeleton_chart,
     skeleton_metric_row,
     skeleton_table,
+    toast,
 )
+from components.forms import confirm_dialog
+from components.kpi import KpiMetric, kpi_row
 from components.layout import (
-    section,
+    classed_container,
     divider,
+    filter_strip,
+    info_banner,
     page_header,
     page_shell,
-    workflow_steps,
-    section_title,
-    section_block,
-    info_banner,
     primary_action_bar,
-    filter_strip,
-    classed_container,
+    section,
+    section_block,
+    section_title,
+    workflow_progress,
+    workflow_steps,
 )
+from components.navigation import date_nav, date_range_nav
+from components.tables import data_table
 
 __all__ = [
     "kpi_row",
@@ -44,6 +45,7 @@ __all__ = [
     "page_header",
     "page_shell",
     "workflow_steps",
+    "workflow_progress",
     "section_title",
     "section_block",
     "info_banner",

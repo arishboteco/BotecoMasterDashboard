@@ -18,7 +18,7 @@ from components import (
     page_shell,
     primary_action_bar,
     section_title,
-    workflow_steps,
+    workflow_progress,
 )
 from services import cache_invalidation, upload_service
 from services.upload_service import ImportOptions
@@ -55,8 +55,8 @@ def render(ctx: TabContext) -> None:
             "mobile-layout-secondary",
         ):
             section_title(
-                "Step 1 · Drop source files",
-                "Include any Petpooja exports. Dynamic Report CSV is preferred for tax accuracy.",
+                "Upload source files",
+                "Drop any Petpooja exports (CSV/XLS/XLSX).",
                 icon="upload_file",
             )
             uploaded_files = st.file_uploader(
@@ -72,9 +72,10 @@ def render(ctx: TabContext) -> None:
                 label_visibility="collapsed",
             )
 
-            workflow_steps(
-                ["Drop files", "Review detection", "Confirm and import"],
-                active_index=0 if not uploaded_files else 1,
+            workflow_progress(
+                total_steps=3,
+                current_step=1 if not uploaded_files else 2,
+                stage_label="Upload progress",
             )
 
     with shell.content:
@@ -90,7 +91,7 @@ def render(ctx: TabContext) -> None:
             )
 
         if uploaded_files:
-            section_title("Step 2 · Review detected files", icon="fact_check")
+            section_title("Review detected files", icon="fact_check")
             files_payload = [(f.name, f.getvalue()) for f in uploaded_files]
             importable_count = 0
             for fname, content in files_payload:
