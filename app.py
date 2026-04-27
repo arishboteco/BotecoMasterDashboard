@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
 import streamlit as st
 
 import auth
@@ -22,11 +20,19 @@ boteco_logger.setup_logging()
 logger = boteco_logger.get_logger(__name__)
 ui_theme.apply_plotly_theme()
 
-# Warn if Supabase mode is requested but credentials are missing
-if os.environ.get("USE_SUPABASE") and not config.SUPABASE_KEY:
+# Supabase is the single source of truth in deployment.
+# Fail fast at startup instead of silently falling back to SQLite.
+if not config.SUPABASE_URL or not config.SUPABASE_KEY:
     st.error(
-        "⚠️ USE_SUPABASE is set but SUPABASE_KEY is empty. "
-        "Set the SUPABASE_URL, SUPABASE_KEY, and SUPABASE_SERVICE_KEY environment variables."
+        "⚠️ Supabase is required but credentials are missing. "
+        "Set SUPABASE_URL, SUPABASE_KEY, and SUPABASE_SERVICE_KEY."
+    )
+    st.stop()
+
+if not database.use_supabase():
+    st.error(
+        "⚠️ Supabase is required but connection could not be initialized. "
+        "Check credentials/network and restart."
     )
     st.stop()
 
@@ -35,22 +41,8 @@ if "bootstrapped" not in st.session_state:
     database.backfill_weekday_weighted_targets()
     st.session_state["bootstrapped"] = True
 
-# Bootstrap admin user if none exists
-with database.db_connection() as conn:
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) as count FROM users")
-    user_count = cursor.fetchone()["count"]
-
-    if user_count == 0:
-        import bcrypt
-
-        default_pw = "admin"
-        hashed = bcrypt.hashpw(default_pw.encode("utf-8"), bcrypt.gensalt())
-        cursor.execute(
-            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-            ("admin", hashed.decode("utf-8"), "admin"),
-        )
-        conn.commit()
+# Bootstrap admin user if missing (uses active backend path; Supabase in production).
+database.create_admin_user("admin", "admin")
 
 # Page configuration
 st.set_page_config(
