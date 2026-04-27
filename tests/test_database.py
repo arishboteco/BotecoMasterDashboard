@@ -7,6 +7,36 @@ import pytest
 
 import config
 import database
+import database_analytics
+
+
+class _BillItemsQuery:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def select(self, _columns):
+        return self
+
+    def in_(self, _column, _values):
+        return self
+
+    def gte(self, _column, _value):
+        return self
+
+    def lte(self, _column, _value):
+        return self
+
+    def execute(self):
+        return SimpleNamespace(data=self.rows)
+
+
+class _BillItemsClient:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def table(self, table_name):
+        assert table_name == "bill_items"
+        return _BillItemsQuery(self.rows)
 
 
 def test_supabase_client_prefers_service_key_for_server_side_reads(monkeypatch):
@@ -26,6 +56,58 @@ def test_supabase_client_prefers_service_key_for_server_side_reads(monkeypatch):
 
     assert client == {"url": "https://example.supabase.co", "key": "service-key"}
     assert created == [("https://example.supabase.co", "service-key")]
+
+
+class TestGetServiceSalesForDateRange:
+    def test_supabase_classifies_17xx_timestamps_as_lunch(self, monkeypatch):
+        rows = [
+            {
+                "created_date_time": "2026-04-08 17:30:00",
+                "net_amount": 500.0,
+                "bill_status": "SuccessOrder",
+            },
+            {
+                "created_date_time": "2026-04-08 18:00:00",
+                "net_amount": 700.0,
+                "bill_status": "SuccessOrder",
+            },
+        ]
+        monkeypatch.setattr(database, "use_supabase", lambda: True)
+        monkeypatch.setattr(database, "get_supabase_client", lambda: _BillItemsClient(rows))
+
+        result = database_analytics.get_service_sales_for_date_range(
+            [1], "2026-04-08", "2026-04-08"
+        )
+
+        assert result == [
+            {"type": "Lunch", "amount": 500.0},
+            {"type": "Dinner", "amount": 700.0},
+        ]
+
+    def test_supabase_classifies_pos_non_iso_timestamps_by_hour(self, monkeypatch):
+        rows = [
+            {
+                "created_date_time": "2026-04-8 12:00:00",
+                "net_amount": 400.0,
+                "bill_status": "SuccessOrder",
+            },
+            {
+                "created_date_time": "2026-04-8 21:15:00",
+                "net_amount": 600.0,
+                "bill_status": "SuccessOrder",
+            },
+        ]
+        monkeypatch.setattr(database, "use_supabase", lambda: True)
+        monkeypatch.setattr(database, "get_supabase_client", lambda: _BillItemsClient(rows))
+
+        result = database_analytics.get_service_sales_for_date_range(
+            [1], "2026-04-08", "2026-04-08"
+        )
+
+        assert result == [
+            {"type": "Lunch", "amount": 400.0},
+            {"type": "Dinner", "amount": 600.0},
+        ]
 
 
 class TestGetMonthlyFootfallMulti:
