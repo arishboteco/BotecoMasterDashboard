@@ -9,9 +9,9 @@ import pandas as pd
 import streamlit as st
 
 import database
+import services.cache_invalidation as cache_invalidation
 from components import classed_container, page_shell, section_title
 from repositories.footfall_override_repository import get_footfall_override_repository
-from services.cache_invalidation import invalidate_footfall_caches
 from tabs import TabContext
 
 
@@ -60,6 +60,18 @@ def _get_pos_covers(location_id: int, date_str: str) -> Dict[str, int]:
         "dinner_covers": int(row["dinner_covers"] or 0),
         "covers": int(row["covers"] or 0),
     }
+
+
+def _invalidate_footfall_caches(location_id: int) -> None:
+    """Invalidate footfall caches, tolerating older deployed cache modules."""
+    helper = getattr(cache_invalidation, "invalidate_footfall_caches", None)
+    if helper is not None:
+        helper(location_id)
+        return
+
+    cache_invalidation.invalidate_location_reads(location_id)
+    cache_invalidation.invalidate_analytics()
+    cache_invalidation.invalidate_reports()
 
 
 def _recent_overrides(location_id: int, selected_date: date) -> pd.DataFrame:
@@ -204,13 +216,13 @@ def render(ctx: TabContext) -> None:
                     note=note.strip() or None,
                     edited_by=str(st.session_state.get("username") or "unknown"),
                 )
-                invalidate_footfall_caches(location_id)
+                _invalidate_footfall_caches(location_id)
                 st.success("Footfall override saved.")
                 st.rerun()
 
         if clear_clicked:
             if repo.delete(location_id, date_str):
-                invalidate_footfall_caches(location_id)
+                _invalidate_footfall_caches(location_id)
                 st.success("Footfall override cleared.")
                 st.rerun()
             else:
