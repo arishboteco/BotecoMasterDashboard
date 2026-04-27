@@ -554,14 +554,6 @@ def _migrate_supabase_schema() -> None:
                 view_name,
             )
 
-    try:
-        supabase.table("footfall_overrides").select("id").limit(1).execute()
-    except Exception:
-        logger.warning(
-            "Supabase table 'footfall_overrides' is missing. "
-            "Apply db/migrations/footfall_overrides.sql to enable manual footfall overrides."
-        )
-
 
 def _migrate_daily_summaries_composite_unique(cursor) -> None:
     """Replace legacy UNIQUE(date) with UNIQUE(location_id, date)."""
