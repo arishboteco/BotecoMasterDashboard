@@ -62,6 +62,62 @@ class TestFootfallOverrideRepository:
         assert isinstance(repo, DatabaseFootfallOverrideRepository)
         assert isinstance(repo, FootfallOverrideRepository)
 
+    def test_factory_returns_supabase_implementation_in_supabase_mode(self, monkeypatch):
+        class _Query:
+            def __init__(self, table_name: str, calls: list[tuple]):
+                self.table_name = table_name
+                self.calls = calls
+
+            def upsert(self, row, on_conflict=None):
+                self.calls.append(("upsert", self.table_name, row, on_conflict))
+                return self
+
+            def execute(self):
+                self.calls.append(("execute", self.table_name))
+                return type("Result", (), {"data": []})()
+
+        class _Client:
+            def __init__(self):
+                self.calls = []
+
+            def table(self, table_name: str):
+                self.calls.append(("table", table_name))
+                return _Query(table_name, self.calls)
+
+        client = _Client()
+        monkeypatch.setattr(database, "use_supabase", lambda: True)
+        monkeypatch.setattr(database, "get_supabase_client", lambda: client)
+
+        repo = get_footfall_override_repository()
+        assert isinstance(repo, FootfallOverrideRepository)
+
+        repo.upsert(
+            1,
+            "2026-04-20",
+            lunch_covers=42,
+            dinner_covers=31,
+            note="manual count",
+            edited_by="alice",
+        )
+
+        assert client.calls == [
+            ("table", "footfall_overrides"),
+            (
+                "upsert",
+                "footfall_overrides",
+                {
+                    "location_id": 1,
+                    "date": "2026-04-20",
+                    "lunch_covers": 42,
+                    "dinner_covers": 31,
+                    "note": "manual count",
+                    "edited_by": "alice",
+                },
+                "location_id,date",
+            ),
+            ("execute", "footfall_overrides"),
+        ]
+
     def test_get_returns_none_when_missing(self, initialized_db):
         repo = DatabaseFootfallOverrideRepository()
         loc_id = _new_outlet("Repo None Outlet")
@@ -89,12 +145,20 @@ class TestFootfallOverrideRepository:
         repo = DatabaseFootfallOverrideRepository()
         loc_id = _new_outlet("Repo Overwrite Outlet")
         repo.upsert(
-            loc_id, "2026-04-20", lunch_covers=10, dinner_covers=20,
-            note=None, edited_by="alice",
+            loc_id,
+            "2026-04-20",
+            lunch_covers=10,
+            dinner_covers=20,
+            note=None,
+            edited_by="alice",
         )
         repo.upsert(
-            loc_id, "2026-04-20", lunch_covers=15, dinner_covers=None,
-            note="revised", edited_by="bob",
+            loc_id,
+            "2026-04-20",
+            lunch_covers=15,
+            dinner_covers=None,
+            note="revised",
+            edited_by="bob",
         )
         row = repo.get(loc_id, "2026-04-20")
         assert row["lunch_covers"] == 15
@@ -106,14 +170,18 @@ class TestFootfallOverrideRepository:
         repo = DatabaseFootfallOverrideRepository()
         loc_a = _new_outlet("Range Outlet A")
         loc_b = _new_outlet("Range Outlet B")
-        repo.upsert(loc_a, "2026-04-19", lunch_covers=5, dinner_covers=5,
-                    note=None, edited_by="alice")
-        repo.upsert(loc_a, "2026-04-20", lunch_covers=6, dinner_covers=6,
-                    note=None, edited_by="alice")
-        repo.upsert(loc_b, "2026-04-20", lunch_covers=7, dinner_covers=7,
-                    note=None, edited_by="alice")
-        repo.upsert(loc_a, "2026-04-21", lunch_covers=8, dinner_covers=8,
-                    note=None, edited_by="alice")
+        repo.upsert(
+            loc_a, "2026-04-19", lunch_covers=5, dinner_covers=5, note=None, edited_by="alice"
+        )
+        repo.upsert(
+            loc_a, "2026-04-20", lunch_covers=6, dinner_covers=6, note=None, edited_by="alice"
+        )
+        repo.upsert(
+            loc_b, "2026-04-20", lunch_covers=7, dinner_covers=7, note=None, edited_by="alice"
+        )
+        repo.upsert(
+            loc_a, "2026-04-21", lunch_covers=8, dinner_covers=8, note=None, edited_by="alice"
+        )
 
         result = repo.get_for_range([loc_a], "2026-04-20", "2026-04-21")
         assert {(r["location_id"], r["date"]) for r in result} == {
@@ -129,8 +197,9 @@ class TestFootfallOverrideRepository:
     def test_delete_removes_row(self, initialized_db):
         repo = DatabaseFootfallOverrideRepository()
         loc_id = _new_outlet("Repo Delete Outlet")
-        repo.upsert(loc_id, "2026-04-20", lunch_covers=5, dinner_covers=5,
-                    note=None, edited_by="alice")
+        repo.upsert(
+            loc_id, "2026-04-20", lunch_covers=5, dinner_covers=5, note=None, edited_by="alice"
+        )
         assert repo.delete(loc_id, "2026-04-20") is True
         assert repo.get(loc_id, "2026-04-20") is None
 
@@ -142,8 +211,14 @@ class TestApplyOverrides:
     def test_no_overrides_returns_input_unchanged(self, initialized_db):
         loc_id = _new_outlet("Service Noop Outlet")
         rows = [
-            {"location_id": loc_id, "date": "2026-04-20", "covers": 50,
-             "lunch_covers": 20, "dinner_covers": 30, "net_total": 1000.0},
+            {
+                "location_id": loc_id,
+                "date": "2026-04-20",
+                "covers": 50,
+                "lunch_covers": 20,
+                "dinner_covers": 30,
+                "net_total": 1000.0,
+            },
         ]
         out = apply_overrides(rows, [loc_id], "2026-04-20", "2026-04-20")
         assert out == rows
@@ -152,12 +227,22 @@ class TestApplyOverrides:
         loc_id = _new_outlet("Service Overlay Outlet")
         repo = get_footfall_override_repository()
         repo.upsert(
-            loc_id, "2026-04-20", lunch_covers=42, dinner_covers=31,
-            note=None, edited_by="alice",
+            loc_id,
+            "2026-04-20",
+            lunch_covers=42,
+            dinner_covers=31,
+            note=None,
+            edited_by="alice",
         )
         rows = [
-            {"location_id": loc_id, "date": "2026-04-20", "covers": 50,
-             "lunch_covers": 20, "dinner_covers": 30, "net_total": 730.0},
+            {
+                "location_id": loc_id,
+                "date": "2026-04-20",
+                "covers": 50,
+                "lunch_covers": 20,
+                "dinner_covers": 30,
+                "net_total": 730.0,
+            },
         ]
         out = apply_overrides(rows, [loc_id], "2026-04-20", "2026-04-20")
         assert len(out) == 1
@@ -171,12 +256,22 @@ class TestApplyOverrides:
         loc_id = _new_outlet("Service Partial Outlet")
         repo = get_footfall_override_repository()
         repo.upsert(
-            loc_id, "2026-04-20", lunch_covers=42, dinner_covers=None,
-            note=None, edited_by="alice",
+            loc_id,
+            "2026-04-20",
+            lunch_covers=42,
+            dinner_covers=None,
+            note=None,
+            edited_by="alice",
         )
         rows = [
-            {"location_id": loc_id, "date": "2026-04-20", "covers": 50,
-             "lunch_covers": 20, "dinner_covers": 30, "net_total": 0.0},
+            {
+                "location_id": loc_id,
+                "date": "2026-04-20",
+                "covers": 50,
+                "lunch_covers": 20,
+                "dinner_covers": 30,
+                "net_total": 0.0,
+            },
         ]
         out = apply_overrides(rows, [loc_id], "2026-04-20", "2026-04-20")
         assert out[0]["lunch_covers"] == 42
@@ -188,8 +283,12 @@ class TestApplyOverrides:
         loc_id = _new_outlet("Service Synthetic Outlet")
         repo = get_footfall_override_repository()
         repo.upsert(
-            loc_id, "2026-04-20", lunch_covers=10, dinner_covers=15,
-            note=None, edited_by="alice",
+            loc_id,
+            "2026-04-20",
+            lunch_covers=10,
+            dinner_covers=15,
+            note=None,
+            edited_by="alice",
         )
         out = apply_overrides([], [loc_id], "2026-04-20", "2026-04-20")
         assert len(out) == 1
@@ -213,8 +312,12 @@ class TestApplyOverrides:
         loc_id = _new_outlet("Single Synthetic Outlet")
         repo = get_footfall_override_repository()
         repo.upsert(
-            loc_id, "2026-04-20", lunch_covers=8, dinner_covers=12,
-            note=None, edited_by="alice",
+            loc_id,
+            "2026-04-20",
+            lunch_covers=8,
+            dinner_covers=12,
+            note=None,
+            edited_by="alice",
         )
         out = apply_override_to_single(None, loc_id, "2026-04-20")
         assert out is not None
@@ -225,9 +328,7 @@ class TestApplyOverrides:
 # ─── End-to-end through database read facade ────────────────────────────────
 
 
-def _seed_outlet_with_override(
-    name: str, *, summary: bool = True
-) -> Tuple[int, str]:
+def _seed_outlet_with_override(name: str, *, summary: bool = True) -> Tuple[int, str]:
     loc_id = _new_outlet(name)
     date_str = "2026-04-20"
     if summary:
@@ -241,8 +342,12 @@ def _seed_outlet_with_override(
         )
     repo = get_footfall_override_repository()
     repo.upsert(
-        loc_id, date_str, lunch_covers=42, dinner_covers=31,
-        note=None, edited_by="alice",
+        loc_id,
+        date_str,
+        lunch_covers=42,
+        dinner_covers=31,
+        note=None,
+        edited_by="alice",
     )
     return loc_id, date_str
 
@@ -257,9 +362,7 @@ class TestReadFacadeMerge:
         assert result["dinner_covers"] == 31
 
     def test_get_daily_summary_synthetic_when_no_pos_row(self, initialized_db):
-        loc_id, date_str = _seed_outlet_with_override(
-            "Read Synthetic Outlet", summary=False
-        )
+        loc_id, date_str = _seed_outlet_with_override("Read Synthetic Outlet", summary=False)
         result = database.get_daily_summary(loc_id, date_str)
         assert result is not None
         assert result["covers"] == 73
@@ -280,13 +383,15 @@ class TestReadFacadeMerge:
         )
         repo = get_footfall_override_repository()
         repo.upsert(
-            loc_id, "2026-04-21", lunch_covers=10, dinner_covers=15,
-            note=None, edited_by="alice",
+            loc_id,
+            "2026-04-21",
+            lunch_covers=10,
+            dinner_covers=15,
+            note=None,
+            edited_by="alice",
         )
 
-        rows = database.get_summaries_for_date_range_multi(
-            [loc_id], "2026-04-20", "2026-04-21"
-        )
+        rows = database.get_summaries_for_date_range_multi([loc_id], "2026-04-20", "2026-04-21")
         assert len(rows) == 2
         by_date = {r["date"]: r for r in rows}
         assert by_date["2026-04-20"]["covers"] == 50
@@ -313,14 +418,14 @@ def test_invalidate_footfall_caches_runs_without_error(monkeypatch):
 
     calls = {"reports": 0, "analytics": 0, "loc": []}
     monkeypatch.setattr(
-        cache_invalidation, "invalidate_reports", lambda: calls.__setitem__(
-            "reports", calls["reports"] + 1
-        )
+        cache_invalidation,
+        "invalidate_reports",
+        lambda: calls.__setitem__("reports", calls["reports"] + 1),
     )
     monkeypatch.setattr(
-        cache_invalidation, "invalidate_analytics", lambda: calls.__setitem__(
-            "analytics", calls["analytics"] + 1
-        )
+        cache_invalidation,
+        "invalidate_analytics",
+        lambda: calls.__setitem__("analytics", calls["analytics"] + 1),
     )
     monkeypatch.setattr(
         cache_invalidation,

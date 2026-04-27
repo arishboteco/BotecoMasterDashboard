@@ -30,6 +30,24 @@ DINNER_HOURS = "18:00 onwards"
 
 def _pos_covers_for(location_id: int, date_str: str) -> Dict[str, Optional[int]]:
     """Return raw POS-derived covers (without override overlay) for display."""
+    if database.use_supabase():
+        result = (
+            database.get_supabase_client()
+            .table("daily_summary")
+            .select("covers")
+            .eq("location_id", location_id)
+            .eq("date", date_str)
+            .execute()
+        )
+        if not result.data:
+            return {"covers": None, "lunch_covers": None, "dinner_covers": None}
+        covers = result.data[0].get("covers")
+        return {
+            "covers": int(covers) if covers is not None else None,
+            "lunch_covers": None,
+            "dinner_covers": None,
+        }
+
     with database.db_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -45,19 +63,25 @@ def _pos_covers_for(location_id: int, date_str: str) -> Dict[str, Optional[int]]
         return {"covers": None, "lunch_covers": None, "dinner_covers": None}
     return {
         "covers": int(row["covers"]) if row["covers"] is not None else None,
-        "lunch_covers": (
-            int(row["lunch_covers"]) if row["lunch_covers"] is not None else None
-        ),
-        "dinner_covers": (
-            int(row["dinner_covers"]) if row["dinner_covers"] is not None else None
-        ),
+        "lunch_covers": (int(row["lunch_covers"]) if row["lunch_covers"] is not None else None),
+        "dinner_covers": (int(row["dinner_covers"]) if row["dinner_covers"] is not None else None),
     }
 
 
-def _recent_overrides(
-    location_id: int, days: int = 14
-) -> List[Dict[str, Any]]:
+def _recent_overrides(location_id: int, days: int = 14) -> List[Dict[str, Any]]:
     """Fetch the most recent override rows for an outlet."""
+    if database.use_supabase():
+        result = (
+            database.get_supabase_client()
+            .table("footfall_overrides")
+            .select("date,lunch_covers,dinner_covers,note,edited_by,edited_at")
+            .eq("location_id", location_id)
+            .order("date", desc=True)
+            .limit(days)
+            .execute()
+        )
+        return [dict(row) for row in (result.data or [])]
+
     with database.db_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -130,9 +154,7 @@ def render(ctx: TabContext) -> None:
                 default_id = _default_outlet_id(ctx)
                 option_ids = list(outlet_options.keys())
                 try:
-                    default_index = (
-                        option_ids.index(default_id) if default_id is not None else 0
-                    )
+                    default_index = option_ids.index(default_id) if default_id is not None else 0
                 except ValueError:
                     default_index = 0
                 selected_outlet_id = st.selectbox(
@@ -204,8 +226,7 @@ def render(ctx: TabContext) -> None:
                 )
                 lunch_blank = st.checkbox(
                     "Don't override Lunch (use POS value)",
-                    value=existing is not None
-                    and existing.get("lunch_covers") is None,
+                    value=existing is not None and existing.get("lunch_covers") is None,
                     key="footfall_override_lunch_blank",
                 )
             with ff2:
@@ -223,8 +244,7 @@ def render(ctx: TabContext) -> None:
                 )
                 dinner_blank = st.checkbox(
                     "Don't override Dinner (use POS value)",
-                    value=existing is not None
-                    and existing.get("dinner_covers") is None,
+                    value=existing is not None and existing.get("dinner_covers") is None,
                     key="footfall_override_dinner_blank",
                 )
 
@@ -265,18 +285,14 @@ def render(ctx: TabContext) -> None:
                 )
                 invalidate_footfall_caches([int(selected_outlet_id)])
                 st.success(
-                    f"Saved override for {outlet_options[selected_outlet_id]} on "
-                    f"{date_str}."
+                    f"Saved override for {outlet_options[selected_outlet_id]} on {date_str}."
                 )
                 st.rerun()
 
         if clear_clicked and existing is not None:
             repo.delete(int(selected_outlet_id), date_str)
             invalidate_footfall_caches([int(selected_outlet_id)])
-            st.success(
-                f"Cleared override for {outlet_options[selected_outlet_id]} on "
-                f"{date_str}."
-            )
+            st.success(f"Cleared override for {outlet_options[selected_outlet_id]} on {date_str}.")
             st.rerun()
 
         divider()
