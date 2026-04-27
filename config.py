@@ -1,4 +1,32 @@
 import os
+from pathlib import Path
+
+
+def _load_local_env(env_path: os.PathLike[str] | str | None = None) -> bool:
+    """Load a local .env file without overriding real environment variables."""
+    path = Path(env_path) if env_path is not None else Path(__file__).with_name(".env")
+    if not path.exists():
+        return False
+
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        for raw_line in path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            if not key or key in os.environ:
+                continue
+            value = value.strip().strip('"').strip("'")
+            os.environ[key] = value
+        return True
+
+    return bool(load_dotenv(dotenv_path=path, override=False))
+
+
+_load_local_env()
 
 # Boteco Dashboard Configuration
 
