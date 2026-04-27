@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from io import BytesIO
 from typing import List, Tuple
 from urllib.parse import quote_plus
@@ -34,6 +34,17 @@ def clear_report_cache() -> None:
     Called when new data is imported or when a user requests a refresh.
     """
     report_service.clear_report_cache()
+
+
+def _footfall_metric_ranges(selected_date: date) -> Tuple[str, str, str]:
+    """Return monthly start, weekly start, and end dates for footfall metrics."""
+    end = selected_date.strftime("%Y-%m-%d")
+    start_mo_dt = utils.subtract_months(selected_date, 9)
+    start_mo_str = start_mo_dt.strftime("%Y-%m-%d")
+    days_since_monday = selected_date.weekday()
+    current_week_monday = selected_date - timedelta(days=days_since_monday)
+    start_wk = (current_week_monday - timedelta(weeks=3)).strftime("%Y-%m-%d")
+    return start_mo_str, start_wk, end
 
 
 def render(ctx: TabContext) -> None:
@@ -104,7 +115,10 @@ def render(ctx: TabContext) -> None:
                 _net_cmp = _delta_chip(_curr_net, _prev_net, is_currency=True)
                 _cov_cmp = _delta_chip(float(_curr_cov), float(_prev_cov), is_currency=False)
                 _apc_cmp = _delta_chip(_curr_apc, _prev_apc, is_currency=True)
-                _comparison_chip = f'<span class="comparison-chip">Compared with {_prev_date.strftime("%d %b %Y")}</span>'
+                _comparison_date = _prev_date.strftime("%d %b %Y")
+                _comparison_chip = (
+                    f'<span class="comparison-chip">Compared with {_comparison_date}</span>'
+                )
                 st.markdown(
                     (
                         '<div class="kpi-primary-card kpi-snapshot-card">'
@@ -147,13 +161,7 @@ def render(ctx: TabContext) -> None:
                 mtd_cat, mtd_svc = report_service.build_mtd_maps_cached(
                     ctx.report_loc_ids, y_m[0], y_m[1], date_str
                 )
-                _today = datetime.now().date()
-                _end = _today.strftime("%Y-%m-%d")
-                _start_mo_dt = utils.subtract_months(_today, 9)
-                _start_mo_str = _start_mo_dt.strftime("%Y-%m-%d")
-                _days_since_monday = _today.weekday()
-                _current_week_monday = _today - timedelta(days=_days_since_monday)
-                _start_wk = (_current_week_monday - timedelta(weeks=3)).strftime("%Y-%m-%d")
+                _start_mo_str, _start_wk, _end = _footfall_metric_ranges(selected_date)
 
                 per_outlet_footfall_metrics = [
                     (
@@ -268,13 +276,7 @@ def render(ctx: TabContext) -> None:
                             for lid, name, _ in outlets_bundle
                             if lid == _selected_lid
                         ]
-                        _today = datetime.now().date()
-                        _end = _today.strftime("%Y-%m-%d")
-                        _start_mo_dt = utils.subtract_months(_today, 9)
-                        _start_mo_str = _start_mo_dt.strftime("%Y-%m-%d")
-                        _days_since_monday = _today.weekday()
-                        _current_week_monday = _today - timedelta(days=_days_since_monday)
-                        _start_wk = (_current_week_monday - timedelta(weeks=3)).strftime("%Y-%m-%d")
+                        _start_mo_str, _start_wk, _end = _footfall_metric_ranges(selected_date)
                         _single_outlet_footfall_metrics = [
                             (
                                 _selected_outlet,
@@ -388,7 +390,10 @@ def render(ctx: TabContext) -> None:
                                 with _cells[row_idx][col_idx]:
                                     section_title(title, icon="image")
                                     st.image(BytesIO(sec_bytes), width="stretch")
-                                    _wa_text = f"Boteco {_selected_outlet} EOD Report \u2013 {date_str} ({title})"
+                                    _wa_text = (
+                                        f"Boteco {_selected_outlet} EOD Report \u2013 "
+                                        f"{date_str} ({title})"
+                                    )
                                     clipboard_ui.render_image_action_row(
                                         sec_bytes,
                                         f"boteco_{key}_{date_str}.png",
