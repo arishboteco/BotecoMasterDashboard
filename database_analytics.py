@@ -36,29 +36,37 @@ def _fetch_daily_summary_rows(
 ) -> List[Dict[str, Any]]:
     """Fetch daily summary rows for SQLite or Supabase with shared filtering."""
     import database
+    from services.footfall_override_service import apply_overrides
 
     if not location_ids:
         return []
+
+    fetch_columns = tuple(dict.fromkeys((*columns, "location_id", "lunch_covers", "dinner_covers")))
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
         result = (
             supabase.table("daily_summary")
-            .select(",".join(columns))
+            .select(",".join(fetch_columns))
             .in_("location_id", location_ids)
             .gte("date", start_date)
             .lte("date", end_date)
             .order("date")
             .execute()
         )
-        return [dict(row) for row in (result.data or [])]
+        return apply_overrides(
+            [dict(row) for row in (result.data or [])],
+            location_ids,
+            start_date,
+            end_date,
+        )
 
     placeholders = ",".join("?" * len(location_ids))
     with database.db_connection() as conn:
         cur = conn.cursor()
         cur.execute(
             f"""
-            SELECT {", ".join(columns)}
+            SELECT {", ".join(fetch_columns)}
             FROM daily_summaries
             WHERE location_id IN ({placeholders})
               AND date >= ? AND date <= ?
@@ -67,7 +75,7 @@ def _fetch_daily_summary_rows(
             (*location_ids, start_date, end_date),
         )
         rows = cur.fetchall()
-    return [dict(row) for row in rows]
+    return apply_overrides([dict(row) for row in rows], location_ids, start_date, end_date)
 
 
 def _week_key(date_str: str) -> str:
@@ -194,7 +202,16 @@ def get_daily_sales_for_date_range(
         location_ids,
         start_date,
         end_date,
-        ("date", "location_id", "net_total", "gross_total", "covers", "discount"),
+        (
+            "date",
+            "location_id",
+            "net_total",
+            "gross_total",
+            "covers",
+            "discount",
+            "lunch_covers",
+            "dinner_covers",
+        ),
     )
 
 
