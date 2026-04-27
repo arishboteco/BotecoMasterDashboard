@@ -659,6 +659,38 @@ SECTION_LABELS = r"""    /* ── Section labels ──────────
 """
 
 WORKFLOW_AND_SURFACES = r"""    /* ── Workflow and surface polish ─────────────────────── */
+    .workflow-progress {
+        margin: 0.3rem 0 0.9rem;
+    }
+    .workflow-progress-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 0.35rem;
+        font-size: 0.76rem;
+        color: var(--text-secondary);
+        font-weight: 600;
+    }
+    .workflow-progress-label {
+        color: var(--text-secondary);
+    }
+    .workflow-progress-count {
+        color: var(--text);
+    }
+    .workflow-progress-track {
+        width: 100%;
+        height: 0.42rem;
+        border-radius: 999px;
+        background: var(--surface-elevated);
+        border: 1px solid var(--border-subtle);
+        overflow: hidden;
+    }
+    .workflow-progress-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, var(--brand), var(--brand-light));
+        transition: width var(--transition-normal) ease;
+    }
     .workflow-steps {
         display: flex;
         flex-wrap: wrap;
