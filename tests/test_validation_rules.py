@@ -10,11 +10,8 @@ Covers:
 
 from __future__ import annotations
 
-import calendar
-import sys
 import os
-
-import pytest
+import sys
 
 # Ensure project root is on path when running from tests/ directory
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

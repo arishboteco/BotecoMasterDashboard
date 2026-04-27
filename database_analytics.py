@@ -288,7 +288,7 @@ def get_service_sales_for_date_range(
                         lunch_total += net
                     else:
                         dinner_total += net
-                except:
+                except (ValueError, TypeError, AttributeError):
                     dinner_total += net
             else:
                 dinner_total += net
@@ -380,7 +380,7 @@ def get_daily_service_sales_for_date_range(
                         daily[date]["Lunch"] += net
                     else:
                         daily[date]["Dinner"] += net
-                except:
+                except (ValueError, TypeError, AttributeError):
                     daily[date]["Dinner"] += net
             else:
                 daily[date]["Dinner"] += net

@@ -280,7 +280,6 @@ def render(ctx: TabContext) -> None:
                     df,
                     df_raw,
                     multi_analytics,
-                    prior_df=prior_df,
                     analysis_period=analysis_period,
                 )
                 with classed_container("tab-analytics-mobile-secondary", "mobile-layout-secondary"):

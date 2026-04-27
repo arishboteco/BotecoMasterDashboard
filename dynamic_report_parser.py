@@ -25,7 +25,7 @@ Usage:
 from __future__ import annotations
 
 from collections import defaultdict
-from io import BytesIO, StringIO
+from io import StringIO
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -403,7 +403,7 @@ def _parse_v1(
     }
     cdt_vals = df[cdt_col] if cdt_col else None
 
-    for row_idx, idx in enumerate(df.index):
+    for row_idx in range(len(df.index)):
         date_raw = parsed_dates.iloc[row_idx]
         if not date_raw:
             continue
@@ -595,8 +595,6 @@ def _parse_v2(
     qty_col = col_map.get("item qty")
     rest_col = col_map.get("restaurant")
     paytype_col = col_map.get("payment type")
-    disc_reason_col = col_map.get("discount reason")
-    cancelled_col = col_map.get("cancelled amount")
     comp_col = col_map.get("complementary amount")
 
     if not date_col:
@@ -682,18 +680,15 @@ def _parse_v2(
         is_compli = any(is_complimentary.iloc[idx] for idx in idxs)
 
         # Find summary row: the row with financial data (Gross Sale or Net Amount is numeric and > 0)
-        summary_idx = None
         summary_row = None
         for idx in idxs:
             row = df.iloc[idx]
             gross_val = row.get(gross_col, 0) if gross_col else 0
             net_val = row.get(net_col, 0) if net_col else 0
             if _is_numeric(gross_val) and _safe_float(gross_val) > 0:
-                summary_idx = idx
                 summary_row = row
                 break
             if _is_numeric(net_val) and _safe_float(net_val) > 0:
-                summary_idx = idx
                 summary_row = row
                 break
 

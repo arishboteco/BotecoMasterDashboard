@@ -1,6 +1,5 @@
 """Tests for Indian currency formatting."""
 
-import pytest
 from utils import format_indian_currency, format_rupee_short
 
 

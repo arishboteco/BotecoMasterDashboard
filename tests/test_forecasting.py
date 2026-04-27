@@ -71,7 +71,6 @@ class TestLinearForecast:
         result = linear_forecast(dates, values, forecast_days=7)
         assert result is not None
         data_max = max(values)
-        data_min = min(values)
         for entry in result:
             # Forecast should not exceed 3x the max or go below 0
             assert entry["value"] < data_max * 3

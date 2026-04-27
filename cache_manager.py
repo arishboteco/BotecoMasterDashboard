@@ -43,6 +43,6 @@ def invalidate(name: str) -> None:
 
 def invalidate_all() -> None:
     """Clear every registered cache."""
-    for name, cache in _caches.items():
+    for cache in _caches.values():
         cache.clear()
     logger.debug("All caches invalidated (%d caches)", len(_caches))

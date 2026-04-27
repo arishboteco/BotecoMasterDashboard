@@ -30,7 +30,7 @@ import streamlit as st
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import (
     SimpleDocTemplate,
     Table,
@@ -1088,10 +1088,7 @@ def _build_sales_summary(
     add_mtd_row("Required Daily Run Rate", _required_run_rate, fmt="str")
 
     # Build the sales summary table
-    all_data = rows[1:]  # skip header for main section
-    full_data = rows + mtd_data[1:]  # combine
     n_header = len(rows)
-    n_mtd = len(mtd_data) - 1
 
     # Combine EOD title rows + sales summary + MTD data (single table, aligned widths)
     META_ROWS = 2
@@ -1276,7 +1273,7 @@ def _build_category(
     mtd_total = 0.0
     outlet_totals = [0.0] * len(outlet_daily_cats) if multi else []
 
-    for idx, name in enumerate(cat_order):
+    for name in cat_order:
         d_amt = daily_cat.get(name, 0.0)
         m_amt = float(mtd_category.get(name, 0) or 0)
         daily_total += d_amt
@@ -1450,7 +1447,7 @@ def _build_service(
     mtd_total = 0.0
     outlet_totals = [0.0] * len(outlet_daily_svcs) if multi else []
 
-    for idx, name in enumerate(svc_order):
+    for name in svc_order:
         d_amt = daily_svc.get(name, 0.0)
         m_amt = float(mtd_service.get(name, 0) or 0)
         daily_total += d_amt

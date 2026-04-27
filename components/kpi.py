@@ -34,7 +34,7 @@ def kpi_row(
     ncols = columns or len(metrics)
     cols = st.columns(ncols)
 
-    for col, metric in zip(cols, metrics):
+    for col, metric in zip(cols, metrics, strict=False):
         with col:
             st.metric(
                 label=metric.label,
