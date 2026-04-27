@@ -408,9 +408,10 @@ def delete_category_summary_batch(supabase: Any, dates_locs: set) -> None:
 
 def clear_all_data(supabase: Any) -> None:
     """Clear operational tables (Supabase)."""
-    supabase.table(SUPABASE_CATEGORY_SUMMARY).delete().neq("id", 0).execute()
-    supabase.table(SUPABASE_DAILY_SUMMARY).delete().neq("id", 0).execute()
     supabase.table(SUPABASE_BILL_ITEMS).delete().neq("id", 0).execute()
+    supabase.table(SUPABASE_DAILY_SUMMARY).delete().neq("id", 0).execute()
+    supabase.table(SUPABASE_CATEGORY_SUMMARY).delete().neq("id", 0).execute()
+    supabase.table("upload_history").delete().neq("id", 0).execute()
 
 
 def wipe_all_data() -> Tuple[Dict[str, int], List[str]]:
@@ -430,6 +431,7 @@ def wipe_all_data() -> Tuple[Dict[str, int], List[str]]:
                 SUPABASE_BILL_ITEMS,
                 SUPABASE_DAILY_SUMMARY,
                 SUPABASE_CATEGORY_SUMMARY,
+                "upload_history",
             ]:
                 result = admin.table(table).select("id", count="exact").execute()
                 counts[table] = int(result.count or 0)
