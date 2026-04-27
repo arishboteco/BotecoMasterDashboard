@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-import secrets
 import math
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
+
+from postgrest.exceptions import APIError
 
 import config
 import database
@@ -29,12 +31,17 @@ def create_admin_user(username: str, password: str) -> None:
     """Create admin user if not exists."""
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = supabase.table("users").select("id").eq("username", username).execute()
-        if not result.data:
-            password_hash = database._hash_password(password)
-            supabase.table("users").insert(
-                {"username": username, "password_hash": password_hash, "role": "admin"}
-            ).execute()
+        try:
+            result = supabase.table("users").select("id").eq("username", username).execute()
+            if not result.data:
+                password_hash = database._hash_password(password)
+                supabase.table("users").insert(
+                    {"username": username, "password_hash": password_hash, "role": "admin"}
+                ).execute()
+        except APIError as exc:
+            if exc.code == "42501":
+                return
+            raise
     else:
         with database.db_connection() as conn:
             cursor = conn.cursor()
@@ -154,12 +161,7 @@ def create_user(
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = (
-            supabase.table("users")
-            .select("id")
-            .eq("username", username.strip())
-            .execute()
-        )
+        result = supabase.table("users").select("id").eq("username", username.strip()).execute()
         if result.data:
             return False, f"Username '{username}' already exists."
         pw_hash = database._hash_password(password)
@@ -176,9 +178,7 @@ def create_user(
     else:
         with database.db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT id FROM users WHERE username = ?", (username.strip(),)
-            )
+            cursor.execute("SELECT id FROM users WHERE username = ?", (username.strip(),))
             if cursor.fetchone():
                 return False, f"Username '{username}' already exists."
             pw_hash = database._hash_password(password)
@@ -203,9 +203,7 @@ def update_user(
     """Update role, location, email, and/or password for an existing user."""
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = (
-            supabase.table("users").select("id, username").eq("id", user_id).execute()
-        )
+        result = supabase.table("users").select("id, username").eq("id", user_id).execute()
         if not result.data:
             return False, "User not found."
         username = result.data[0]["username"]
@@ -237,18 +235,14 @@ def update_user(
                 return False, "User not found."
             username = row["username"]
             if role is not None:
-                cursor.execute(
-                    "UPDATE users SET role = ? WHERE id = ?", (role, user_id)
-                )
+                cursor.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
             if location_id is not None:
                 cursor.execute(
                     "UPDATE users SET location_id = ? WHERE id = ?",
                     (location_id, user_id),
                 )
             if email is not None:
-                cursor.execute(
-                    "UPDATE users SET email = ? WHERE id = ?", (email, user_id)
-                )
+                cursor.execute("UPDATE users SET email = ? WHERE id = ?", (email, user_id))
             if new_password is not None:
                 if len(new_password) < config.MIN_PASSWORD_LENGTH:
                     return (
@@ -295,9 +289,7 @@ def create_user_session(user_id: int, days: int = 30) -> str:
     """Generate and persist a secure session token. Returns token string."""
     token = secrets.token_hex(32)
     token_hash = database._hash_session_token(token)
-    expires_at = (datetime.now(timezone.utc) + timedelta(days=days)).strftime(
-        "%Y-%m-%d %H:%M:%S"
-    )
+    expires_at = (datetime.now(timezone.utc) + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
     if database.use_supabase():
         supabase = database.get_supabase_client()
         supabase.table("user_sessions").insert(
@@ -347,10 +339,7 @@ def validate_session_token(token: str) -> Optional[Dict]:
 
         if user.get("location_id"):
             loc_result = (
-                supabase.table("locations")
-                .select("name")
-                .eq("id", user["location_id"])
-                .execute()
+                supabase.table("locations").select("name").eq("id", user["location_id"]).execute()
             )
             if loc_result.data:
                 user["location_name"] = loc_result.data[0]["name"]
@@ -404,9 +393,7 @@ def purge_expired_sessions() -> None:
         supabase.table("user_sessions").delete().lt("expires_at", now).execute()
     else:
         with database.db_connection() as conn:
-            conn.execute(
-                "DELETE FROM user_sessions WHERE expires_at <= datetime('now')"
-            )
+            conn.execute("DELETE FROM user_sessions WHERE expires_at <= datetime('now')")
             conn.commit()
 
 
@@ -502,9 +489,7 @@ def record_failed_login(username: str) -> Tuple[bool, int]:
 
         locked_until = None
         if failed >= int(config.MAX_LOGIN_ATTEMPTS):
-            locked_until = (
-                _utcnow() + timedelta(minutes=config.LOGIN_LOCKOUT_MINUTES)
-            ).isoformat()
+            locked_until = (_utcnow() + timedelta(minutes=config.LOGIN_LOCKOUT_MINUTES)).isoformat()
 
         if result.data:
             supabase.table("auth_login_attempts").update(
