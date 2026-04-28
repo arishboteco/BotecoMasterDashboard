@@ -2100,6 +2100,11 @@ def generate_sheet_style_report_image(
     buf.seek(0)
     return buf
 
+    buf = BytesIO()
+    composite.save(buf, format="PNG", optimize=False)
+    buf.seek(0)
+    return buf
+
 def generate_report_image(report_data: Dict, location_name: str = "Boteco Bangalore") -> BytesIO:
     try:
         return generate_sheet_style_report_image(
