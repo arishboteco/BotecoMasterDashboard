@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -96,11 +97,13 @@ def aggregate_daily_summaries(
     lc_any = False
     dc_any = False
     for s in summaries:
-        if s.get("lunch_covers") is not None:
-            lc_sum += int(s.get("lunch_covers") or 0)
+        lc = s.get("lunch_covers")
+        if lc is not None and not (isinstance(lc, float) and math.isnan(lc)):
+            lc_sum += int(lc or 0)
             lc_any = True
-        if s.get("dinner_covers") is not None:
-            dc_sum += int(s.get("dinner_covers") or 0)
+        dc = s.get("dinner_covers")
+        if dc is not None and not (isinstance(dc, float) and math.isnan(dc)):
+            dc_sum += int(dc or 0)
             dc_any = True
     out["lunch_covers"] = lc_sum if lc_any else None
     out["dinner_covers"] = dc_sum if dc_any else None
