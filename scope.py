@@ -124,9 +124,7 @@ def aggregate_daily_summaries(
             key = str(sv.get("type") or sv.get("service_type") or "")
             svc_amt[key] += float(sv.get("amount", 0) or 0)
     out["services"] = [
-        {"type": k, "amount": v}
-        for k, v in sorted(svc_amt.items(), key=lambda x: -x[1])
-        if v > 0
+        {"type": k, "amount": v} for k, v in sorted(svc_amt.items(), key=lambda x: -x[1]) if v > 0
     ]
 
     out.pop("id", None)
@@ -135,13 +133,11 @@ def aggregate_daily_summaries(
     cov = int(out.get("covers") or 0)
     out["pct_target"] = round((net / tgt) * 100, 2) if tgt > 0 else 0.0
     out["apc"] = (net / cov) if cov > 0 and net > 0 else 0.0
-    out["turns"] = round(cov / 100, 1) if cov else 0.0
+    out["turns"] = None
     return out
 
 
-def get_daily_summary_for_scope(
-    location_ids: List[int], date_str: str
-) -> Optional[Dict[str, Any]]:
+def get_daily_summary_for_scope(location_ids: List[int], date_str: str) -> Optional[Dict[str, Any]]:
     if not location_ids:
         return None
     rows = database.get_summaries_for_date_range_multi(location_ids, date_str, date_str)
@@ -235,9 +231,7 @@ def get_daily_report_bundle(
     if combined is None:
         return [], None
     monthly_all = sum_location_monthly_targets(location_ids)
-    combined_e = enrich_summary_for_display(
-        combined, location_ids, monthly_all, date_str
-    )
+    combined_e = enrich_summary_for_display(combined, location_ids, monthly_all, date_str)
     return outlets, combined_e
 
 

@@ -16,10 +16,10 @@ import sys
 # Ensure project root is on path when running from tests/ directory
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import scope
 import utils
-from pos_parser import validate_data, calculate_derived_metrics
+from pos_parser import calculate_derived_metrics, validate_data
 from sheet_reports import _pct
-
 
 # ── validate_data ─────────────────────────────────────────────────────────────
 
@@ -173,32 +173,61 @@ def test_pct_negative_sub_one():
 
 def test_turns_none_when_no_seat_count():
     """Turns should be None when seat_count is not configured."""
-    result = calculate_derived_metrics({
-        "covers": 150,
-        "net_total": 80000,
-        # no seat_count
-    })
+    result = calculate_derived_metrics(
+        {
+            "covers": 150,
+            "net_total": 80000,
+            # no seat_count
+        }
+    )
     assert result["turns"] is None
 
 
 def test_turns_calculated_with_seat_count():
     """Turns should calculate correctly when seat_count is provided."""
-    result = calculate_derived_metrics({
-        "covers": 150,
-        "net_total": 80000,
-        "seat_count": 40,
-    })
+    result = calculate_derived_metrics(
+        {
+            "covers": 150,
+            "net_total": 80000,
+            "seat_count": 40,
+        }
+    )
     assert result["turns"] == round(150 / 40, 2)
 
 
 def test_turns_not_covers_over_100():
     """Turns must not default to covers/100 (the old broken fallback)."""
-    result = calculate_derived_metrics({
-        "covers": 150,
-        "net_total": 80000,
-    })
+    result = calculate_derived_metrics(
+        {
+            "covers": 150,
+            "net_total": 80000,
+        }
+    )
     # Old code would give 1.5; now should be None
     assert result["turns"] != 1.5
+    assert result["turns"] is None
+
+
+def test_aggregate_daily_summaries_does_not_fallback_to_covers_over_100():
+    """Combined aggregation should not invent turns from covers / 100."""
+    result = scope.aggregate_daily_summaries(
+        [
+            {
+                "date": "2026-04-27",
+                "covers": 48,
+                "net_total": 44010,
+                "target": 400000,
+            },
+            {
+                "date": "2026-04-27",
+                "covers": 0,
+                "net_total": 0,
+                "target": 400000,
+            },
+        ]
+    )
+
+    assert result is not None
     assert result["turns"] is None
 
 
@@ -210,11 +239,35 @@ def test_calculate_mtd_metrics_multi_does_not_double_filter():
     from unittest.mock import patch
 
     mock_summaries = [
-        {"date": "2026-04-01", "net_total": 45000, "covers": 120, "discount": 0, "complimentary": 0},
-        {"date": "2026-04-10", "net_total": 52000, "covers": 140, "discount": 500, "complimentary": 0},
-        {"date": "2026-04-15", "net_total": 48000, "covers": 130, "discount": 200, "complimentary": 0},
+        {
+            "date": "2026-04-01",
+            "net_total": 45000,
+            "covers": 120,
+            "discount": 0,
+            "complimentary": 0,
+        },
+        {
+            "date": "2026-04-10",
+            "net_total": 52000,
+            "covers": 140,
+            "discount": 500,
+            "complimentary": 0,
+        },
+        {
+            "date": "2026-04-15",
+            "net_total": 48000,
+            "covers": 130,
+            "discount": 200,
+            "complimentary": 0,
+        },
         # This date is after as_of_date and should be excluded
-        {"date": "2026-04-20", "net_total": 60000, "covers": 160, "discount": 0, "complimentary": 0},
+        {
+            "date": "2026-04-20",
+            "net_total": 60000,
+            "covers": 160,
+            "discount": 0,
+            "complimentary": 0,
+        },
     ]
 
     from pos_parser import calculate_mtd_metrics_multi

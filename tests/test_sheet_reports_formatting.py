@@ -21,6 +21,19 @@ def _has_dark_footer_band(buf) -> bool:
     return dark_rows >= 8
 
 
+def _first_table(elements):
+    return next(element for element in elements if isinstance(element, sheet_reports.Table))
+
+
+def _background_hex_for_label(table, label: str) -> str | None:
+    row_index = next(idx for idx, row in enumerate(table._cellvalues) if row and row[0] == label)
+    for command in reversed(getattr(table, "_bkgrndcmds", [])):
+        name, start, end, color = command[:4]
+        if name == "BACKGROUND" and start[1] <= row_index <= end[1]:
+            return color.hexval().replace("0x", "#").upper()
+    return None
+
+
 class TestRupeeFormatting:
     def test_decimal_currency_rounds_to_whole_rupees(self):
         assert sheet_reports._r(72885.08) == "\u20b972,885"
@@ -96,12 +109,8 @@ class TestCategorySuperCategoryDisplay:
                         if cell is not None:
                             element_texts.append(str(cell))
 
-        assert "\u20b9800" in element_texts, (
-            f"Expected '₹800' in output, got: {element_texts}"
-        )
-        assert "\u20b91,800" in element_texts, (
-            f"Expected '₹1,800' in output, got: {element_texts}"
-        )
+        assert "\u20b9800" in element_texts, f"Expected '₹800' in output, got: {element_texts}"
+        assert "\u20b91,800" in element_texts, f"Expected '₹1,800' in output, got: {element_texts}"
 
 
 class TestCategoryServiceTotalRows:
@@ -132,3 +141,37 @@ class TestCategoryServiceTotalRows:
         )
 
         assert _has_dark_footer_band(sections["service"])
+
+
+class TestSalesSummaryRowBackgrounds:
+    def test_sales_summary_uses_semantic_row_backgrounds(self):
+        report_data = {
+            "date": "2026-04-27",
+            "covers": 48,
+            "turns": 0.69,
+            "gross_total": 49775,
+            "net_total": 44010,
+            "gpay_sales": 49775,
+            "discount": 650,
+            "complimentary": 0,
+            "cgst": 1153,
+            "sgst": 1153,
+            "service_charge": 0,
+            "mtd_total_covers": 2079,
+            "apc": 917,
+            "mtd_net_sales": 3311873,
+            "mtd_discount": 1732,
+            "mtd_complimentary": 0,
+            "mtd_avg_daily": 122662,
+            "mtd_target": 8000000,
+            "mtd_pct_target": 46,
+        }
+
+        table = _first_table(
+            sheet_reports._build_sales_summary(report_data, location_name="All locations")
+        )
+
+        assert _background_hex_for_label(table, "Covers") == sheet_reports.C_ROW_OPS
+        assert _background_hex_for_label(table, "Turns") == sheet_reports.C_ROW_OPS
+        assert _background_hex_for_label(table, "GPay") == sheet_reports.C_ROW_PAYMENT
+        assert _background_hex_for_label(table, "Discount") == sheet_reports.C_ROW_DEDUCTION
