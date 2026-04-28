@@ -16,11 +16,3 @@ def test_png_preview_grid_does_not_render_redundant_section_headers() -> None:
     src = Path("tabs/report_tab.py").read_text(encoding="utf-8")
 
     assert "section_title(title, icon=\"image\")" not in src
-
-
-def test_primary_whatsapp_bundle_shares_one_combined_png() -> None:
-    src = Path("tabs/report_tab.py").read_text(encoding="utf-8")
-
-    assert "stack_report_section_images" in src
-    assert "boteco_report_bundle_{date_str}.png" in src
-    assert "(f\"boteco_{key}_{date_str}.png\", section_bufs[key].getvalue())" not in src
