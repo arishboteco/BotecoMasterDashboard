@@ -144,7 +144,7 @@ class TestCategoryServiceTotalRows:
 
 
 class TestSalesSummaryRowBackgrounds:
-    def test_sales_summary_uses_semantic_row_backgrounds(self):
+    def test_sales_summary_uses_section_backgrounds_without_zebra_banding(self):
         report_data = {
             "date": "2026-04-27",
             "covers": 48,
@@ -173,5 +173,18 @@ class TestSalesSummaryRowBackgrounds:
 
         assert _background_hex_for_label(table, "Covers") == sheet_reports.C_ROW_OPS
         assert _background_hex_for_label(table, "Turns") == sheet_reports.C_ROW_OPS
-        assert _background_hex_for_label(table, "GPay") == sheet_reports.C_ROW_PAYMENT
+        assert _background_hex_for_label(table, "GPay") is None
+        assert _background_hex_for_label(table, "SGST @ 2.5%") is None
         assert _background_hex_for_label(table, "Discount") == sheet_reports.C_ROW_DEDUCTION
+        assert _background_hex_for_label(table, "Complimentary") == sheet_reports.C_ROW_EXCEPTION
+        assert (
+            _background_hex_for_label(table, "Sales Target") == sheet_reports.C_ROW_TARGET_NEUTRAL
+        )
+        assert _background_hex_for_label(table, "% of Target") == sheet_reports.C_ROW_TARGET_BAD
+        assert (
+            _background_hex_for_label(table, "Forecast Month-End") == sheet_reports.C_ROW_FORECAST
+        )
+        assert (
+            _background_hex_for_label(table, "Required Daily Run Rate")
+            == sheet_reports.C_ROW_TARGET_WARN
+        )

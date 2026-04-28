@@ -64,8 +64,10 @@ C_MUTED = "#64748B"
 C_BORDER = "#E2E8F0"
 C_BAND = "#EDF2F7"
 C_ROW_OPS = "#E8F2FB"
-C_ROW_PAYMENT = "#F5F7FA"
 C_ROW_DEDUCTION = "#FDECEC"
+C_ROW_EXCEPTION = "#FFF4D8"
+C_ROW_FORECAST = "#E8F2FB"
+C_ROW_TARGET_NEUTRAL = "#EEF2F7"
 C_ROW_TARGET_GOOD = "#EAF7EF"
 C_ROW_TARGET_WARN = "#FFF4D8"
 C_ROW_TARGET_BAD = "#FDECEC"
@@ -120,13 +122,8 @@ def _hex(hx: str) -> colors.HexColor:
 
 
 OPS_SUMMARY_ROWS = {"Covers", "Turns", "APC (Day)", "APC (Month)"}
-PAYMENT_SUMMARY_ROWS = {"Cash", "GPay", "Zomato", "Card", "Other / Wallet"}
-DEDUCTION_SUMMARY_ROWS = {
-    "Discount",
-    "Complimentary",
-    "MTD Discount",
-    "MTD Complimentary",
-}
+DEDUCTION_SUMMARY_ROWS = {"Discount", "MTD Discount"}
+EXCEPTION_SUMMARY_ROWS = {"Complimentary", "MTD Complimentary"}
 
 
 def _target_row_bg(color: str | None) -> str:
@@ -141,11 +138,17 @@ def _sales_summary_row_bg(label: str, status_color: str | None = None) -> str | 
     """Return the semantic background for a sales summary row label."""
     if label in OPS_SUMMARY_ROWS:
         return C_ROW_OPS
-    if label in PAYMENT_SUMMARY_ROWS:
-        return C_ROW_PAYMENT
     if label in DEDUCTION_SUMMARY_ROWS:
         return C_ROW_DEDUCTION
+    if label in EXCEPTION_SUMMARY_ROWS:
+        return C_ROW_EXCEPTION
+    if label == "Sales Target":
+        return C_ROW_TARGET_NEUTRAL
+    if label == "Forecast Month-End":
+        return C_ROW_FORECAST
     if label in {"% of Target", "Forecast vs Target", "Required Daily Run Rate"}:
+        if label == "Required Daily Run Rate":
+            return C_ROW_TARGET_NEUTRAL if status_color == C_GREEN else C_ROW_TARGET_WARN
         return _target_row_bg(status_color)
     return None
 
@@ -1137,11 +1140,6 @@ def _build_sales_summary(
         ("TEXTCOLOR", (0, FIRST_BODY_ROW), (-1, -1), _hex(C_SLATE)),
     ]
 
-    # Alternating rows (body only; preserves pre-meta striping pattern)
-    for i in range(FIRST_BODY_ROW, len(all_rows)):
-        if (i - FIRST_BODY_ROW) % 2 == 1:
-            style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(C_BAND)))
-
     for i, row in enumerate(all_rows):
         if not row:
             continue
@@ -2094,11 +2092,6 @@ def generate_sheet_style_report_image(
         x_off = (max_w - im.width) // 2
         composite.paste(im, (x_off, y_off))
         y_off += im.height
-
-    buf = BytesIO()
-    composite.save(buf, format="PNG", optimize=False)
-    buf.seek(0)
-    return buf
 
     buf = BytesIO()
     composite.save(buf, format="PNG", optimize=False)

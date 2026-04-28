@@ -13,13 +13,16 @@ Fix the End of Day report so `Turns` reflects covers divided by configured seat 
 
 ## Row Backgrounds
 
-Use subtle semantic bands while preserving the existing report style:
+Use section-based backgrounds instead of zebra striping. Decorative banding conflicts with semantic color, so body rows should stay white unless their row has a specific purpose.
 
 - Operations rows (`Covers`, `Turns`, `APC`) use pale blue.
-- Payment rows (`Cash`, `GPay`, `Zomato`, `Card`, `Other / Wallet`) use a neutral light background.
-- Totals keep existing strong emphasis for net and MTD totals.
-- Deduction rows (`Discount`, `MTD Discount`, `Complimentary`) use pale red or amber, with red value text retained for discounts.
-- Target and forecast rows use status-aware pale backgrounds where useful.
+- Payment rows (`Cash`, `GPay`, `Zomato`, `Card`, `Other / Wallet`) stay white.
+- Taxes stay white; `EOD Gross Total` uses a soft neutral fill.
+- `Discount` and `MTD Discount` use pale red, with red value text retained.
+- `Complimentary` and `MTD Complimentary` use pale amber to show an exception without equating it to discount leakage.
+- `EOD Net Total` keeps the strong navy emphasis.
+- `MTD Net Sales` and `MTD Net (Excl. Disc.)` stay bold with no heavy fill.
+- The final target/forecast rows use distinct purposeful fills: `Sales Target` soft slate, `% of Target` status fill, `Forecast Month-End` soft blue, `Forecast vs Target` status fill, and `Required Daily Run Rate` amber when behind target or neutral when healthy.
 
 ## Testing
 
