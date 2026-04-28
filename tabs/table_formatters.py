@@ -195,7 +195,9 @@ def build_category_detail_table(cat_df: pd.DataFrame) -> pd.DataFrame:
     total = cat_df["amount"].sum()
 
     cat_df["Amount (₹)"] = cat_df["amount"].apply(utils.format_currency)
-    cat_df["% of Total"] = (cat_df["amount"] / total * 100).round(1).astype(str) + "%"
+    cat_df["% of Total"] = (
+        (cat_df["amount"] / total * 100).round(1).astype(str) + "%" if total else "0.0%"
+    )
 
     result = cat_df[["category", "Amount (₹)", "% of Total"]].copy()
     result.columns = ["Category", "Amount (₹)", "% of Total"]
