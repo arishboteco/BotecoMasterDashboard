@@ -89,7 +89,7 @@ Run: `pytest tests/test_validation_rules.py -v`
 
 Expected: PASS.
 
-## Task 2: Add Semantic Row Backgrounds
+## Task 2: Revise Semantic Row Backgrounds
 
 **Files:**
 - Modify: `tests/test_sheet_reports_formatting.py`
@@ -119,10 +119,10 @@ def _table_commands(elements):
     return []
 ```
 
-Add this test at the end of `tests/test_sheet_reports_formatting.py`:
+Update the sales summary row background test so it verifies section-based colors and no decorative zebra banding:
 
 ```python
-def test_sales_summary_uses_semantic_row_backgrounds():
+def test_sales_summary_uses_section_based_row_backgrounds_without_zebra_banding():
     report_data = {
         "date": "2026-04-27",
         "covers": 48,
@@ -154,15 +154,22 @@ def test_sales_summary_uses_semantic_row_backgrounds():
     table = next(element for element in elements if isinstance(element, sheet_reports.Table))
     backgrounds = list(getattr(table, "_bkgrndcmds", []))
 
-    assert any(cmd[0] == "BACKGROUND" and cmd[1] == (0, 2) for cmd in backgrounds)
-    assert any(cmd[0] == "BACKGROUND" and cmd[1] == (0, 3) for cmd in backgrounds)
+    assert _background_hex_for_label(table, "Covers") == sheet_reports.C_ROW_OPS
+    assert _background_hex_for_label(table, "GPay") is None
+    assert _background_hex_for_label(table, "SGST @ 2.5%") is None
+    assert _background_hex_for_label(table, "Discount") == sheet_reports.C_ROW_DEDUCTION
+    assert _background_hex_for_label(table, "Complimentary") == sheet_reports.C_ROW_EXCEPTION
+    assert _background_hex_for_label(table, "Sales Target") == sheet_reports.C_ROW_TARGET_NEUTRAL
+    assert _background_hex_for_label(table, "% of Target") == sheet_reports.C_ROW_TARGET_BAD
+    assert _background_hex_for_label(table, "Forecast Month-End") == sheet_reports.C_ROW_FORECAST
+    assert _background_hex_for_label(table, "Required Daily Run Rate") == sheet_reports.C_ROW_TARGET_WARN
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pytest tests/test_sheet_reports_formatting.py::test_sales_summary_uses_semantic_row_backgrounds -v`
+Run: `pytest tests/test_sheet_reports_formatting.py::TestSalesSummaryRowBackgrounds::test_sales_summary_uses_section_backgrounds_without_zebra_banding -v`
 
-Expected: FAIL because the current rows use zebra striping and do not assign semantic backgrounds to both Covers and Turns.
+Expected: FAIL because payment/tax rows still receive zebra banding and final rows do not have distinct backgrounds.
 
 - [ ] **Step 3: Add color constants and helpers**
 
@@ -170,8 +177,10 @@ In `sheet_reports.py`, near existing color constants, add:
 
 ```python
 C_ROW_OPS = "#E8F2FB"
-C_ROW_PAYMENT = "#F5F7FA"
 C_ROW_DEDUCTION = "#FDECEC"
+C_ROW_EXCEPTION = "#FFF4D8"
+C_ROW_FORECAST = "#E8F2FB"
+C_ROW_TARGET_NEUTRAL = "#EEF2F7"
 C_ROW_TARGET_GOOD = "#EAF7EF"
 C_ROW_TARGET_WARN = "#FFF4D8"
 C_ROW_TARGET_BAD = "#FDECEC"
@@ -181,9 +190,9 @@ Near `_build_sales_summary`, add:
 
 ```python
 OPS_ROWS = {"Covers", "Turns", "APC (Day)", "APC (Month)"}
-PAYMENT_ROWS = {"Cash", "GPay", "Zomato", "Card", "Other / Wallet"}
-DEDUCTION_ROWS = {"Discount", "Complimentary", "MTD Discount", "MTD Complimentary"}
-TARGET_ROWS = {"% of Target", "Forecast vs Target", "Required Daily Run Rate"}
+DEDUCTION_ROWS = {"Discount", "MTD Discount"}
+EXCEPTION_ROWS = {"Complimentary", "MTD Complimentary"}
+TARGET_ROWS = {"% of Target", "Forecast vs Target"}
 
 
 def _target_row_bg(color: str | None) -> str:
@@ -197,16 +206,22 @@ def _target_row_bg(color: str | None) -> str:
 def _sales_summary_row_bg(label: str, status_color: str | None = None) -> str | None:
     if label in OPS_ROWS:
         return C_ROW_OPS
-    if label in PAYMENT_ROWS:
-        return C_ROW_PAYMENT
     if label in DEDUCTION_ROWS:
         return C_ROW_DEDUCTION
+    if label in EXCEPTION_ROWS:
+        return C_ROW_EXCEPTION
+    if label == "Sales Target":
+        return C_ROW_TARGET_NEUTRAL
+    if label == "Forecast Month-End":
+        return C_ROW_FORECAST
     if label in TARGET_ROWS:
         return _target_row_bg(status_color)
+    if label == "Required Daily Run Rate":
+        return C_ROW_TARGET_WARN if status_color != C_GREEN else C_ROW_TARGET_NEUTRAL
     return None
 ```
 
-- [ ] **Step 4: Apply helper to EOD rows**
+- [ ] **Step 4: Remove decorative zebra banding and apply semantic backgrounds only**
 
 In `add_row()` inside `_build_sales_summary`, before the `if bg:` block, add:
 
@@ -228,11 +243,9 @@ with:
 ```python
 if semantic_bg:
     override_list.append(("BACKGROUND", (0, ri), (-1, ri), _hex(semantic_bg)))
-elif row_idx % 2 == 1:
-    override_list.append(("BACKGROUND", (0, ri), (-1, ri), _hex(C_BAND)))
 ```
 
-- [ ] **Step 5: Apply helper to MTD rows**
+- [ ] **Step 5: Apply helper to MTD rows and final target rows**
 
 Change the `add_mtd_row` signature from:
 
@@ -259,13 +272,11 @@ with:
 semantic_bg = _sales_summary_row_bg(label, right_color)
 if semantic_bg:
     ov.append(("BACKGROUND", (0, ri), (-1, ri), _hex(semantic_bg)))
-elif mri % 2 == 1:
-    ov.append(("BACKGROUND", (0, ri), (-1, ri), _hex(C_BAND)))
 ```
 
 - [ ] **Step 6: Run semantic style test**
 
-Run: `pytest tests/test_sheet_reports_formatting.py::test_sales_summary_uses_semantic_row_backgrounds -v`
+Run: `pytest tests/test_sheet_reports_formatting.py::TestSalesSummaryRowBackgrounds::test_sales_summary_uses_section_backgrounds_without_zebra_banding -v`
 
 Expected: PASS.
 
