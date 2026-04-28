@@ -162,7 +162,7 @@ def test_sales_summary_uses_section_based_row_backgrounds_without_zebra_banding(
     assert _background_hex_for_label(table, "Sales Target") == sheet_reports.C_ROW_TARGET_NEUTRAL
     assert _background_hex_for_label(table, "% of Target") == sheet_reports.C_ROW_TARGET_BAD
     assert _background_hex_for_label(table, "Forecast Month-End") == sheet_reports.C_ROW_FORECAST
-    assert _background_hex_for_label(table, "Required Daily Run Rate") == sheet_reports.C_ROW_TARGET_WARN
+    assert _background_hex_for_label(table, "Required Daily Run Rate") == sheet_reports.C_ROW_REQUIRED_RUN_RATE
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -180,6 +180,7 @@ C_ROW_OPS = "#E8F2FB"
 C_ROW_DEDUCTION = "#FDECEC"
 C_ROW_EXCEPTION = "#FFF4D8"
 C_ROW_FORECAST = "#E8F2FB"
+C_ROW_REQUIRED_RUN_RATE = "#EEF2FF"
 C_ROW_TARGET_NEUTRAL = "#EEF2F7"
 C_ROW_TARGET_GOOD = "#EAF7EF"
 C_ROW_TARGET_WARN = "#FFF4D8"
@@ -217,7 +218,7 @@ def _sales_summary_row_bg(label: str, status_color: str | None = None) -> str | 
     if label in TARGET_ROWS:
         return _target_row_bg(status_color)
     if label == "Required Daily Run Rate":
-        return C_ROW_TARGET_WARN if status_color != C_GREEN else C_ROW_TARGET_NEUTRAL
+        return C_ROW_REQUIRED_RUN_RATE if status_color != C_GREEN else C_ROW_TARGET_NEUTRAL
     return None
 ```
 

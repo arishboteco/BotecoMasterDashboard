@@ -186,5 +186,5 @@ class TestSalesSummaryRowBackgrounds:
         )
         assert (
             _background_hex_for_label(table, "Required Daily Run Rate")
-            == sheet_reports.C_ROW_TARGET_WARN
+            == sheet_reports.C_ROW_REQUIRED_RUN_RATE
         )

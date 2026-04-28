@@ -67,6 +67,7 @@ C_ROW_OPS = "#E8F2FB"
 C_ROW_DEDUCTION = "#FDECEC"
 C_ROW_EXCEPTION = "#FFF4D8"
 C_ROW_FORECAST = "#E8F2FB"
+C_ROW_REQUIRED_RUN_RATE = "#EEF2FF"
 C_ROW_TARGET_NEUTRAL = "#EEF2F7"
 C_ROW_TARGET_GOOD = "#EAF7EF"
 C_ROW_TARGET_WARN = "#FFF4D8"
@@ -148,7 +149,7 @@ def _sales_summary_row_bg(label: str, status_color: str | None = None) -> str | 
         return C_ROW_FORECAST
     if label in {"% of Target", "Forecast vs Target", "Required Daily Run Rate"}:
         if label == "Required Daily Run Rate":
-            return C_ROW_TARGET_NEUTRAL if status_color == C_GREEN else C_ROW_TARGET_WARN
+            return C_ROW_TARGET_NEUTRAL if status_color == C_GREEN else C_ROW_REQUIRED_RUN_RATE
         return _target_row_bg(status_color)
     return None
 
@@ -2097,6 +2098,7 @@ def generate_sheet_style_report_image(
     composite.save(buf, format="PNG", optimize=False)
     buf.seek(0)
     return buf
+
 
 def generate_report_image(report_data: Dict, location_name: str = "Boteco Bangalore") -> BytesIO:
     try:

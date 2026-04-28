@@ -22,7 +22,7 @@ Use section-based backgrounds instead of zebra striping. Decorative banding conf
 - `Complimentary` and `MTD Complimentary` use pale amber to show an exception without equating it to discount leakage.
 - `EOD Net Total` keeps the strong navy emphasis.
 - `MTD Net Sales` and `MTD Net (Excl. Disc.)` stay bold with no heavy fill.
-- The final target/forecast rows use distinct purposeful fills: `Sales Target` soft slate, `% of Target` status fill, `Forecast Month-End` soft blue, `Forecast vs Target` status fill, and `Required Daily Run Rate` amber when behind target or neutral when healthy.
+- The final target/forecast rows use distinct purposeful fills: `Sales Target` soft slate, `% of Target` status fill, `Forecast Month-End` soft blue, `Forecast vs Target` status fill, and `Required Daily Run Rate` pale lavender when behind target or neutral when healthy.
 
 ## Testing
 
