@@ -40,10 +40,10 @@ if not database.use_supabase():
 if "bootstrapped" not in st.session_state:
     database.bootstrap()
     database.backfill_weekday_weighted_targets()
+    # Bootstrap admin user if missing — only on first render of the session,
+    # otherwise this re-hits the DB on every rerun.
+    database.create_admin_user("admin", "admin")
     st.session_state["bootstrapped"] = True
-
-# Bootstrap admin user if missing (uses active backend path; Supabase in production).
-database.create_admin_user("admin", "admin")
 
 # Page configuration
 st.set_page_config(
@@ -127,7 +127,11 @@ else:
 
     # Build shared context
     import_loc_id = int(st.session_state.location_id)
-    import_location_settings = database.get_location_settings(import_loc_id)
+    location_settings = database.get_location_settings(location_id)
+    if import_loc_id == location_id:
+        import_location_settings = location_settings
+    else:
+        import_location_settings = database.get_location_settings(import_loc_id)
 
     ctx = TabContext(
         location_id=location_id,
@@ -135,7 +139,7 @@ else:
         report_loc_ids=report_loc_ids,
         report_display_name=report_display_name,
         all_locs=all_locs,
-        location_settings=database.get_location_settings(location_id),
+        location_settings=location_settings,
         import_location_settings=import_location_settings,
     )
 

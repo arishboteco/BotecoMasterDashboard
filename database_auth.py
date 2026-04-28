@@ -80,15 +80,31 @@ def verify_user(username: str, password: str) -> Optional[Dict]:
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = supabase.table("users").select("*").execute()
-
-        if not result.data:
+        # Filter server-side. Try the verbatim stripped form first; if no row
+        # matches (e.g. the stored username uses different casing), retry with
+        # a case-insensitive lookup. Far cheaper than scanning the whole table.
+        result = (
+            supabase.table("users")
+            .select("*")
+            .eq("username", stripped_username)
+            .execute()
+        )
+        rows = result.data or []
+        if not rows and stripped_username != normalized_username:
+            result = (
+                supabase.table("users")
+                .select("*")
+                .ilike("username", normalized_username)
+                .execute()
+            )
+            rows = result.data or []
+        if not rows:
             return None
 
         row = next(
             (
                 item
-                for item in result.data
+                for item in rows
                 if (item.get("username") or "").strip() == stripped_username
                 or (item.get("username") or "").strip().lower() == normalized_username
             ),

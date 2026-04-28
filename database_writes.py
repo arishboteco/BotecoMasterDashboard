@@ -253,52 +253,55 @@ def _save_daily_summary_sqlite(location_id: int, date_str: str, data: Dict[str, 
         cur.execute(f"DELETE FROM {SQLITE_ITEM_SALES} WHERE summary_id = ?", (summary_id,))
         cur.execute(f"DELETE FROM {SQLITE_SERVICE_SALES} WHERE summary_id = ?", (summary_id,))
 
+        item_rows: List[tuple] = []
         for cat in data.get("categories") or []:
             name = str(cat.get("category", "") or "").strip()
             if not name:
                 continue
-            cur.execute(
-                f"""
-                INSERT INTO {SQLITE_ITEM_SALES} (summary_id, item_name, category, qty, amount)
-                VALUES (?, ?, ?, ?, ?)
-                """,
+            item_rows.append(
                 (
                     summary_id,
                     f"{CATEGORY_ROW_PREFIX}{name}",
                     name,
                     int(cat.get("qty", 0) or 0),
                     float(cat.get("amount", 0) or 0),
-                ),
+                )
             )
-
         for item in data.get("top_items") or []:
             iname = str(item.get("item_name", "") or "").strip()
             if not iname:
                 continue
-            cur.execute(
-                f"""
-                INSERT INTO {SQLITE_ITEM_SALES} (summary_id, item_name, category, qty, amount)
-                VALUES (?, ?, ?, ?, ?)
-                """,
+            item_rows.append(
                 (
                     summary_id,
                     iname,
                     str(item.get("category", "") or ""),
                     int(item.get("qty", 0) or 0),
                     float(item.get("amount", 0) or 0),
-                ),
+                )
+            )
+        if item_rows:
+            cur.executemany(
+                f"""
+                INSERT INTO {SQLITE_ITEM_SALES} (summary_id, item_name, category, qty, amount)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                item_rows,
             )
 
+        service_rows: List[tuple] = []
         for svc in data.get("services") or []:
             stype = str(svc.get("type", "") or "").strip()
             if not stype:
                 continue
-            cur.execute(
+            service_rows.append((summary_id, stype, float(svc.get("amount", 0) or 0)))
+        if service_rows:
+            cur.executemany(
                 f"""
                 INSERT INTO {SQLITE_SERVICE_SALES} (summary_id, service_type, amount)
                 VALUES (?, ?, ?)
                 """,
-                (summary_id, stype, float(svc.get("amount", 0) or 0)),
+                service_rows,
             )
 
         conn.commit()

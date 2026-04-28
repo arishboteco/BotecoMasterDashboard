@@ -41,19 +41,26 @@ def _normalize_detail_lists(summary: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def _location_settings_map() -> Dict[int, Dict[str, Any]]:
+    """Build an id->location dict from the cached locations list."""
+    return {int(loc["id"]): loc for loc in database.get_all_locations() or []}
+
+
 def sum_location_monthly_targets(location_ids: List[int]) -> float:
+    settings_by_id = _location_settings_map()
     total = 0.0
     for lid in location_ids:
-        s = database.get_location_settings(lid)
+        s = settings_by_id.get(int(lid))
         if s:
             total += float(s.get("target_monthly_sales") or 0)
     return total if total > 0 else float(config.MONTHLY_TARGET)
 
 
 def sum_location_seat_counts(location_ids: List[int]) -> int:
+    settings_by_id = _location_settings_map()
     n = 0
     for lid in location_ids:
-        s = database.get_location_settings(lid)
+        s = settings_by_id.get(int(lid))
         if s and s.get("seat_count"):
             n += int(s["seat_count"])
     return n
@@ -204,9 +211,10 @@ def get_daily_report_bundle(
 
     outlets: List[Tuple[int, str, Dict[str, Any]]] = []
     parts_raw: List[Dict[str, Any]] = []
+    settings_by_id = _location_settings_map()
 
     for lid in location_ids:
-        st = database.get_location_settings(lid)
+        st = settings_by_id.get(int(lid))
         name = str(st["name"]) if st and st.get("name") else str(lid)
         monthly_tgt = (
             float(st["target_monthly_sales"])
