@@ -75,6 +75,9 @@ def format_indian_currency(amount: float) -> str:
     Handles positive, negative, zero, and decimal amounts.
     Example: 1234567.50 → ₹12,34,567.50
     """
+    import math
+    if amount is None or (isinstance(amount, float) and math.isnan(amount)):
+        return "₹0"
     is_negative = amount < 0
     amount = abs(amount)
 

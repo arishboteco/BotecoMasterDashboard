@@ -57,5 +57,5 @@ def route_untagged_day_results(
     if fallback_loc is not None:
         location_results.setdefault(fallback_loc, []).extend(untagged_day_results)
     else:
-        location_results[fallback_location_id] = untagged_day_results
+        location_results.setdefault(fallback_location_id, []).extend(untagged_day_results)
     return location_results
