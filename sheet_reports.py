@@ -2090,6 +2090,37 @@ def generate_sheet_style_report_sections(
     return out
 
 
+def stack_report_section_images(
+    sections: Dict[str, BytesIO],
+    ordered_keys: List[str],
+) -> BytesIO:
+    """Stack selected report section PNGs into one image in the requested order."""
+    imgs = []
+    for key in ordered_keys:
+        if key not in sections:
+            continue
+        buf = sections[key]
+        buf.seek(0)
+        imgs.append(PILImage.open(buf).convert("RGB"))
+
+    if not imgs:
+        return BytesIO()
+
+    total_h = sum(im.height for im in imgs)
+    max_w = max(im.width for im in imgs)
+    composite = PILImage.new("RGB", (max_w, total_h), color=(247, 250, 252))
+    y_off = 0
+    for im in imgs:
+        x_off = (max_w - im.width) // 2
+        composite.paste(im, (x_off, y_off))
+        y_off += im.height
+
+    buf = BytesIO()
+    composite.save(buf, format="PNG", optimize=False)
+    buf.seek(0)
+    return buf
+
+
 def generate_sheet_style_report_image(
     report_data: Dict,
     location_name: str = "Boteco Bangalore",
@@ -2121,13 +2152,6 @@ def generate_sheet_style_report_image(
         per_outlet_footfall_metrics,
     )
 
-    imgs = []
-    for key in ("sales_summary", "category", "service"):
-        if key in sections:
-            buf = sections[key]
-            buf.seek(0)
-            imgs.append(PILImage.open(buf).convert("RGB"))
-
     footfall_keys = [
         key
         for key in sections.keys()
@@ -2136,24 +2160,11 @@ def generate_sheet_style_report_image(
     if not footfall_keys:
         return BytesIO()
 
-    for key in footfall_keys:
-        buf = sections[key]
-        buf.seek(0)
-        imgs.append(PILImage.open(buf).convert("RGB"))
+    return stack_report_section_images(
+        sections,
+        ["sales_summary", "category", "service", *footfall_keys],
+    )
 
-    total_h = sum(im.height for im in imgs)
-    max_w = max(im.width for im in imgs)
-    composite = PILImage.new("RGB", (max_w, total_h), color=(247, 250, 252))
-    y_off = 0
-    for im in imgs:
-        x_off = (max_w - im.width) // 2
-        composite.paste(im, (x_off, y_off))
-        y_off += im.height
-
-    buf = BytesIO()
-    composite.save(buf, format="PNG", optimize=False)
-    buf.seek(0)
-    return buf
 
 
 def generate_report_image(
