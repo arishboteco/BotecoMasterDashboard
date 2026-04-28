@@ -478,12 +478,14 @@ def compute_metric_statuses(
 
 def _pdf_bytes_to_png(pdf_bytes: BytesIO, dpi: int = DPI) -> BytesIO:
     """Convert a single-page PDF to a PNG BytesIO at the given DPI."""
-    doc = fitz.open(stream=pdf_bytes.read(), filetype="pdf")
+    doc = fitz.open(stream=pdf_bytes.getvalue(), filetype="pdf")
     page = doc[0]
     pix = page.get_pixmap(dpi=dpi)
     img = PILImage.frombytes("RGB", [pix.width, pix.height], pix.samples)
     buf = BytesIO()
-    img.save(buf, format="PNG", optimize=False)
+    # compress_level=1 trades a few KB of size for ~2-3x faster PNG encoding;
+    # dashboard previews don't need maximal compression.
+    img.save(buf, format="PNG", optimize=False, compress_level=1)
     buf.seek(0)
     doc.close()
     return buf
@@ -530,9 +532,7 @@ def _render_elements_to_png(
     doc.build(story, onFirstPage=lambda d, c: None, onLaterPages=lambda d, c: None)
     buf.seek(0)
 
-    pdf_buf = BytesIO(buf.getvalue())
-    png_buf = _pdf_bytes_to_png(pdf_buf, dpi=dpi)
-    return png_buf
+    return _pdf_bytes_to_png(buf, dpi=dpi)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
