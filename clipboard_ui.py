@@ -3,14 +3,15 @@
 import base64
 import hashlib
 import json
+from typing import List, Optional, Tuple
 
 import streamlit as st
 
 import ui_theme
-from typing import List, Tuple, Optional
 
 WHATSAPP_ICON_SVG = (
-    '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
+    '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" '
+    'xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
     '<path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.151'
     "-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475"
     "-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52"
@@ -149,7 +150,10 @@ def render_image_action_row(
     error_color = ui_theme.BRAND_ERROR
 
     html = f"""
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..24,400,0,0&display=swap" rel="stylesheet">
+<link
+  href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..24,400,0,0&display=swap"
+  rel="stylesheet"
+>
 <style>
 html, body {{
   margin: 0;
@@ -201,9 +205,15 @@ html, body {{
 }}
 </style>
 <div class="action-btn-row" id="{uid}_row" role="toolbar" aria-label="Image actions">
-  <button class="action-btn" id="{uid}_copy" title="Copy this section as image to clipboard" aria-label="Copy image to clipboard" type="button">&#xe14d;</button>
-  <button class="action-btn" id="{uid}_wa" title="Share this section via WhatsApp" aria-label="Share via WhatsApp" type="button">{WHATSAPP_ICON_SVG}</button>
-  <button class="action-btn" id="{uid}_dl" title="Download this section as PNG" aria-label="Download image" type="button">&#xe2c4;</button>
+  <button class="action-btn" id="{uid}_copy"
+    title="Copy this section as image to clipboard"
+    aria-label="Copy image to clipboard" type="button">&#xe14d;</button>
+  <button class="action-btn" id="{uid}_wa"
+    title="Share this section via WhatsApp"
+    aria-label="Share via WhatsApp" type="button">{WHATSAPP_ICON_SVG}</button>
+  <button class="action-btn" id="{uid}_dl"
+    title="Download this section as PNG"
+    aria-label="Download image" type="button">&#xe2c4;</button>
 </div>
 <span id="{uid}_msg" style="font-size:0.75rem;margin-left:0.5rem;color:{success_color};"></span>
 <script>
@@ -567,8 +577,11 @@ html, body {{
   async function canShareFiles() {{
     if (!navigator.canShare) return false;
     try {{
-      const testBlob = await b64ToBlob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "image/png");
-      return navigator.canShare({{files: [new File([testBlob], "test.png", {{type: "image/png"}})]}});
+      const testPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUl" +
+        "EQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+      const testBlob = await b64ToBlob(testPng, "image/png");
+      const testFile = new File([testBlob], "test.png", {{type: "image/png"}});
+      return navigator.canShare({{files: [testFile]}});
     }} catch(e) {{
       return false;
     }}
@@ -576,12 +589,11 @@ html, body {{
 
   btnEl.onclick = async function() {{
     try {{
-      const fileObjs = await Promise.all(
-        filesData.map(async (f) => {{
-          const blob = await b64ToBlob(f.b64, "image/png");
-          return new File([blob], f.name, {{type: "image/png"}});
-        }})
-      );
+      const fileObjs = [];
+      for (const f of filesData) {{
+        const blob = await b64ToBlob(f.b64, "image/png");
+        fileObjs.push(new File([blob], f.name, {{type: "image/png"}}));
+      }}
 
       const canShare = await canShareFiles();
       if (canShare) {{
