@@ -1,6 +1,9 @@
 """Section-level tests for sheet report footfall output keys."""
 
+from io import BytesIO
 from typing import Any, Dict, List
+
+from PIL import Image
 
 import sheet_reports
 
@@ -31,6 +34,29 @@ def _base_report_data() -> Dict[str, Any]:
 
 
 class TestSheetReportSections:
+    def test_stack_report_section_images_preserves_requested_order(self) -> None:
+        def png(color: tuple[int, int, int]) -> BytesIO:
+            buf = BytesIO()
+            Image.new("RGB", (2, 1), color=color).save(buf, format="PNG")
+            buf.seek(0)
+            return buf
+
+        combined = sheet_reports.stack_report_section_images(
+            {
+                "service": png((0, 0, 255)),
+                "sales_summary": png((255, 0, 0)),
+                "category": png((0, 255, 0)),
+            },
+            ["sales_summary", "category", "service"],
+        )
+
+        image = Image.open(combined).convert("RGB")
+
+        assert image.size == (2, 3)
+        assert image.getpixel((0, 0)) == (255, 0, 0)
+        assert image.getpixel((0, 1)) == (0, 255, 0)
+        assert image.getpixel((0, 2)) == (0, 0, 255)
+
     def test_single_outlet_keeps_legacy_footfall_key(self) -> None:
         sections = sheet_reports.generate_sheet_style_report_sections(
             _base_report_data(),
