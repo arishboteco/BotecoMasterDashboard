@@ -362,15 +362,12 @@ def render(ctx: TabContext) -> None:
 
                             _first_five = _sec_meta[:5]
                             if _first_five:
-                                _share_bundle = reports.stack_report_section_images(
-                                    _single_section_bufs,
-                                    [key for key, _ in _first_five],
-                                )
                                 _share_files = [
                                     (
-                                        f"boteco_report_bundle_{date_str}.png",
-                                        _share_bundle.getvalue(),
+                                        f"boteco_{key}_{date_str}.png",
+                                        _single_section_bufs[key].getvalue(),
                                     )
+                                    for key, _ in _first_five
                                 ]
                                 with classed_container(
                                     "tab-report-mobile-primary-action",
@@ -416,12 +413,9 @@ def render(ctx: TabContext) -> None:
                     # Combined share button for first 5 PNG sections
                     _first_five = _sec_meta[:5]
                     if _first_five:
-                        _share_bundle = reports.stack_report_section_images(
-                            section_bufs,
-                            [key for key, _ in _first_five],
-                        )
                         _share_files = [
-                            (f"boteco_report_bundle_{date_str}.png", _share_bundle.getvalue())
+                            (f"boteco_{key}_{date_str}.png", section_bufs[key].getvalue())
+                            for key, _ in _first_five
                         ]
                         with classed_container(
                             "tab-report-mobile-primary-action",
