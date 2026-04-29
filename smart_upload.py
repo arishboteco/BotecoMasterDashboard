@@ -2,20 +2,21 @@
 Smart upload: accept any mix of Petpooja exports, auto-detect each file type,
 route to the right parser, merge data by date, and return save-ready records.
 
-Supports:
-  dynamic_report       - Dynamic Report CSV (per-bill order-level)        [PRIMARY]
-  item_order_details   - Item Report With Customer/Order Details (.xlsx)  [FALLBACK]
-  timing_report        - Restaurant Timing Report (.xlsx)                 [SERVICE BREAKDOWN]
-  order_summary_csv    - Order Summary Report (.csv)                      [BACKUP]
-  flash_report         - POS Collection / Flash Report (.xlsx)            [CROSS-CHECK]
-  group_wise           - Item Report Group Wise (.xlsx)                   [SKIP]
-  all_restaurant       - All Restaurant Sales Report (.xlsx)              [SKIP]
-  comparison           - Restaurant Wise Comparison (.xls)                [SKIP]
-  unknown              - Unrecognised                                      [SKIP]
+NEW FLOW (primary):
+  growth_report_day_wise - Growth Report Day Wise (.xlsx)  → daily_summary
+  item_order_details     - Item Report With Customer/Order Details (.xlsx)  → category_summary
+
+LEGACY FLOW (backward compatible):
+  dynamic_report       - Dynamic Report CSV (per-bill order-level)
+  timing_report        - Restaurant Timing Report (.xlsx)
+  order_summary_csv    - Order Summary Report (.csv)
+  flash_report         - POS Collection / Flash Report (.xlsx)
 """
 
 from __future__ import annotations
 
+import hashlib
+import time
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -28,16 +29,18 @@ import dynamic_report_parser
 import file_detector
 import pos_parser
 import timing_parser
+from services.location_detection import detect_location_from_file
 from services.location_resolver import resolve_location_id
 from uploads.merge import merge_fragments_by_date
 from uploads.models import DayResult, FileResult, SmartUploadResult
 from uploads.parsers.flash_report import parse_flash_report
+from uploads.parsers.growth_report_day_wise import parse_growth_report_day_wise
+from uploads.parsers.item_report_category_summary import parse_item_report_category_summary
 from uploads.parsers.order_summary import parse_order_summary_csv
 from uploads.router import (
     build_restaurant_location_map,
     group_fragments_by_restaurant,
     route_tagged_fragments_by_location,
-    route_untagged_day_results,
 )
 
 logger = boteco_logger.get_logger(__name__)
@@ -53,19 +56,181 @@ _PARSE_EXCEPTIONS = (
 )
 
 
-_FILE_TYPE_PREFERENCE = (
-    "dynamic_report",
-    "item_order_details",
-    "order_summary_csv",
-    "flash_report",
-)
+def _file_hash(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
 
 
-def _primary_file_type(source_kinds: List[str]) -> str:
-    for kind in _FILE_TYPE_PREFERENCE:
-        if kind in source_kinds:
-            return kind
-    return "item_order_details"
+# ---------------------------------------------------------------------------
+# New-flow processing helpers
+# ---------------------------------------------------------------------------
+
+
+def _detect_location_for_file(
+    content: bytes,
+    filename: str,
+    fallback_location_id: int,
+) -> Tuple[Optional[int], Optional[str], str]:
+    """Auto-detect outlet from file content.
+
+    Returns (location_id, detected_name, match_type).
+    location_id is None if detection failed.
+    """
+    result = detect_location_from_file(content, filename)
+    if result:
+        return (
+            result.get("location_id"),
+            result.get("detected_location_name"),
+            result.get("match_type", "exact"),
+        )
+    return None, None, "none"
+
+
+def _process_new_flow_files(
+    growth_files: List[Tuple[str, bytes]],
+    item_files: List[Tuple[str, bytes]],
+    fallback_location_id: int,
+    filename_to_fr: Dict[str, FileResult],
+    global_notes: List[str],
+) -> Tuple[
+    Dict[int, List[Dict[str, Any]]],   # daily_rows by location_id
+    Dict[int, List[Dict[str, Any]]],   # category_rows by location_id
+    Dict[str, Dict[str, Any]],          # file_meta by filename
+]:
+    """Parse growth and item reports, routing by auto-detected outlet.
+
+    Returns separate dicts of daily rows and category rows keyed by location_id,
+    plus per-file metadata (period, row_count, location info).
+    """
+    daily_by_loc: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+    cat_by_loc: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+    file_meta: Dict[str, Dict[str, Any]] = {}
+
+    # --- Growth Reports → daily_summary rows ---
+    for fname, content in growth_files:
+        fr = filename_to_fr.get(fname)
+        loc_id, loc_name, match_type = _detect_location_for_file(
+            content, fname, fallback_location_id
+        )
+        if loc_id is None:
+            err = (
+                f"Growth Report {fname}: outlet could not be detected from file content. "
+                "Make sure the report contains a 'Restaurant Name:' row."
+            )
+            global_notes.append(err)
+            if fr:
+                fr.error = err
+            continue
+
+        rows, errors, meta = parse_growth_report_day_wise(content, fname, loc_id)
+        meta["detected_location_id"] = loc_id
+        meta["detected_location_name"] = loc_name
+        meta["match_type"] = match_type
+        meta["file_hash"] = _file_hash(content)
+        file_meta[fname] = meta
+
+        if errors:
+            for e in errors:
+                global_notes.append(e)
+            if fr:
+                fr.error = "; ".join(errors)
+            continue
+
+        daily_by_loc[loc_id].extend(rows)
+        if fr:
+            fr.notes.append(
+                f"Parsed {len(rows)} day(s) → {loc_name} (match: {match_type})"
+            )
+
+    # --- Item Reports → category_summary rows ---
+    for fname, content in item_files:
+        fr = filename_to_fr.get(fname)
+        loc_id, loc_name, match_type = _detect_location_for_file(
+            content, fname, fallback_location_id
+        )
+        if loc_id is None:
+            err = (
+                f"Item Report {fname}: outlet could not be detected from file content. "
+                "Make sure the report contains a 'Restaurant Name:' row."
+            )
+            global_notes.append(err)
+            if fr:
+                fr.error = err
+            continue
+
+        rows, errors, meta = parse_item_report_category_summary(content, fname, loc_id)
+        meta["detected_location_id"] = loc_id
+        meta["detected_location_name"] = loc_name
+        meta["match_type"] = match_type
+        meta["file_hash"] = _file_hash(content)
+        if fname in file_meta:
+            file_meta[fname].update(meta)
+        else:
+            file_meta[fname] = meta
+
+        if errors:
+            for e in errors:
+                global_notes.append(e)
+            if fr:
+                fr.error = "; ".join(errors)
+            continue
+
+        cat_by_loc[loc_id].extend(rows)
+        if fr:
+            fr.notes.append(
+                f"Parsed {len(rows)} category row(s) → {loc_name} (match: {match_type})"
+            )
+
+    return dict(daily_by_loc), dict(cat_by_loc), file_meta
+
+
+def _build_location_results_from_daily(
+    daily_by_loc: Dict[int, List[Dict[str, Any]]],
+) -> Dict[int, List[DayResult]]:
+    """Wrap daily rows as DayResult objects, one per (location, date)."""
+    location_results: Dict[int, List[DayResult]] = {}
+    for loc_id, rows in daily_by_loc.items():
+        by_date: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        for r in rows:
+            by_date[r["date"]].append(r)
+        day_results: List[DayResult] = []
+        for date_str, date_rows in sorted(by_date.items()):
+            # If multiple rows for same date (shouldn't happen normally), merge
+            merged = date_rows[0].copy()
+            for extra in date_rows[1:]:
+                for k, v in extra.items():
+                    if isinstance(v, (int, float)) and isinstance(merged.get(k), (int, float)):
+                        merged[k] = merged[k] + v
+            day_results.append(
+                DayResult(
+                    date=date_str,
+                    merged=merged,
+                    source_kinds=["growth_report_day_wise"],
+                )
+            )
+        location_results[loc_id] = day_results
+    return location_results
+
+
+def _check_completeness(
+    daily_by_loc: Dict[int, List[Dict[str, Any]]],
+    cat_by_loc: Dict[int, List[Dict[str, Any]]],
+    global_notes: List[str],
+) -> None:
+    """Warn (not block) when one report type is missing for an outlet."""
+    all_locs = set(daily_by_loc.keys()) | set(cat_by_loc.keys())
+    for loc_id in all_locs:
+        has_daily = bool(daily_by_loc.get(loc_id))
+        has_cat = bool(cat_by_loc.get(loc_id))
+        if has_daily and not has_cat:
+            global_notes.append(
+                f"⚠️ Outlet {loc_id}: Growth Report uploaded but Item Report missing. "
+                "Category summary will not be saved for these dates."
+            )
+        elif has_cat and not has_daily:
+            global_notes.append(
+                f"ℹ️ Outlet {loc_id}: Item Report uploaded without Growth Report. "
+                "Category summary will be saved; daily financial summary skipped."
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -77,19 +242,16 @@ def process_smart_upload(
     files: List[Tuple[str, bytes]],
     location_id: int,
 ) -> SmartUploadResult:
-    """
-    Classify all uploaded files, parse the importable ones, merge by date.
+    """Classify all uploaded files, parse the importable ones, merge by date.
 
     Args:
         files:        List of (filename, raw_bytes) tuples.
-        location_id:  Target DB location ID (used for overlap detection later).
+        location_id:  Fallback DB location ID if outlet detection fails.
 
     Returns:
-        SmartUploadResult with per-file results, per-day results, and
-        parse/save notes for the upload batch.
+        SmartUploadResult with per-file results, per-location day results,
+        per-location category results, and parse/save notes.
     """
-    import time
-
     _t0 = time.monotonic()
 
     file_results: List[FileResult] = []
@@ -116,7 +278,50 @@ def process_smart_upload(
 
     filename_to_fr: Dict[str, FileResult] = {fr.filename: fr for fr in file_results}
 
-    # Step 2 — collect timing report services (date may be None; matched later)
+    # Step 2 — NEW FLOW: Growth Report + Item Report (auto-detects outlet from content)
+    growth_files = classified.get("growth_report_day_wise", [])
+    item_files_new = classified.get("item_order_details", [])
+
+    daily_by_loc, cat_by_loc, new_flow_meta = _process_new_flow_files(
+        growth_files=growth_files,
+        item_files=item_files_new,
+        fallback_location_id=location_id,
+        filename_to_fr=filename_to_fr,
+        global_notes=global_notes,
+    )
+
+    _check_completeness(daily_by_loc, cat_by_loc, global_notes)
+
+    # Build location_results from growth report daily rows
+    location_results = _build_location_results_from_daily(daily_by_loc)
+
+    # Attach category rows to each DayResult's merged dict so the save path
+    # can access them.  Category rows are keyed by (loc_id, date, normalized_category).
+    for loc_id_key, cat_rows in cat_by_loc.items():
+        if loc_id_key not in location_results:
+            # Item report without growth report → create skeleton DayResult entries
+            day_results_placeholder: Dict[str, DayResult] = {}
+            for cat_row in cat_rows:
+                d = cat_row["date"]
+                if d not in day_results_placeholder:
+                    day_results_placeholder[d] = DayResult(
+                        date=d,
+                        merged={"date": d, "location_id": loc_id_key},
+                        source_kinds=["item_order_details"],
+                    )
+                day_results_placeholder[d].merged.setdefault("categories_new", []).append(cat_row)
+            location_results.setdefault(loc_id_key, [])
+            location_results[loc_id_key].extend(day_results_placeholder.values())
+        else:
+            # Index category rows by date for fast lookup
+            cat_by_date: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+            for cat_row in cat_rows:
+                cat_by_date[cat_row["date"]].append(cat_row)
+            for day_result in location_results[loc_id_key]:
+                day_result.merged["categories_new"] = cat_by_date.get(day_result.date, [])
+
+    # Step 3 — LEGACY FLOW: timing, order_summary, flash, dynamic report
+    # (runs alongside new flow; data does not mix)
     timing_services: List[Dict[str, Any]] = []
     for fname, content in classified.get("timing_report", []):
         fr_match = filename_to_fr.get(fname)
@@ -124,23 +329,14 @@ def process_smart_upload(
             result = timing_parser.parse_timing_report(content, fname)
             if result and result.get("services"):
                 timing_services.append(result)
-            elif result is None:
-                note = f"Timing Report {fname}: could not extract service breakdown."
-                global_notes.append(note)
-                if fr_match:
-                    fr_match.notes.append(note)
         except _PARSE_EXCEPTIONS as ex:
             logger.exception("Failed parsing timing_report file=%s", fname)
-            note = f"Error parsing Timing Report {fname}: {ex}"
-            global_notes.append(note)
             if fr_match:
                 fr_match.error = str(ex)
 
-    # Step 4 — parse primary data sources in priority order
-    fragments: List[Dict[str, Any]] = []
-
-    # 4a. Dynamic Report CSV (primary — per-bill order-level data)
+    legacy_fragments: List[Dict[str, Any]] = []
     dynamic_dates: set = set()
+
     for fname, content in classified.get("dynamic_report", []):
         fr_match = filename_to_fr.get(fname)
         try:
@@ -148,60 +344,17 @@ def process_smart_upload(
             for n in dr_notes:
                 global_notes.append(n)
             if parsed:
-                fragments.extend(parsed)
+                legacy_fragments.extend(parsed)
                 dynamic_dates = {f["date"] for f in parsed}
                 if fr_match:
-                    fr_match.notes.append(f"Parsed {len(parsed)} day(s) from Dynamic Report.")
-            else:
-                note = f"Dynamic Report {fname}: no data rows found."
-                global_notes.append(note)
-                if fr_match:
-                    fr_match.error = note
+                    fr_match.notes.append(
+                        f"Parsed {len(parsed)} day(s) from Dynamic Report (legacy flow)."
+                    )
         except _PARSE_EXCEPTIONS as ex:
             logger.exception("Failed parsing dynamic_report file=%s", fname)
-            note = f"Error parsing Dynamic Report {fname}: {ex}"
-            global_notes.append(note)
             if fr_match:
                 fr_match.error = str(ex)
 
-    # 4b. Item Report (fallback — only for dates not covered by Dynamic Report)
-    for fname, content in classified.get("item_order_details", []):
-        fr_match = filename_to_fr.get(fname)
-        try:
-            parsed = pos_parser.parse_item_order_details(content, fname)
-            if parsed:
-                new_days = 0
-                for p in parsed:
-                    if p["date"] not in dynamic_dates:
-                        fragments.append(p)
-                        new_days += 1
-                    else:
-                        if fr_match:
-                            fr_match.notes.append(
-                                f"Date {p['date']} already covered by Dynamic Report — skipped."
-                            )
-                if fr_match:
-                    if new_days > 0:
-                        fr_match.notes.append(f"Added {new_days} day(s) not in Dynamic Report.")
-                    elif dynamic_dates:
-                        fr_match.notes.append("All dates already covered by Dynamic Report.")
-                    else:
-                        fr_match.notes.append(f"Parsed {len(parsed)} day(s) of sales data.")
-            else:
-                note = f"Item Report {fname}: no data rows found."
-                global_notes.append(note)
-                if fr_match:
-                    fr_match.error = note
-        except _PARSE_EXCEPTIONS as ex:
-            logger.exception("Failed parsing item_order_details file=%s", fname)
-            note = f"Error parsing Item Report {fname}: {ex}"
-            global_notes.append(note)
-            if fr_match:
-                fr_match.error = str(ex)
-
-    item_dates = {f["date"] for f in fragments if f.get("file_type") == "item_order_details"}
-
-    # 4c. Order Summary CSV (backup — only for dates not covered by Item Report)
     for fname, content in classified.get("order_summary_csv", []):
         fr_match = filename_to_fr.get(fname)
         try:
@@ -209,26 +362,36 @@ def process_smart_upload(
             for n in notes_csv:
                 global_notes.append(n)
             if parsed:
-                new_days = 0
                 for p in parsed:
-                    if p["date"] not in item_dates:
-                        fragments.append(p)
-                        new_days += 1
-                    else:
-                        if fr_match:
-                            fr_match.notes.append(
-                                f"Date {p['date']} already covered by Item Report — skipped."
-                            )
-                if fr_match and new_days > 0:
-                    fr_match.notes.append(f"Added {new_days} day(s) not in Item Report.")
+                    if p["date"] not in dynamic_dates:
+                        legacy_fragments.append(p)
         except _PARSE_EXCEPTIONS as ex:
             logger.exception("Failed parsing order_summary_csv file=%s", fname)
-            note = f"Error parsing Order Summary {fname}: {ex}"
-            global_notes.append(note)
             if fr_match:
                 fr_match.error = str(ex)
 
-    # 4c. Flash Report (supplement: fills service_charge gap on Item Report days)
+    item_dates_legacy: set = set()
+    # Legacy item_order_details path: only used when no growth report was parsed
+    # for the same location (to avoid double-counting)
+    if not growth_files:
+        for fname, content in classified.get("item_order_details", []):
+            fr_match = filename_to_fr.get(fname)
+            try:
+                parsed = pos_parser.parse_item_order_details(content, fname)
+                if parsed:
+                    for p in parsed:
+                        if p["date"] not in dynamic_dates:
+                            legacy_fragments.append(p)
+                            item_dates_legacy.add(p["date"])
+                    if fr_match:
+                        fr_match.notes.append(
+                            f"Parsed {len(parsed)} day(s) via legacy Item Report parser."
+                        )
+            except _PARSE_EXCEPTIONS as ex:
+                logger.exception("Failed parsing item_order_details file=%s", fname)
+                if fr_match:
+                    fr_match.error = str(ex)
+
     for fname, content in classified.get("flash_report", []):
         fr_match = filename_to_fr.get(fname)
         try:
@@ -237,46 +400,49 @@ def process_smart_upload(
                 global_notes.append(n)
             if parsed:
                 for p in parsed:
-                    if p["date"] not in item_dates:
-                        fragments.append(p)
-                    else:
-                        # Supplement service_charge if Item Report didn't have it
-                        if p.get("service_charge"):
-                            for frag in fragments:
-                                if (
-                                    frag.get("date") == p["date"]
-                                    and frag.get("file_type") == "item_order_details"
-                                    and not frag.get("service_charge")
-                                ):
-                                    frag["service_charge"] = p["service_charge"]
-                                    if fr_match:
-                                        fr_match.notes.append(
-                                            f"Supplemented service_charge for {p['date']} from Flash Report."
-                                        )
-                                    break
+                    if p["date"] not in item_dates_legacy and p["date"] not in dynamic_dates:
+                        legacy_fragments.append(p)
         except _PARSE_EXCEPTIONS as ex:
             logger.exception("Failed parsing flash_report file=%s", fname)
-            note = f"Error parsing Flash Report {fname}: {ex}"
-            global_notes.append(note)
             if fr_match:
                 fr_match.error = str(ex)
 
-    # Step 5 — group fragments by restaurant → location, then by date and merge
-    all_locations = database.get_all_locations()
-    restaurant_to_loc = build_restaurant_location_map(all_locations, config.RESTAURANT_NAME_MAP)
-    tagged_fragments, untagged_fragments = group_fragments_by_restaurant(fragments)
-    routed_fragments = route_tagged_fragments_by_location(
-        tagged_by_restaurant=tagged_fragments,
-        restaurant_to_location=restaurant_to_loc,
-        global_notes=global_notes,
-    )
-    location_results: Dict[int, List[DayResult]] = {}
-    for loc_id, loc_fragments in routed_fragments.items():
-        location_results[loc_id] = merge_fragments_by_date(loc_fragments, timing_services)
+    # Route legacy fragments to location_results
+    if legacy_fragments:
+        all_locations = database.get_all_locations()
+        restaurant_to_loc = build_restaurant_location_map(
+            all_locations, config.RESTAURANT_NAME_MAP
+        )
+        tagged_fragments, untagged_fragments = group_fragments_by_restaurant(legacy_fragments)
+        routed_fragments = route_tagged_fragments_by_location(
+            tagged_by_restaurant=tagged_fragments,
+            restaurant_to_location=restaurant_to_loc,
+            global_notes=global_notes,
+        )
+        for loc_id_legacy, loc_frags in routed_fragments.items():
+            # Only add legacy days that are NOT already covered by new flow
+            new_flow_dates = {dr.date for dr in location_results.get(loc_id_legacy, [])}
+            legacy_days = merge_fragments_by_date(loc_frags, timing_services)
+            for day_result in legacy_days:
+                if day_result.date not in new_flow_dates:
+                    location_results.setdefault(loc_id_legacy, []).append(day_result)
 
-    # Handle untagged fragments (item_order_details, etc. — no restaurant column)
-    untagged_days = merge_fragments_by_date(untagged_fragments, timing_services)
-    location_results = route_untagged_day_results(location_results, untagged_days, location_id)
+        untagged_days = merge_fragments_by_date(untagged_fragments, timing_services)
+        if untagged_days:
+            new_flow_dates_fallback = {
+                dr.date for dr in location_results.get(location_id, [])
+            }
+            for day_result in untagged_days:
+                if day_result.date not in new_flow_dates_fallback:
+                    location_results.setdefault(location_id, []).append(day_result)
+
+    # Attach new_flow_meta to file results for upload tab display
+    for fname, meta in new_flow_meta.items():
+        fr = filename_to_fr.get(fname)
+        if fr:
+            fr.notes.append(
+                f"Period: {meta.get('period_start', '?')} → {meta.get('period_end', '?')}"
+            )
 
     result = SmartUploadResult(
         files=file_results,
@@ -284,6 +450,11 @@ def process_smart_upload(
         global_notes=global_notes,
         location_results=location_results,
     )
+
+    # Attach file_meta to result for use in save step (upload_history + validation)
+    result.new_flow_meta = new_flow_meta  # type: ignore[attr-defined]
+    result.category_by_loc = cat_by_loc  # type: ignore[attr-defined]
+
     _elapsed = time.monotonic() - _t0
     total_days = sum(len(days) for days in location_results.values())
     logger.info(
@@ -296,6 +467,11 @@ def process_smart_upload(
     return result
 
 
+# ---------------------------------------------------------------------------
+# Save path
+# ---------------------------------------------------------------------------
+
+
 def save_smart_upload_results(
     result: SmartUploadResult,
     location_id: int,
@@ -306,19 +482,11 @@ def save_smart_upload_results(
 ) -> Tuple[int, int, List[str]]:
     """Save parsed upload data to the database.
 
-    Uses the already-correct ``location_results`` from ``process_smart_upload``
-    for daily_summary and category_summary (these contain properly distributed
-    category amounts and filtered financials from ``_parse_v2``).
-
-    Raw bill_items from Dynamic Report CSVs are additionally stored in Supabase
-    for granular analytics (line-item queries, service period derivation, etc.).
-
-    Works with both Supabase and SQLite backends.
+    New flow: growth report rows → daily_summary; item report rows → category_summary.
+    Legacy flow: dynamic report / item report → existing path.
 
     Returns (saved_count, skipped_count, messages).
     """
-    import time
-
     _save_t0 = time.monotonic()
 
     import database_writes as db_writes
@@ -336,18 +504,15 @@ def save_smart_upload_results(
     if is_supabase and client is None:
         return 0, 0, ["Could not connect to Supabase"]
 
-    # ── Step 1: Save daily_summary + category_summary from location_results ──
-    # These come from process_smart_upload → _parse_v2 which correctly:
-    #   - distributes bill_net across items by amount/qty ratio
-    #   - filters out cancelled/non-SuccessOrder bills
-    #   - separates complimentary bills
-    #   - buckets payments by Payment Type
+    new_flow_meta: Dict[str, Any] = getattr(result, "new_flow_meta", {})
+    cat_by_loc: Dict[int, List[Dict[str, Any]]] = getattr(result, "category_by_loc", {})
 
     daily_rows: List[Dict[str, Any]] = []
     cat_records: List[Dict[str, Any]] = []
     upload_batch: List[Dict[str, Any]] = []
     dates_locs: set = set()
 
+    # ── Step 1: Build save payloads from location_results ──
     for loc_id, day_results in result.location_results.items():
         for day_result in day_results:
             if day_result.errors:
@@ -358,44 +523,54 @@ def save_smart_upload_results(
 
             merged = day_result.merged
             date_str = str(merged.get("date", day_result.date))
+            source_kinds = day_result.source_kinds or []
 
-            if is_supabase and "dynamic_report" not in (day_result.source_kinds or []):
-                skipped += 1
-                messages.append(
-                    f"No Dynamic Report for {date_str} — Supabase save requires Dynamic Report CSV data."
-                )
+            # NEW FLOW: growth report → daily_summary
+            if "growth_report_day_wise" in source_kinds:
+                if is_supabase:
+                    daily_rows.append(
+                        db_writes.build_daily_summary_row_new_flow(loc_id, date_str, merged)
+                    )
+                    dates_locs.add((date_str, loc_id))
+                    saved += 1
+
+                    # Build upload history row for this day
+                    source_fn = _find_source_filename(result, "growth_report_day_wise")
+                    fmeta = _find_file_meta(new_flow_meta, loc_id)
+                    upload_batch.append(
+                        _build_upload_history_row(
+                            loc_id=loc_id,
+                            date_str=date_str,
+                            filename=source_fn or "unknown",
+                            file_type="growth_report_day_wise",
+                            uploaded_by=uploaded_by,
+                            fmeta=fmeta,
+                        )
+                    )
+                else:
+                    # SQLite fallback (no new fields — best effort)
+                    try:
+                        database.save_daily_summary(loc_id, merged)
+                        saved += 1
+                    except _PARSE_EXCEPTIONS as ex:
+                        messages.append(f"⚠️ Could not save {date_str} for outlet {loc_id}: {ex}")
+                        skipped += 1
                 continue
 
-            dates_locs.add((date_str, loc_id))
-
+            # LEGACY FLOW: dynamic report / item report
             if is_supabase:
-                # Build daily_summary row from correctly-parsed merged data
-                daily_rows.append(
-                    {
-                        "location_id": loc_id,
-                        "date": date_str,
-                        "gross_total": round(float(merged.get("gross_total", 0) or 0), 2),
-                        "net_total": round(float(merged.get("net_total", 0) or 0), 2),
-                        "covers": int(merged.get("covers", 0) or 0),
-                        "discount": round(float(merged.get("discount", 0) or 0), 2),
-                        "cgst": round(float(merged.get("cgst", 0) or 0), 2),
-                        "sgst": round(float(merged.get("sgst", 0) or 0), 2),
-                        "service_charge": round(float(merged.get("service_charge", 0) or 0), 2),
-                        "gst_on_service_charge": 0,  # already folded into cgst/sgst by parser
-                        "cancelled_amount": 0,  # cancelled bills excluded by parser
-                        "complementary_amount": round(
-                            float(merged.get("complimentary", 0) or 0), 2
-                        ),
-                        "cash_sales": round(float(merged.get("cash_sales", 0) or 0), 2),
-                        "card_sales": round(float(merged.get("card_sales", 0) or 0), 2),
-                        "gpay_sales": round(float(merged.get("gpay_sales", 0) or 0), 2),
-                        "zomato_sales": round(float(merged.get("zomato_sales", 0) or 0), 2),
-                        "other_sales": round(float(merged.get("other_sales", 0) or 0), 2),
-                        "order_count": int(merged.get("order_count", 0) or 0),
-                    }
-                )
+                # Legacy flow still requires Dynamic Report for Supabase
+                if "dynamic_report" not in source_kinds:
+                    skipped += 1
+                    messages.append(
+                        f"No Dynamic Report for {date_str} — legacy Supabase save "
+                        "requires Dynamic Report CSV data."
+                    )
+                    continue
 
-                # Build category_summary rows from correctly-distributed categories
+                daily_rows.append(
+                    _build_legacy_daily_row(loc_id, date_str, merged)
+                )
                 for cat in merged.get("categories") or []:
                     cat_name = str(cat.get("category", "") or "").strip()
                     if not cat_name:
@@ -405,93 +580,72 @@ def save_smart_upload_results(
                             "location_id": loc_id,
                             "date": date_str,
                             "category_name": cat_name,
+                            "normalized_category": cat_name,
                             "net_amount": round(float(cat.get("amount", 0) or 0), 2),
                             "qty": int(cat.get("qty", 0) or 0),
+                            "source_report": "dynamic_report",
                         }
                     )
+                dates_locs.add((date_str, loc_id))
+
+                source_fn = _find_source_filename(result, "dynamic_report")
+                upload_batch.append(
+                    _build_upload_history_row(
+                        loc_id=loc_id,
+                        date_str=date_str,
+                        filename=source_fn or "unknown",
+                        file_type="dynamic_report",
+                        uploaded_by=uploaded_by,
+                        fmeta={},
+                    )
+                )
+                saved += 1
             else:
-                # SQLite path: save_daily_summary handles item_sales + service_sales
                 try:
                     database.save_daily_summary(loc_id, merged)
-                except (ValueError, TypeError, KeyError, RuntimeError, OSError) as ex:
-                    logger.exception(
-                        "SQLite save failed in smart_upload.py location_id=%s date=%s uploaded_by=%s error=%s",
-                        loc_id,
-                        date_str,
-                        uploaded_by,
-                        ex,
-                    )
-                    messages.append(
-                        f"⚠️ Could not save {date_str} for outlet {loc_id} to SQLite: {ex}"
-                    )
+                    saved += 1
+                except _PARSE_EXCEPTIONS as ex:
+                    messages.append(f"⚠️ Could not save {date_str} for outlet {loc_id}: {ex}")
                     skipped += 1
-                    continue
 
-            # Build file-type-specific source info for upload history
-            source_kinds = day_result.source_kinds
-            primary_kind = source_kinds[0] if source_kinds else "dynamic_report"
-            # Find filename that contributed to this day
-            source_filename = None
-            for fr in result.files:
-                if fr.kind == primary_kind and fr.importable:
-                    source_filename = fr.filename
-                    break
-            upload_batch.append(
-                {
-                    "location_id": loc_id,
-                    "date": date_str,
-                    "filename": source_filename or "unknown",
-                    "file_type": primary_kind,
-                    "uploaded_by": uploaded_by,
-                }
-            )
+    # ── Step 2: Category rows from Item Report (new flow) ──
+    # Collect rich category rows from all locations
+    for loc_id_key, c_rows in cat_by_loc.items():
+        for c in c_rows:
+            cat_records.append(c)
+            dates_locs.add((c["date"], loc_id_key))
 
-            saved += 1
-
-    # ── Step 2: Supabase batch upserts ──
+    # ── Step 3: Supabase batch upserts ──
     if is_supabase and client:
         if daily_rows:
             try:
                 db_writes.upsert_daily_summaries_supabase_batch(client, daily_rows)
                 messages.append(f"Saved {len(daily_rows)} daily summary row(s)")
             except (ValueError, TypeError, KeyError, RuntimeError) as ex:
-                logger.exception(
-                    "Supabase daily_summary upsert failed in smart_upload.py uploaded_by=%s error=%s",
-                    uploaded_by,
-                    ex,
-                )
+                logger.exception("Supabase daily_summary upsert failed uploaded_by=%s", uploaded_by)
                 messages.append(f"⚠️ Error saving daily summaries: {ex}")
 
         if cat_records:
             try:
-                # Batch-delete existing category_summary for affected dates/locations
-                # before upsert to clear stale categories that no longer appear
-                try:
-                    db_writes.delete_category_summary_batch(client, dates_locs)
-                except (ValueError, TypeError, KeyError, RuntimeError) as ex:
-                    logger.warning(
-                        "Category pre-delete skipped in smart_upload.py uploaded_by=%s pairs=%d error=%s",
-                        uploaded_by,
-                        len(dates_locs),
-                        ex,
-                    )
-                    messages.append(
-                        "⚠️ Could not clear previous category rows before re-save; continuing with upsert."
-                    )
-                db_writes.save_category_summary_batch(client, cat_records)
-                messages.append(f"Saved {len(cat_records)} category summary records")
+                db_writes.delete_category_summary_batch(client, dates_locs)
             except (ValueError, TypeError, KeyError, RuntimeError) as ex:
-                logger.exception(
-                    "Category save failed in smart_upload.py uploaded_by=%s error=%s",
-                    uploaded_by,
-                    ex,
+                logger.warning("Category pre-delete skipped pairs=%d error=%s", len(dates_locs), ex)
+                messages.append(
+                    "⚠️ Could not clear previous category rows; continuing with upsert."
                 )
+            try:
+                db_writes.save_category_summary_batch(client, cat_records)
+                messages.append(f"Saved {len(cat_records)} category summary record(s)")
+            except (ValueError, TypeError, KeyError, RuntimeError) as ex:
+                logger.exception("Category save failed uploaded_by=%s", uploaded_by)
                 messages.append(f"⚠️ Error saving category summaries: {ex}")
 
-    # ── Step 3: Raw bill_items from Dynamic Report CSVs (Supabase only) ──
+    # ── Step 4: Raw bill_items from Dynamic Report CSVs (Supabase only, legacy) ──
     if is_supabase and client:
         dynamic_files = [
-            fr for fr in result.files if fr.kind == "dynamic_report" and fr.content and not fr.error
+            fr
+            for fr in result.files
+            if fr.kind == "dynamic_report" and fr.content and not fr.error
         ]
         all_locations = database.get_all_locations() if dynamic_files else []
         for fr in dynamic_files:
@@ -501,11 +655,8 @@ def save_smart_upload_results(
                 )
                 for note in parse_notes:
                     messages.append(note)
-
                 if not raw_records:
                     continue
-
-                # Determine which (date, location) pairs are in this file
                 file_dates_locs: set = set()
                 for rec in raw_records:
                     rname = (str(rec.get("restaurant") or "")).strip() or "Boteco"
@@ -516,47 +667,97 @@ def save_smart_upload_results(
                         fallback_location_id=1,
                     )
                     file_dates_locs.add((rec.get("bill_date", ""), loc))
-
-                # Batch-delete existing bill_items for these dates/locations (idempotent re-upload)
                 try:
                     db_writes.delete_bill_items_by_dates_locs(client, file_dates_locs)
-                except (ValueError, TypeError, KeyError, RuntimeError) as ex:
-                    logger.warning(
-                        "bill_items pre-delete skipped in smart_upload.py file=%s uploaded_by=%s pairs=%d error=%s",
-                        fr.filename,
-                        uploaded_by,
-                        len(file_dates_locs),
-                        ex,
-                    )
+                except (ValueError, TypeError, KeyError, RuntimeError):
                     messages.append(
-                        f"⚠️ Could not clear old bill items before saving {fr.filename}; new rows will still be inserted."
+                        f"⚠️ Could not clear old bill items before saving {fr.filename}."
                     )
-
                 db_writes.save_bill_items(client, raw_records)
                 messages.append(f"Saved {len(raw_records)} bill items from {fr.filename}")
             except (ValueError, TypeError, KeyError, RuntimeError) as ex:
                 messages.append(f"⚠️ Error saving bill items from {fr.filename}: {ex}")
-                logger.exception(
-                    "Failed to save bill_items in smart_upload.py file=%s uploaded_by=%s error=%s",
-                    fr.filename,
-                    uploaded_by,
-                    ex,
-                )
 
-    # ── Step 4: Upload history ──
+    # ── Step 5: Upload history ──
     if upload_batch:
         try:
             db_writes.save_upload_records_batch(upload_batch)
         except (ValueError, TypeError, KeyError, RuntimeError) as ex:
-            logger.exception(
-                "Upload history save failed in smart_upload.py uploaded_by=%s rows=%d error=%s",
-                uploaded_by,
-                len(upload_batch),
-                ex,
-            )
+            logger.exception("Upload history save failed uploaded_by=%s", uploaded_by)
             messages.append(f"⚠️ Error saving upload history: {ex}")
 
     messages.append(f"Processed {saved} day/location row(s), {skipped} skipped")
     _elapsed = time.monotonic() - _save_t0
     logger.info("Upload save complete: days_saved=%d elapsed=%.2fs", saved, _elapsed)
     return saved, skipped, messages
+
+
+# ---------------------------------------------------------------------------
+# Private helpers for save path
+# ---------------------------------------------------------------------------
+
+
+def _find_source_filename(result: SmartUploadResult, kind: str) -> Optional[str]:
+    for fr in result.files:
+        if fr.kind == kind and fr.importable and not fr.error:
+            return fr.filename
+    return None
+
+
+def _find_file_meta(new_flow_meta: Dict[str, Any], loc_id: int) -> Dict[str, Any]:
+    """Find the first file-meta entry matching a location_id."""
+    for meta in new_flow_meta.values():
+        if meta.get("detected_location_id") == loc_id:
+            return meta
+    return {}
+
+
+def _build_upload_history_row(
+    loc_id: int,
+    date_str: str,
+    filename: str,
+    file_type: str,
+    uploaded_by: str,
+    fmeta: Dict[str, Any],
+) -> Dict[str, Any]:
+    return {
+        "location_id": loc_id,
+        "date": date_str,
+        "filename": filename,
+        "file_type": file_type,
+        "uploaded_by": uploaded_by,
+        "detected_location_name": fmeta.get("detected_location_name"),
+        "detected_report_type": file_type,
+        "period_start": fmeta.get("period_start"),
+        "period_end": fmeta.get("period_end"),
+        "row_count": fmeta.get("row_count"),
+        "status": "imported",
+        "file_hash": fmeta.get("file_hash"),
+    }
+
+
+def _build_legacy_daily_row(
+    loc_id: int, date_str: str, merged: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Build a daily_summary payload from a legacy (dynamic_report) merged dict."""
+    return {
+        "location_id": loc_id,
+        "date": date_str,
+        "gross_total": round(float(merged.get("gross_total", 0) or 0), 2),
+        "net_total": round(float(merged.get("net_total", 0) or 0), 2),
+        "covers": int(merged.get("covers", 0) or 0),
+        "discount": round(float(merged.get("discount", 0) or 0), 2),
+        "cgst": round(float(merged.get("cgst", 0) or 0), 2),
+        "sgst": round(float(merged.get("sgst", 0) or 0), 2),
+        "service_charge": round(float(merged.get("service_charge", 0) or 0), 2),
+        "gst_on_service_charge": 0,
+        "cancelled_amount": 0,
+        "complementary_amount": round(float(merged.get("complimentary", 0) or 0), 2),
+        "cash_sales": round(float(merged.get("cash_sales", 0) or 0), 2),
+        "card_sales": round(float(merged.get("card_sales", 0) or 0), 2),
+        "gpay_sales": round(float(merged.get("gpay_sales", 0) or 0), 2),
+        "zomato_sales": round(float(merged.get("zomato_sales", 0) or 0), 2),
+        "other_sales": round(float(merged.get("other_sales", 0) or 0), 2),
+        "order_count": int(merged.get("order_count", 0) or 0),
+        "source_report": "dynamic_report",
+    }

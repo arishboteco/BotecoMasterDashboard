@@ -99,30 +99,59 @@ def backfill_weekday_weighted_targets() -> Tuple[int, int]:
     return 0, 0
 
 
+def build_daily_summary_row_new_flow(
+    location_id: int, date: str, data: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Build a daily_summary dict for the new Growth Report flow.
+
+    Includes all legacy fields plus the new fields added in the schema migration.
+    Caller passes this to upsert_daily_summaries_supabase_batch.
+    """
+    return {
+        "location_id": location_id,
+        "date": date,
+        # Core financials
+        "gross_total": round(float(data.get("gross_total", 0) or 0), 2),
+        "net_total": round(float(data.get("net_total", 0) or 0), 2),
+        "covers": int(data.get("covers", 0) or 0),
+        "discount": round(float(data.get("discount", 0) or 0), 2),
+        "cgst": round(float(data.get("cgst", 0) or 0), 2),
+        "sgst": round(float(data.get("sgst", 0) or 0), 2),
+        "service_charge": round(float(data.get("service_charge", 0) or 0), 2),
+        "gst_on_service_charge": round(float(data.get("gst_on_service_charge", 0) or 0), 2),
+        "cancelled_amount": round(float(data.get("cancelled_amount", 0) or 0), 2),
+        "complementary_amount": round(float(data.get("complementary_amount", 0) or 0), 2),
+        "order_count": int(data.get("order_count", 0) or 0),
+        # Legacy payment fields (kept for backward compat; zomato/other always 0 in new flow)
+        "cash_sales": round(float(data.get("cash_sales", 0) or 0), 2),
+        "card_sales": round(float(data.get("card_sales", 0) or 0), 2),
+        "gpay_sales": round(float(data.get("gpay_sales", 0) or 0), 2),
+        "zomato_sales": round(float(data.get("zomato_sales", 0) or 0), 2),
+        # New flow does NOT write to other_sales — keep existing value by omitting
+        # (or pass 0 if inserting a new row)
+        # New fields from schema migration
+        "my_amount": round(float(data.get("my_amount", 0) or 0), 2),
+        "total_tax": round(float(data.get("total_tax", 0) or 0), 2),
+        "round_off": round(float(data.get("round_off", 0) or 0), 2),
+        "expenses": round(float(data.get("expenses", 0) or 0), 2),
+        "due_payment_sales": round(float(data.get("due_payment_sales", 0) or 0), 2),
+        "wallet_sales": round(float(data.get("wallet_sales", 0) or 0), 2),
+        "upi_sales": round(float(data.get("upi_sales", 0) or 0), 2),
+        "bank_transfer_sales": round(float(data.get("bank_transfer_sales", 0) or 0), 2),
+        "boh_sales": round(float(data.get("boh_sales", 0) or 0), 2),
+        "delivery_sales": round(float(data.get("delivery_sales", 0) or 0), 2),
+        "pickup_sales": round(float(data.get("pickup_sales", 0) or 0), 2),
+        "dine_in_sales": round(float(data.get("dine_in_sales", 0) or 0), 2),
+        "menu_qr_sales": round(float(data.get("menu_qr_sales", 0) or 0), 2),
+        "source_report": str(data.get("source_report", "growth_report_day_wise")),
+    }
+
+
 def upsert_daily_summary_supabase(
     supabase: Any, location_id: int, date: str, data: Dict[str, Any]
 ) -> int:
-    """Upsert one row in public.daily_summary (Supabase simplified schema)."""
-    row_data = {
-        "location_id": location_id,
-        "date": date,
-        "gross_total": data.get("gross_total", 0),
-        "net_total": data.get("net_total", 0),
-        "covers": data.get("covers", 0),
-        "discount": data.get("discount", 0),
-        "cgst": data.get("cgst", 0),
-        "sgst": data.get("sgst", 0),
-        "service_charge": data.get("service_charge", 0),
-        "gst_on_service_charge": data.get("gst_on_service_charge", 0),
-        "cancelled_amount": data.get("cancelled_amount", 0),
-        "complementary_amount": data.get("complementary_amount", 0),
-        "cash_sales": data.get("cash_sales", 0),
-        "card_sales": data.get("card_sales", 0),
-        "gpay_sales": data.get("gpay_sales", 0),
-        "zomato_sales": data.get("zomato_sales", 0),
-        "other_sales": data.get("other_sales", 0),
-        "order_count": data.get("order_count", 0),
-    }
+    """Upsert one row in public.daily_summary (Supabase)."""
+    row_data = build_daily_summary_row_new_flow(location_id, date, data)
     result = (
         supabase.table(SUPABASE_DAILY_SUMMARY)
         .upsert(row_data, on_conflict="location_id,date")
@@ -338,23 +367,54 @@ def save_category_summary(
 
 
 def save_category_summary_batch(supabase: Any, records: List[Dict[str, Any]]) -> None:
-    """Bulk upsert category_summary records (Supabase), chunked."""
+    """Bulk upsert category_summary records (Supabase), chunked.
+
+    Supports both legacy rows (only location_id/date/category_name/net_amount/qty)
+    and new-flow rows with the full expanded schema.  The conflict key uses
+    normalized_category when available, otherwise category_name.
+    """
     if not records:
         return
-    normalized = [
-        {
+
+    def _build(r: Dict[str, Any]) -> Dict[str, Any]:
+        row: Dict[str, Any] = {
             "location_id": r["location_id"],
             "date": r["date"],
-            "category_name": r["category_name"],
-            "net_amount": round(float(r["net_amount"]), 2),
-            "qty": int(r["qty"]),
+            "category_name": str(r.get("category_name", "") or ""),
+            "net_amount": round(float(r.get("net_amount", 0) or 0), 2),
+            "qty": int(r.get("qty", 0) or 0),
         }
-        for r in records
-    ]
+        # New-flow fields — include only when present to avoid overwriting with nulls
+        for field in (
+            "group_name",
+            "normalized_category",
+            "sub_total",
+            "discount",
+            "tax",
+            "final_total",
+            "cgst_amount",
+            "sgst_amount",
+            "service_charge_amount",
+            "complimentary_amount",
+            "cancelled_amount",
+            "source_report",
+        ):
+            if field in r and r[field] is not None:
+                if isinstance(r[field], float):
+                    row[field] = round(r[field], 2)
+                else:
+                    row[field] = r[field]
+        # If normalized_category not present, fall back to category_name
+        if "normalized_category" not in row:
+            row["normalized_category"] = row["category_name"]
+        return row
+
+    normalized = [_build(r) for r in records]
+    # Upsert on normalized_category (new schema conflict key)
     for i in range(0, len(normalized), _SUPABASE_ROW_CHUNK):
         chunk = normalized[i : i + _SUPABASE_ROW_CHUNK]
         supabase.table(SUPABASE_CATEGORY_SUMMARY).upsert(
-            chunk, on_conflict="location_id,date,category_name"
+            chunk, on_conflict="location_id,date,normalized_category"
         ).execute()
 
 
@@ -499,15 +559,44 @@ def save_upload_record(
 
 
 def save_upload_records_batch(rows: List[Dict[str, Any]]) -> None:
-    """Insert multiple upload_history rows in few round-trips."""
+    """Insert multiple upload_history rows in few round-trips.
+
+    Supports both legacy rows (location_id/date/filename/file_type/uploaded_by)
+    and new-flow rows with the expanded schema fields.
+    """
     if not rows:
         return
     if database.use_supabase():
         client = database.get_supabase_client()
         if client is None:
             raise RuntimeError("Supabase client not available")
-        for i in range(0, len(rows), _SUPABASE_ROW_CHUNK):
-            client.table("upload_history").insert(rows[i : i + _SUPABASE_ROW_CHUNK]).execute()
+
+        def _build(r: Dict[str, Any]) -> Dict[str, Any]:
+            base: Dict[str, Any] = {
+                "location_id": int(r["location_id"]),
+                "date": r.get("date"),
+                "filename": r.get("filename", "unknown"),
+                "file_type": r.get("file_type", "unknown"),
+                "uploaded_by": r.get("uploaded_by", "user"),
+            }
+            for field in (
+                "detected_location_name",
+                "detected_report_type",
+                "period_start",
+                "period_end",
+                "row_count",
+                "status",
+                "validation_errors",
+                "import_summary",
+                "file_hash",
+            ):
+                if field in r and r[field] is not None:
+                    base[field] = r[field]
+            return base
+
+        payload = [_build(r) for r in rows]
+        for i in range(0, len(payload), _SUPABASE_ROW_CHUNK):
+            client.table("upload_history").insert(payload[i : i + _SUPABASE_ROW_CHUNK]).execute()
         return
 
     with database.db_connection() as conn:
@@ -519,10 +608,10 @@ def save_upload_records_batch(rows: List[Dict[str, Any]]) -> None:
             [
                 (
                     int(r["location_id"]),
-                    r["date"],
-                    r["filename"],
-                    r["file_type"],
-                    r["uploaded_by"],
+                    r.get("date"),
+                    r.get("filename", "unknown"),
+                    r.get("file_type", "unknown"),
+                    r.get("uploaded_by", "user"),
                 )
                 for r in rows
             ],
