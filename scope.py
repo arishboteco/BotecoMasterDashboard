@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import config
@@ -80,6 +79,16 @@ def aggregate_daily_summaries(
         "gpay_sales",
         "zomato_sales",
         "other_sales",
+        # New-flow payment fields (default to 0 when absent for old data)
+        "due_payment_sales",
+        "wallet_sales",
+        "upi_sales",
+        "bank_transfer_sales",
+        "boh_sales",
+        "delivery_sales",
+        "pickup_sales",
+        "dine_in_sales",
+        "menu_qr_sales",
         "service_charge",
         "cgst",
         "sgst",
@@ -170,10 +179,20 @@ def _synthetic_daily_summary(location_id: int, date_str: str) -> Dict[str, Any]:
         "gross_total": 0.0,
         "net_total": 0.0,
         "cash_sales": 0.0,
+        "card_sales": 0.0,
         "gpay_sales": 0.0,
         "zomato_sales": 0.0,
-        "card_sales": 0.0,
         "other_sales": 0.0,
+        # New-flow payment fields
+        "due_payment_sales": 0.0,
+        "wallet_sales": 0.0,
+        "upi_sales": 0.0,
+        "bank_transfer_sales": 0.0,
+        "boh_sales": 0.0,
+        "delivery_sales": 0.0,
+        "pickup_sales": 0.0,
+        "dine_in_sales": 0.0,
+        "menu_qr_sales": 0.0,
         "service_charge": 0.0,
         "cgst": 0.0,
         "sgst": 0.0,

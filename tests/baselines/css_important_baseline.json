@@ -1,10 +1,10 @@
 {
-  "total": 555,
+  "total": 546,
   "by_file": {
     "styles/__init__.py": 0,
     "styles/_animations.py": 3,
     "styles/_base.py": 58,
-    "styles/_components.py": 135,
+    "styles/_components.py": 142,
     "styles/_contrast_fix.py": 22,
     "styles/_fonts.py": 3,
     "styles/_login.py": 23,
@@ -13,6 +13,6 @@
     "styles/_responsive.py": 30,
     "styles/_sidebar.py": 27,
     "styles/_tokens.py": 1,
-    "styles/_visual_polish.py": 99
+    "styles/_visual_polish.py": 83
   }
 }

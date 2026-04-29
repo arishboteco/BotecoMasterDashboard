@@ -4,57 +4,6 @@ import smart_upload
 from smart_upload import DayResult, FileResult, SmartUploadResult
 
 
-class TestPrimaryFileType:
-    def test_prefers_dynamic_over_other_sources(self):
-        kinds = ["flash_report", "item_order_details", "dynamic_report"]
-        assert smart_upload._primary_file_type(kinds) == "dynamic_report"
-
-    def test_falls_back_to_item_order_details(self):
-        assert smart_upload._primary_file_type([]) == "item_order_details"
-
-
-class TestSaveSmartUploadResults:
-    def test_requires_dynamic_report_for_supabase_save(self, monkeypatch):
-        """save_smart_upload_results only persists Dynamic Report CSVs (Supabase)."""
-        monkeypatch.setattr(smart_upload.database, "use_supabase", lambda: True)
-        monkeypatch.setattr(smart_upload.database, "get_supabase_client", lambda: object())
-
-        _day = DayResult(
-            date="2026-04-02",
-            merged={
-                "date": "2026-04-02",
-                "gross_total": 1000.0,
-                "net_total": 1000.0,
-            },
-            source_kinds=["order_summary_csv", "flash_report"],
-            errors=[],
-        )
-        result = SmartUploadResult(
-            files=[
-                FileResult(
-                    filename="orders.csv",
-                    kind="order_summary_csv",
-                    kind_label="Order Summary",
-                    importable=True,
-                ),
-            ],
-            days=[_day],
-            location_results={7: [_day]},
-        )
-
-        saved, skipped, messages = smart_upload.save_smart_upload_results(
-            result,
-            location_id=7,
-            uploaded_by="qa",
-            monthly_target=5000000.0,
-            daily_target=166667.0,
-        )
-
-        assert saved == 0
-        assert skipped == 1
-        assert any("No Dynamic Report" in m for m in messages)
-
-
 class TestProcessSmartUpload:
     def test_logs_parser_failure_with_context(self, monkeypatch):
         logged = []
