@@ -104,9 +104,6 @@ BASE_FIELDS = {
 }
 
 # Maps normalised header → DB field name for non-payment columns.
-# NOTE: Some target fields intentionally have both full and short header variants.
-# The extraction loop below must not let a missing short variant overwrite a
-# previously found full variant with zero.
 FIELD_MAP: Dict[str, str] = {
     "orders": "order_count",
     "my amount (₹)": "my_amount",
@@ -396,19 +393,11 @@ def parse_growth_report_day_wise(
         if location_id is not None:
             out["location_id"] = int(location_id)
 
-        # Generic field extraction (skips fields handled manually below).
-        # Several Petpooja headers have both long and short aliases in FIELD_MAP,
-        # e.g. "net sales (₹)(m.a - d)" and "net sales".  The old loop allowed
-        # a missing short alias to overwrite a correctly parsed long alias with
-        # zero, which caused gross_total/net_total/my_amount/total_tax to save
-        # as 0.  Keep the first parsed value unless a later alias has a real
-        # non-zero value.
+        # Generic field extraction (skips fields handled manually below)
         for source, target in FIELD_MAP.items():
             if source in _MANUAL_FIELDS:
                 continue
-            val = round(_f(_value(row, colmap, source)), 2)
-            if val != 0.0 or target not in out:
-                out[target] = val
+            out[target] = round(_f(_value(row, colmap, source)), 2)
 
         # order_count and covers (covers defaults to order_count if no Pax column)
         out["order_count"] = _i(_value(row, colmap, "orders"))
