@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import streamlit as st
 
@@ -24,6 +24,135 @@ logger = boteco_logger.get_logger(__name__)
 def _sqlite_daily_table() -> str:
     """Legacy local schema table name (Supabase uses singular daily_summary)."""
     return SQLITE_DAILY_SUMMARIES
+
+
+def _apply_override_single(
+    summary: Optional[Dict], location_id: int, date: str
+) -> Optional[Dict]:
+    """Overlay manual footfall override on a single summary (or build synthetic)."""
+    from services.footfall_override_service import apply_override_to_single
+
+    return apply_override_to_single(summary, location_id, date)
+
+
+def _apply_overrides_range(
+    summaries: List[Dict],
+    location_ids: List[int],
+    start_date: str,
+    end_date: str,
+) -> List[Dict]:
+    """Overlay manual footfall overrides over a range query and inject synthetics."""
+    from services.footfall_override_service import apply_overrides
+
+    return apply_overrides(summaries, location_ids, start_date, end_date)
+
+
+def _reconcile_cover_split(lunch: int, dinner: int, covers: int) -> tuple[int, int]:
+    """Scale a derived Lunch/Dinner split so it preserves stored total covers."""
+    raw_total = lunch + dinner
+    if raw_total <= 0 or covers <= 0 or raw_total == covers:
+        return lunch, dinner
+    scaled_lunch = round(covers * (lunch / raw_total))
+    return scaled_lunch, covers - scaled_lunch
+
+
+def _hydrate_supabase_footfall_splits(
+    summaries: List[Dict], location_ids: List[int], start_date: str, end_date: str
+) -> List[Dict]:
+    """Derive missing Lunch/Dinner covers from Supabase bill_items pax timestamps."""
+    if not summaries or not location_ids:
+        return summaries
+
+    import database
+    from database_analytics import (
+        _bill_items_success,
+        _hour_from_created_datetime,
+        _service_type_from_created_datetime,
+    )
+    from database_writes import LOCATION_ID_TO_RESTAURANT
+
+    restaurant_to_location = {
+        restaurant: int(location_id)
+        for location_id, restaurant in LOCATION_ID_TO_RESTAURANT.items()
+        if int(location_id) in {int(lid) for lid in location_ids}
+    }
+    if not restaurant_to_location:
+        return summaries
+
+    supabase = database.get_supabase_client()
+    result = (
+        supabase.table("bill_items")
+        .select("restaurant,bill_date,bill_no,created_date_time,pax,bill_status")
+        .in_("restaurant", list(restaurant_to_location.keys()))
+        .gte("bill_date", start_date)
+        .lte("bill_date", end_date)
+        .execute()
+    )
+
+    bills: Dict[tuple[int, str, str], Dict[str, Any]] = {}
+    for row in result.data or []:
+        if not _bill_items_success(row.get("bill_status")):
+            continue
+        location_id = restaurant_to_location.get(str(row.get("restaurant") or ""))
+        bill_no = str(row.get("bill_no") or "").strip()
+        if location_id is None or not bill_no:
+            continue
+        date = str(row.get("bill_date") or "")[:10]
+        if not date:
+            continue
+        key = (location_id, date, bill_no)
+        bucket = bills.setdefault(
+            key,
+            {"pax": 0, "created_date_time": row.get("created_date_time")},
+        )
+        bucket["pax"] = max(int(bucket.get("pax") or 0), int(row.get("pax") or 0))
+        if bucket.get("created_date_time") is None:
+            bucket["created_date_time"] = row.get("created_date_time")
+
+    grouped: Dict[tuple[int, str], List[Dict[str, Any]]] = {}
+    for (location_id, date, _bill_no), bill in bills.items():
+        if int(bill.get("pax") or 0) <= 0:
+            continue
+        grouped.setdefault((location_id, date), []).append(bill)
+
+    split_by_key: Dict[tuple[int, str], Dict[str, int]] = {}
+    for key, day_bills in grouped.items():
+        hours = [
+            hour
+            for bill in day_bills
+            if (hour := _hour_from_created_datetime(bill.get("created_date_time"))) is not None
+        ]
+        is_pos_12h_clock = bool(hours) and max(hours) <= 12
+        split = {"lunch_covers": 0, "dinner_covers": 0}
+        for bill in day_bills:
+            service_type = _service_type_from_created_datetime(
+                bill.get("created_date_time"), is_pos_12h_clock
+            )
+            pax = int(bill.get("pax") or 0)
+            if service_type == "Lunch":
+                split["lunch_covers"] += pax
+            else:
+                split["dinner_covers"] += pax
+        split_by_key[key] = split
+
+    hydrated: List[Dict] = []
+    for summary in summaries:
+        out = dict(summary)
+        if out.get("lunch_covers") is not None or out.get("dinner_covers") is not None:
+            hydrated.append(out)
+            continue
+        loc = out.get("location_id")
+        date = str(out.get("date") or "")[:10]
+        split = split_by_key.get((int(loc), date)) if loc is not None and date else None
+        if split:
+            covers = int(out.get("covers") or 0)
+            lunch, dinner = _reconcile_cover_split(
+                int(split["lunch_covers"]), int(split["dinner_covers"]), covers
+            )
+            out["lunch_covers"] = lunch
+            out["dinner_covers"] = dinner
+        hydrated.append(out)
+    return hydrated
 
 
 def _inclusive_end_from_exclusive(date_str: str) -> str:
@@ -213,23 +342,25 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
             .eq("date", date)
             .execute()
         )
-        if not result.data:
-            return None
-        d = dict(result.data[0])
-        try:
-            cats, svcs = _detail_lists_for_daily_summary(location_id, date)
-            d["categories"] = cats
-            d["services"] = svcs
-        except (ValueError, TypeError, KeyError, RuntimeError) as ex:
-            logger.warning(
-                "Detail list hydration failed in database_reads.py location_id=%s date=%s error=%s",
-                location_id,
-                date,
-                ex,
-            )
-            d.setdefault("categories", [])
-            d.setdefault("services", [])
-        return d
+        if result.data:
+            d = dict(result.data[0])
+            try:
+                cats, svcs = _detail_lists_for_daily_summary(location_id, date)
+                d["categories"] = cats
+                d["services"] = svcs
+            except (ValueError, TypeError, KeyError, RuntimeError) as ex:
+                logger.warning(
+                    "Detail list hydration failed in database_reads.py "
+                    "location_id=%s date=%s error=%s",
+                    location_id,
+                    date,
+                    ex,
+                )
+                d.setdefault("categories", [])
+                d.setdefault("services", [])
+        else:
+            d = None
+        return _apply_override_single(d, location_id, date)
     else:
         tbl = _sqlite_daily_table()
         with database.db_connection() as conn:
@@ -240,7 +371,7 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
             )
             row = cursor.fetchone()
             if not row:
-                return None
+                return _apply_override_single(None, location_id, date)
             d = dict(row)
             sid = int(d["id"])
             d["categories"] = _sqlite_categories_for_summary(conn, sid)
@@ -268,7 +399,7 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
                         date,
                         ex,
                     )
-        return d
+        return _apply_override_single(d, location_id, date)
 
 
 def get_summaries_for_date_range(
@@ -290,7 +421,8 @@ def get_summaries_for_date_range(
             .order("date")
             .execute()
         )
-        return result.data
+        rows = list(result.data or [])
+        rows = _hydrate_supabase_footfall_splits(rows, [location_id], start_date, end_date)
     else:
         tbl = _sqlite_daily_table()
         with database.db_connection() as conn:
@@ -303,8 +435,8 @@ def get_summaries_for_date_range(
                 """,
                 (location_id, start_date, end_date),
             )
-            rows = cursor.fetchall()
-        return [dict(row) for row in rows]
+            rows = [dict(row) for row in cursor.fetchall()]
+    return _apply_overrides_range(rows, [location_id], start_date, end_date)
 
 
 @st.cache_data(ttl=600)
@@ -335,7 +467,8 @@ def get_summaries_for_date_range_multi(
             .order("date")
             .execute()
         )
-        return result.data
+        rows = list(result.data or [])
+        rows = _hydrate_supabase_footfall_splits(rows, list(location_ids), start_date, end_date)
     else:
         tbl = _sqlite_daily_table()
         with database.db_connection() as conn:
@@ -349,8 +482,8 @@ def get_summaries_for_date_range_multi(
                 """,
                 (*location_ids, start_date, end_date),
             )
-            rows = cursor.fetchall()
-        return [dict(row) for row in rows]
+            rows = [dict(row) for row in cursor.fetchall()]
+    return _apply_overrides_range(rows, list(location_ids), start_date, end_date)
 
 
 def get_category_totals_for_date_range(
@@ -578,17 +711,13 @@ def get_all_summaries_for_export(
             query = query.lte("date", end_date)
 
         result = query.order("date").execute()
-
-        for row in result.data:
-            row["location"] = location_map.get(row["location_id"], "")
-
-        return result.data
+        rows = list(result.data or [])
     else:
         tbl = _sqlite_daily_table()
         with database.db_connection() as conn:
             cursor = conn.cursor()
             sql = f"SELECT * FROM {tbl} WHERE 1=1"
-            params = []
+            params: list = []
 
             if location_ids:
                 placeholders = ",".join("?" * len(location_ids))
@@ -606,7 +735,18 @@ def get_all_summaries_for_export(
             sql += " ORDER BY date"
 
             cursor.execute(sql, params)
-            return [dict(row) for row in cursor.fetchall()]
+            rows = [dict(row) for row in cursor.fetchall()]
+        location_map = {loc["id"]: loc["name"] for loc in get_all_locations()}
+
+    if start_date and end_date:
+        scope_ids = list(location_ids) if location_ids else list(location_map.keys())
+        rows = _apply_overrides_range(rows, scope_ids, start_date, end_date)
+
+    for row in rows:
+        if "location" not in row or not row.get("location"):
+            row["location"] = location_map.get(row.get("location_id"), "")
+
+    return rows
 
 
 def clear_location_cache(location_id: int) -> None:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from io import BytesIO
 from typing import List, Tuple
 from urllib.parse import quote_plus
@@ -21,7 +21,6 @@ from components import (
     filter_strip,
     info_banner,
     page_shell,
-    section_title,
 )
 from components.feedback import empty_state
 from services import report_service
@@ -34,6 +33,17 @@ def clear_report_cache() -> None:
     Called when new data is imported or when a user requests a refresh.
     """
     report_service.clear_report_cache()
+
+
+def _footfall_metric_ranges(selected_date: date) -> Tuple[str, str, str]:
+    """Return monthly start, weekly start, and end dates for footfall metrics."""
+    end = selected_date.strftime("%Y-%m-%d")
+    start_mo_dt = utils.subtract_months(selected_date, 9)
+    start_mo_str = start_mo_dt.strftime("%Y-%m-%d")
+    days_since_monday = selected_date.weekday()
+    current_week_monday = selected_date - timedelta(days=days_since_monday)
+    start_wk = (current_week_monday - timedelta(weeks=3)).strftime("%Y-%m-%d")
+    return start_mo_str, start_wk, end
 
 
 def render(ctx: TabContext) -> None:
@@ -54,24 +64,12 @@ def render(ctx: TabContext) -> None:
             "mobile-layout-filters",
             "report-filter-shell",
         ):
-            filter_strip("Report context", "Choose day and scope.", icon="tune")
+            filter_strip("Report context", "Choose day.", icon="tune")
             with classed_container("report-date-nav"):
-                nav_col, scope_col = st.columns([3, 2])
-                with nav_col:
-                    selected_date = date_nav(
-                        session_key="report_date",
-                        label="Report date",
-                    )
-                with scope_col:
-                    st.markdown(
-                        (
-                            '<div class="report-scope-chip-wrap">'
-                            '<span class="report-scope-label">Scope</span>'
-                            f'<span class="report-scope-chip">{ctx.report_display_name}</span>'
-                            "</div>"
-                        ),
-                        unsafe_allow_html=True,
-                    )
+                selected_date = date_nav(
+                    session_key="report_date",
+                    label="Report date",
+                )
 
     date_str = selected_date.strftime("%Y-%m-%d")
     outlets_bundle, summary = report_service.load_report_bundle_cached(ctx.report_loc_ids, date_str)
@@ -116,11 +114,9 @@ def render(ctx: TabContext) -> None:
                 _net_cmp = _delta_chip(_curr_net, _prev_net, is_currency=True)
                 _cov_cmp = _delta_chip(float(_curr_cov), float(_prev_cov), is_currency=False)
                 _apc_cmp = _delta_chip(_curr_apc, _prev_apc, is_currency=True)
-                _comparison_chip = f'<span class="comparison-chip">Compared with {_prev_date.strftime("%d %b %Y")}</span>'
-                _scope_item = f'<span class="context-band-item"><strong>{ctx.report_display_name}</strong></span>'
-                _comparison_item = (
-                    f'<span class="context-band-item">Compared with '
-                    f"{_prev_date.strftime('%d %b %Y')}</span>"
+                _comparison_date = _prev_date.strftime("%d %b %Y")
+                _comparison_chip = (
+                    f'<span class="comparison-chip">Compared with {_comparison_date}</span>'
                 )
                 st.markdown(
                     (
@@ -154,18 +150,6 @@ def render(ctx: TabContext) -> None:
                     unsafe_allow_html=True,
                 )
 
-            st.markdown(
-                (
-                    '<div class="context-band context-band--muted report-context-bar">'
-                    f"{_scope_item}"
-                    f"{_comparison_item}"
-                    f'<span class="context-band-item">Net {_net_cmp}</span>'
-                    f'<span class="context-band-item">Covers {_cov_cmp}</span>'
-                    f'<span class="context-band-item">APC {_apc_cmp}</span>'
-                    "</div>"
-                ),
-                unsafe_allow_html=True,
-            )
             divider()
 
             # Individual PNG sections
@@ -176,13 +160,7 @@ def render(ctx: TabContext) -> None:
                 mtd_cat, mtd_svc = report_service.build_mtd_maps_cached(
                     ctx.report_loc_ids, y_m[0], y_m[1], date_str
                 )
-                _today = datetime.now().date()
-                _end = _today.strftime("%Y-%m-%d")
-                _start_mo_dt = utils.subtract_months(_today, 9)
-                _start_mo_str = _start_mo_dt.strftime("%Y-%m-%d")
-                _days_since_monday = _today.weekday()
-                _current_week_monday = _today - timedelta(days=_days_since_monday)
-                _start_wk = (_current_week_monday - timedelta(weeks=3)).strftime("%Y-%m-%d")
+                _start_mo_str, _start_wk, _end = _footfall_metric_ranges(selected_date)
 
                 per_outlet_footfall_metrics = [
                     (
@@ -297,13 +275,7 @@ def render(ctx: TabContext) -> None:
                             for lid, name, _ in outlets_bundle
                             if lid == _selected_lid
                         ]
-                        _today = datetime.now().date()
-                        _end = _today.strftime("%Y-%m-%d")
-                        _start_mo_dt = utils.subtract_months(_today, 9)
-                        _start_mo_str = _start_mo_dt.strftime("%Y-%m-%d")
-                        _days_since_monday = _today.weekday()
-                        _current_week_monday = _today - timedelta(days=_days_since_monday)
-                        _start_wk = (_current_week_monday - timedelta(weeks=3)).strftime("%Y-%m-%d")
+                        _start_mo_str, _start_wk, _end = _footfall_metric_ranges(selected_date)
                         _single_outlet_footfall_metrics = [
                             (
                                 _selected_outlet,
@@ -415,9 +387,11 @@ def render(ctx: TabContext) -> None:
                                 sec_bytes = _single_section_bufs[key].getvalue()
                                 row_idx, col_idx = divmod(idx, 2)
                                 with _cells[row_idx][col_idx]:
-                                    section_title(title, icon="image")
                                     st.image(BytesIO(sec_bytes), width="stretch")
-                                    _wa_text = f"Boteco {_selected_outlet} EOD Report \u2013 {date_str} ({title})"
+                                    _wa_text = (
+                                        f"Boteco {_selected_outlet} EOD Report \u2013 "
+                                        f"{date_str} ({title})"
+                                    )
                                     clipboard_ui.render_image_action_row(
                                         sec_bytes,
                                         f"boteco_{key}_{date_str}.png",
@@ -461,7 +435,6 @@ def render(ctx: TabContext) -> None:
                         sec_bytes = section_bufs[key].getvalue()
                         row_idx, col_idx = divmod(idx, 2)
                         with _cells[row_idx][col_idx]:
-                            section_title(title, icon="image")
                             st.image(BytesIO(sec_bytes), width="stretch")
                             _wa_text = f"Boteco Bangalore EOD Report \u2013 {date_str} ({title})"
                             clipboard_ui.render_image_action_row(

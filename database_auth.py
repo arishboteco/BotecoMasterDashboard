@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-import secrets
 import math
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
+
+from postgrest.exceptions import APIError
 
 import config
 import database
@@ -27,18 +29,36 @@ def _utcnow() -> datetime:
 
 def create_admin_user(username: str, password: str) -> None:
     """Create admin user if not exists."""
+    normalized_username = username.strip()
+    if not normalized_username:
+        return
+
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = supabase.table("users").select("id").eq("username", username).execute()
-        if not result.data:
-            password_hash = database._hash_password(password)
-            supabase.table("users").insert(
-                {"username": username, "password_hash": password_hash, "role": "admin"}
-            ).execute()
+        try:
+            result = (
+                supabase.table("users")
+                .select("id, username")
+                .eq("username", normalized_username)
+                .execute()
+            )
+            if not result.data:
+                password_hash = database._hash_password(password)
+                supabase.table("users").insert(
+                    {
+                        "username": normalized_username,
+                        "password_hash": password_hash,
+                        "role": "admin",
+                    }
+                ).execute()
+        except APIError as exc:
+            if exc.code == "42501":
+                return
+            raise
     else:
         with database.db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
+            cursor.execute("SELECT id FROM users WHERE username = ?", (normalized_username,))
             if cursor.fetchone() is None:
                 password_hash = database._hash_password(password)
                 cursor.execute(
@@ -46,21 +66,52 @@ def create_admin_user(username: str, password: str) -> None:
                     INSERT INTO users (username, password_hash, role)
                     VALUES (?, ?, 'admin')
                     """,
-                    (username, password_hash),
+                    (normalized_username, password_hash),
                 )
                 conn.commit()
 
 
 def verify_user(username: str, password: str) -> Optional[Dict]:
     """Verify user credentials using secure password verification."""
+    normalized_username = _norm_username(username)
+    stripped_username = (username or "").strip()
+    if not stripped_username:
+        return None
+
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = supabase.table("users").select("*").eq("username", username).execute()
-
-        if not result.data:
+        # Filter server-side. Try the verbatim stripped form first; if no row
+        # matches (e.g. the stored username uses different casing), retry with
+        # a case-insensitive lookup. Far cheaper than scanning the whole table.
+        result = (
+            supabase.table("users")
+            .select("*")
+            .eq("username", stripped_username)
+            .execute()
+        )
+        rows = result.data or []
+        if not rows and stripped_username != normalized_username:
+            result = (
+                supabase.table("users")
+                .select("*")
+                .ilike("username", normalized_username)
+                .execute()
+            )
+            rows = result.data or []
+        if not rows:
             return None
 
-        row = result.data[0]
+        row = next(
+            (
+                item
+                for item in rows
+                if (item.get("username") or "").strip() == stripped_username
+                or (item.get("username") or "").strip().lower() == normalized_username
+            ),
+            None,
+        )
+        if not row:
+            return None
         if database._verify_password(password, row["password_hash"]):
             row.pop("password_hash", None)
             if row.get("location_id"):
@@ -82,9 +133,9 @@ def verify_user(username: str, password: str) -> Optional[Dict]:
                 SELECT u.*, l.name as location_name
                 FROM users u
                 LEFT JOIN locations l ON u.location_id = l.id
-                WHERE u.username = ?
+                WHERE LOWER(TRIM(u.username)) = ?
                 """,
-                (username,),
+                (normalized_username,),
             )
             row = cursor.fetchone()
 
@@ -154,12 +205,7 @@ def create_user(
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = (
-            supabase.table("users")
-            .select("id")
-            .eq("username", username.strip())
-            .execute()
-        )
+        result = supabase.table("users").select("id").eq("username", username.strip()).execute()
         if result.data:
             return False, f"Username '{username}' already exists."
         pw_hash = database._hash_password(password)
@@ -176,9 +222,7 @@ def create_user(
     else:
         with database.db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT id FROM users WHERE username = ?", (username.strip(),)
-            )
+            cursor.execute("SELECT id FROM users WHERE username = ?", (username.strip(),))
             if cursor.fetchone():
                 return False, f"Username '{username}' already exists."
             pw_hash = database._hash_password(password)
@@ -203,9 +247,7 @@ def update_user(
     """Update role, location, email, and/or password for an existing user."""
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = (
-            supabase.table("users").select("id, username").eq("id", user_id).execute()
-        )
+        result = supabase.table("users").select("id, username").eq("id", user_id).execute()
         if not result.data:
             return False, "User not found."
         username = result.data[0]["username"]
@@ -237,18 +279,14 @@ def update_user(
                 return False, "User not found."
             username = row["username"]
             if role is not None:
-                cursor.execute(
-                    "UPDATE users SET role = ? WHERE id = ?", (role, user_id)
-                )
+                cursor.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
             if location_id is not None:
                 cursor.execute(
                     "UPDATE users SET location_id = ? WHERE id = ?",
                     (location_id, user_id),
                 )
             if email is not None:
-                cursor.execute(
-                    "UPDATE users SET email = ? WHERE id = ?", (email, user_id)
-                )
+                cursor.execute("UPDATE users SET email = ? WHERE id = ?", (email, user_id))
             if new_password is not None:
                 if len(new_password) < config.MIN_PASSWORD_LENGTH:
                     return (
@@ -295,9 +333,7 @@ def create_user_session(user_id: int, days: int = 30) -> str:
     """Generate and persist a secure session token. Returns token string."""
     token = secrets.token_hex(32)
     token_hash = database._hash_session_token(token)
-    expires_at = (datetime.now(timezone.utc) + timedelta(days=days)).strftime(
-        "%Y-%m-%d %H:%M:%S"
-    )
+    expires_at = (datetime.now(timezone.utc) + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
     if database.use_supabase():
         supabase = database.get_supabase_client()
         supabase.table("user_sessions").insert(
@@ -347,10 +383,7 @@ def validate_session_token(token: str) -> Optional[Dict]:
 
         if user.get("location_id"):
             loc_result = (
-                supabase.table("locations")
-                .select("name")
-                .eq("id", user["location_id"])
-                .execute()
+                supabase.table("locations").select("name").eq("id", user["location_id"]).execute()
             )
             if loc_result.data:
                 user["location_name"] = loc_result.data[0]["name"]
@@ -404,9 +437,7 @@ def purge_expired_sessions() -> None:
         supabase.table("user_sessions").delete().lt("expires_at", now).execute()
     else:
         with database.db_connection() as conn:
-            conn.execute(
-                "DELETE FROM user_sessions WHERE expires_at <= datetime('now')"
-            )
+            conn.execute("DELETE FROM user_sessions WHERE expires_at <= datetime('now')")
             conn.commit()
 
 
@@ -418,12 +449,17 @@ def is_login_locked(username: str) -> Tuple[bool, int]:
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = (
-            supabase.table("auth_login_attempts")
-            .select("failed_count, locked_until")
-            .eq("username", un)
-            .execute()
-        )
+        try:
+            result = (
+                supabase.table("auth_login_attempts")
+                .select("failed_count, locked_until")
+                .eq("username", un)
+                .execute()
+            )
+        except APIError as exc:
+            if exc.code == "42501":
+                return False, 0
+            raise
 
         if not result.data:
             return False, 0
@@ -436,9 +472,13 @@ def is_login_locked(username: str) -> Tuple[bool, int]:
         now = datetime.now(timezone.utc)
         until = datetime.fromisoformat(locked_until.replace("Z", "+00:00"))
         if until <= now:
-            supabase.table("auth_login_attempts").update(
-                {"failed_count": 0, "locked_until": None}
-            ).eq("username", un).execute()
+            try:
+                supabase.table("auth_login_attempts").update(
+                    {"failed_count": 0, "locked_until": None}
+                ).eq("username", un).execute()
+            except APIError as exc:
+                if exc.code != "42501":
+                    raise
             return False, 0
 
         remaining = max(1, int(math.ceil((until - now).total_seconds() / 60.0)))
@@ -491,29 +531,37 @@ def record_failed_login(username: str) -> Tuple[bool, int]:
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = (
-            supabase.table("auth_login_attempts")
-            .select("failed_count")
-            .eq("username", un)
-            .execute()
-        )
+        try:
+            result = (
+                supabase.table("auth_login_attempts")
+                .select("failed_count")
+                .eq("username", un)
+                .execute()
+            )
+        except APIError as exc:
+            if exc.code == "42501":
+                return False, 0
+            raise
         failed = result.data[0]["failed_count"] if result.data else 0
         failed += 1
 
         locked_until = None
         if failed >= int(config.MAX_LOGIN_ATTEMPTS):
-            locked_until = (
-                _utcnow() + timedelta(minutes=config.LOGIN_LOCKOUT_MINUTES)
-            ).isoformat()
+            locked_until = (_utcnow() + timedelta(minutes=config.LOGIN_LOCKOUT_MINUTES)).isoformat()
 
-        if result.data:
-            supabase.table("auth_login_attempts").update(
-                {"failed_count": failed, "locked_until": locked_until}
-            ).eq("username", un).execute()
-        else:
-            supabase.table("auth_login_attempts").insert(
-                {"username": un, "failed_count": failed, "locked_until": locked_until}
-            ).execute()
+        try:
+            if result.data:
+                supabase.table("auth_login_attempts").update(
+                    {"failed_count": failed, "locked_until": locked_until}
+                ).eq("username", un).execute()
+            else:
+                supabase.table("auth_login_attempts").insert(
+                    {"username": un, "failed_count": failed, "locked_until": locked_until}
+                ).execute()
+        except APIError as exc:
+            if exc.code == "42501":
+                return False, 0
+            raise
 
         return is_login_locked(un)
     else:
@@ -554,7 +602,11 @@ def clear_failed_login(username: str) -> None:
         return
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        supabase.table("auth_login_attempts").delete().eq("username", un).execute()
+        try:
+            supabase.table("auth_login_attempts").delete().eq("username", un).execute()
+        except APIError as exc:
+            if exc.code != "42501":
+                raise
     else:
         with database.db_connection() as conn:
             conn.execute("DELETE FROM auth_login_attempts WHERE username = ?", (un,))

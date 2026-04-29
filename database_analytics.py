@@ -28,46 +28,107 @@ def _restaurants_for_location_ids(location_ids: List[int]) -> List[str]:
     return [LOCATION_ID_TO_RESTAURANT.get(int(lid), "Boteco") for lid in location_ids]
 
 
+def _hour_from_created_datetime(created_date_time: Any) -> int | None:
+    """Parse POS bill timestamp and return the stored hour."""
+    if created_date_time is None:
+        return None
+    if hasattr(created_date_time, "hour"):
+        return int(created_date_time.hour)
+
+    value = str(created_date_time).strip()
+    if value in ("", "nan", "None"):
+        return None
+
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        try:
+            import pandas as pd
+
+            dt = pd.Timestamp(value)
+        except (ValueError, TypeError):
+            return None
+    if getattr(dt, "hour", None) is None:
+        return None
+    return int(dt.hour)
+
+
+def _uses_pos_12h_clock(rows: List[Dict[str, Any]]) -> bool:
+    """Detect Petpooja exports stored as 12-hour timestamps without AM/PM."""
+    hours = [
+        hour
+        for row in rows
+        if (hour := _hour_from_created_datetime(row.get("created_date_time"))) is not None
+    ]
+    return bool(hours) and max(hours) <= 12
+
+
+def _service_type_from_created_datetime(
+    created_date_time: Any, is_pos_12h_clock: bool = False
+) -> str | None:
+    """Classify a bill timestamp into Lunch/Dinner using POS local bill time."""
+    hour = _hour_from_created_datetime(created_date_time)
+    if hour is None:
+        return None
+    if is_pos_12h_clock:
+        return "Dinner" if 6 <= hour <= 11 else "Lunch"
+    return "Lunch" if hour < 18 else "Dinner"
+
+
 def _fetch_daily_summary_rows(
     location_ids: List[int],
     start_date: str,
     end_date: str,
     columns: tuple[str, ...],
 ) -> List[Dict[str, Any]]:
-    """Fetch daily summary rows for SQLite or Supabase with shared filtering."""
+    """Fetch daily summary rows for SQLite or Supabase with shared filtering.
+
+    Manual footfall overrides are overlaid on top of the result, and synthetic
+    rows are injected for dates that have an override but no daily_summaries row.
+    """
     import database
+    from services.footfall_override_service import apply_overrides
 
     if not location_ids:
         return []
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
+        # location_id and date are needed by the override merge layer; ensure
+        # the projection includes them even if the caller didn't ask for them.
+        select_cols = set(columns) | {"location_id", "date"}
         result = (
             supabase.table("daily_summary")
-            .select(",".join(columns))
+            .select(",".join(sorted(select_cols)))
             .in_("location_id", location_ids)
             .gte("date", start_date)
             .lte("date", end_date)
             .order("date")
             .execute()
         )
-        return [dict(row) for row in (result.data or [])]
+        rows = [dict(row) for row in (result.data or [])]
+    else:
+        # Always include location_id (needed for override merging); the caller
+        # filters by `columns` on its consumer side via .get(...).
+        select_cols = list(columns)
+        if "location_id" not in select_cols:
+            select_cols = ["location_id", *select_cols]
+        placeholders = ",".join("?" * len(location_ids))
+        with database.db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                f"""
+                SELECT {", ".join(select_cols)}
+                FROM daily_summaries
+                WHERE location_id IN ({placeholders})
+                  AND date >= ? AND date <= ?
+                ORDER BY date
+                """,
+                (*location_ids, start_date, end_date),
+            )
+            rows = [dict(row) for row in cur.fetchall()]
 
-    placeholders = ",".join("?" * len(location_ids))
-    with database.db_connection() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            f"""
-            SELECT {", ".join(columns)}
-            FROM daily_summaries
-            WHERE location_id IN ({placeholders})
-              AND date >= ? AND date <= ?
-            ORDER BY date
-            """,
-            (*location_ids, start_date, end_date),
-        )
-        rows = cur.fetchall()
-    return [dict(row) for row in rows]
+    return apply_overrides(rows, location_ids, start_date, end_date)
 
 
 def _week_key(date_str: str) -> str:
@@ -247,8 +308,8 @@ def get_service_sales_for_date_range(
 ) -> List[Dict[str, Any]]:
     """Get service period (Lunch/Dinner) sales from bill_items.
 
-    Lunch: 12 PM - 5 PM (12:00 to 16:59)
-    Dinner: Everything else
+    Lunch: before 6 PM. Petpooja exports may store 12-hour times without AM/PM;
+    for those files, 6-11 are treated as PM dinner hours.
     """
     import database
 
@@ -267,29 +328,22 @@ def get_service_sales_for_date_range(
         lunch_total = 0.0
         dinner_total = 0.0
 
-        for row in result.data:
-            if not _bill_items_success(row.get("bill_status")):
-                continue
+        rows = [
+            row
+            for row in (result.data or [])
+            if _bill_items_success(row.get("bill_status"))
+            and (row.get("net_amount", 0) or 0) > 0
+        ]
+        is_pos_12h_clock = _uses_pos_12h_clock(rows)
+
+        for row in rows:
             net = row.get("net_amount", 0) or 0
-            if net <= 0:
-                continue
 
-            cdt = row.get("created_date_time")
-            if cdt:
-                from datetime import datetime
-
-                try:
-                    if isinstance(cdt, str):
-                        dt = datetime.fromisoformat(cdt.replace("Z", "+00:00"))
-                    else:
-                        dt = cdt
-                    hour = dt.hour
-                    if 12 <= hour < 17:
-                        lunch_total += net
-                    else:
-                        dinner_total += net
-                except:
-                    dinner_total += net
+            service_type = _service_type_from_created_datetime(
+                row.get("created_date_time"), is_pos_12h_clock
+            )
+            if service_type == "Lunch":
+                lunch_total += net
             else:
                 dinner_total += net
 
@@ -303,25 +357,15 @@ def get_service_sales_for_date_range(
                 {"type": "Lunch", "amount": 0.0},
                 {"type": "Dinner", "amount": 0.0},
             ]
-        with database.db_connection() as conn:
-            cur = conn.cursor()
-            placeholders = ",".join("?" * len(location_ids))
-            cur.execute(
-                f"""
-                SELECT
-                    COALESCE(SUM(lunch_covers), 0) AS sum_lunch,
-                    COALESCE(SUM(dinner_covers), 0) AS sum_dinner,
-                    COALESCE(SUM(net_total), 0) AS sum_net
-                FROM daily_summaries
-                WHERE location_id IN ({placeholders})
-                  AND date >= ? AND date <= ?
-                """,
-                (*location_ids, start_date, end_date),
-            )
-            row = cur.fetchone()
-        lunch_c = float(row["sum_lunch"] or 0)
-        dinner_c = float(row["sum_dinner"] or 0)
-        net = float(row["sum_net"] or 0)
+        rows = _fetch_daily_summary_rows(
+            location_ids,
+            start_date,
+            end_date,
+            ("date", "lunch_covers", "dinner_covers", "net_total"),
+        )
+        lunch_c = sum(float(r.get("lunch_covers") or 0) for r in rows)
+        dinner_c = sum(float(r.get("dinner_covers") or 0) for r in rows)
+        net = sum(float(r.get("net_total") or 0) for r in rows)
         total_c = lunch_c + dinner_c
         if total_c <= 0:
             split_l, split_d = 0.5 * net, 0.5 * net
@@ -354,61 +398,61 @@ def get_daily_service_sales_for_date_range(
             .execute()
         )
 
+        rows = [
+            row
+            for row in (result.data or [])
+            if _bill_items_success(row.get("bill_status"))
+            and (row.get("net_amount", 0) or 0) > 0
+        ]
+        rows_by_date: Dict[str, List[Dict[str, Any]]] = {}
+        for row in rows:
+            rows_by_date.setdefault(str(row["bill_date"]), []).append(row)
+
         daily = {}
-        for row in result.data:
-            if not _bill_items_success(row.get("bill_status")):
-                continue
-            net = row.get("net_amount", 0) or 0
-            if net <= 0:
-                continue
+        for date, day_rows in rows_by_date.items():
+            is_pos_12h_clock = _uses_pos_12h_clock(day_rows)
+            daily[date] = {"date": date, "Lunch": 0.0, "Dinner": 0.0}
+            for row in day_rows:
+                net = row.get("net_amount", 0) or 0
 
-            date = row["bill_date"]
-            if date not in daily:
-                daily[date] = {"date": date, "Lunch": 0.0, "Dinner": 0.0}
-
-            cdt = row.get("created_date_time")
-            if cdt:
-                from datetime import datetime
-
-                try:
-                    if isinstance(cdt, str):
-                        dt = datetime.fromisoformat(cdt.replace("Z", "+00:00"))
-                    else:
-                        dt = cdt
-                    hour = dt.hour
-                    if 12 <= hour < 17:
-                        daily[date]["Lunch"] += net
-                    else:
-                        daily[date]["Dinner"] += net
-                except:
+                service_type = _service_type_from_created_datetime(
+                    row.get("created_date_time"), is_pos_12h_clock
+                )
+                if service_type == "Lunch":
+                    daily[date]["Lunch"] += net
+                else:
                     daily[date]["Dinner"] += net
-            else:
-                daily[date]["Dinner"] += net
 
         return sorted(daily.values(), key=lambda x: x["date"])
     else:
         if not location_ids:
             return []
-        with database.db_connection() as conn:
-            cur = conn.cursor()
-            placeholders = ",".join("?" * len(location_ids))
-            cur.execute(
-                f"""
-                SELECT date, net_total, lunch_covers, dinner_covers
-                FROM daily_summaries
-                WHERE location_id IN ({placeholders})
-                  AND date >= ? AND date <= ?
-                ORDER BY date
-                """,
-                (*location_ids, start_date, end_date),
-            )
-            rows = cur.fetchall()
-        out = []
+        rows = _fetch_daily_summary_rows(
+            location_ids,
+            start_date,
+            end_date,
+            ("date", "net_total", "lunch_covers", "dinner_covers"),
+        )
+        # Aggregate per-date across multiple outlets so the split is computed
+        # on combined cover counts, matching the multi-outlet ratio.
+        per_date: Dict[str, Dict[str, float]] = {}
         for row in rows:
-            d = str(row["date"])
-            net = float(row["net_total"] or 0)
-            lc = int(row["lunch_covers"] or 0)
-            dc = int(row["dinner_covers"] or 0)
+            d = str(row.get("date") or "")[:10]
+            if not d:
+                continue
+            bucket = per_date.setdefault(
+                d, {"net": 0.0, "lunch": 0.0, "dinner": 0.0}
+            )
+            bucket["net"] += float(row.get("net_total") or 0)
+            bucket["lunch"] += float(row.get("lunch_covers") or 0)
+            bucket["dinner"] += float(row.get("dinner_covers") or 0)
+
+        out = []
+        for d in sorted(per_date.keys()):
+            b = per_date[d]
+            net = b["net"]
+            lc = b["lunch"]
+            dc = b["dinner"]
             tot = lc + dc
             if tot > 0:
                 lunch_amt = net * (lc / tot)

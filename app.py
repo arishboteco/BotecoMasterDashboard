@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
 import streamlit as st
 
 import auth
@@ -14,6 +12,7 @@ import styles
 import ui_theme
 from tabs import TabContext
 from tabs.analytics_tab import render as render_analytics
+from tabs.footfall_tab import render as render_footfall
 from tabs.report_tab import render as render_report
 from tabs.settings_tab import render as render_settings
 from tabs.upload_tab import render as render_upload
@@ -22,35 +21,29 @@ boteco_logger.setup_logging()
 logger = boteco_logger.get_logger(__name__)
 ui_theme.apply_plotly_theme()
 
-# Warn if Supabase mode is requested but credentials are missing
-if os.environ.get("USE_SUPABASE") and not config.SUPABASE_KEY:
+# Supabase is the single source of truth in deployment.
+# Fail fast at startup instead of silently falling back to SQLite.
+if not config.SUPABASE_URL or not config.SUPABASE_KEY:
     st.error(
-        "⚠️ USE_SUPABASE is set but SUPABASE_KEY is empty. "
-        "Set the SUPABASE_URL, SUPABASE_KEY, and SUPABASE_SERVICE_KEY environment variables."
+        "⚠️ Supabase is required but credentials are missing. "
+        "Set SUPABASE_URL, SUPABASE_KEY, and SUPABASE_SERVICE_KEY."
+    )
+    st.stop()
+
+if not database.use_supabase():
+    st.error(
+        "⚠️ Supabase is required but connection could not be initialized. "
+        "Check credentials/network and restart."
     )
     st.stop()
 
 if "bootstrapped" not in st.session_state:
     database.bootstrap()
     database.backfill_weekday_weighted_targets()
+    # Bootstrap admin user if missing — only on first render of the session,
+    # otherwise this re-hits the DB on every rerun.
+    database.create_admin_user("admin", "admin")
     st.session_state["bootstrapped"] = True
-
-# Bootstrap admin user if none exists
-with database.db_connection() as conn:
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) as count FROM users")
-    user_count = cursor.fetchone()["count"]
-
-    if user_count == 0:
-        import bcrypt
-
-        default_pw = "admin"
-        hashed = bcrypt.hashpw(default_pw.encode("utf-8"), bcrypt.gensalt())
-        cursor.execute(
-            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-            ("admin", hashed.decode("utf-8"), "admin"),
-        )
-        conn.commit()
 
 # Page configuration
 st.set_page_config(
@@ -134,7 +127,11 @@ else:
 
     # Build shared context
     import_loc_id = int(st.session_state.location_id)
-    import_location_settings = database.get_location_settings(import_loc_id)
+    location_settings = database.get_location_settings(location_id)
+    if import_loc_id == location_id:
+        import_location_settings = location_settings
+    else:
+        import_location_settings = database.get_location_settings(import_loc_id)
 
     ctx = TabContext(
         location_id=location_id,
@@ -142,12 +139,14 @@ else:
         report_loc_ids=report_loc_ids,
         report_display_name=report_display_name,
         all_locs=all_locs,
-        location_settings=database.get_location_settings(location_id),
+        location_settings=location_settings,
         import_location_settings=import_location_settings,
     )
 
     # Tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["Upload", "Report", "Analytics", "Settings"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+        ["Upload", "Report", "Analytics", "Footfall", "Settings"]
+    )
 
     with tab1:
         render_upload(ctx)
@@ -156,4 +155,6 @@ else:
     with tab3:
         render_analytics(ctx)
     with tab4:
+        render_footfall(ctx)
+    with tab5:
         render_settings(ctx)

@@ -32,7 +32,7 @@ def date_nav(
     if picker_key not in st.session_state:
         st.session_state[picker_key] = st.session_state[session_key]
 
-    prev_col, date_col, next_col = st.columns([1.1, 2.4, 1.1])
+    prev_col, date_col, next_col = st.columns([1, 3, 1])
     with prev_col:
         st.button(
             "\u2190",
@@ -54,7 +54,7 @@ def date_nav(
             label,
             key=picker_key,
             help=help_text,
-            format="YYYY-MM-DD",
+            format="DD/MM/YYYY",
             label_visibility="collapsed",
             width="stretch",
             on_change=_sync_session_date_from_picker,

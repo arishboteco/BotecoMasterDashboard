@@ -37,25 +37,40 @@ def ensure_default_locations() -> None:
         client = get_supabase_client()
         if client is None:
             return
-        existing = client.table("locations").select("id,name").execute()
-        existing_names = {row["name"] for row in (existing.data or [])}
-        defaults = [
-            {
-                "id": 1,
-                "name": "Boteco - Indiqube",
-                "target_monthly_sales": 5000000.0,
-                "target_daily_sales": 166666.66666666666,
-            },
-            {
-                "id": 2,
-                "name": "Boteco - Bagmane",
-                "target_monthly_sales": 5000000.0,
-                "target_daily_sales": 166666.66666666666,
-            },
-        ]
-        for loc in defaults:
-            if loc["name"] not in existing_names:
-                client.table("locations").upsert(loc, on_conflict="id").execute()
+        try:
+            existing = client.table("locations").select("id,name").execute()
+            existing_names = {row["name"] for row in (existing.data or [])}
+            defaults = [
+                {
+                    "id": 1,
+                    "name": "Boteco - Indiqube",
+                    "target_monthly_sales": 5000000.0,
+                    "target_daily_sales": 166666.66666666666,
+                },
+                {
+                    "id": 2,
+                    "name": "Boteco - Bagmane",
+                    "target_monthly_sales": 5000000.0,
+                    "target_daily_sales": 166666.66666666666,
+                },
+            ]
+            for loc in defaults:
+                if loc["name"] not in existing_names:
+                    client.table("locations").upsert(loc, on_conflict="id").execute()
+        except Exception as exc:
+            error_text = str(exc).lower()
+            is_rls_error = (
+                "row-level security policy" in error_text or "code': '42501'" in error_text
+            )
+            if is_rls_error:
+                logger.info(
+                    "Skipping default location seed for Supabase due to RLS policy restrictions."
+                )
+            else:
+                logger.warning(
+                    "Skipping default location seed for Supabase due to unexpected error.",
+                    exc_info=True,
+                )
         return
 
     with database.db_connection() as conn:
@@ -267,52 +282,55 @@ def _save_daily_summary_sqlite(location_id: int, date_str: str, data: Dict[str, 
         cur.execute(f"DELETE FROM {SQLITE_ITEM_SALES} WHERE summary_id = ?", (summary_id,))
         cur.execute(f"DELETE FROM {SQLITE_SERVICE_SALES} WHERE summary_id = ?", (summary_id,))
 
+        item_rows: List[tuple] = []
         for cat in data.get("categories") or []:
             name = str(cat.get("category", "") or "").strip()
             if not name:
                 continue
-            cur.execute(
-                f"""
-                INSERT INTO {SQLITE_ITEM_SALES} (summary_id, item_name, category, qty, amount)
-                VALUES (?, ?, ?, ?, ?)
-                """,
+            item_rows.append(
                 (
                     summary_id,
                     f"{CATEGORY_ROW_PREFIX}{name}",
                     name,
                     int(cat.get("qty", 0) or 0),
                     float(cat.get("amount", 0) or 0),
-                ),
+                )
             )
-
         for item in data.get("top_items") or []:
             iname = str(item.get("item_name", "") or "").strip()
             if not iname:
                 continue
-            cur.execute(
-                f"""
-                INSERT INTO {SQLITE_ITEM_SALES} (summary_id, item_name, category, qty, amount)
-                VALUES (?, ?, ?, ?, ?)
-                """,
+            item_rows.append(
                 (
                     summary_id,
                     iname,
                     str(item.get("category", "") or ""),
                     int(item.get("qty", 0) or 0),
                     float(item.get("amount", 0) or 0),
-                ),
+                )
+            )
+        if item_rows:
+            cur.executemany(
+                f"""
+                INSERT INTO {SQLITE_ITEM_SALES} (summary_id, item_name, category, qty, amount)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                item_rows,
             )
 
+        service_rows: List[tuple] = []
         for svc in data.get("services") or []:
             stype = str(svc.get("type", "") or "").strip()
             if not stype:
                 continue
-            cur.execute(
+            service_rows.append((summary_id, stype, float(svc.get("amount", 0) or 0)))
+        if service_rows:
+            cur.executemany(
                 f"""
                 INSERT INTO {SQLITE_SERVICE_SALES} (summary_id, service_type, amount)
                 VALUES (?, ?, ?)
                 """,
-                (summary_id, stype, float(svc.get("amount", 0) or 0)),
+                service_rows,
             )
 
         conn.commit()
@@ -453,9 +471,10 @@ def delete_category_summary_batch(supabase: Any, dates_locs: set) -> None:
 
 def clear_all_data(supabase: Any) -> None:
     """Clear operational tables (Supabase)."""
-    supabase.table(SUPABASE_CATEGORY_SUMMARY).delete().neq("id", 0).execute()
-    supabase.table(SUPABASE_DAILY_SUMMARY).delete().neq("id", 0).execute()
     supabase.table(SUPABASE_BILL_ITEMS).delete().neq("id", 0).execute()
+    supabase.table(SUPABASE_DAILY_SUMMARY).delete().neq("id", 0).execute()
+    supabase.table(SUPABASE_CATEGORY_SUMMARY).delete().neq("id", 0).execute()
+    supabase.table("upload_history").delete().neq("id", 0).execute()
 
 
 def wipe_all_data() -> Tuple[Dict[str, int], List[str]]:
@@ -475,6 +494,7 @@ def wipe_all_data() -> Tuple[Dict[str, int], List[str]]:
                 SUPABASE_BILL_ITEMS,
                 SUPABASE_DAILY_SUMMARY,
                 SUPABASE_CATEGORY_SUMMARY,
+                "upload_history",
             ]:
                 result = admin.table(table).select("id", count="exact").execute()
                 counts[table] = int(result.count or 0)

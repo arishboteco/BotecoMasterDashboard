@@ -56,7 +56,7 @@ def linear_forecast(
     if len(values) >= 7 and overall_avg > 0:
         weekday_sums: Dict[int, float] = defaultdict(float)
         weekday_counts: Dict[int, int] = defaultdict(int)
-        for dt, val in zip(date_series, y):
+        for dt, val in zip(date_series, y, strict=False):
             wd = pd.Timestamp(dt).weekday()  # 0=Mon .. 6=Sun
             weekday_sums[wd] += val
             weekday_counts[wd] += 1

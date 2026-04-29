@@ -128,6 +128,28 @@ def workflow_steps(steps: Iterable[str], active_index: int = 0) -> None:
     )
 
 
+def workflow_progress(total_steps: int, current_step: int, stage_label: str) -> None:
+    """Render a compact linear progress bar for staged workflows."""
+    safe_total = max(total_steps, 1)
+    safe_current = min(max(current_step, 1), safe_total)
+    pct = int((safe_current / safe_total) * 100)
+    st.markdown(
+        (
+            '<div class="workflow-progress" role="progressbar" '
+            f'aria-valuemin="1" aria-valuemax="{safe_total}" aria-valuenow="{safe_current}">'
+            '<div class="workflow-progress-meta">'
+            f'<span class="workflow-progress-label">{escape(stage_label)}</span>'
+            f'<span class="workflow-progress-count">{safe_current}/{safe_total}</span>'
+            "</div>"
+            '<div class="workflow-progress-track">'
+            f'<div class="workflow-progress-fill" style="width: {pct}%;"></div>'
+            "</div>"
+            "</div>"
+        ),
+        unsafe_allow_html=True,
+    )
+
+
 def section_block(
     title: str,
     subtitle: Optional[str] = None,

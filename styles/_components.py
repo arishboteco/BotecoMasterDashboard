@@ -129,41 +129,47 @@ COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ─�
         margin-bottom: 0.55rem;
     }
     .report-date-nav [data-testid="stHorizontalBlock"] {
-        align-items: end;
-        gap: 0.65rem;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        max-width: 460px;
+        margin: 0 auto;
+    }
+    .report-date-nav [data-testid="stButton"] {
+        display: flex;
+        justify-content: center;
     }
     .report-date-nav [data-testid="stButton"] > button {
+        width: 44px !important;
+        min-width: 44px !important;
+        max-width: 44px !important;
+        height: 42px !important;
         min-height: 42px !important;
         max-height: 42px !important;
-        padding: 0 0.55rem !important;
-        font-size: 0.9rem !important;
-        font-weight: 700 !important;
+        padding: 0 !important;
+        font-size: 1rem !important;
+        font-weight: 600 !important;
+        border-radius: 999px !important;
+        color: var(--brand) !important;
+        background: var(--surface-elevated) !important;
+        border: 1px solid var(--border-subtle) !important;
+        transition: background var(--transition-fast),
+                    border-color var(--transition-fast),
+                    color var(--transition-fast);
+    }
+    .report-date-nav [data-testid="stButton"] > button:hover {
+        background: var(--brand-soft) !important;
+        border-color: var(--brand-light) !important;
+        color: var(--brand-dark) !important;
     }
     .report-date-nav [data-testid="stDateInput"] {
-        max-width: 260px;
+        max-width: 240px;
+        margin: 0 auto;
     }
-    .report-scope-chip-wrap {
-        display: flex;
-        flex-direction: column;
-        gap: 0.3rem;
-    }
-    .report-scope-label {
-        font-size: 0.73rem;
-        color: var(--text-secondary);
+    .report-date-nav [data-testid="stDateInput"] input {
+        text-align: center;
         font-weight: 600;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-    }
-    .report-scope-chip {
-        display: inline-flex;
-        align-items: center;
-        min-height: 42px;
-        padding: 0 0.75rem;
-        border-radius: var(--radius-md);
-        border: 1px solid var(--border-subtle);
-        background: var(--surface);
-        color: var(--text);
-        font-weight: 600;
+        letter-spacing: 0.02em;
     }
     .kpi-snapshot-card {
         padding: 0.95rem;
@@ -256,10 +262,6 @@ COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ─�
     }
     .kpi-helper .delta-chip--negative {
         color: var(--error) !important;
-    }
-    .report-context-bar {
-        margin-top: 0.25rem;
-        margin-bottom: 0.75rem;
     }
     .kpi-delta.is-positive { color: var(--kpi-delta-positive-fg) !important; }
     .kpi-delta.is-negative { color: var(--kpi-delta-negative-fg) !important; }
@@ -657,6 +659,38 @@ SECTION_LABELS = r"""    /* ── Section labels ──────────
 """
 
 WORKFLOW_AND_SURFACES = r"""    /* ── Workflow and surface polish ─────────────────────── */
+    .workflow-progress {
+        margin: 0.3rem 0 0.9rem;
+    }
+    .workflow-progress-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 0.35rem;
+        font-size: 0.76rem;
+        color: var(--text-secondary);
+        font-weight: 600;
+    }
+    .workflow-progress-label {
+        color: var(--text-secondary);
+    }
+    .workflow-progress-count {
+        color: var(--text);
+    }
+    .workflow-progress-track {
+        width: 100%;
+        height: 0.42rem;
+        border-radius: 999px;
+        background: var(--surface-elevated);
+        border: 1px solid var(--border-subtle);
+        overflow: hidden;
+    }
+    .workflow-progress-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, var(--brand), var(--brand-light));
+        transition: width var(--transition-normal) ease;
+    }
     .workflow-steps {
         display: flex;
         flex-wrap: wrap;

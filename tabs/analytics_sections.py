@@ -123,18 +123,6 @@ def _make_rupee_ticks(min_val: float, max_val: float) -> tuple:
     return (tickvals, ticktext)
 
 
-def _period_supports_trend_analysis(period: str, data_points: int) -> bool:
-    """Return True if the selected period has enough data for MA and forecast.
-
-    Moving average requires at least 3 data points. Forecast will show with ±1 std dev
-    bands even with minimal data; confidence band widens for short datasets.
-    """
-    _long_periods = {"Last 7 Days", "Last 30 Days", "Last Month", "Custom"}
-    if period in _long_periods:
-        return data_points >= 3
-    return False
-
-
 def _chart_summary(text: str) -> None:
     """Render a screen-reader-friendly text summary of a chart's key insight."""
     st.caption(text)
@@ -221,7 +209,6 @@ def render_sales_performance(
     df: pd.DataFrame,
     df_raw: pd.DataFrame,
     multi_analytics: bool,
-    prior_df: pd.DataFrame = pd.DataFrame(),
     analysis_period: str = "",
 ) -> None:
     show_ma_and_forecast = _period_supports_trend_analysis(analysis_period, len(df))

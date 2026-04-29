@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -40,19 +41,26 @@ def _normalize_detail_lists(summary: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def _location_settings_map() -> Dict[int, Dict[str, Any]]:
+    """Build an id->location dict from the cached locations list."""
+    return {int(loc["id"]): loc for loc in database.get_all_locations() or []}
+
+
 def sum_location_monthly_targets(location_ids: List[int]) -> float:
+    settings_by_id = _location_settings_map()
     total = 0.0
     for lid in location_ids:
-        s = database.get_location_settings(lid)
+        s = settings_by_id.get(int(lid))
         if s:
             total += float(s.get("target_monthly_sales") or 0)
     return total if total > 0 else float(config.MONTHLY_TARGET)
 
 
 def sum_location_seat_counts(location_ids: List[int]) -> int:
+    settings_by_id = _location_settings_map()
     n = 0
     for lid in location_ids:
-        s = database.get_location_settings(lid)
+        s = settings_by_id.get(int(lid))
         if s and s.get("seat_count"):
             n += int(s["seat_count"])
     return n
@@ -106,11 +114,13 @@ def aggregate_daily_summaries(
     lc_any = False
     dc_any = False
     for s in summaries:
-        if s.get("lunch_covers") is not None:
-            lc_sum += int(s.get("lunch_covers") or 0)
+        lc = s.get("lunch_covers")
+        if lc is not None and not (isinstance(lc, float) and math.isnan(lc)):
+            lc_sum += int(lc or 0)
             lc_any = True
-        if s.get("dinner_covers") is not None:
-            dc_sum += int(s.get("dinner_covers") or 0)
+        dc = s.get("dinner_covers")
+        if dc is not None and not (isinstance(dc, float) and math.isnan(dc)):
+            dc_sum += int(dc or 0)
             dc_any = True
     out["lunch_covers"] = lc_sum if lc_any else None
     out["dinner_covers"] = dc_sum if dc_any else None
@@ -134,9 +144,7 @@ def aggregate_daily_summaries(
             key = str(sv.get("type") or sv.get("service_type") or "")
             svc_amt[key] += float(sv.get("amount", 0) or 0)
     out["services"] = [
-        {"type": k, "amount": v}
-        for k, v in sorted(svc_amt.items(), key=lambda x: -x[1])
-        if v > 0
+        {"type": k, "amount": v} for k, v in sorted(svc_amt.items(), key=lambda x: -x[1]) if v > 0
     ]
 
     out.pop("id", None)
@@ -145,13 +153,11 @@ def aggregate_daily_summaries(
     cov = int(out.get("covers") or 0)
     out["pct_target"] = round((net / tgt) * 100, 2) if tgt > 0 else 0.0
     out["apc"] = (net / cov) if cov > 0 and net > 0 else 0.0
-    out["turns"] = round(cov / 100, 1) if cov else 0.0
+    out["turns"] = None
     return out
 
 
-def get_daily_summary_for_scope(
-    location_ids: List[int], date_str: str
-) -> Optional[Dict[str, Any]]:
+def get_daily_summary_for_scope(location_ids: List[int], date_str: str) -> Optional[Dict[str, Any]]:
     if not location_ids:
         return None
     rows = database.get_summaries_for_date_range_multi(location_ids, date_str, date_str)
@@ -225,9 +231,10 @@ def get_daily_report_bundle(
 
     outlets: List[Tuple[int, str, Dict[str, Any]]] = []
     parts_raw: List[Dict[str, Any]] = []
+    settings_by_id = _location_settings_map()
 
     for lid in location_ids:
-        st = database.get_location_settings(lid)
+        st = settings_by_id.get(int(lid))
         name = str(st["name"]) if st and st.get("name") else str(lid)
         monthly_tgt = (
             float(st["target_monthly_sales"])
@@ -255,9 +262,7 @@ def get_daily_report_bundle(
     if combined is None:
         return [], None
     monthly_all = sum_location_monthly_targets(location_ids)
-    combined_e = enrich_summary_for_display(
-        combined, location_ids, monthly_all, date_str
-    )
+    combined_e = enrich_summary_for_display(combined, location_ids, monthly_all, date_str)
     return outlets, combined_e
 
 

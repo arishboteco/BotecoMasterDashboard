@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 
 import ui_theme
 import utils
-from tabs.forecasting import moving_average, linear_forecast
+from tabs.forecasting import moving_average
 
 
 def _hex_to_rgba(hex_color: str, alpha: float = 0.2) -> str:
@@ -121,7 +121,6 @@ def build_apc_chart(df: pd.DataFrame) -> go.Figure | None:
     if apc_df.empty:
         return None
 
-    dates = pd.to_datetime(apc_df["date"])
     apc_values = apc_df["apc"].tolist()
 
     fig = px.line(

@@ -72,3 +72,112 @@ def test_phase7_performance_indexes_exist(initialized_db):
 
     assert "idx_daily_summaries_date" in names
     assert "idx_daily_summaries_date_location" in names
+
+
+def test_database_writes_ignores_supabase_location_seed_errors(monkeypatch):
+    import database_writes
+
+    class _FailingQuery:
+        def select(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            raise RuntimeError("new row violates row-level security policy for table locations")
+
+    class _FailingClient:
+        def table(self, _name):
+            return _FailingQuery()
+
+    monkeypatch.setattr(database_writes.database, "use_supabase", lambda: True)
+    monkeypatch.setattr(database_writes.database, "get_supabase_client", lambda: _FailingClient())
+
+    database_writes.ensure_default_locations()
+
+
+def test_database_writes_ignores_supabase_rls_upsert_errors(monkeypatch):
+    import database_writes
+
+    class _Query:
+        data = []
+        _operation = "read"
+
+        def select(self, *_args, **_kwargs):
+            self._operation = "read"
+            return self
+
+        def upsert(self, *_args, **_kwargs):
+            self._operation = "write"
+            return self
+
+        def execute(self):
+            if self._operation == "write":
+                raise RuntimeError(
+                    'new row violates row-level security policy for table "locations"'
+                )
+            return self
+
+    class _Client:
+        def table(self, name):
+            if name == "locations":
+                return _Query()
+            raise AssertionError("Unexpected table name")
+
+    monkeypatch.setattr(database_writes.database, "use_supabase", lambda: True)
+    monkeypatch.setattr(database_writes.database, "get_supabase_client", lambda: _Client())
+
+    database_writes.ensure_default_locations()
+
+
+def test_wipe_all_data_supabase_includes_upload_history(monkeypatch):
+    import database_writes
+
+    class _Query:
+        def __init__(self, client, table):
+            self.client = client
+            self.table = table
+            self.count = 3
+
+        def select(self, *_args, **_kwargs):
+            return self
+
+        def delete(self):
+            return self
+
+        def neq(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            self.client.executed.append(self.table)
+            return self
+
+    class _Client:
+        def __init__(self):
+            self.executed = []
+
+        def table(self, name):
+            return _Query(self, name)
+
+    client = _Client()
+    monkeypatch.setattr(database_writes.database, "use_supabase", lambda: True)
+    monkeypatch.setattr(database_writes.database, "get_supabase_admin_client", lambda: client)
+    monkeypatch.setattr(database_writes.database, "get_supabase_client", lambda: None)
+
+    counts, errors = database_writes.wipe_all_data()
+
+    assert errors == []
+    assert counts == {
+        "bill_items": 3,
+        "daily_summary": 3,
+        "category_summary": 3,
+        "upload_history": 3,
+    }
+    assert client.executed == [
+        "bill_items",
+        "daily_summary",
+        "category_summary",
+        "upload_history",
+        "bill_items",
+        "daily_summary",
+        "category_summary",
+        "upload_history",
+    ]

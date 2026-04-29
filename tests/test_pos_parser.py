@@ -1,6 +1,5 @@
 """Tests for pos_parser helper functions."""
 
-import pytest
 from pos_parser import (
     _f,
     _i,
@@ -25,8 +24,6 @@ class TestF:
         assert _f(None) == 0.0
 
     def test_nan(self):
-        import pandas as pd
-
         assert _f(float("nan")) == 0.0
 
     def test_empty_string(self):

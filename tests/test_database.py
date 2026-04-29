@@ -1,8 +1,232 @@
 """Tests for database footfall queries."""
 
+import sys
+from types import SimpleNamespace
+
 import pytest
+
 import config
 import database
+import database_analytics
+
+
+class _BillItemsQuery:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def select(self, _columns):
+        return self
+
+    def in_(self, _column, _values):
+        return self
+
+    def gte(self, _column, _value):
+        return self
+
+    def lte(self, _column, _value):
+        return self
+
+    def execute(self):
+        return SimpleNamespace(data=self.rows)
+
+
+class _BillItemsClient:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def table(self, table_name):
+        assert table_name == "bill_items"
+        return _BillItemsQuery(self.rows)
+
+
+class _TableQuery:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def select(self, _columns):
+        return self
+
+    def eq(self, _column, _value):
+        return self
+
+    def in_(self, _column, _values):
+        return self
+
+    def gte(self, _column, _value):
+        return self
+
+    def lte(self, _column, _value):
+        return self
+
+    def order(self, _column, desc=False):
+        return self
+
+    def execute(self):
+        return SimpleNamespace(data=self.rows)
+
+
+class _TablesClient:
+    def __init__(self, tables):
+        self.tables = tables
+
+    def table(self, table_name):
+        return _TableQuery(self.tables.get(table_name, []))
+
+
+def test_supabase_client_prefers_service_key_for_server_side_reads(monkeypatch):
+    created = []
+
+    def fake_create_client(url, key):
+        created.append((url, key))
+        return {"url": url, "key": key}
+
+    monkeypatch.setattr(config, "SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setattr(config, "SUPABASE_KEY", "anon-key")
+    monkeypatch.setattr(config, "SUPABASE_SERVICE_KEY", "service-key")
+    monkeypatch.setattr(database, "_supabase_client", None)
+    monkeypatch.setitem(sys.modules, "supabase", SimpleNamespace(create_client=fake_create_client))
+
+    client = database.get_supabase_client()
+
+    assert client == {"url": "https://example.supabase.co", "key": "service-key"}
+    assert created == [("https://example.supabase.co", "service-key")]
+
+
+class TestGetServiceSalesForDateRange:
+    def test_supabase_classifies_17xx_timestamps_as_lunch(self, monkeypatch):
+        rows = [
+            {
+                "created_date_time": "2026-04-08 17:30:00",
+                "net_amount": 500.0,
+                "bill_status": "SuccessOrder",
+            },
+            {
+                "created_date_time": "2026-04-08 18:00:00",
+                "net_amount": 700.0,
+                "bill_status": "SuccessOrder",
+            },
+        ]
+        monkeypatch.setattr(database, "use_supabase", lambda: True)
+        monkeypatch.setattr(database, "get_supabase_client", lambda: _BillItemsClient(rows))
+
+        result = database_analytics.get_service_sales_for_date_range(
+            [1], "2026-04-08", "2026-04-08"
+        )
+
+        assert result == [
+            {"type": "Lunch", "amount": 500.0},
+            {"type": "Dinner", "amount": 700.0},
+        ]
+
+    def test_supabase_classifies_pos_non_iso_timestamps_by_hour(self, monkeypatch):
+        rows = [
+            {
+                "created_date_time": "2026-04-8 12:00:00",
+                "net_amount": 400.0,
+                "bill_status": "SuccessOrder",
+            },
+            {
+                "created_date_time": "2026-04-8 21:15:00",
+                "net_amount": 600.0,
+                "bill_status": "SuccessOrder",
+            },
+        ]
+        monkeypatch.setattr(database, "use_supabase", lambda: True)
+        monkeypatch.setattr(database, "get_supabase_client", lambda: _BillItemsClient(rows))
+
+        result = database_analytics.get_service_sales_for_date_range(
+            [1], "2026-04-08", "2026-04-08"
+        )
+
+        assert result == [
+            {"type": "Lunch", "amount": 400.0},
+            {"type": "Dinner", "amount": 600.0},
+        ]
+
+    def test_supabase_uses_pos_12h_heuristic_when_all_hours_are_12_or_less(
+        self, monkeypatch
+    ):
+        rows = [
+            {
+                "created_date_time": "2026-04-26 12:51:40",
+                "net_amount": 1690.01,
+                "bill_status": "SuccessOrder",
+            },
+            {
+                "created_date_time": "2026-04-26 01:00:13",
+                "net_amount": 6425.0,
+                "bill_status": "SuccessOrder",
+            },
+            {
+                "created_date_time": "2026-04-26 08:59:51",
+                "net_amount": 5245.01,
+                "bill_status": "SuccessOrder",
+            },
+        ]
+        monkeypatch.setattr(database, "use_supabase", lambda: True)
+        monkeypatch.setattr(database, "get_supabase_client", lambda: _BillItemsClient(rows))
+
+        result = database_analytics.get_service_sales_for_date_range(
+            [2], "2026-04-26", "2026-04-26"
+        )
+
+        assert result == [
+            {"type": "Lunch", "amount": 8115.01},
+            {"type": "Dinner", "amount": 5245.01},
+        ]
+
+
+class TestSupabaseFootfallSplits:
+    def test_get_summaries_derives_lunch_dinner_covers_from_bill_items(
+        self, monkeypatch
+    ):
+        import database_reads
+
+        client = _TablesClient(
+            {
+                "daily_summary": [
+                    {
+                        "location_id": 2,
+                        "date": "2026-04-22",
+                        "covers": 9,
+                        "net_total": 1000.0,
+                    }
+                ],
+                "bill_items": [
+                    {
+                        "restaurant": "Boteco - Bagmane",
+                        "bill_date": "2026-04-22",
+                        "bill_no": "L1",
+                        "created_date_time": "2026-04-22 12:30:00",
+                        "pax": 2,
+                        "bill_status": "SuccessOrder",
+                    },
+                    {
+                        "restaurant": "Boteco - Bagmane",
+                        "bill_date": "2026-04-22",
+                        "bill_no": "L2",
+                        "created_date_time": "2026-04-22 02:10:00",
+                        "pax": 3,
+                        "bill_status": "SuccessOrder",
+                    },
+                    {
+                        "restaurant": "Boteco - Bagmane",
+                        "bill_date": "2026-04-22",
+                        "bill_no": "D1",
+                        "created_date_time": "2026-04-22 08:45:00",
+                        "pax": 4,
+                        "bill_status": "SuccessOrder",
+                    },
+                ],
+            }
+        )
+        monkeypatch.setattr(database, "use_supabase", lambda: True)
+        monkeypatch.setattr(database, "get_supabase_client", lambda: client)
+
+        rows = database_reads.get_summaries_for_date_range(2, "2026-04-22", "2026-04-22")
+
+        assert rows[0]["lunch_covers"] == 5
+        assert rows[0]["dinner_covers"] == 4
 
 
 class TestGetMonthlyFootfallMulti:
@@ -197,7 +421,10 @@ class TestSessionTokens:
         plain_legacy_token = "legacy-token-123"
         with database.db_connection() as conn:
             conn.execute(
-                "INSERT INTO user_sessions (token, user_id, expires_at) VALUES (?, ?, datetime('now', '+1 day'))",
+                """
+                INSERT INTO user_sessions (token, user_id, expires_at)
+                VALUES (?, ?, datetime('now', '+1 day'))
+                """,
                 (plain_legacy_token, int(user["id"])),
             )
             conn.commit()
@@ -235,6 +462,9 @@ class TestPasswordPolicy:
 
         assert not ok
         assert str(config.MIN_PASSWORD_LENGTH) in msg
+
+    def test_public_password_reset_is_not_exposed(self):
+        assert not hasattr(database, "reset_password")
 
 
 class TestLoginLockout:

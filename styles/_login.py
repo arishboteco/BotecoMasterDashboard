@@ -89,6 +89,12 @@ LOGIN_CSS = r"""
     .login-form-wrap {
         text-align: left;
     }
+    .login-form-wrap div[data-testid="stForm"] {
+        border: none !important;
+        padding: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+    }
     .login-footer {
         margin-top: 1.25rem;
         font-family: 'Inter', sans-serif;
@@ -134,6 +140,29 @@ LOGIN_CSS = r"""
     [data-testid="stDecoration"] { display: none !important; }
     #MainMenu { visibility: hidden !important; }
     footer { visibility: hidden !important; }
+
+    /* ── Hide CookieController visual mount / blank box ────────────────── */
+    iframe[title*="cookie"],
+    iframe[src*="streamlit_cookies"],
+    iframe[src*="cookie"] {
+        display: none !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        visibility: hidden !important;
+    }
+
+    /* Hide the Streamlit wrapper around the cookie iframe */
+    div[data-testid="stElementContainer"]:has(iframe[title*="cookie"]),
+    div[data-testid="stElementContainer"]:has(iframe[src*="cookie"]),
+    div[data-testid="stVerticalBlock"]:has(iframe[title*="cookie"]),
+    div[data-testid="stVerticalBlock"]:has(iframe[src*="cookie"]) {
+        display: none !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+    }
 
     /* ── Image centering ──────────────────────────────── */
     .login-card [data-testid="stImage"] {

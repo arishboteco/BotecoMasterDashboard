@@ -11,9 +11,9 @@ class TestResolvePeriodWindow:
     def test_custom_period_requires_dates(self):
         try:
             resolve_period_window("Custom")
-            assert False, "Expected ValueError for missing custom dates"
         except ValueError:
-            assert True
+            return
+        raise AssertionError("Expected ValueError for missing custom dates")
 
     def test_custom_period_returns_no_prior(self):
         start, end, prior_start, prior_end, period_key = resolve_period_window(

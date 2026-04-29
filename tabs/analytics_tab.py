@@ -74,22 +74,26 @@ def _add_target_columns(
         day_targets = utils.compute_day_targets(monthly_target, weekday_mix)
         loc_day_targets[lid] = day_targets
 
-    def _get_target_for_row(row):
-        lid = row.get("location_id")
-        date_str = str(row.get("date", ""))[:10]
-        if lid in loc_day_targets:
-            return utils.get_target_for_date(loc_day_targets[lid], date_str)
-        return 0.0
+    # Vectorized target lookup. Per-row .apply is slow on large date ranges;
+    # parse the date column once and join via a (location_id, weekday) key.
+    parsed = pd.to_datetime(df["date"].astype(str).str[:10], errors="coerce")
+    weekday_names = parsed.dt.weekday.map(
+        lambda i: utils.WEEKDAY_NAMES[int(i)] if pd.notna(i) else None
+    )
+    target_lookup: Dict[tuple, float] = {
+        (lid, wd): float(val)
+        for lid, day_targets in loc_day_targets.items()
+        for wd, val in (day_targets or {}).items()
+    }
+    keys = list(zip(df["location_id"].tolist(), weekday_names.tolist()))
+    df["target"] = pd.Series(
+        [target_lookup.get(k, 0.0) for k in keys], index=df.index
+    )
 
-    def _calc_pct_target(row):
-        tgt = float(row.get("target") or 0)
-        net = float(row.get("net_total") or 0)
-        if tgt > 0:
-            return round((net / tgt) * 100, 2)
-        return 0.0
-
-    df["target"] = df.apply(_get_target_for_row, axis=1)
-    df["pct_target"] = df.apply(_calc_pct_target, axis=1)
+    target = pd.to_numeric(df["target"], errors="coerce").fillna(0.0)
+    net = pd.to_numeric(df["net_total"], errors="coerce").fillna(0.0)
+    pct = (net.divide(target.where(target > 0)) * 100).fillna(0.0).round(2)
+    df["pct_target"] = pct
 
     return df
 
@@ -280,7 +284,6 @@ def render(ctx: TabContext) -> None:
                     df,
                     df_raw,
                     multi_analytics,
-                    prior_df=prior_df,
                     analysis_period=analysis_period,
                 )
                 with classed_container("tab-analytics-mobile-secondary", "mobile-layout-secondary"):

@@ -21,29 +21,27 @@ rendered to PDF and converted to PNG via PyMuPDF, then stacked with Pillow.
 
 import os
 import re
-from io import BytesIO
 from datetime import datetime, timedelta
+from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
 from xml.sax.saxutils import escape
 
+import fitz
 import streamlit as st
-
+from PIL import Image as PILImage
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import (
-    SimpleDocTemplate,
-    Table,
-    TableStyle,
-    Spacer,
-    Flowable,
-    Paragraph,
-)
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-
-import fitz
-from PIL import Image as PILImage
+from reportlab.platypus import (
+    Flowable,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 import config
 from exceptions import ReportGenerationError
@@ -51,9 +49,7 @@ from exceptions import ReportGenerationError
 # ── Font registration ────────────────────────────────────────────────────────
 FONT_DIR = os.path.join(os.path.dirname(__file__), "fonts")
 pdfmetrics.registerFont(TTFont("DejaVuSans", os.path.join(FONT_DIR, "DejaVuSans.ttf")))
-pdfmetrics.registerFont(
-    TTFont("DejaVuSans-Bold", os.path.join(FONT_DIR, "DejaVuSans-Bold.ttf"))
-)
+pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", os.path.join(FONT_DIR, "DejaVuSans-Bold.ttf")))
 
 # ── Palette (Boteco Mango) ─────────────────────────────────────────────────
 C_PAGE = "#F7FAFC"
@@ -67,6 +63,15 @@ C_DATE_LABEL = "#A5BCD2"
 C_MUTED = "#64748B"
 C_BORDER = "#E2E8F0"
 C_BAND = "#EDF2F7"
+C_ROW_OPS = "#E8F2FB"
+C_ROW_DEDUCTION = "#FDECEC"
+C_ROW_EXCEPTION = "#FFF4D8"
+C_ROW_FORECAST = "#E8F2FB"
+C_ROW_REQUIRED_RUN_RATE = "#EEF2FF"
+C_ROW_TARGET_NEUTRAL = "#EEF2F7"
+C_ROW_TARGET_GOOD = "#EAF7EF"
+C_ROW_TARGET_WARN = "#FFF4D8"
+C_ROW_TARGET_BAD = "#FDECEC"
 C_GREEN = "#2E7D32"
 C_AMBER = "#946B00"
 C_RED = "#DC2626"
@@ -117,6 +122,38 @@ def _hex(hx: str) -> colors.HexColor:
     return colors.HexColor(hx)
 
 
+OPS_SUMMARY_ROWS = {"Covers", "Turns", "APC (Day)", "APC (Month)"}
+DEDUCTION_SUMMARY_ROWS = {"Discount", "MTD Discount"}
+EXCEPTION_SUMMARY_ROWS = {"Complimentary", "MTD Complimentary"}
+
+
+def _target_row_bg(color: str | None) -> str:
+    if color == C_GREEN:
+        return C_ROW_TARGET_GOOD
+    if color == C_AMBER:
+        return C_ROW_TARGET_WARN
+    return C_ROW_TARGET_BAD
+
+
+def _sales_summary_row_bg(label: str, status_color: str | None = None) -> str | None:
+    """Return the semantic background for a sales summary row label."""
+    if label in OPS_SUMMARY_ROWS:
+        return C_ROW_OPS
+    if label in DEDUCTION_SUMMARY_ROWS:
+        return C_ROW_DEDUCTION
+    if label in EXCEPTION_SUMMARY_ROWS:
+        return C_ROW_EXCEPTION
+    if label == "Sales Target":
+        return C_ROW_TARGET_NEUTRAL
+    if label == "Forecast Month-End":
+        return C_ROW_FORECAST
+    if label in {"% of Target", "Forecast vs Target", "Required Daily Run Rate"}:
+        if label == "Required Daily Run Rate":
+            return C_ROW_TARGET_NEUTRAL if status_color == C_GREEN else C_ROW_REQUIRED_RUN_RATE
+        return _target_row_bg(status_color)
+    return None
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -164,10 +201,7 @@ def _to_super_category(name: str) -> str:
         return "Liquor"
     if any(x in k for x in ("tobacco", "hookah", "cigar")):
         return "Tobacco"
-    if any(
-        x in k
-        for x in ("coffee", "hot beverage", "hot beverages", "espresso", "cappuccino")
-    ):
+    if any(x in k for x in ("coffee", "hot beverage", "hot beverages", "espresso", "cappuccino")):
         return "Coffee"
     if any(
         x in k
@@ -257,9 +291,7 @@ def compute_forecast_metrics(
 
     pct = (forecast / mtd_target) * 100.0 if mtd_target > 0 else None
     gap = (forecast - mtd_target) if mtd_target > 0 else None
-    req_run_rate = (
-        (mtd_target - mtd_net) / remaining if mtd_target > 0 and remaining > 0 else None
-    )
+    req_run_rate = (mtd_target - mtd_net) / remaining if mtd_target > 0 and remaining > 0 else None
 
     return {
         "days_in_month": dim,
@@ -360,7 +392,10 @@ def build_verbose_daily_summary(report_data: Dict[str, Any]) -> str:
         f"Forecast month-end: {_r(forecast['forecast_month_end_sales'])} "
         f"({forecast['forecast_target_pct']:.0f}% of target)."
         if forecast["forecast_target_pct"] is not None
-        else f"Forecast month-end: {_r(forecast['forecast_month_end_sales'])}; target comparison unavailable."
+        else (
+            f"Forecast month-end: {_r(forecast['forecast_month_end_sales'])}; "
+            "target comparison unavailable."
+        )
     )
     line_3 = (
         "Comparison to previous day/week benchmark unavailable due to incomplete history."
@@ -443,12 +478,14 @@ def compute_metric_statuses(
 
 def _pdf_bytes_to_png(pdf_bytes: BytesIO, dpi: int = DPI) -> BytesIO:
     """Convert a single-page PDF to a PNG BytesIO at the given DPI."""
-    doc = fitz.open(stream=pdf_bytes.read(), filetype="pdf")
+    doc = fitz.open(stream=pdf_bytes.getvalue(), filetype="pdf")
     page = doc[0]
     pix = page.get_pixmap(dpi=dpi)
     img = PILImage.frombytes("RGB", [pix.width, pix.height], pix.samples)
     buf = BytesIO()
-    img.save(buf, format="PNG", optimize=False)
+    # compress_level=1 trades a few KB of size for ~2-3x faster PNG encoding;
+    # dashboard previews don't need maximal compression.
+    img.save(buf, format="PNG", optimize=False, compress_level=1)
     buf.seek(0)
     doc.close()
     return buf
@@ -478,7 +515,7 @@ def _render_elements_to_png(
         w, h = flowable.wrap(avail_w, 100000)
         total_height += h
 
-    page_h = total_height + top_margin + bottom_margin + 4
+    page_h = total_height + top_margin + bottom_margin + 24
     if page_h < 100:
         page_h = 100
 
@@ -495,9 +532,7 @@ def _render_elements_to_png(
     doc.build(story, onFirstPage=lambda d, c: None, onLaterPages=lambda d, c: None)
     buf.seek(0)
 
-    pdf_buf = BytesIO(buf.getvalue())
-    png_buf = _pdf_bytes_to_png(pdf_buf, dpi=dpi)
-    return png_buf
+    return _pdf_bytes_to_png(buf, dpi=dpi)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -552,26 +587,6 @@ class _EmptyDataFlowable(Flowable):
         canvas.setFont(FONT_NAME, FONT_SIZE_ROW)
         canvas.setFillColor(_hex(self.color))
         canvas.drawCentredString(self.fwidth / 2, 6, self.text)
-
-
-class _SubsectionLabelFlowable(Flowable):
-    """Bold colored label for sub-sections (Monthly, Weekly)."""
-
-    def __init__(self, width: float, text: str, color: str = C_BRAND):
-        Flowable.__init__(self)
-        self.fwidth = width
-        self.text = text
-        self.color = color
-        self.height = FONT_SIZE_ROW + 4
-
-    def wrap(self, availWidth, availHeight):
-        return (self.fwidth, self.height)
-
-    def draw(self):
-        canvas = self.canv
-        canvas.setFont(FONT_BOLD, FONT_SIZE_ROW)
-        canvas.setFillColor(_hex(self.color))
-        canvas.drawString(BANNER_PAD_LEFT, 2, self.text)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -652,17 +667,11 @@ def _row_style_override(
     """Return TableStyle command tuples for a specific row range."""
     overrides = []
     if bg_color:
-        overrides.append(
-            ("BACKGROUND", (col_start, row_idx), (col_end, row_idx), _hex(bg_color))
-        )
+        overrides.append(("BACKGROUND", (col_start, row_idx), (col_end, row_idx), _hex(bg_color)))
     if text_color:
-        overrides.append(
-            ("TEXTCOLOR", (col_start, row_idx), (col_end, row_idx), _hex(text_color))
-        )
+        overrides.append(("TEXTCOLOR", (col_start, row_idx), (col_end, row_idx), _hex(text_color)))
     if bold:
-        overrides.append(
-            ("FONTNAME", (col_start, row_idx), (col_end, row_idx), FONT_BOLD)
-        )
+        overrides.append(("FONTNAME", (col_start, row_idx), (col_end, row_idx), FONT_BOLD))
     return overrides
 
 
@@ -686,9 +695,7 @@ def _section_key_slug(value: str, default: str = "outlet") -> str:
     return slug[:22]
 
 
-def _outlet_col_widths_pt(
-    n_outlets: int, total_w: float, label_frac: float = 0.24
-) -> List[float]:
+def _outlet_col_widths_pt(n_outlets: int, total_w: float, label_frac: float = 0.24) -> List[float]:
     """Column widths in points for [Label, Outlet1, ..., OutletN, Combined]."""
     if n_outlets <= 1:
         return [total_w * label_frac, total_w * (1 - label_frac)]
@@ -884,9 +891,7 @@ def _build_sales_summary(
     headers = (
         ["", ""]
         if not multi
-        else (
-            [""] + [_short_outlet_name(nm, 16) for nm, _ in per_outlet] + ["Combined"]
-        )
+        else ([""] + [_short_outlet_name(nm, 16) for nm, _ in per_outlet] + ["Combined"])
     )
 
     rows = [headers]
@@ -914,15 +919,11 @@ def _build_sales_summary(
             outlet_vals = [key_or_fn(od) for _, od in per_outlet] if multi else []
         else:
             combined_val = r.get(key_or_fn, 0)
-            outlet_vals = (
-                [od.get(key_or_fn, 0) for _, od in per_outlet] if multi else []
-            )
+            outlet_vals = [od.get(key_or_fn, 0) for _, od in per_outlet] if multi else []
 
         if multi:
             cells = (
-                [label]
-                + [_fmt_cell(v, fmt) for v in outlet_vals]
-                + [_fmt_cell(combined_val, fmt)]
+                [label] + [_fmt_cell(v, fmt) for v in outlet_vals] + [_fmt_cell(combined_val, fmt)]
             )
         else:
             cells = [label, _fmt_cell(combined_val, fmt)]
@@ -969,23 +970,16 @@ def _build_sales_summary(
         # other_sales kept for old data but not shown unless non-zero
         ("Other / Wallet", "other_sales"),
     ]
-    has_day_sales = float(r.get("gross_total") or 0) > 0 or float(
-        r.get("net_total") or 0
-    ) > 0
+    has_day_sales = float(r.get("gross_total") or 0) > 0 or float(r.get("net_total") or 0) > 0
     if multi and per_outlet:
         has_day_sales = has_day_sales or any(
-            float(od.get("gross_total") or 0) > 0
-            or float(od.get("net_total") or 0) > 0
+            float(od.get("gross_total") or 0) > 0 or float(od.get("net_total") or 0) > 0
             for _, od in per_outlet
         )
     for lbl, key in pay_keys:
         combined_v = float(r.get(key) or 0)
         outlet_vs = [float(od.get(key) or 0) for _, od in per_outlet] if multi else []
-        if (
-            has_day_sales
-            or combined_v != 0
-            or any(v != 0 for v in outlet_vs)
-        ):
+        if has_day_sales or combined_v != 0 or any(v != 0 for v in outlet_vs):
             add_row(lbl, key)
 
     add_row("EOD Gross Total", "gross_total", bold=True, bg=C_BAND)
@@ -1000,11 +994,7 @@ def _build_sales_summary(
     for lbl, key in tax_keys:
         combined_v = float(r.get(key) or 0)
         outlet_vs = [float(od.get(key) or 0) for _, od in per_outlet] if multi else []
-        if (
-            has_day_sales
-            or combined_v != 0
-            or any(v != 0 for v in outlet_vs)
-        ):
+        if has_day_sales or combined_v != 0 or any(v != 0 for v in outlet_vs):
             disc_color = C_RED if key == "discount" else None
             add_row(lbl, key, right_color=disc_color)
 
@@ -1021,9 +1011,7 @@ def _build_sales_summary(
     mtd_rows = (
         [["", ""]]
         if not multi
-        else (
-            [""] + [_short_outlet_name(nm, 16) for nm, _ in per_outlet] + ["Combined"]
-        )
+        else ([""] + [_short_outlet_name(nm, 16) for nm, _ in per_outlet] + ["Combined"])
     )
     mtd_data = [mtd_rows]
     mtd_overrides = []
@@ -1036,15 +1024,11 @@ def _build_sales_summary(
             outlet_vals = [key_or_fn(od) for _, od in per_outlet] if multi else []
         else:
             combined_val = r.get(key_or_fn, 0)
-            outlet_vals = (
-                [od.get(key_or_fn, 0) for _, od in per_outlet] if multi else []
-            )
+            outlet_vals = [od.get(key_or_fn, 0) for _, od in per_outlet] if multi else []
 
         if multi:
             cells = (
-                [label]
-                + [_fmt_cell(v, fmt) for v in outlet_vals]
-                + [_fmt_cell(combined_val, fmt)]
+                [label] + [_fmt_cell(v, fmt) for v in outlet_vals] + [_fmt_cell(combined_val, fmt)]
             )
         else:
             cells = [label, _fmt_cell(combined_val, fmt)]
@@ -1062,9 +1046,7 @@ def _build_sales_summary(
         mri += 1
 
     add_mtd_row("MTD Total Covers", "mtd_total_covers", fmt="int", bold=True)
-    add_mtd_row(
-        "APC (Day)", "apc", fmt="currency", right_color=statuses["apc"]["color"]
-    )
+    add_mtd_row("APC (Day)", "apc", fmt="currency", right_color=statuses["apc"]["color"])
 
     def _apc_month(d):
         mtd_net = float(d.get("mtd_net_sales") or 0)
@@ -1088,9 +1070,7 @@ def _build_sales_summary(
 
     add_mtd_row("MTD Net (Excl. Disc.)", _mtd_net_excl, fmt="currency", bold=True)
     add_mtd_row("Sales Target", "mtd_target", fmt="currency")
-    add_mtd_row(
-        "% of Target", "mtd_pct_target", fmt="pct", bold=True, right_color=ach_color
-    )
+    add_mtd_row("% of Target", "mtd_pct_target", fmt="pct", bold=True, right_color=ach_color)
 
     def _forecast_end(d):
         return compute_forecast_metrics(d)["forecast_month_end_sales"]
@@ -1115,10 +1095,7 @@ def _build_sales_summary(
     add_mtd_row("Required Daily Run Rate", _required_run_rate, fmt="str")
 
     # Build the sales summary table
-    all_data = rows[1:]  # skip header for main section
-    full_data = rows + mtd_data[1:]  # combine
     n_header = len(rows)
-    n_mtd = len(mtd_data) - 1
 
     # Combine EOD title rows + sales summary + MTD data (single table, aligned widths)
     META_ROWS = 2
@@ -1171,10 +1148,17 @@ def _build_sales_summary(
         ("TEXTCOLOR", (0, FIRST_BODY_ROW), (-1, -1), _hex(C_SLATE)),
     ]
 
-    # Alternating rows (body only; preserves pre-meta striping pattern)
-    for i in range(FIRST_BODY_ROW, len(all_rows)):
-        if (i - FIRST_BODY_ROW) % 2 == 1:
-            style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(C_BAND)))
+    for i, row in enumerate(all_rows):
+        if not row:
+            continue
+        status_color = None
+        if row[0] == "% of Target":
+            status_color = ach_color
+        elif row[0] in {"Forecast vs Target", "Required Daily Run Rate"}:
+            status_color = statuses["forecast"]["color"]
+        bg = _sales_summary_row_bg(str(row[0]), status_color)
+        if bg:
+            style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(bg)))
 
     # Net Total row highlight (row before MTD section label)
     net_total_row = n_header - 1 + META_ROWS
@@ -1218,15 +1202,11 @@ def _build_sales_summary(
     # APC day color
     for i, row in enumerate(all_rows):
         if row and row[0] == "APC (Day)":
-            style_cmds.append(
-                ("TEXTCOLOR", (1, i), (-1, i), _hex(statuses["apc"]["color"]))
-            )
+            style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(statuses["apc"]["color"])))
         if row and row[0] == "% of Target":
             style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(ach_color)))
         if row and row[0] == "Forecast vs Target":
-            style_cmds.append(
-                ("TEXTCOLOR", (1, i), (-1, i), _hex(statuses["forecast"]["color"]))
-            )
+            style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(statuses["forecast"]["color"])))
 
     tbl.setStyle(TableStyle(style_cmds))
     elements.append(tbl)
@@ -1256,9 +1236,7 @@ def _build_category(
     outlet_daily_cats = []
     if multi and per_outlet:
         for _, od in per_outlet:
-            outlet_daily_cats.append(
-                _collapse_super_category_amounts(od.get("categories") or [])
-            )
+            outlet_daily_cats.append(_collapse_super_category_amounts(od.get("categories") or []))
 
     cat_order = [x for x in std_cats if x in daily_cat or x in mtd_category]
     for k in sorted(mtd_category.keys()):
@@ -1290,10 +1268,7 @@ def _build_category(
         if not multi
         else (
             ["Category"]
-            + [
-                _short_outlet_name(nm, 8 if len(per_outlet) > 2 else 10)
-                for nm, _ in per_outlet
-            ]
+            + [_short_outlet_name(nm, 8 if len(per_outlet) > 2 else 10) for nm, _ in per_outlet]
             + ["Comb.", "MTD"]
         )
     )
@@ -1303,14 +1278,12 @@ def _build_category(
     mtd_total = 0.0
     outlet_totals = [0.0] * len(outlet_daily_cats) if multi else []
 
-    for idx, name in enumerate(cat_order):
+    for name in cat_order:
         d_amt = daily_cat.get(name, 0.0)
         m_amt = float(mtd_category.get(name, 0) or 0)
         daily_total += d_amt
         mtd_total += m_amt
-        pct = (
-            f"({int(round(100 * m_amt / total_cat_mtd))}%)" if total_cat_mtd > 0 else ""
-        )
+        pct = f"({int(round(100 * m_amt / total_cat_mtd))}%)" if total_cat_mtd > 0 else ""
         name_with_pct = f"{name} {pct}" if pct else name
         if multi:
             outlet_amts = []
@@ -1325,16 +1298,14 @@ def _build_category(
 
     # Totals row
     if multi:
-        tot_cells = (
-            ["Total"]
-            + [_r(t) for t in outlet_totals]
-            + [_r(daily_total), _r(mtd_total)]
-        )
+        tot_cells = ["Total"] + [_r(t) for t in outlet_totals] + [_r(daily_total), _r(mtd_total)]
     else:
         tot_cells = ["Total", _r(daily_total), _r(mtd_total)]
     rows.append(tot_cells)
 
     all_rows = prefix + rows
+    total_row_idx = len(all_rows) - 1
+    last_col_idx = len(col_w) - 1
     tbl = Table(all_rows, colWidths=col_w)
     style_cmds = [
         ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
@@ -1350,9 +1321,9 @@ def _build_category(
             style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(C_BAND)))
     style_cmds.extend(
         [
-            ("BACKGROUND", (0, -1), (-1, -1), _hex(C_BANNER)),
-            ("TEXTCOLOR", (0, -1), (-1, -1), _hex(C_WHITE)),
-            ("FONTNAME", (0, -1), (-1, -1), FONT_BOLD),
+            ("BACKGROUND", (0, total_row_idx), (last_col_idx, total_row_idx), _hex(C_BANNER)),
+            ("TEXTCOLOR", (0, total_row_idx), (last_col_idx, total_row_idx), _hex(C_WHITE)),
+            ("FONTNAME", (0, total_row_idx), (last_col_idx, total_row_idx), FONT_BOLD),
         ]
     )
 
@@ -1415,9 +1386,7 @@ def _build_service(
     FIRST_BODY_ROW = 3
 
     if not svc_order:
-        prefix = _section_table_prefix_rows(
-            col_w, title_svc, day_lbl, style_tag="SvcSec"
-        )
+        prefix = _section_table_prefix_rows(col_w, title_svc, day_lbl, style_tag="SvcSec")
         n_cols = len(col_w)
         empty_tail = [""] * (n_cols - 1)
         sty_msg = ParagraphStyle(
@@ -1464,10 +1433,7 @@ def _build_service(
         if not multi
         else (
             ["Service"]
-            + [
-                _short_outlet_name(nm, 8 if len(per_outlet) > 2 else 10)
-                for nm, _ in per_outlet
-            ]
+            + [_short_outlet_name(nm, 8 if len(per_outlet) > 2 else 10) for nm, _ in per_outlet]
             + ["Comb.", "MTD"]
         )
     )
@@ -1477,14 +1443,12 @@ def _build_service(
     mtd_total = 0.0
     outlet_totals = [0.0] * len(outlet_daily_svcs) if multi else []
 
-    for idx, name in enumerate(svc_order):
+    for name in svc_order:
         d_amt = daily_svc.get(name, 0.0)
         m_amt = float(mtd_service.get(name, 0) or 0)
         daily_total += d_amt
         mtd_total += m_amt
-        pct = (
-            f"({int(round(100 * m_amt / total_svc_mtd))}%)" if total_svc_mtd > 0 else ""
-        )
+        pct = f"({int(round(100 * m_amt / total_svc_mtd))}%)" if total_svc_mtd > 0 else ""
         name_with_pct = f"{name} {pct}" if pct else name
         if multi:
             outlet_amts = []
@@ -1498,16 +1462,14 @@ def _build_service(
         rows.append(cells)
 
     if multi:
-        tot_cells = (
-            ["Total"]
-            + [_r(t) for t in outlet_totals]
-            + [_r(daily_total), _r(mtd_total)]
-        )
+        tot_cells = ["Total"] + [_r(t) for t in outlet_totals] + [_r(daily_total), _r(mtd_total)]
     else:
         tot_cells = ["Total", _r(daily_total), _r(mtd_total)]
     rows.append(tot_cells)
 
     all_rows = prefix + rows
+    total_row_idx = len(all_rows) - 1
+    last_col_idx = len(col_w) - 1
     tbl = Table(all_rows, colWidths=col_w)
     style_cmds = [
         ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
@@ -1523,9 +1485,9 @@ def _build_service(
             style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(C_BAND)))
     style_cmds.extend(
         [
-            ("BACKGROUND", (0, -1), (-1, -1), _hex(C_BANNER)),
-            ("TEXTCOLOR", (0, -1), (-1, -1), _hex(C_WHITE)),
-            ("FONTNAME", (0, -1), (-1, -1), FONT_BOLD),
+            ("BACKGROUND", (0, total_row_idx), (last_col_idx, total_row_idx), _hex(C_BANNER)),
+            ("TEXTCOLOR", (0, total_row_idx), (last_col_idx, total_row_idx), _hex(C_WHITE)),
+            ("FONTNAME", (0, total_row_idx), (last_col_idx, total_row_idx), FONT_BOLD),
         ]
     )
 
@@ -1548,9 +1510,7 @@ def _build_footfall(
     FIRST_BODY_ROW = 3
 
     if not rows_data:
-        prefix = _section_table_prefix_rows(
-            col_w, ff_title, ff_sub, style_tag="FfSec"
-        )
+        prefix = _section_table_prefix_rows(col_w, ff_title, ff_sub, style_tag="FfSec")
         n_cols = len(col_w)
         empty_tail = [""] * (n_cols - 1)
         sty_msg = ParagraphStyle(
@@ -1711,9 +1671,7 @@ def _build_footfall_metrics(
         pct = ((current - previous) / previous) * 100
         return f"{pct:+.2f}%"
 
-    def _calc_avg_pct_change(
-        curr_foot: int, curr_days: int, prev_foot: int, prev_days: int
-    ) -> str:
+    def _calc_avg_pct_change(curr_foot: int, curr_days: int, prev_foot: int, prev_days: int) -> str:
         if prev_days == 0 or prev_foot == 0:
             return "\u2014"
         curr_avg = curr_foot / curr_days
@@ -1731,7 +1689,6 @@ def _build_footfall_metrics(
     ]
 
     if monthly:
-        elements.append(_SubsectionLabelFlowable(avail_w, "Monthly"))
         headers = [
             "Month",
             "Footfall",
@@ -1765,9 +1722,7 @@ def _build_footfall_metrics(
             monthly_best_idx["daily_avg"] = max(valid_avgs, key=lambda x: x[1])[0]
             monthly_worst_idx["daily_avg"] = min(valid_avgs, key=lambda x: x[1])[0]
 
-        prefix = _section_table_prefix_rows(
-            col_w, ffm_title, ffm_sub, style_tag="FfmSec"
-        )
+        prefix = _section_table_prefix_rows(col_w, ffm_title, ffm_sub, style_tag="FfmSec")
         table_rows = [headers]
         for idx, row in enumerate(sorted_monthly[:9]):
             month = str(row.get("month", ""))
@@ -1788,9 +1743,7 @@ def _build_footfall_metrics(
                 prev_covers = int(prev_row.get("covers") or 0)
                 prev_days = int(prev_row.get("total_days") or 0)
                 foot_pct = _calc_pct_change(covers, prev_covers)
-                avg_pct = _calc_avg_pct_change(
-                    covers, total_days, prev_covers, prev_days
-                )
+                avg_pct = _calc_avg_pct_change(covers, total_days, prev_covers, prev_days)
 
             table_rows.append(
                 [
@@ -1812,9 +1765,7 @@ def _build_footfall_metrics(
             ("LINEABOVE", (0, 0), (-1, 0), 2.5, _hex(C_BRAND)),
         ]
         style_cmds.extend(
-            _meta_header_table_style_cmds(
-                header_row=HEADER_ROW, first_body_row=FIRST_BODY_ROW
-            )
+            _meta_header_table_style_cmds(header_row=HEADER_ROW, first_body_row=FIRST_BODY_ROW)
         )
         for i in range(FIRST_BODY_ROW, len(all_rows)):
             if (i - FIRST_BODY_ROW) % 2 == 1:
@@ -1837,7 +1788,6 @@ def _build_footfall_metrics(
         elements.append(Spacer(1, GAP_ABOVE_SECTION_LABEL))
 
     if weekly:
-        elements.append(_SubsectionLabelFlowable(avail_w, "Weekly"))
         headers = [
             "Week",
             "Footfall",
@@ -1873,9 +1823,7 @@ def _build_footfall_metrics(
         w_prefix = (
             []
             if monthly
-            else _section_table_prefix_rows(
-                col_w, ffm_title, ffm_sub, style_tag="FfmWk"
-            )
+            else _section_table_prefix_rows(col_w, ffm_title, ffm_sub, style_tag="FfmWk")
         )
         table_rows = [headers]
         for idx, row in enumerate(sorted_weekly[:4]):
@@ -1891,9 +1839,7 @@ def _build_footfall_metrics(
                 prev_covers = int(prev_row.get("covers") or 0)
                 prev_days = int(prev_row.get("total_days") or 0)
                 foot_pct = _calc_pct_change(covers, prev_covers)
-                avg_pct = _calc_avg_pct_change(
-                    covers, total_days, prev_covers, prev_days
-                )
+                avg_pct = _calc_avg_pct_change(covers, total_days, prev_covers, prev_days)
 
             table_rows.append(
                 [
@@ -1938,9 +1884,7 @@ def _build_footfall_metrics(
                 ("LINEABOVE", (0, 0), (-1, 0), 2.5, _hex(C_BRAND)),
             ]
             style_cmds.extend(
-                _meta_header_table_style_cmds(
-                    header_row=HEADER_ROW, first_body_row=FIRST_BODY_ROW
-                )
+                _meta_header_table_style_cmds(header_row=HEADER_ROW, first_body_row=FIRST_BODY_ROW)
             )
             for i in range(FIRST_BODY_ROW, len(all_rows)):
                 if (i - FIRST_BODY_ROW) % 2 == 1:
@@ -1962,9 +1906,7 @@ def _build_footfall_metrics(
         elements.append(tbl)
 
     if not monthly and not weekly:
-        prefix = _section_table_prefix_rows(
-            col_w, ffm_title, ffm_sub, style_tag="FfmEm"
-        )
+        prefix = _section_table_prefix_rows(col_w, ffm_title, ffm_sub, style_tag="FfmEm")
         n_cols = len(col_w)
         empty_tail = [""] * (n_cols - 1)
         sty_msg = ParagraphStyle(
@@ -1975,9 +1917,7 @@ def _build_footfall_metrics(
             alignment=TA_CENTER,
             leading=FONT_SIZE_ROW + 2,
         )
-        msg_para = Paragraph(
-            escape("No footfall metrics data available"), sty_msg
-        )
+        msg_para = Paragraph(escape("No footfall metrics data available"), sty_msg)
         all_empty = prefix + [[msg_para] + empty_tail]
         tbl_empty = Table(all_empty, colWidths=col_w)
         empty_cmds = [
@@ -2026,9 +1966,7 @@ def generate_sheet_style_report_sections(
     per_outlet_footfall: Optional[List[Tuple[str, List[Dict[str, Any]]]]] = None,
     footfall_metrics_monthly: Optional[List[Dict]] = None,
     footfall_metrics_weekly: Optional[List[Dict]] = None,
-    per_outlet_footfall_metrics: Optional[
-        List[Tuple[str, List[Dict], List[Dict]]]
-    ] = None,
+    per_outlet_footfall_metrics: Optional[List[Tuple[str, List[Dict], List[Dict]]]] = None,
     daily_sales_history: Optional[List[Dict]] = None,
 ) -> Dict[str, BytesIO]:
     r = report_data
@@ -2064,9 +2002,7 @@ def generate_sheet_style_report_sections(
         r,
         location_name,
         mc,
-        _sheet_date_label(
-            str(r.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]
-        ),
+        _sheet_date_label(str(r.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]),
         n_outlets=n_outlets,
         per_outlet=per_outlet,
         per_outlet_category=per_outlet_cat,
@@ -2078,9 +2014,7 @@ def generate_sheet_style_report_sections(
         r,
         location_name,
         ms,
-        _sheet_date_label(
-            str(r.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]
-        ),
+        _sheet_date_label(str(r.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]),
         n_outlets=n_outlets,
         per_outlet=per_outlet,
         per_outlet_service=per_outlet_svc,
@@ -2090,13 +2024,9 @@ def generate_sheet_style_report_sections(
     # Footfall
     if per_outlet_ff_metrics and len(per_outlet_ff_metrics) > 1:
         for idx, (outlet_name, mo_rows, wk_rows) in enumerate(per_outlet_ff_metrics):
-            elements = _build_footfall_metrics(
-                mo_rows, wk_rows, outlet_name, n_outlets=n_outlets
-            )
+            elements = _build_footfall_metrics(mo_rows, wk_rows, outlet_name, n_outlets=n_outlets)
             outlet_slug = _section_key_slug(outlet_name, default=f"outlet_{idx}")
-            out[f"footfall_metrics__{outlet_slug}_{idx}"] = _render_elements_to_png(
-                elements, width
-            )
+            out[f"footfall_metrics__{outlet_slug}_{idx}"] = _render_elements_to_png(elements, width)
     elif ff_metrics_mo or ff_metrics_wk:
         elements = _build_footfall_metrics(
             ff_metrics_mo, ff_metrics_wk, location_name, n_outlets=n_outlets
@@ -2107,9 +2037,7 @@ def generate_sheet_style_report_sections(
             ff_rows = list(ff_rows or [])
             elements = _build_footfall(ff_rows, outlet_name, n_outlets=n_outlets)
             outlet_slug = _section_key_slug(outlet_name, default=f"outlet_{idx}")
-            out[f"footfall__{outlet_slug}_{idx}"] = _render_elements_to_png(
-                elements, width
-            )
+            out[f"footfall__{outlet_slug}_{idx}"] = _render_elements_to_png(elements, width)
     else:
         elements = _build_footfall(mf, location_name, n_outlets=n_outlets)
         out["footfall"] = _render_elements_to_png(elements, width)
@@ -2129,9 +2057,7 @@ def generate_sheet_style_report_image(
     per_outlet_footfall: Optional[List[Tuple[str, List[Dict[str, Any]]]]] = None,
     footfall_metrics_monthly: Optional[List[Dict]] = None,
     footfall_metrics_weekly: Optional[List[Dict]] = None,
-    per_outlet_footfall_metrics: Optional[
-        List[Tuple[str, List[Dict], List[Dict]]]
-    ] = None,
+    per_outlet_footfall_metrics: Optional[List[Tuple[str, List[Dict], List[Dict]]]] = None,
 ) -> BytesIO:
     sections = generate_sheet_style_report_sections(
         report_data,
@@ -2156,9 +2082,7 @@ def generate_sheet_style_report_image(
             imgs.append(PILImage.open(buf).convert("RGB"))
 
     footfall_keys = [
-        key
-        for key in sections.keys()
-        if isinstance(key, str) and key.startswith("footfall")
+        key for key in sections.keys() if isinstance(key, str) and key.startswith("footfall")
     ]
     if not footfall_keys:
         return BytesIO()
@@ -2183,9 +2107,7 @@ def generate_sheet_style_report_image(
     return buf
 
 
-def generate_report_image(
-    report_data: Dict, location_name: str = "Boteco Bangalore"
-) -> BytesIO:
+def generate_report_image(report_data: Dict, location_name: str = "Boteco Bangalore") -> BytesIO:
     try:
         return generate_sheet_style_report_image(
             report_data,
