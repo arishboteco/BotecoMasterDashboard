@@ -20,6 +20,23 @@ from db.table_names import (
 
 logger = boteco_logger.get_logger(__name__)
 
+_SUPABASE_COLUMN_RENAMES = {
+    "complementary_amount": "complimentary",
+}
+
+
+def _normalize_row(row: Dict) -> Dict:
+    for src, dst in _SUPABASE_COLUMN_RENAMES.items():
+        if src in row:
+            row[dst] = row.pop(src)
+    return row
+
+
+def _normalize_rows(rows: List[Dict]) -> List[Dict]:
+    for r in rows:
+        _normalize_row(r)
+    return rows
+
 
 def _sqlite_daily_table() -> str:
     """Legacy local schema table name (Supabase uses singular daily_summary)."""
@@ -343,7 +360,7 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
             .execute()
         )
         if result.data:
-            d = dict(result.data[0])
+            d = _normalize_row(dict(result.data[0]))
             try:
                 cats, svcs = _detail_lists_for_daily_summary(location_id, date)
                 d["categories"] = cats
@@ -421,7 +438,7 @@ def get_summaries_for_date_range(
             .order("date")
             .execute()
         )
-        rows = list(result.data or [])
+        rows = _normalize_rows(list(result.data or []))
         rows = _hydrate_supabase_footfall_splits(rows, [location_id], start_date, end_date)
     else:
         tbl = _sqlite_daily_table()
@@ -467,7 +484,7 @@ def get_summaries_for_date_range_multi(
             .order("date")
             .execute()
         )
-        rows = list(result.data or [])
+        rows = _normalize_rows(list(result.data or []))
         rows = _hydrate_supabase_footfall_splits(rows, list(location_ids), start_date, end_date)
     else:
         tbl = _sqlite_daily_table()
@@ -629,7 +646,7 @@ def get_recent_summaries(location_id: int, weeks: int = 8) -> List[Dict]:
             .limit(weeks * 7)
             .execute()
         )
-        return result.data
+        return _normalize_rows(result.data)
     else:
         tbl = _sqlite_daily_table()
         with database.db_connection() as conn:

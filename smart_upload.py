@@ -376,22 +376,46 @@ def save_smart_upload_results(
                         "date": date_str,
                         "gross_total": round(float(merged.get("gross_total", 0) or 0), 2),
                         "net_total": round(float(merged.get("net_total", 0) or 0), 2),
+                        "my_amount": round(float(merged.get("my_amount", 0) or 0), 2),
                         "covers": int(merged.get("covers", 0) or 0),
                         "discount": round(float(merged.get("discount", 0) or 0), 2),
+                        "total_tax": round(float(merged.get("total_tax", 0) or 0), 2),
                         "cgst": round(float(merged.get("cgst", 0) or 0), 2),
                         "sgst": round(float(merged.get("sgst", 0) or 0), 2),
                         "service_charge": round(float(merged.get("service_charge", 0) or 0), 2),
-                        "gst_on_service_charge": 0,  # already folded into cgst/sgst by parser
-                        "cancelled_amount": 0,  # cancelled bills excluded by parser
+                        "gst_on_service_charge": round(
+                            float(merged.get("gst_on_service_charge", 0) or 0), 2
+                        ),
+                        "round_off": round(float(merged.get("round_off", 0) or 0), 2),
+                        "cancelled_amount": 0,
                         "complementary_amount": round(
                             float(merged.get("complimentary", 0) or 0), 2
                         ),
                         "cash_sales": round(float(merged.get("cash_sales", 0) or 0), 2),
                         "card_sales": round(float(merged.get("card_sales", 0) or 0), 2),
                         "gpay_sales": round(float(merged.get("gpay_sales", 0) or 0), 2),
+                        "due_payment_sales": round(
+                            float(merged.get("due_payment_sales", 0) or 0), 2
+                        ),
+                        "wallet_sales": round(float(merged.get("wallet_sales", 0) or 0), 2),
+                        "upi_sales": round(float(merged.get("upi_sales", 0) or 0), 2),
+                        "bank_transfer_sales": round(
+                            float(merged.get("bank_transfer_sales", 0) or 0), 2
+                        ),
+                        "boh_sales": round(float(merged.get("boh_sales", 0) or 0), 2),
                         "zomato_sales": round(float(merged.get("zomato_sales", 0) or 0), 2),
                         "other_sales": round(float(merged.get("other_sales", 0) or 0), 2),
                         "order_count": int(merged.get("order_count", 0) or 0),
+                        "expenses": round(float(merged.get("expenses", 0) or 0), 2),
+                        "delivery_sales": round(
+                            float(merged.get("delivery_sales", 0) or 0), 2
+                        ),
+                        "pickup_sales": round(float(merged.get("pickup_sales", 0) or 0), 2),
+                        "dine_in_sales": round(float(merged.get("dine_in_sales", 0) or 0), 2),
+                        "menu_qr_sales": round(
+                            float(merged.get("menu_qr_sales", 0) or 0), 2
+                        ),
+                        "source_report": str(merged.get("source_report", "") or ""),
                     }
                 )
 
