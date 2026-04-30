@@ -20,16 +20,12 @@ from db.table_names import (
 
 logger = boteco_logger.get_logger(__name__)
 
-# Supabase column names that differ from the internal field names used by
-# scope.py, sheet_reports.py, pos_parser.py, etc.  Applied on every read so
-# downstream code can use the canonical internal names consistently.
 _SUPABASE_COLUMN_RENAMES = {
     "complementary_amount": "complimentary",
 }
 
 
 def _normalize_row(row: Dict) -> Dict:
-    """Rename Supabase-specific column names to internal field names."""
     for src, dst in _SUPABASE_COLUMN_RENAMES.items():
         if src in row:
             row[dst] = row.pop(src)
