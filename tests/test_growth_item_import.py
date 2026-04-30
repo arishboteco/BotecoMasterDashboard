@@ -14,12 +14,9 @@ Covers:
 from __future__ import annotations
 
 import io
-from typing import Any, Dict
-from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -41,8 +38,13 @@ def _growth_report_bytes(
     restaurant_name: str = "Boteco",
     payment_cols: dict | None = None,
     extra_cols: dict | None = None,
+    rupee_headers: bool = False,
 ) -> bytes:
-    """Build a minimal Growth Report Excel that the parser can read."""
+    """Build a minimal Growth Report Excel that the parser can read.
+
+    When rupee_headers=True, uses Petpooja's real ₹-symbol column headers
+    (e.g. "Net Sales (₹)(M.A - D)") instead of the short forms.
+    """
     rows = [
         # Row 0: date filter
         {"Date": "Date:", "Orders": "2026-04-01 to 2026-04-01",
@@ -78,25 +80,48 @@ def _growth_report_bytes(
                             "Expenses", "Due Payment"]},
         # Row 5 is written as the DataFrame header (pandas writes it)
     ]
-    header_and_data = {
-        "Date": ["2026-04-01"],
-        "Orders": [20],
-        "Net Sales": [100000.0],
-        "Total Tax": [10000.0],
-        "Cash": [20000.0],
-        "Card": [50000.0],
-        "UPI": [30000.0],
-        "My Amount": [100000.0],
-        "Discount": [0.0],
-        "Service Charge": [8000.0],
-        "CGST": [1250.0],
-        "SGST": [1250.0],
-        "Gst on sevice charge": [400.0],
-        "Round Off": [0.5],
-        "Total": [118000.0],
-        "Expenses": [500.0],
-        "Due Payment": [0.0],
-    }
+    if rupee_headers:
+        header_and_data = {
+            "Date": ["2026-04-01"],
+            "Orders": [20],
+            "Invoice Nos.": [5],
+            "My Amount (₹)": [100000.0],
+            "Discount (₹)": [0.0],
+            "Net Sales (₹)(M.A - D)": [100000.0],
+            "Total Tax (₹)": [10000.0],
+            "Cash": [20000.0],
+            "Card": [50000.0],
+            "UPI": [30000.0],
+            "Service Charge": [8000.0],
+            "CGST": [1250.0],
+            "SGST": [1250.0],
+            "Gst on sevice charge": [400.0],
+            "Round Off": [0.5],
+            "Total (₹)": [118000.0],
+            "Expenses": [500.0],
+            "Pax": [32],
+            "Due Payment": [0.0],
+        }
+    else:
+        header_and_data = {
+            "Date": ["2026-04-01"],
+            "Orders": [20],
+            "Net Sales": [100000.0],
+            "Total Tax": [10000.0],
+            "Cash": [20000.0],
+            "Card": [50000.0],
+            "UPI": [30000.0],
+            "My Amount": [100000.0],
+            "Discount": [0.0],
+            "Service Charge": [8000.0],
+            "CGST": [1250.0],
+            "SGST": [1250.0],
+            "Gst on sevice charge": [400.0],
+            "Round Off": [0.5],
+            "Total": [118000.0],
+            "Expenses": [500.0],
+            "Due Payment": [0.0],
+        }
     if payment_cols:
         for col_name, value in payment_cols.items():
             header_and_data[col_name] = [value]
@@ -433,6 +458,24 @@ class TestGrowthReportParser:
         assert "period_start" in meta
         assert "row_count" in meta
         assert meta["row_count"] == 1
+
+    def test_rupee_headers_preserve_net_total_and_gross(self):
+        """Regression: ₹-symbol headers (real Petpooja format) must not zero out values.
+
+        FIELD_MAP has paired entries (e.g. "net sales (₹)(m.a - d)" and "net sales")
+        for the same target.  The short form won't match real files, so the parser
+        must not overwrite a correct long-form extraction with 0.
+        """
+        rows, errors, _ = self._parse(rupee_headers=True)
+        assert not errors, f"Unexpected errors: {errors}"
+        row = rows[0]
+        assert row["net_total"] == 100000.0, f"net_total={row['net_total']}"
+        assert row["gross_total"] == 118000.0, f"gross_total={row['gross_total']}"
+        assert row["my_amount"] == 100000.0, f"my_amount={row['my_amount']}"
+        assert row["total_tax"] == 10000.0, f"total_tax={row['total_tax']}"
+        assert row["covers"] == 32, f"covers={row['covers']}"
+        assert row["round_off"] == 0.5, f"round_off={row['round_off']}"
+        assert row["expenses"] == 500.0, f"expenses={row['expenses']}"
 
 
 # ---------------------------------------------------------------------------
