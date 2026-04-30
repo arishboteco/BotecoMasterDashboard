@@ -958,9 +958,16 @@ def _build_sales_summary(
 
     pay_keys = [
         ("Cash", "cash_sales"),
-        ("GPay", "gpay_sales"),
-        ("Zomato", "zomato_sales"),
         ("Card", "card_sales"),
+        ("GPay", "gpay_sales"),
+        ("UPI", "upi_sales"),
+        ("Bank Transfer", "bank_transfer_sales"),
+        ("BOH", "boh_sales"),
+        ("Due Payment", "due_payment_sales"),
+        ("Wallet", "wallet_sales"),
+        # Legacy fields — kept for old data; Zomato may have value from old flow
+        ("Zomato", "zomato_sales"),
+        # other_sales kept for old data but not shown unless non-zero
         ("Other / Wallet", "other_sales"),
     ]
     has_day_sales = float(r.get("gross_total") or 0) > 0 or float(r.get("net_total") or 0) > 0
@@ -2176,9 +2183,15 @@ def generate_whatsapp_text(
 
     pay_items = [
         ("Cash", r.get("cash_sales", 0)),
-        ("GPay", r.get("gpay_sales", 0)),
-        ("Zomato", r.get("zomato_sales", 0)),
         ("Card", r.get("card_sales", 0)),
+        ("GPay", r.get("gpay_sales", 0)),
+        ("UPI", r.get("upi_sales", 0)),
+        ("Bank Transfer", r.get("bank_transfer_sales", 0)),
+        ("BOH", r.get("boh_sales", 0)),
+        ("Due Payment", r.get("due_payment_sales", 0)),
+        ("Wallet", r.get("wallet_sales", 0)),
+        # Legacy fields shown only when non-zero
+        ("Zomato", r.get("zomato_sales", 0)),
         ("Other", r.get("other_sales", 0)),
     ]
     pay_lines = "\n".join(

@@ -2,16 +2,17 @@
 Auto-detect Petpooja export file types from CONTENT (not filename).
 
 Detects:
-  dynamic_report       - Dynamic Report CSV (per-bill order-level) [PRIMARY]
-  item_order_details   - Item Report With Customer/Order Details (.xlsx)
-  customer_report      - Customer/Booking report (.xlsx)
-  timing_report        - Restaurant Timing Report (.xlsx)
-  order_summary_csv    - Order Summary Report (.csv)
-  flash_report         - POS Collection / Flash Report (.xlsx)
-  group_wise           - Item Report Group Wise (.xlsx)
-  all_restaurant       - All Restaurant Sales Report (.xlsx)
-  comparison           - Restaurant Wise Comparison Report (.xls / HTML)
-  unknown              - Unrecognised file
+  growth_report_day_wise - Growth Report Day Wise (daily financial summary) [NEW PRIMARY]
+  dynamic_report         - Dynamic Report CSV (per-bill order-level) [LEGACY PRIMARY]
+  item_order_details     - Item Report With Customer/Order Details (.xlsx)
+  customer_report        - Customer/Booking report (.xlsx)
+  timing_report          - Restaurant Timing Report (.xlsx)
+  order_summary_csv      - Order Summary Report (.csv)
+  flash_report           - POS Collection / Flash Report (.xlsx)
+  group_wise             - Item Report Group Wise (.xlsx)
+  all_restaurant         - All Restaurant Sales Report (.xlsx)
+  comparison             - Restaurant Wise Comparison Report (.xls / HTML)
+  unknown                - Unrecognised file
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from io import BytesIO
 from typing import Tuple
 
 import pandas as pd
+
 import boteco_logger
 
 logger = boteco_logger.get_logger(__name__)
@@ -29,11 +31,12 @@ logger = boteco_logger.get_logger(__name__)
 # -- Priority: which types contribute new importable data ----------------
 
 IMPORT_PRIORITY = {
-    "dynamic_report": 0,
-    "item_order_details": 1,
-    "timing_report": 2,
-    "flash_report": 3,
-    "order_summary_csv": 4,
+    "growth_report_day_wise": 0,
+    "dynamic_report": 1,
+    "item_order_details": 2,
+    "timing_report": 3,
+    "flash_report": 4,
+    "order_summary_csv": 5,
 }
 
 SKIP_TYPES = {
@@ -45,8 +48,9 @@ SKIP_TYPES = {
 }
 
 KIND_LABELS = {
-    "dynamic_report": "Dynamic Report (per-bill CSV — primary data source)",
-    "item_order_details": "Item Report (line-item sales — primary data source)",
+    "growth_report_day_wise": "Growth Report Day Wise (financial summary)",
+    "dynamic_report": "Dynamic Report (per-bill CSV — legacy primary data source)",
+    "item_order_details": "Item Report With Customer/Order Details (category-level source)",
     "customer_report": "Customer Report (detected but not imported)",
     "timing_report": "Timing Report (breakfast/lunch/dinner revenue breakdown)",
     "order_summary_csv": "Order Summary CSV (per-order totals)",
@@ -78,6 +82,8 @@ def _norm(s) -> str:
 
 def _peek_text(file_content: bytes, filename: str) -> str:
     """Extract a flat text blob from the first ~12 rows of any supported file."""
+    if not file_content:
+        return ""
     tokens: list = []
     bio = BytesIO(file_content)
     low = filename.lower()
@@ -90,7 +96,12 @@ def _peek_text(file_content: bytes, filename: str) -> str:
             tokens.extend(_norm(c) for c in df.columns)
             for i in range(min(5, len(df))):
                 tokens.extend(_norm(v) for v in df.iloc[i].values)
-        except (pd.errors.EmptyDataError, pd.errors.ParserError, UnicodeDecodeError, ValueError) as ex:
+        except (
+            pd.errors.EmptyDataError,
+            pd.errors.ParserError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as ex:
             logger.warning(
                 "CSV peek failed in file_detector.py file=%s error=%s",
                 filename,
@@ -152,66 +163,73 @@ def detect_file_type(file_content: bytes, filename: str) -> str:
     Detection is content-first; filename is a fallback only.
     """
     text = _peek_text(file_content, filename)
-    if not text:
-        return "unknown"
 
-    # 1. Item Report With Customer/Order Details
-    #    Has sub total + final total + invoice together
-    if "sub total" in text and "final total" in text and "invoice" in text:
-        return "item_order_details"
+    if text:
+        # 1. Growth Report Day Wise — "growth report" phrase or distinctive column combo
+        if "growth report" in text and "net sales" in text:
+            return "growth_report_day_wise"
+        if (
+            "net sales" in text
+            and "total tax" in text
+            and ("cash" in text and "card" in text)
+            and "upi" in text
+            and "sub total" not in text
+            and "final total" not in text
+        ):
+            return "growth_report_day_wise"
 
-    # 2. Customer / booking report
-    #    Has pax count, or booking + restaurant session, or Dineout-style columns
-    if "pax count" in text or ("booking" in text and "restaurant session" in text):
-        return "customer_report"
-    # Dineout / EazyDiner style: booked for day + booking start time
-    if "booked for" in text and ("booking" in text or "restaurant" in text):
-        return "customer_report"
+        # 2. Item Report With Customer/Order Details
+        if "sub total" in text and "final total" in text and "invoice" in text:
+            return "item_order_details"
 
-    # 3. Dynamic Report CSV (per-bill)
-    #    Has bill no + pax + net amount + gross sale
-    if (
-        "bill no" in text
-        and "pax" in text
-        and "net amount" in text
-        and "gross sale" in text
-    ):
-        return "dynamic_report"
+        # 3. Customer / booking report
+        if "pax count" in text or ("booking" in text and "restaurant session" in text):
+            return "customer_report"
+        if "booked for" in text and ("booking" in text or "restaurant" in text):
+            return "customer_report"
 
-    # 4. Restaurant Timing Report
-    #    Breakfast + Lunch + Dinner + timing keyword
-    if (
-        "breakfast" in text
-        and "lunch" in text
-        and "dinner" in text
-        and ("timing" in text or "dine in" in text)
-    ):
-        return "timing_report"
+        # 4. Dynamic Report CSV (per-bill)
+        if (
+            "bill no" in text
+            and "pax" in text
+            and "net amount" in text
+            and "gross sale" in text
+        ):
+            return "dynamic_report"
 
-    # 4. Order Summary CSV
-    #    Has restaurant_name + my_amount + kot_no (CSV order-level)
-    if "restaurant_name" in text and "my_amount" in text and "kot_no" in text:
-        return "order_summary_csv"
+        # 5. Restaurant Timing Report
+        if (
+            "breakfast" in text
+            and "lunch" in text
+            and "dinner" in text
+            and ("timing" in text or "dine in" in text)
+        ):
+            return "timing_report"
 
-    # 5. Flash / POS Collection Report
-    if "pos collection" in text or "sale per pax" in text:
-        return "flash_report"
+        # 6. Order Summary CSV
+        if "restaurant_name" in text and "my_amount" in text and "kot_no" in text:
+            return "order_summary_csv"
 
-    # 6. Item Report Group Wise
-    #    group name + net sales, but NOT sub total (which the Item Report has)
-    if "group name" in text and "net sales" in text and "sub total" not in text:
-        return "group_wise"
+        # 7. Flash / POS Collection Report
+        if "pos collection" in text or "sale per pax" in text:
+            return "flash_report"
 
-    # 7. Restaurant Wise Comparison
-    if "outlet" in text and "statistics" in text:
-        return "comparison"
+        # 8. Item Report Group Wise
+        if "group name" in text and "net sales" in text and "sub total" not in text:
+            return "group_wise"
 
-    # 8. All Restaurant Sales Report
-    if "restaurants" in text and "invoice nos" in text:
-        return "all_restaurant"
+        # 9. Restaurant Wise Comparison
+        if "outlet" in text and "statistics" in text:
+            return "comparison"
 
-    # Fallback: filename hints
+        # 10. All Restaurant Sales Report
+        if "restaurants" in text and "invoice nos" in text:
+            return "all_restaurant"
+
+    # Filename hints — used when content is empty or unrecognised
     fn = filename.lower()
+    if "growth_report_day_wise" in fn or "growth_report" in fn:
+        return "growth_report_day_wise"
     if (
         "customerorder" in fn
         or "customer_order" in fn

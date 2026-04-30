@@ -36,6 +36,72 @@ def _files_fingerprint(uploaded_files) -> str:
     return h.hexdigest()
 
 
+def _render_outlet_completeness(upload_result, loc_name_map: dict) -> None:
+    """Show a per-outlet table summarising which report types were detected."""
+
+    all_loc_ids = set(upload_result.location_results.keys())
+    cat_loc_ids: set = set()
+    cat_by_loc = getattr(upload_result, "category_by_loc", {})
+    if cat_by_loc:
+        cat_loc_ids = set(cat_by_loc.keys())
+    all_loc_ids |= cat_loc_ids
+
+    if not all_loc_ids:
+        return
+
+    # Build completeness per outlet
+    growth_locs: set = set()
+    item_locs: set = cat_loc_ids
+    for loc_id, day_results in upload_result.location_results.items():
+        for dr in day_results:
+            if "growth_report_day_wise" in (dr.source_kinds or []):
+                growth_locs.add(loc_id)
+                break
+
+    lines = []
+    for loc_id in sorted(all_loc_ids):
+        name = loc_name_map.get(loc_id, f"Outlet {loc_id}")
+        growth_ok = "✅ Growth Report" if loc_id in growth_locs else "❌ Growth Report missing"
+        item_ok = "✅ Item Report" if loc_id in item_locs else "❌ Item Report missing"
+        lines.append(f"**{name}**\n{growth_ok} · {item_ok}")
+
+    if lines:
+        with st.expander("Outlet completeness", expanded=True):
+            for line in lines:
+                st.markdown(line)
+
+
+def _render_file_details(upload_result) -> None:
+    """Show per-file details: outlet, period, row count, any errors."""
+    new_flow_meta = getattr(upload_result, "new_flow_meta", {})
+    if not new_flow_meta:
+        return
+    rows = []
+    for fr in upload_result.files:
+        if fr.kind not in {"growth_report_day_wise", "item_order_details"}:
+            continue
+        meta = new_flow_meta.get(fr.filename, {})
+        rows.append(
+            {
+                "File": fr.filename,
+                "Type": fr.kind_label[:35],
+                "Outlet": meta.get("detected_location_name", "—"),
+                "Period": (
+                    f"{meta.get('period_start', '?')} → {meta.get('period_end', '?')}"
+                    if meta.get("period_start")
+                    else "—"
+                ),
+                "Rows": meta.get("row_count", "—"),
+                "Status": "❌ " + (fr.error or "error") if fr.error else "✅ OK",
+            }
+        )
+    if rows:
+        import pandas as _pd
+
+        with st.expander("File details", expanded=False):
+            st.dataframe(_pd.DataFrame(rows), hide_index=True)
+
+
 def render(ctx: TabContext) -> None:
     """Render the Upload tab UI and handle import logic."""
     shell = page_shell()
@@ -107,7 +173,7 @@ def render(ctx: TabContext) -> None:
             if importable_count == 0:
                 st.error(
                     "No importable files detected. Make sure you include a "
-                    "**Dynamic Report CSV** or **Item Report With Customer/Order Details**."
+                    "**Growth Report Day Wise** or **Item Report With Customer/Order Details**."
                 )
 
             if importable_count > 0:
@@ -147,12 +213,15 @@ def render(ctx: TabContext) -> None:
 
                 loc_name_map = {loc["id"]: loc["name"] for loc in ctx.all_locs}
 
-                # Show detected outlets
+                # Show detected outlets and per-outlet report completeness
                 if upload_result.location_results:
                     outlet_names = [
                         loc_name_map.get(lid, str(lid)) for lid in upload_result.location_results
                     ]
                     st.info(f"Auto-detected outlets: **{'**, **'.join(outlet_names)}**")
+
+                _render_outlet_completeness(upload_result, loc_name_map)
+                _render_file_details(upload_result)
 
                 # Collect overlaps — one batch query per location instead of per-day
                 overlap_rows = upload_service.find_overlaps(upload_result)
