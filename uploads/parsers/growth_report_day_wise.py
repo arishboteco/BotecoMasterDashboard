@@ -393,11 +393,18 @@ def parse_growth_report_day_wise(
         if location_id is not None:
             out["location_id"] = int(location_id)
 
-        # Generic field extraction (skips fields handled manually below)
+        # Generic field extraction (skips fields handled manually below).
+        # FIELD_MAP has paired entries for the same target — e.g.
+        # "net sales (₹)(m.a - d)" and "net sales" both map to "net_total".
+        # Real Petpooja files only have the long ₹-form header, so the
+        # short-form lookup returns 0.  Without this guard the short-form
+        # overwrites the correct long-form value with 0.
         for source, target in FIELD_MAP.items():
             if source in _MANUAL_FIELDS:
                 continue
-            out[target] = round(_f(_value(row, colmap, source)), 2)
+            val = round(_f(_value(row, colmap, source)), 2)
+            if val != 0.0 or target not in out:
+                out[target] = val
 
         # order_count and covers (covers defaults to order_count if no Pax column)
         out["order_count"] = _i(_value(row, colmap, "orders"))
