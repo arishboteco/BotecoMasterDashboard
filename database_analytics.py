@@ -301,15 +301,46 @@ def get_category_sales_for_date_range(
         return sorted(cat_totals.values(), key=lambda x: -x["amount"])
 
 
+def _service_sales_from_daily_summary(
+    location_ids: List[int], start_date: str, end_date: str
+) -> List[Dict[str, Any]]:
+    """Fallback: derive service-channel totals from daily_summary order-type columns.
+
+    Used when bill_items has no data (Growth Report-only imports).  Returns
+    channel-based entries ("Dine In", "Delivery", "Pick Up") rather than
+    time-based Lunch/Dinner splits, since per-bill timestamps are unavailable.
+    Only non-zero channels are included.
+    """
+    rows = _fetch_daily_summary_rows(
+        location_ids,
+        start_date,
+        end_date,
+        ("date", "dine_in_sales", "delivery_sales", "pickup_sales"),
+    )
+    dine_in = round(sum(float(r.get("dine_in_sales") or 0) for r in rows), 2)
+    delivery = round(sum(float(r.get("delivery_sales") or 0) for r in rows), 2)
+    pickup = round(sum(float(r.get("pickup_sales") or 0) for r in rows), 2)
+
+    out = []
+    if dine_in > 0:
+        out.append({"type": "Dine In", "amount": dine_in})
+    if delivery > 0:
+        out.append({"type": "Delivery", "amount": delivery})
+    if pickup > 0:
+        out.append({"type": "Pick Up", "amount": pickup})
+    return out
+
+
 def get_service_sales_for_date_range(
     location_ids: List[int],
     start_date: str,
     end_date: str,
 ) -> List[Dict[str, Any]]:
-    """Get service period (Lunch/Dinner) sales from bill_items.
+    """Get service period sales.
 
-    Lunch: before 6 PM. Petpooja exports may store 12-hour times without AM/PM;
-    for those files, 6-11 are treated as PM dinner hours.
+    Primary source: bill_items timestamps → Lunch/Dinner split.
+    Fallback (when bill_items is empty, e.g. Growth Report-only imports):
+    order-channel breakdown from daily_summary (Dine In / Delivery / Pick Up).
     """
     import database
 
@@ -334,6 +365,11 @@ def get_service_sales_for_date_range(
             if _bill_items_success(row.get("bill_status"))
             and (row.get("net_amount", 0) or 0) > 0
         ]
+
+        if not rows:
+            # bill_items empty — fall back to order-channel data from daily_summary
+            return _service_sales_from_daily_summary(location_ids, start_date, end_date)
+
         is_pos_12h_clock = _uses_pos_12h_clock(rows)
 
         for row in rows:
@@ -383,7 +419,12 @@ def get_daily_service_sales_for_date_range(
     start_date: str,
     end_date: str,
 ) -> List[Dict[str, Any]]:
-    """Get daily service period sales."""
+    """Get daily service period sales.
+
+    Primary source: bill_items timestamps → Lunch/Dinner split per day.
+    Fallback (when bill_items is empty): order-channel per-day breakdown from
+    daily_summary (keys "Dine In", "Delivery", "Pick Up").
+    """
     import database
 
     if database.use_supabase():
@@ -404,6 +445,29 @@ def get_daily_service_sales_for_date_range(
             if _bill_items_success(row.get("bill_status"))
             and (row.get("net_amount", 0) or 0) > 0
         ]
+
+        if not rows:
+            # bill_items empty — fall back to per-day order-channel data
+            summary_rows = _fetch_daily_summary_rows(
+                location_ids,
+                start_date,
+                end_date,
+                ("date", "dine_in_sales", "delivery_sales", "pickup_sales"),
+            )
+            per_date: Dict[str, Dict[str, float]] = {}
+            for row in summary_rows:
+                d = str(row.get("date") or "")[:10]
+                if not d:
+                    continue
+                b = per_date.setdefault(d, {"Dine In": 0.0, "Delivery": 0.0, "Pick Up": 0.0})
+                b["Dine In"] += float(row.get("dine_in_sales") or 0)
+                b["Delivery"] += float(row.get("delivery_sales") or 0)
+                b["Pick Up"] += float(row.get("pickup_sales") or 0)
+            return [
+                {"date": d, **{k: round(v, 2) for k, v in channels.items() if v > 0}}
+                for d, channels in sorted(per_date.items())
+            ]
+
         rows_by_date: Dict[str, List[Dict[str, Any]]] = {}
         for row in rows:
             rows_by_date.setdefault(str(row["bill_date"]), []).append(row)
