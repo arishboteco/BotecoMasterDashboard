@@ -171,14 +171,8 @@ def show_login_form():
 
         if submit:
             if username and password:
-                locked, mins_left = database.is_login_locked(username)
-                if locked:
-                    st.error(f"Too many failed attempts. Try again in about {mins_left} minute(s).")
-                    return
-
                 user = database.verify_user(username, password)
                 if user:
-                    database.clear_failed_login(username)
                     # "Remember me" unchecked → session cookie (no expires);
                     # checked → persistent cookie for _COOKIE_EXPIRY_DAYS
                     session_days = _COOKIE_EXPIRY_DAYS if remember else 1
@@ -205,13 +199,7 @@ def show_login_form():
                     _apply_user_to_session(user, token)
                     st.rerun()
                 else:
-                    locked, mins_left = database.record_failed_login(username)
-                    if locked:
-                        st.error(
-                            f"Too many failed attempts. Try again in about {mins_left} minute(s)."
-                        )
-                    else:
-                        st.error("Invalid username or password")
+                    st.error("Invalid username or password")
             else:
                 st.warning("Please enter both username and password")
 
