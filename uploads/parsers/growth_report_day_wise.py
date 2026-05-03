@@ -115,6 +115,9 @@ FIELD_MAP: Dict[str, str] = {
     "total tax (₹)": "total_tax",
     "total tax": "total_tax",
     "round off": "round_off",
+    # "Waived Off" in the Growth Report represents the total value of
+    # complimentary / staff-meal bills marked as waived in Petpooja.
+    "waived off": "complementary_amount",
     "total (₹)": "gross_total",
     "total": "gross_total",
     "cgst": "cgst",

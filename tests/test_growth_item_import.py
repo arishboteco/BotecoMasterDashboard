@@ -477,6 +477,31 @@ class TestGrowthReportParser:
         assert row["round_off"] == 0.5, f"round_off={row['round_off']}"
         assert row["expenses"] == 500.0, f"expenses={row['expenses']}"
 
+    def test_waived_off_maps_to_complementary_amount(self):
+        """'Waived Off' in Growth Report must map to complementary_amount.
+
+        Petpooja marks staff-meals / complimentary bills as 'Waived Off' in the
+        Growth Report Day Wise.  The parser must capture this value so that the
+        MTD Complimentary KPI is populated correctly from Growth Report imports.
+        """
+        from uploads.parsers.growth_report_day_wise import parse_growth_report_day_wise
+
+        content = _growth_report_bytes(extra_cols={"Waived Off": 3500.0})
+        rows, errors, _ = parse_growth_report_day_wise(content, "test.xlsx", location_id=1)
+        assert not errors, errors
+        assert rows[0].get("complementary_amount") == 3500.0, (
+            f"complementary_amount={rows[0].get('complementary_amount')!r}"
+        )
+
+    def test_waived_off_zero_does_not_block(self):
+        """A zero 'Waived Off' column must not block import or raise errors."""
+        from uploads.parsers.growth_report_day_wise import parse_growth_report_day_wise
+
+        content = _growth_report_bytes(extra_cols={"Waived Off": 0.0})
+        rows, errors, _ = parse_growth_report_day_wise(content, "test.xlsx", location_id=1)
+        assert not errors, errors
+        assert len(rows) == 1
+
 
 # ---------------------------------------------------------------------------
 # 5. Item Report category parser tests

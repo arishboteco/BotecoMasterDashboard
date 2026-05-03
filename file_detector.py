@@ -3,6 +3,7 @@ Auto-detect Petpooja export file types from CONTENT (not filename).
 
 Detects:
   growth_report_day_wise - Growth Report Day Wise (daily financial summary) [NEW PRIMARY]
+  order_comp_summary     - Complimentary Orders Summary (.xlsx) [COMPANION]
   dynamic_report         - Dynamic Report CSV (per-bill order-level) [LEGACY PRIMARY]
   item_order_details     - Item Report With Customer/Order Details (.xlsx)
   customer_report        - Customer/Booking report (.xlsx)
@@ -32,11 +33,12 @@ logger = boteco_logger.get_logger(__name__)
 
 IMPORT_PRIORITY = {
     "growth_report_day_wise": 0,
-    "dynamic_report": 1,
-    "item_order_details": 2,
-    "timing_report": 3,
-    "flash_report": 4,
-    "order_summary_csv": 5,
+    "order_comp_summary": 1,
+    "dynamic_report": 2,
+    "item_order_details": 3,
+    "timing_report": 4,
+    "flash_report": 5,
+    "order_summary_csv": 6,
 }
 
 SKIP_TYPES = {
@@ -49,6 +51,7 @@ SKIP_TYPES = {
 
 KIND_LABELS = {
     "growth_report_day_wise": "Growth Report Day Wise (financial summary)",
+    "order_comp_summary": "Complimentary Orders Summary (daily comp totals)",
     "dynamic_report": "Dynamic Report (per-bill CSV — legacy primary data source)",
     "item_order_details": "Item Report With Customer/Order Details (category-level source)",
     "customer_report": "Customer Report (detected but not imported)",
@@ -178,17 +181,21 @@ def detect_file_type(file_content: bytes, filename: str) -> str:
         ):
             return "growth_report_day_wise"
 
-        # 2. Item Report With Customer/Order Details
+        # 2. Complimentary Orders Summary — "complimentary orders summary" in title row
+        if "complimentary orders summary" in text and "grand total" in text:
+            return "order_comp_summary"
+
+        # 3. Item Report With Customer/Order Details
         if "sub total" in text and "final total" in text and "invoice" in text:
             return "item_order_details"
 
-        # 3. Customer / booking report
+        # 4. Customer / booking report
         if "pax count" in text or ("booking" in text and "restaurant session" in text):
             return "customer_report"
         if "booked for" in text and ("booking" in text or "restaurant" in text):
             return "customer_report"
 
-        # 4. Dynamic Report CSV (per-bill)
+        # 5. Dynamic Report CSV (per-bill)
         if (
             "bill no" in text
             and "pax" in text
@@ -197,7 +204,7 @@ def detect_file_type(file_content: bytes, filename: str) -> str:
         ):
             return "dynamic_report"
 
-        # 5. Restaurant Timing Report
+        # 6. Restaurant Timing Report
         if (
             "breakfast" in text
             and "lunch" in text
@@ -206,23 +213,23 @@ def detect_file_type(file_content: bytes, filename: str) -> str:
         ):
             return "timing_report"
 
-        # 6. Order Summary CSV
+        # 7. Order Summary CSV
         if "restaurant_name" in text and "my_amount" in text and "kot_no" in text:
             return "order_summary_csv"
 
-        # 7. Flash / POS Collection Report
+        # 8. Flash / POS Collection Report
         if "pos collection" in text or "sale per pax" in text:
             return "flash_report"
 
-        # 8. Item Report Group Wise
+        # 9. Item Report Group Wise
         if "group name" in text and "net sales" in text and "sub total" not in text:
             return "group_wise"
 
-        # 9. Restaurant Wise Comparison
+        # 10. Restaurant Wise Comparison
         if "outlet" in text and "statistics" in text:
             return "comparison"
 
-        # 10. All Restaurant Sales Report
+        # 11. All Restaurant Sales Report
         if "restaurants" in text and "invoice nos" in text:
             return "all_restaurant"
 
@@ -230,6 +237,8 @@ def detect_file_type(file_content: bytes, filename: str) -> str:
     fn = filename.lower()
     if "growth_report_day_wise" in fn or "growth_report" in fn:
         return "growth_report_day_wise"
+    if "comp_summary" in fn or "complimentary" in fn:
+        return "order_comp_summary"
     if (
         "customerorder" in fn
         or "customer_order" in fn

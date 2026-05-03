@@ -36,6 +36,7 @@ from uploads.models import DayResult, FileResult, SmartUploadResult
 from uploads.parsers.flash_report import parse_flash_report
 from uploads.parsers.growth_report_day_wise import parse_growth_report_day_wise
 from uploads.parsers.item_report_category_summary import parse_item_report_category_summary
+from uploads.parsers.order_comp_summary import parse_order_comp_summary
 from uploads.parsers.order_summary import parse_order_summary_csv
 from uploads.router import (
     build_restaurant_location_map,
@@ -91,6 +92,7 @@ def _process_new_flow_files(
     fallback_location_id: int,
     filename_to_fr: Dict[str, FileResult],
     global_notes: List[str],
+    comp_files: Optional[List[Tuple[str, bytes]]] = None,
 ) -> Tuple[
     Dict[int, List[Dict[str, Any]]],   # daily_rows by location_id
     Dict[int, List[Dict[str, Any]]],   # category_rows by location_id
@@ -178,6 +180,76 @@ def _process_new_flow_files(
         if fr:
             fr.notes.append(
                 f"Parsed {len(rows)} category row(s) → {loc_name} (match: {match_type})"
+            )
+
+    # --- Complimentary Orders Summary → merge into daily rows ---
+    for fname, content in (comp_files or []):
+        fr = filename_to_fr.get(fname)
+        loc_id, loc_name, match_type = _detect_location_for_file(
+            content, fname, fallback_location_id
+        )
+        if loc_id is None:
+            err = (
+                f"Comp Summary {fname}: outlet could not be detected from file content. "
+                "Make sure the report contains a 'Restaurant Name:' row."
+            )
+            global_notes.append(err)
+            if fr:
+                fr.error = err
+            continue
+
+        rows, errors, meta = parse_order_comp_summary(content, fname, loc_id)
+        meta["detected_location_id"] = loc_id
+        meta["detected_location_name"] = loc_name
+        meta["match_type"] = match_type
+        meta["file_hash"] = _file_hash(content)
+        if fname in file_meta:
+            file_meta[fname].update(meta)
+        else:
+            file_meta[fname] = meta
+
+        if errors:
+            for e in errors:
+                global_notes.append(e)
+            if fr:
+                fr.error = "; ".join(errors)
+            continue
+
+        # Merge comp amounts into the daily_by_loc rows for the same location+date.
+        # If a Growth Report was uploaded for the same date the comp amount enriches
+        # that row; otherwise a standalone daily row is created so the comp data
+        # still reaches the database.
+        existing_dates: Dict[str, Dict[str, Any]] = {}
+        for d_row in daily_by_loc.get(loc_id, []):
+            existing_dates[d_row["date"]] = d_row
+
+        for comp_row in rows:
+            d = comp_row["date"]
+            if d in existing_dates:
+                # Merge: add comp amount to existing Growth Report daily row
+                existing_dates[d]["complementary_amount"] = round(
+                    float(existing_dates[d].get("complementary_amount", 0) or 0)
+                    + float(comp_row.get("complementary_amount", 0) or 0),
+                    2,
+                )
+            else:
+                # No Growth Report for this date — create a standalone row
+                standalone = {
+                    "date": d,
+                    "location_id": loc_id,
+                    "complementary_amount": round(
+                        float(comp_row.get("complementary_amount", 0) or 0), 2
+                    ),
+                    "file_type": "order_comp_summary",
+                    "source_report": "order_comp_summary",
+                }
+                daily_by_loc[loc_id].append(standalone)
+
+        if fr:
+            total_comp = round(sum(float(r.get("complementary_amount", 0) or 0) for r in rows), 2)
+            fr.notes.append(
+                f"Parsed {len(rows)} comp day(s) totalling ₹{total_comp:,.2f} → "
+                f"{loc_name} (match: {match_type})"
             )
 
     return dict(daily_by_loc), dict(cat_by_loc), file_meta
@@ -278,9 +350,11 @@ def process_smart_upload(
 
     filename_to_fr: Dict[str, FileResult] = {fr.filename: fr for fr in file_results}
 
-    # Step 2 — NEW FLOW: Growth Report + Item Report (auto-detects outlet from content)
+    # Step 2 — NEW FLOW: Growth Report + Item Report + Comp Summary
+    #          (auto-detects outlet from content)
     growth_files = classified.get("growth_report_day_wise", [])
     item_files_new = classified.get("item_order_details", [])
+    comp_files = classified.get("order_comp_summary", [])
 
     daily_by_loc, cat_by_loc, new_flow_meta = _process_new_flow_files(
         growth_files=growth_files,
@@ -288,6 +362,7 @@ def process_smart_upload(
         fallback_location_id=location_id,
         filename_to_fr=filename_to_fr,
         global_notes=global_notes,
+        comp_files=comp_files,
     )
 
     _check_completeness(daily_by_loc, cat_by_loc, global_notes)
