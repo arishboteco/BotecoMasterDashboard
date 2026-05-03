@@ -252,14 +252,15 @@ def render_sales_performance(
 
                         ma_vals = moving_average(outlet_values, window=7)
                         ma_series = pd.Series(ma_vals)
-                        ma_valid = ma_series[pd.notna(ma_series)]
+                        ma_mask = pd.notna(ma_series).values
+                        ma_valid = ma_series[ma_mask]
                         if not ma_valid.empty:
                             ma_color = outlet_colors.get(
                                 outlet_name, ui_theme.CHART_MA_ACCENT
                             )
                             fig_line.add_trace(
                                 go.Scatter(
-                                    x=outlet_dates[pd.notna(ma_series)],
+                                    x=outlet_dates[ma_mask],
                                     y=ma_valid.tolist(),
                                     mode="lines",
                                     name=f"{outlet_name} 7-day Avg",
