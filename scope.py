@@ -15,8 +15,9 @@ import utils
 def _normalize_detail_lists(summary: Dict[str, Any]) -> Dict[str, Any]:
     out = dict(summary or {})
 
+    cats_raw = out.get("categories")
     cats = []
-    for c in out.get("categories") or []:
+    for c in (cats_raw if isinstance(cats_raw, list) else []):
         cats.append(
             {
                 "category": c.get("category") or "Other",
@@ -24,18 +25,19 @@ def _normalize_detail_lists(summary: Dict[str, Any]) -> Dict[str, Any]:
                 "amount": float(c.get("amount") or c.get("total") or 0),
             }
         )
-    if cats or out.get("categories") is not None:
+    if cats or cats_raw is not None:
         out["categories"] = cats
 
+    svcs_raw = out.get("services")
     svcs = []
-    for s in out.get("services") or []:
+    for s in (svcs_raw if isinstance(svcs_raw, list) else []):
         svcs.append(
             {
                 "type": s.get("type") or s.get("service_type") or "",
                 "amount": float(s.get("amount") or s.get("total") or 0),
             }
         )
-    if svcs or out.get("services") is not None:
+    if svcs or svcs_raw is not None:
         out["services"] = svcs
 
     return out
