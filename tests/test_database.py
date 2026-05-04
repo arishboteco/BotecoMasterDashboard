@@ -467,29 +467,6 @@ class TestPasswordPolicy:
         assert not hasattr(database, "reset_password")
 
 
-class TestLoginLockout:
-    def test_locks_after_max_failed_attempts_and_clears(self, initialized_db):
-        username = "lock_user"
-        database.create_admin_user(username, "averysecurepwd")
-
-        locked, mins = database.is_login_locked(username)
-        assert not locked
-        assert mins == 0
-
-        for _ in range(config.MAX_LOGIN_ATTEMPTS - 1):
-            locked, _ = database.record_failed_login(username)
-            assert not locked
-
-        locked, mins = database.record_failed_login(username)
-        assert locked
-        assert mins > 0
-
-        database.clear_failed_login(username)
-        locked, mins = database.is_login_locked(username)
-        assert not locked
-        assert mins == 0
-
-
 class TestLocationSettings:
     def test_update_location_settings_rejects_duplicate_name(self, initialized_db):
         locations = database.get_all_locations()

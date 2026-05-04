@@ -14,12 +14,14 @@ import file_detector
 import utils
 from components import (
     classed_container,
+    divider,
     info_banner,
     page_shell,
     primary_action_bar,
     section_title,
     workflow_progress,
 )
+from components.footfall_editor import render_footfall_editor
 from services import cache_invalidation, upload_service
 from services.upload_service import ImportOptions
 from tabs import TabContext
@@ -102,9 +104,105 @@ def _render_file_details(upload_result) -> None:
             st.dataframe(_pd.DataFrame(rows), hide_index=True)
 
 
+def _render_import_history(ctx: TabContext) -> None:
+    """Render the recent import history footer section."""
+    section_title(
+        "Recent import activity",
+        "Last 10 saved files for this outlet scope.",
+        icon="history",
+    )
+    history = database.get_upload_history(ctx.location_id, 10)
+    if history:
+        hdf = pd.DataFrame(history)
+        drop_cols = [c for c in ("id", "location_id") if c in hdf.columns]
+        if drop_cols:
+            hdf = hdf.drop(columns=drop_cols)
+        rename = {
+            "date": "Day",
+            "filename": "File",
+            "file_type": "Type",
+            "uploaded_by": "Imported by",
+            "uploaded_at": "When",
+        }
+        hdf = hdf.rename(columns={k: v for k, v in rename.items() if k in hdf.columns})
+        if "Day" in hdf.columns:
+            hdf["Day"] = hdf["Day"].apply(
+                lambda x: (
+                    datetime.strptime(x[:10], "%Y-%m-%d").strftime("%d %b %Y")
+                    if pd.notna(x)
+                    else x
+                )
+            )
+        st.dataframe(hdf, width="stretch", hide_index=True)
+    else:
+        st.caption("No imports yet for this outlet.")
+
+
+def _render_post_import_footfall(shell, ctx: TabContext) -> None:
+    """Render the optional footfall entry step shown after a successful import."""
+    state = st.session_state.get("_post_import_state", {})
+    dates_by_loc: dict = state.get("dates_by_loc", {})
+    saved_days: int = state.get("saved_days", 0)
+    skipped: int = state.get("skipped", 0)
+    note_count: int = state.get("note_count", 0)
+    edited_by = str(st.session_state.get("username") or "")
+
+    with shell.content:
+        st.success(
+            f"Import complete — **{saved_days}** day(s) saved"
+            + (f", {skipped} skipped" if skipped else "")
+            + "."
+        )
+
+        divider()
+        section_title("Step 2: Footfall covers (optional)", icon="people")
+        st.caption(
+            "Enter Lunch and Dinner cover counts for the dates you just imported. "
+            "Rows marked **✓ Set** already have overrides saved. "
+            "Leave values blank to use POS-derived counts. "
+            "Click **Done** to finish without entering footfall."
+        )
+
+        any_changed = False
+        for loc_id, loc_data in dates_by_loc.items():
+            loc_name: str = loc_data["name"]
+            dates: list = sorted(loc_data["dates"])
+
+            if len(dates_by_loc) > 1:
+                st.markdown(f"##### {loc_name}")
+
+            changed = render_footfall_editor(
+                location_id=int(loc_id),
+                dates=dates,
+                loc_name=loc_name,
+                edited_by=edited_by,
+                key_prefix=f"upload_footfall_{loc_id}_",
+            )
+            if changed:
+                any_changed = True
+
+        divider()
+        if st.button("Done", key="post_import_done_btn", type="primary"):
+            st.session_state.pop("_post_import_state", None)
+            st.session_state.pop("_upload_result", None)
+            st.session_state.pop("_upload_fingerprint", None)
+            st.session_state["_import_summary_flash"] = (saved_days, skipped, note_count)
+            st.rerun()
+
+        if any_changed:
+            st.rerun()
+
+
 def render(ctx: TabContext) -> None:
     """Render the Upload tab UI and handle import logic."""
     shell = page_shell()
+
+    # If we're in the post-import footfall step, render that and stop.
+    if st.session_state.get("_post_import_state"):
+        _render_post_import_footfall(shell, ctx)
+        with shell.footer_actions:
+            _render_import_history(ctx)
+        return
 
     flash = st.session_state.pop("_import_summary_flash", None)
     if flash is not None:
@@ -331,10 +429,6 @@ def render(ctx: TabContext) -> None:
                             list(upload_result.location_results.keys())
                         )
 
-                        # Clear cached upload result so it's not stale after save
-                        st.session_state.pop("_upload_result", None)
-                        st.session_state.pop("_upload_fingerprint", None)
-
                         note_count = len(upload_result.global_notes)
 
                         if total_saved > 0:
@@ -346,41 +440,32 @@ def render(ctx: TabContext) -> None:
                                 st.session_state["report_date"] = latest_date
                                 st.session_state["report_date_picker"] = latest_date
 
-                        st.session_state["_import_summary_flash"] = (
-                            total_saved,
-                            total_skipped,
-                            note_count,
-                        )
+                        # Collect imported dates per location for the footfall step
+                        loc_name_map_local = {loc["id"]: loc["name"] for loc in ctx.all_locs}
+                        dates_by_loc = {
+                            loc_id: {
+                                "name": loc_name_map_local.get(loc_id, f"Outlet {loc_id}"),
+                                "dates": [
+                                    dr.date
+                                    for dr in day_results
+                                    if not dr.errors
+                                ],
+                            }
+                            for loc_id, day_results in upload_result.location_results.items()
+                        }
+                        # Only include locations that actually had days saved
+                        dates_by_loc = {
+                            k: v for k, v in dates_by_loc.items() if v["dates"]
+                        }
+
+                        # Move to post-import footfall step (clears upload cache on Done)
+                        st.session_state["_post_import_state"] = {
+                            "saved_days": total_saved,
+                            "skipped": total_skipped,
+                            "note_count": note_count,
+                            "dates_by_loc": dates_by_loc,
+                        }
                         st.rerun()
 
     with shell.footer_actions:
-        section_title(
-            "Recent import activity",
-            "Last 10 saved files for this outlet scope.",
-            icon="history",
-        )
-        history = database.get_upload_history(ctx.location_id, 10)
-        if history:
-            hdf = pd.DataFrame(history)
-            drop_cols = [c for c in ("id", "location_id") if c in hdf.columns]
-            if drop_cols:
-                hdf = hdf.drop(columns=drop_cols)
-            rename = {
-                "date": "Day",
-                "filename": "File",
-                "file_type": "Type",
-                "uploaded_by": "Imported by",
-                "uploaded_at": "When",
-            }
-            hdf = hdf.rename(columns={k: v for k, v in rename.items() if k in hdf.columns})
-            if "Day" in hdf.columns:
-                hdf["Day"] = hdf["Day"].apply(
-                    lambda x: (
-                        datetime.strptime(x[:10], "%Y-%m-%d").strftime("%d %b %Y")
-                        if pd.notna(x)
-                        else x
-                    )
-                )
-            st.dataframe(hdf, width="stretch", hide_index=True)
-        else:
-            st.caption("No imports yet for this outlet.")
+        _render_import_history(ctx)
