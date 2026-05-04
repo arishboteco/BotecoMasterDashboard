@@ -36,20 +36,6 @@ ALLOWED_PAYMENT_COLUMNS: Dict[str, str] = {
     "other [boh]": "boh_sales",
 }
 
-# Columns that are silently ignored when their total is zero.
-# If they carry non-zero values the import is BLOCKED (unmapped payment).
-IGNORED_ZERO_PAYMENT_COLUMNS = {
-    "cod",
-    "other [upi]",
-    "other [zomato]",
-    "other [swiggy]",
-    "other [dineout]",
-    "other [zomato delivery]",
-    "other [swiggy delivery]",
-    "other [coupon]",
-    "other [razorpay]",
-}
-
 # Non-payment structural fields — used to skip them in payment validation.
 BASE_FIELDS = {
     "date",
@@ -259,21 +245,20 @@ def _last_col_for(df: pd.DataFrame, header_idx: int, target: str) -> Optional[in
 
 def _payment_columns(
     colmap: Dict[str, int], data: pd.DataFrame
-) -> Tuple[Dict[str, int], List[str]]:
-    """Split header map into known-payment columns and a list of unmapped ones.
+) -> Tuple[Dict[str, int], Dict[str, int]]:
+    """Split header map into known-payment columns and fallback-to-other columns.
 
-    Returns (payments_dict, unmapped_names).
-    unmapped_names is non-empty only for columns with non-zero totals that are
-    not in the allowed or ignored sets.
+    Returns (payments_dict, fallback_to_other_dict).
+    fallback_to_other_dict contains unrecognized payment-shaped columns with
+    non-zero totals; their amounts are summed into other_sales instead of
+    blocking the import.
     """
     payments: Dict[str, int] = {}
-    unmapped: List[str] = []
+    fallback_to_other: Dict[str, int] = {}
     for header, idx in colmap.items():
         if header in ALLOWED_PAYMENT_COLUMNS:
             payments[header] = idx
             continue
-        # Treat anything that looks payment-shaped but is not in the allow-list
-        # as potentially problematic.
         is_payment_shaped = header.startswith("other [") or header in {
             "cash",
             "card",
@@ -289,12 +274,10 @@ def _payment_columns(
         )
         if abs(col_total) < 0.005:
             continue  # zero column — silently ignore
-        if header in IGNORED_ZERO_PAYMENT_COLUMNS:
-            # Was expected zero but has value — block
-            unmapped.append(header)
-        elif header not in BASE_FIELDS:
-            unmapped.append(header)
-    return payments, sorted(set(unmapped))
+        # Non-zero unrecognized payment type: route to other_sales with a warning
+        if header not in BASE_FIELDS:
+            fallback_to_other[header] = idx
+    return payments, fallback_to_other
 
 
 def _value(row: pd.Series, colmap: Dict[str, int], *names: str) -> Any:
@@ -365,18 +348,7 @@ def parse_growth_report_day_wise(
     if data.empty:
         return [], [f"Growth Report {filename}: no dated rows found."], {}
 
-    # Validate payment columns before touching any data
-    payments, unmapped = _payment_columns(colmap, data)
-    if unmapped:
-        return (
-            [],
-            [
-                f"Import blocked. Unmapped payment type(s) found in Growth Report "
-                f"{filename}: {', '.join(unmapped)}.\n"
-                "Please add this payment type to the payment mapping before importing."
-            ],
-            {"unmapped_payment_types": unmapped},
-        )
+    payments, fallback_to_other = _payment_columns(colmap, data)
 
     # Locate the LAST occurrence of "service charge" in the header row so that
     # reports where the column appears twice (once as summary, once in the tax
@@ -447,6 +419,13 @@ def parse_growth_report_day_wise(
             if idx < len(row):
                 out[db_field] = round(float(out.get(db_field, 0) or 0) + _f(row.iloc[idx]), 2)
 
+        # Accumulate unrecognized payment types into other_sales
+        if fallback_to_other:
+            out["other_sales"] = float(out.get("other_sales", 0) or 0)
+            for header, idx in fallback_to_other.items():
+                if idx < len(row):
+                    out["other_sales"] = round(out["other_sales"] + _f(row.iloc[idx]), 2)
+
         rows.append(out)
 
     period_start, period_end = _extract_period(df)
@@ -455,4 +434,6 @@ def parse_growth_report_day_wise(
         "period_end": period_end,
         "row_count": len(rows),
     }
+    if fallback_to_other:
+        meta["fallback_payment_types"] = sorted(fallback_to_other.keys())
     return rows, [], meta

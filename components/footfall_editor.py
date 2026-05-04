@@ -29,29 +29,40 @@ from services.cache_invalidation import invalidate_footfall_caches
 def _fetch_pos_covers_batch(
     location_id: int, dates: List[str]
 ) -> Dict[str, Optional[int]]:
-    """Return {date: total_covers} from daily_summary for the given dates."""
+    """Return {date: total_covers} from daily_summary for the given dates.
+
+    Falls back to order_count when covers is 0 or NULL (older imported rows).
+    """
     if not dates:
         return {}
+
+    def _best_covers(row: dict) -> Optional[int]:
+        covers = row.get("covers")
+        if covers:
+            return int(covers)
+        order_count = row.get("order_count")
+        return int(order_count) if order_count else None
+
     if database.use_supabase():
         result = (
             database.get_supabase_client()
             .table("daily_summary")
-            .select("date,covers")
+            .select("date,covers,order_count")
             .eq("location_id", location_id)
             .in_("date", dates)
             .execute()
         )
-        return {row["date"]: row.get("covers") for row in (result.data or [])}
+        return {row["date"]: _best_covers(row) for row in (result.data or [])}
 
     with database.db_connection() as conn:
         placeholders = ",".join("?" * len(dates))
         cur = conn.cursor()
         cur.execute(
-            f"SELECT date, covers FROM daily_summaries "
+            f"SELECT date, covers, order_count FROM daily_summaries "
             f"WHERE location_id = ? AND date IN ({placeholders})",
             [location_id, *dates],
         )
-        return {row["date"]: row.get("covers") for row in cur.fetchall()}
+        return {row["date"]: _best_covers(dict(row)) for row in cur.fetchall()}
 
 
 def fetch_dates_with_data(
