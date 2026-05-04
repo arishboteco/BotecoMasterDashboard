@@ -142,6 +142,12 @@ def _process_new_flow_files(
             fr.notes.append(
                 f"Parsed {len(rows)} day(s) → {loc_name} (match: {match_type})"
             )
+            fallback_pmts = meta.get("fallback_payment_types", [])
+            if fallback_pmts:
+                fr.notes.append(
+                    f"⚠ Unrecognized payment type(s) added to Other Sales: "
+                    f"{', '.join(fallback_pmts)}"
+                )
 
     # --- Item Reports → category_summary rows ---
     for fname, content in item_files:

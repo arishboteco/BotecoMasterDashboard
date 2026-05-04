@@ -127,8 +127,8 @@ def build_daily_summary_row_new_flow(
         "card_sales": round(float(data.get("card_sales", 0) or 0), 2),
         "gpay_sales": round(float(data.get("gpay_sales", 0) or 0), 2),
         "zomato_sales": round(float(data.get("zomato_sales", 0) or 0), 2),
-        # New flow does NOT write to other_sales — keep existing value by omitting
-        # (or pass 0 if inserting a new row)
+        # other_sales: only written when the parser mapped fallback payment types to it
+        **( {"other_sales": round(float(data["other_sales"] or 0), 2)} if "other_sales" in data else {} ),
         # New fields from schema migration
         "my_amount": round(float(data.get("my_amount", 0) or 0), 2),
         "total_tax": round(float(data.get("total_tax", 0) or 0), 2),
