@@ -340,11 +340,12 @@ def render_sales_performance(
                 if show_ma_and_forecast:
                     ma_values = moving_average(values, window=7)
                     ma_series = pd.Series(ma_values)
-                    ma_valid = ma_series[pd.notna(ma_series)]
+                    ma_mask = pd.notna(ma_series).values
+                    ma_valid = ma_series[ma_mask]
                     if not ma_valid.empty:
                         fig_line.add_trace(
                             go.Scatter(
-                                x=dates[pd.notna(ma_series)],
+                                x=dates[ma_mask],
                                 y=ma_valid.tolist(),
                                 mode="lines",
                                 name="7-day Avg",
