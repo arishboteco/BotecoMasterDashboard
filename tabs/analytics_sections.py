@@ -767,14 +767,18 @@ def render_revenue_breakdown(
             days_in_mo = utils.get_days_in_month(start_date.year, start_date.month)
             daily_tgt = monthly_tgt / days_in_mo if monthly_tgt > 0 else 0
 
+        if wd_agg.empty:
+            st.caption("No positive-sales days available for weekday analysis.")
+            return
+
         # Best/worst day identification for conditional coloring
-        _best_idx = wd_agg["avg_sales"].idxmax()
-        _worst_idx = wd_agg["avg_sales"].idxmin()
+        best_idx = wd_agg["avg_sales"].idxmax()
+        worst_idx = wd_agg["avg_sales"].idxmin()
         wd_colors = []
         for i in range(len(wd_agg)):
-            if i == _best_idx:
+            if i == best_idx:
                 wd_colors.append(ui_theme.CHART_POSITIVE)
-            elif i == _worst_idx:
+            elif i == worst_idx:
                 wd_colors.append(ui_theme.CHART_NEGATIVE)
             else:
                 wd_colors.append(ui_theme.CHART_NEUTRAL)
@@ -805,31 +809,28 @@ def render_revenue_breakdown(
             )
 
         # Best/worst day annotations
-        if not wd_agg.empty:
-            best_idx = wd_agg["avg_sales"].idxmax()
-            worst_idx = wd_agg["avg_sales"].idxmin()
-            best_day = wd_agg.loc[best_idx, "weekday"]
-            best_val = wd_agg.loc[best_idx, "avg_sales"]
-            worst_day = wd_agg.loc[worst_idx, "weekday"]
-            worst_val = wd_agg.loc[worst_idx, "avg_sales"]
-            fig_wd.add_annotation(
-                x=best_day,
-                y=best_val,
-                text=f"Best: {best_day}",
-                showarrow=True,
-                arrowhead=2,
-                bgcolor=ui_theme.BRAND_SUCCESS,
-                font_color="white",
-            )
-            fig_wd.add_annotation(
-                x=worst_day,
-                y=worst_val,
-                text=f"Worst: {worst_day}",
-                showarrow=True,
-                arrowhead=2,
-                bgcolor=ui_theme.BRAND_ERROR,
-                font_color="white",
-            )
+        best_day = wd_agg.loc[best_idx, "weekday"]
+        best_val = wd_agg.loc[best_idx, "avg_sales"]
+        worst_day = wd_agg.loc[worst_idx, "weekday"]
+        worst_val = wd_agg.loc[worst_idx, "avg_sales"]
+        fig_wd.add_annotation(
+            x=best_day,
+            y=best_val,
+            text=f"Best: {best_day}",
+            showarrow=True,
+            arrowhead=2,
+            bgcolor=ui_theme.BRAND_SUCCESS,
+            font_color="white",
+        )
+        fig_wd.add_annotation(
+            x=worst_day,
+            y=worst_val,
+            text=f"Worst: {worst_day}",
+            showarrow=True,
+            arrowhead=2,
+            bgcolor=ui_theme.BRAND_ERROR,
+            font_color="white",
+        )
 
         fig_wd.update_layout(
             xaxis_title="",
