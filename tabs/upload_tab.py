@@ -44,28 +44,50 @@ def _render_outlet_completeness(upload_result, loc_name_map: dict) -> None:
     all_loc_ids = set(upload_result.location_results.keys())
     cat_loc_ids: set = set()
     cat_by_loc = getattr(upload_result, "category_by_loc", {})
+    new_flow_meta = getattr(upload_result, "new_flow_meta", {})
     if cat_by_loc:
         cat_loc_ids = set(cat_by_loc.keys())
     all_loc_ids |= cat_loc_ids
+
+    growth_locs_from_meta: set = set()
+    item_locs_from_meta: set = set()
+    comp_locs: set = set()
+    for meta in new_flow_meta.values():
+        loc_id = meta.get("detected_location_id")
+        if not loc_id:
+            continue
+        file_type = str(meta.get("file_type", ""))
+        source_report = str(meta.get("source_report", ""))
+        if file_type == "growth_report_day_wise":
+            growth_locs_from_meta.add(loc_id)
+        elif file_type == "item_order_details":
+            item_locs_from_meta.add(loc_id)
+        if file_type == "order_comp_summary" or source_report == "order_comp_summary":
+            comp_locs.add(loc_id)
+
+    all_loc_ids |= growth_locs_from_meta | item_locs_from_meta | comp_locs
 
     if not all_loc_ids:
         return
 
     # Build completeness per outlet
     growth_locs: set = set()
-    item_locs: set = cat_loc_ids
+    item_locs: set = set(cat_loc_ids)
     for loc_id, day_results in upload_result.location_results.items():
         for dr in day_results:
             if "growth_report_day_wise" in (dr.source_kinds or []):
                 growth_locs.add(loc_id)
                 break
+    growth_locs |= growth_locs_from_meta
+    item_locs |= item_locs_from_meta
 
     lines = []
     for loc_id in sorted(all_loc_ids):
         name = loc_name_map.get(loc_id, f"Outlet {loc_id}")
         growth_ok = "✅ Growth Report" if loc_id in growth_locs else "❌ Growth Report missing"
         item_ok = "✅ Item Report" if loc_id in item_locs else "❌ Item Report missing"
-        lines.append(f"**{name}**\n{growth_ok} · {item_ok}")
+        comp_ok = "✅ Comp Report" if loc_id in comp_locs else "❌ Comp Report missing"
+        lines.append(f"**{name}**\n{growth_ok} · {item_ok} · {comp_ok}")
 
     if lines:
         with st.expander("Outlet completeness", expanded=True):
@@ -80,7 +102,11 @@ def _render_file_details(upload_result) -> None:
         return
     rows = []
     for fr in upload_result.files:
-        if fr.kind not in {"growth_report_day_wise", "item_order_details"}:
+        if fr.kind not in {
+            "growth_report_day_wise",
+            "item_order_details",
+            "order_comp_summary",
+        }:
             continue
         meta = new_flow_meta.get(fr.filename, {})
         rows.append(
