@@ -23,7 +23,7 @@ LOGIN_CSS = r"""
     /* Fonts imported by _fonts.FONTS in main stylesheet (applied before auth). */
 
     /* ── Login page background ────────────────────────── */
-    .stApp {
+    .stApp:has(.login-page-root) {
         background:
             radial-gradient(ellipse at 20% 50%, rgba(31,95,168,0.06) 0%, transparent 60%),
             radial-gradient(ellipse at 80% 20%, rgba(63,167,163,0.05) 0%, transparent 55%),
@@ -105,7 +105,7 @@ LOGIN_CSS = r"""
     }
 
     /* ── Override button for login page ──────────────── */
-    .stButton > button {
+    .login-page-root .stButton > button {
         background-color: var(--brand) !important;
         color: #FFFFFF !important;
         border: none !important;
@@ -117,18 +117,18 @@ LOGIN_CSS = r"""
         transition: all 0.2s ease !important;
         letter-spacing: 0.01em;
     }
-    .stButton > button:hover {
+    .login-page-root .stButton > button:hover {
         background-color: var(--brand-dark) !important;
         box-shadow: 0 4px 12px rgba(31, 95, 168, 0.3) !important;
         transform: translateY(-1px) !important;
     }
 
     /* ── Input focus ──────────────────────────────────── */
-    .stTextInput input:focus {
+    .login-page-root .stTextInput input:focus {
         border-color: var(--brand) !important;
         box-shadow: 0 0 0 3px rgba(31, 95, 168, 0.15) !important;
     }
-    .stTextInput label {
+    .login-page-root .stTextInput label {
         font-family: 'Inter', sans-serif !important;
         font-weight: 500 !important;
         font-size: 0.85rem !important;
@@ -136,15 +136,15 @@ LOGIN_CSS = r"""
     }
 
     /* ── Hide Streamlit chrome on login page ─────────── */
-    [data-testid="stHeader"] { display: none !important; }
-    [data-testid="stDecoration"] { display: none !important; }
-    #MainMenu { visibility: hidden !important; }
-    footer { visibility: hidden !important; }
+    .stApp:has(.login-page-root) [data-testid="stHeader"] { display: none !important; }
+    .stApp:has(.login-page-root) [data-testid="stDecoration"] { display: none !important; }
+    .stApp:has(.login-page-root) #MainMenu { visibility: hidden !important; }
+    .stApp:has(.login-page-root) footer { visibility: hidden !important; }
 
     /* ── Hide CookieController visual mount / blank box ────────────────── */
-    iframe[title*="cookie"],
-    iframe[src*="streamlit_cookies"],
-    iframe[src*="cookie"] {
+    .login-page-root iframe[title*="cookie"],
+    .login-page-root iframe[src*="streamlit_cookies"],
+    .login-page-root iframe[src*="cookie"] {
         display: none !important;
         height: 0 !important;
         min-height: 0 !important;
@@ -152,10 +152,10 @@ LOGIN_CSS = r"""
     }
 
     /* Hide the Streamlit wrapper around the cookie iframe */
-    div[data-testid="stElementContainer"]:has(iframe[title*="cookie"]),
-    div[data-testid="stElementContainer"]:has(iframe[src*="cookie"]),
-    div[data-testid="stVerticalBlock"]:has(iframe[title*="cookie"]),
-    div[data-testid="stVerticalBlock"]:has(iframe[src*="cookie"]) {
+    .login-page-root div[data-testid="stElementContainer"]:has(iframe[title*="cookie"]),
+    .login-page-root div[data-testid="stElementContainer"]:has(iframe[src*="cookie"]),
+    .login-page-root div[data-testid="stVerticalBlock"]:has(iframe[title*="cookie"]),
+    .login-page-root div[data-testid="stVerticalBlock"]:has(iframe[src*="cookie"]) {
         display: none !important;
         height: 0 !important;
         min-height: 0 !important;

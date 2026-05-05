@@ -125,6 +125,7 @@ def init_auth_state():
 def show_login_form():
     """Show login form."""
     st.markdown(styles.get_login_css(), unsafe_allow_html=True)
+    st.markdown('<div class="login-page-root">', unsafe_allow_html=True)
 
     # Centered login card with logo and branding
     col_l, col_c, col_r = st.columns([1, 2, 1])
@@ -207,6 +208,8 @@ def show_login_form():
             st.info("Contact an administrator to reset your password.")
 
         st.markdown("</div>", unsafe_allow_html=True)  # login-form-wrap
+
+    st.markdown("</div>", unsafe_allow_html=True)  # login-page-root
 
 
 def show_setup_form():

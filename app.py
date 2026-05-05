@@ -85,7 +85,9 @@ auth.init_auth_state()
 
 
 if not auth.check_authentication():
-    auth.show_login_form()
+    login_slot = st.empty()
+    with login_slot.container():
+        auth.show_login_form()
 else:
     st.sidebar.image("logo.png", width=180)
 
