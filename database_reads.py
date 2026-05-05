@@ -99,7 +99,7 @@ def _hydrate_supabase_footfall_splits(
     supabase = database.get_supabase_client()
     result = (
         supabase.table("bill_items")
-        .select("restaurant,bill_date,bill_no,created_date_time,pax,bill_status")
+        .select("restaurant,bill_date,bill_no,created_date_time,pax,net_amount,bill_status")
         .in_("restaurant", list(restaurant_to_location.keys()))
         .gte("bill_date", start_date)
         .lte("bill_date", end_date)
@@ -120,15 +120,16 @@ def _hydrate_supabase_footfall_splits(
         key = (location_id, date, bill_no)
         bucket = bills.setdefault(
             key,
-            {"pax": 0, "created_date_time": row.get("created_date_time")},
+            {"pax": 0, "net_amount": 0.0, "created_date_time": row.get("created_date_time")},
         )
         bucket["pax"] = max(int(bucket.get("pax") or 0), int(row.get("pax") or 0))
+        bucket["net_amount"] += float(row.get("net_amount") or 0)
         if bucket.get("created_date_time") is None:
             bucket["created_date_time"] = row.get("created_date_time")
 
     grouped: Dict[tuple[int, str], List[Dict[str, Any]]] = {}
     for (location_id, date, _bill_no), bill in bills.items():
-        if int(bill.get("pax") or 0) <= 0:
+        if int(bill.get("pax") or 0) <= 0 and float(bill.get("net_amount") or 0) <= 0:
             continue
         grouped.setdefault((location_id, date), []).append(bill)
 
@@ -140,16 +141,24 @@ def _hydrate_supabase_footfall_splits(
             if (hour := _hour_from_created_datetime(bill.get("created_date_time"))) is not None
         ]
         is_pos_12h_clock = bool(hours) and max(hours) <= 12
-        split = {"lunch_covers": 0, "dinner_covers": 0}
+        split = {
+            "lunch_covers": 0,
+            "dinner_covers": 0,
+            "lunch_sales": 0.0,
+            "dinner_sales": 0.0,
+        }
         for bill in day_bills:
             service_type = _service_type_from_created_datetime(
                 bill.get("created_date_time"), is_pos_12h_clock
             )
             pax = int(bill.get("pax") or 0)
+            net_amount = float(bill.get("net_amount") or 0)
             if service_type == "Lunch":
                 split["lunch_covers"] += pax
+                split["lunch_sales"] += net_amount
             else:
                 split["dinner_covers"] += pax
+                split["dinner_sales"] += net_amount
         split_by_key[key] = split
 
     hydrated: List[Dict] = []
@@ -163,9 +172,17 @@ def _hydrate_supabase_footfall_splits(
         split = split_by_key.get((int(loc), date)) if loc is not None and date else None
         if split:
             covers = int(out.get("covers") or 0)
-            lunch, dinner = _reconcile_cover_split(
-                int(split["lunch_covers"]), int(split["dinner_covers"]), covers
-            )
+            lunch_raw = int(split["lunch_covers"])
+            dinner_raw = int(split["dinner_covers"])
+            if lunch_raw + dinner_raw > 0:
+                lunch, dinner = _reconcile_cover_split(lunch_raw, dinner_raw, covers)
+            else:
+                sales_total = float(split["lunch_sales"] or 0) + float(split["dinner_sales"] or 0)
+                if covers <= 0 or sales_total <= 0:
+                    hydrated.append(out)
+                    continue
+                lunch = round(covers * (float(split["lunch_sales"] or 0) / sales_total))
+                dinner = covers - lunch
             out["lunch_covers"] = lunch
             out["dinner_covers"] = dinner
         hydrated.append(out)

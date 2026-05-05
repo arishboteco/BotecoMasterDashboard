@@ -253,6 +253,51 @@ class TestSupabaseFootfallSplits:
         assert rows[0]["lunch_covers"] == 5
         assert rows[0]["dinner_covers"] == 4
 
+    def test_get_summaries_allocates_covers_by_service_sales_when_pax_missing(
+        self, monkeypatch
+    ):
+        import database_reads
+
+        client = _TablesClient(
+            {
+                "daily_summary": [
+                    {
+                        "location_id": 2,
+                        "date": "2026-05-01",
+                        "covers": 22,
+                        "net_total": 87220.05,
+                    }
+                ],
+                "bill_items": [
+                    {
+                        "restaurant": "Boteco - Bagmane",
+                        "bill_date": "2026-05-01",
+                        "bill_no": "ITEM-L-2026-05-01",
+                        "created_date_time": "2026-05-01 13:00:00",
+                        "pax": 0,
+                        "net_amount": 19330.0,
+                        "bill_status": "Success Order",
+                    },
+                    {
+                        "restaurant": "Boteco - Bagmane",
+                        "bill_date": "2026-05-01",
+                        "bill_no": "ITEM-D-2026-05-01",
+                        "created_date_time": "2026-05-01 20:00:00",
+                        "pax": 0,
+                        "net_amount": 67890.05,
+                        "bill_status": "Success Order",
+                    },
+                ],
+            }
+        )
+        monkeypatch.setattr(database, "use_supabase", lambda: True)
+        monkeypatch.setattr(database, "get_supabase_client", lambda: client)
+
+        rows = database_reads.get_summaries_for_date_range(2, "2026-05-01", "2026-05-01")
+
+        assert rows[0]["lunch_covers"] == 5
+        assert rows[0]["dinner_covers"] == 17
+
 
 class TestGetMonthlyFootfallMulti:
     def test_returns_empty_for_no_data(self, initialized_db):
