@@ -590,6 +590,7 @@ def save_smart_upload_results(
 
     daily_rows: List[Dict[str, Any]] = []
     cat_records: List[Dict[str, Any]] = []
+    synthetic_bill_items: List[Dict[str, Any]] = []
     upload_batch: List[Dict[str, Any]] = []
     dates_locs: set = set()
 
@@ -640,8 +641,9 @@ def save_smart_upload_results(
 
             # LEGACY FLOW: dynamic report / item report
             if is_supabase:
-                # Legacy flow still requires Dynamic Report for Supabase
-                if "dynamic_report" not in source_kinds:
+                has_dynamic = "dynamic_report" in source_kinds
+                has_item_report = "item_order_details" in source_kinds
+                if not has_dynamic and not has_item_report:
                     skipped += 1
                     messages.append(
                         f"No Dynamic Report for {date_str} — legacy Supabase save "
@@ -669,7 +671,14 @@ def save_smart_upload_results(
                     )
                 dates_locs.add((date_str, loc_id))
 
+                if has_item_report and not has_dynamic:
+                    synthetic_bill_items.extend(
+                        _build_item_report_bill_items_from_services(loc_id, date_str, merged)
+                    )
+
                 source_fn = _find_source_filename(result, "dynamic_report")
+                if not source_fn and has_item_report:
+                    source_fn = _find_source_filename(result, "item_order_details")
                 upload_batch.append(
                     _build_upload_history_row(
                         loc_id=loc_id,
@@ -759,6 +768,19 @@ def save_smart_upload_results(
             except (ValueError, TypeError, KeyError, RuntimeError) as ex:
                 messages.append(f"⚠️ Error saving bill items from {fr.filename}: {ex}")
 
+        if synthetic_bill_items:
+            try:
+                db_writes.delete_bill_items_by_dates_locs(client, dates_locs)
+            except (ValueError, TypeError, KeyError, RuntimeError):
+                messages.append("⚠️ Could not clear old bill items before saving Item Report service data.")
+            try:
+                db_writes.save_bill_items(client, synthetic_bill_items)
+                messages.append(
+                    f"Saved {len(synthetic_bill_items)} bill items from Item Report timestamp buckets"
+                )
+            except (ValueError, TypeError, KeyError, RuntimeError) as ex:
+                messages.append(f"⚠️ Error saving Item Report service bill items: {ex}")
+
     # ── Step 5: Upload history ──
     if upload_batch:
         try:
@@ -815,6 +837,63 @@ def _build_upload_history_row(
         "status": "imported",
         "file_hash": fmeta.get("file_hash"),
     }
+
+
+def _build_item_report_bill_items_from_services(
+    location_id: int, date_str: str, merged: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    """Build synthetic bill_items rows from Item Report service buckets.
+
+    Service Sales analytics in Supabase reads `bill_items.created_date_time`. For
+    Item Report-only legacy uploads we synthesize one bill_items row per service
+    bucket so Lunch/Dinner can be derived from timestamp hour.
+    """
+    from database_writes import LOCATION_ID_TO_RESTAURANT
+
+    restaurant = LOCATION_ID_TO_RESTAURANT.get(int(location_id), "Boteco")
+    hour_by_service = {
+        "breakfast": "09:00:00",
+        "lunch": "13:00:00",
+        "dinner": "20:00:00",
+    }
+    records: List[Dict[str, Any]] = []
+
+    for svc in merged.get("services") or []:
+        service_name = str(svc.get("type", "") or "").strip().lower()
+        if service_name not in hour_by_service:
+            continue
+        amount = float(svc.get("amount", 0) or 0)
+        if amount <= 0:
+            continue
+        created_date_time = f"{date_str} {hour_by_service[service_name]}"
+        records.append(
+            {
+                "restaurant": restaurant,
+                "bill_date": date_str,
+                "bill_no": f"ITEM-{service_name[:1].upper()}-{date_str}",
+                "server_name": None,
+                "table_no": None,
+                "bill_status": "Success Order",
+                "payment_type": None,
+                "category_name": "Service Split",
+                "item_name": f"{service_name.title()} Bucket",
+                "discount_reason": None,
+                "created_date_time": created_date_time,
+                "item_qty": 1,
+                "pax": 0,
+                "net_amount": round(amount, 2),
+                "gross_amount": round(amount, 2),
+                "discount": 0.0,
+                "cgst": 0.0,
+                "sgst": 0.0,
+                "service_charge": 0.0,
+                "gst_on_service_charge": 0.0,
+                "cancelled_amount": 0.0,
+                "complementary_amount": 0.0,
+            }
+        )
+
+    return records
 
 
 def _build_legacy_daily_row(

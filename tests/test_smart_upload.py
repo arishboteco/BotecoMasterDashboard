@@ -345,3 +345,80 @@ class TestRoutingAndMergeExtraction:
         day = result.location_results[11][0]
         assert day.source_kinds == ["dynamic_report"]
         assert day.merged["file_type"] == "dynamic_report"
+
+
+class TestSaveSmartUploadResults:
+    def test_supabase_saves_item_report_service_sales_using_timestamp_buckets(self, monkeypatch):
+        captured_bill_items = []
+
+        monkeypatch.setattr(smart_upload.database, "use_supabase", lambda: True)
+        monkeypatch.setattr(smart_upload.database, "get_supabase_client", lambda: object())
+
+        import database_writes
+
+        monkeypatch.setattr(
+            database_writes,
+            "upsert_daily_summaries_supabase_batch",
+            lambda client, rows: None,
+        )
+        monkeypatch.setattr(
+            database_writes,
+            "delete_category_summary_batch",
+            lambda client, dates_locs: None,
+        )
+        monkeypatch.setattr(
+            database_writes,
+            "save_category_summary_batch",
+            lambda client, records: None,
+        )
+        monkeypatch.setattr(
+            database_writes,
+            "save_upload_records_batch",
+            lambda rows: None,
+        )
+        monkeypatch.setattr(
+            database_writes,
+            "delete_bill_items_by_dates_locs",
+            lambda client, dates_locs: None,
+        )
+        monkeypatch.setattr(
+            database_writes,
+            "save_bill_items",
+            lambda client, records: captured_bill_items.extend(records),
+        )
+
+        result = SmartUploadResult(
+            files=[],
+            days=[],
+            location_results={
+                2: [
+                    DayResult(
+                        date="2026-05-02",
+                        merged={
+                            "date": "2026-05-02",
+                            "net_total": 1000.0,
+                            "services": [
+                                {"type": "Lunch", "amount": 400.0},
+                                {"type": "Dinner", "amount": 600.0},
+                            ],
+                        },
+                        source_kinds=["item_order_details"],
+                    )
+                ]
+            },
+        )
+
+        saved, skipped, _messages = smart_upload.save_smart_upload_results(
+            result,
+            location_id=2,
+            uploaded_by="tester",
+        )
+
+        assert saved == 1
+        assert skipped == 0
+        assert len(captured_bill_items) == 2
+        assert {r["created_date_time"] for r in captured_bill_items} == {
+            "2026-05-02 13:00:00",
+            "2026-05-02 20:00:00",
+        }
+        assert {r["net_amount"] for r in captured_bill_items} == {400.0, 600.0}
