@@ -1,7 +1,7 @@
 """Tests for smart_upload save metadata behavior."""
 
 import smart_upload
-from smart_upload import DayResult, FileResult, SmartUploadResult
+from smart_upload import DayResult, SmartUploadResult
 
 
 class TestProcessSmartUpload:
@@ -422,3 +422,85 @@ class TestSaveSmartUploadResults:
             "2026-05-02 20:00:00",
         }
         assert {r["net_amount"] for r in captured_bill_items} == {400.0, 600.0}
+
+    def test_supabase_saves_new_flow_item_report_timestamp_service_sales(self, monkeypatch):
+        captured_bill_items = []
+
+        monkeypatch.setattr(smart_upload.database, "use_supabase", lambda: True)
+        monkeypatch.setattr(smart_upload.database, "get_supabase_client", lambda: object())
+
+        import database_writes
+
+        monkeypatch.setattr(
+            database_writes,
+            "upsert_daily_summaries_supabase_batch",
+            lambda client, rows: None,
+        )
+        monkeypatch.setattr(
+            database_writes,
+            "delete_category_summary_batch",
+            lambda client, dates_locs: None,
+        )
+        monkeypatch.setattr(
+            database_writes,
+            "save_category_summary_batch",
+            lambda client, records: None,
+        )
+        monkeypatch.setattr(
+            database_writes,
+            "save_upload_records_batch",
+            lambda rows: None,
+        )
+        monkeypatch.setattr(
+            database_writes,
+            "delete_bill_items_by_dates_locs",
+            lambda client, dates_locs: None,
+        )
+        monkeypatch.setattr(
+            database_writes,
+            "save_bill_items",
+            lambda client, records: captured_bill_items.extend(records),
+        )
+
+        result = SmartUploadResult(
+            files=[],
+            days=[],
+            location_results={
+                2: [
+                    DayResult(
+                        date="2026-05-03",
+                        merged={
+                            "date": "2026-05-03",
+                            "net_total": 1000.0,
+                            "source_report": "growth_report_day_wise",
+                        },
+                        source_kinds=["growth_report_day_wise"],
+                    )
+                ]
+            },
+        )
+        result.item_service_by_loc = {  # type: ignore[attr-defined]
+            2: {
+                "2026-05-03": [
+                    {"type": "Lunch", "amount": 450.0},
+                    {"type": "Dinner", "amount": 550.0},
+                ]
+            }
+        }
+        result.category_by_loc = {2: []}  # type: ignore[attr-defined]
+        result.new_flow_meta = {}  # type: ignore[attr-defined]
+
+        saved, skipped, _messages = smart_upload.save_smart_upload_results(
+            result,
+            location_id=2,
+            uploaded_by="tester",
+        )
+
+        assert saved == 1
+        assert skipped == 0
+        assert len(captured_bill_items) == 2
+        assert {r["created_date_time"] for r in captured_bill_items} == {
+            "2026-05-03 13:00:00",
+            "2026-05-03 20:00:00",
+        }
+        assert {r["net_amount"] for r in captured_bill_items} == {450.0, 550.0}

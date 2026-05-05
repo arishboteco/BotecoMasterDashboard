@@ -139,8 +139,12 @@ def _growth_report_bytes(
     return buf2.getvalue()
 
 
-def _item_report_bytes(restaurant_name: str = "Boteco") -> bytes:
+def _item_report_bytes(
+    restaurant_name: str = "Boteco",
+    timestamps: list[str] | None = None,
+) -> bytes:
     """Build a minimal Item Report Excel that the parser can read."""
+    timestamps = timestamps or ["2026-04-01 20:00:00", "2026-04-01 21:00:00"]
     title_rows = [
         {"col0": "Date:", "col1": "2026-04-01 to 2026-04-01",
          **{f"x{i}": None for i in range(18)}},
@@ -153,7 +157,7 @@ def _item_report_bytes(restaurant_name: str = "Boteco") -> bytes:
     ]
     data = {
         "Date": ["2026-04-01", "2026-04-01"],
-        "Timestamp": ["2026-04-01 20:00:00", "2026-04-01 21:00:00"],
+        "Timestamp": timestamps,
         "Invoice No.": ["1001", "1001"],
         "Payment Type": ["Cash", "Cash"],
         "Order Type": ["Dine In", "Dine In"],
@@ -567,6 +571,27 @@ class TestItemReportCategoryParser:
         rows, errors, _ = self._parse()
         assert not errors
         assert rows[0]["location_id"] == 1
+
+    def test_meta_has_service_sales_from_timestamp_column(self):
+        from uploads.parsers.item_report_category_summary import (
+            parse_item_report_category_summary,
+        )
+
+        content = _item_report_bytes(
+            timestamps=["2026-04-01 17:30:00", "2026-04-01 18:00:00"]
+        )
+        rows, errors, meta = parse_item_report_category_summary(
+            content, "test.xlsx", location_id=1
+        )
+
+        assert not errors
+        assert rows
+        assert meta["service_sales_by_date"] == {
+            "2026-04-01": [
+                {"type": "Lunch", "amount": 400.0},
+                {"type": "Dinner", "amount": 300.0},
+            ]
+        }
 
 
 # ---------------------------------------------------------------------------

@@ -97,6 +97,7 @@ def _process_new_flow_files(
     Dict[int, List[Dict[str, Any]]],   # daily_rows by location_id
     Dict[int, List[Dict[str, Any]]],   # category_rows by location_id
     Dict[str, Dict[str, Any]],          # file_meta by filename
+    Dict[int, Dict[str, List[Dict[str, Any]]]],  # service rows by location/date
 ]:
     """Parse growth and item reports, routing by auto-detected outlet.
 
@@ -105,6 +106,7 @@ def _process_new_flow_files(
     """
     daily_by_loc: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
     cat_by_loc: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+    item_service_by_loc: Dict[int, Dict[str, List[Dict[str, Any]]]] = defaultdict(dict)
     file_meta: Dict[str, Dict[str, Any]] = {}
 
     # --- Growth Reports → daily_summary rows ---
@@ -183,6 +185,8 @@ def _process_new_flow_files(
             continue
 
         cat_by_loc[loc_id].extend(rows)
+        for date_str, services in (meta.get("service_sales_by_date") or {}).items():
+            item_service_by_loc[loc_id][date_str] = services
         if fr:
             fr.notes.append(
                 f"Parsed {len(rows)} category row(s) → {loc_name} (match: {match_type})"
@@ -258,7 +262,7 @@ def _process_new_flow_files(
                 f"{loc_name} (match: {match_type})"
             )
 
-    return dict(daily_by_loc), dict(cat_by_loc), file_meta
+    return dict(daily_by_loc), dict(cat_by_loc), file_meta, dict(item_service_by_loc)
 
 
 def _build_location_results_from_daily(
@@ -362,7 +366,7 @@ def process_smart_upload(
     item_files_new = classified.get("item_order_details", [])
     comp_files = classified.get("order_comp_summary", [])
 
-    daily_by_loc, cat_by_loc, new_flow_meta = _process_new_flow_files(
+    daily_by_loc, cat_by_loc, new_flow_meta, item_service_by_loc = _process_new_flow_files(
         growth_files=growth_files,
         item_files=item_files_new,
         fallback_location_id=location_id,
@@ -387,7 +391,11 @@ def process_smart_upload(
                 if d not in day_results_placeholder:
                     day_results_placeholder[d] = DayResult(
                         date=d,
-                        merged={"date": d, "location_id": loc_id_key},
+                        merged={
+                            "date": d,
+                            "location_id": loc_id_key,
+                            "services": item_service_by_loc.get(loc_id_key, {}).get(d, []),
+                        },
                         source_kinds=["item_order_details"],
                     )
                 day_results_placeholder[d].merged.setdefault("categories_new", []).append(cat_row)
@@ -535,6 +543,7 @@ def process_smart_upload(
     # Attach file_meta to result for use in save step (upload_history + validation)
     result.new_flow_meta = new_flow_meta  # type: ignore[attr-defined]
     result.category_by_loc = cat_by_loc  # type: ignore[attr-defined]
+    result.item_service_by_loc = item_service_by_loc  # type: ignore[attr-defined]
 
     _elapsed = time.monotonic() - _t0
     total_days = sum(len(days) for days in location_results.values())
@@ -587,6 +596,9 @@ def save_smart_upload_results(
 
     new_flow_meta: Dict[str, Any] = getattr(result, "new_flow_meta", {})
     cat_by_loc: Dict[int, List[Dict[str, Any]]] = getattr(result, "category_by_loc", {})
+    item_service_by_loc: Dict[int, Dict[str, List[Dict[str, Any]]]] = getattr(
+        result, "item_service_by_loc", {}
+    )
 
     daily_rows: List[Dict[str, Any]] = []
     cat_records: List[Dict[str, Any]] = []
@@ -614,6 +626,13 @@ def save_smart_upload_results(
                         db_writes.build_daily_summary_row_new_flow(loc_id, date_str, merged)
                     )
                     dates_locs.add((date_str, loc_id))
+                    item_services = item_service_by_loc.get(loc_id, {}).get(date_str, [])
+                    if item_services:
+                        synthetic_bill_items.extend(
+                            _build_item_report_bill_items_from_services(
+                                loc_id, date_str, {"services": item_services}
+                            )
+                        )
                     saved += 1
 
                     # Build upload history row for this day
@@ -772,11 +791,14 @@ def save_smart_upload_results(
             try:
                 db_writes.delete_bill_items_by_dates_locs(client, dates_locs)
             except (ValueError, TypeError, KeyError, RuntimeError):
-                messages.append("⚠️ Could not clear old bill items before saving Item Report service data.")
+                messages.append(
+                    "⚠️ Could not clear old bill items before saving Item Report service data."
+                )
             try:
                 db_writes.save_bill_items(client, synthetic_bill_items)
                 messages.append(
-                    f"Saved {len(synthetic_bill_items)} bill items from Item Report timestamp buckets"
+                    "Saved "
+                    f"{len(synthetic_bill_items)} bill items from Item Report timestamp buckets"
                 )
             except (ValueError, TypeError, KeyError, RuntimeError) as ex:
                 messages.append(f"⚠️ Error saving Item Report service bill items: {ex}")

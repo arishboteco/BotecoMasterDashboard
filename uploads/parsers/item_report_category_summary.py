@@ -181,6 +181,7 @@ def parse_item_report_category_summary(
         return [], [f"Item Report {filename}: Date column not found."], {}
 
     status_col = colmap.get("status")
+    timestamp_col = colmap.get("timestamp")
     qty_col = colmap.get("qty.")
     sub_total_col = colmap.get("sub total")
     discount_col = colmap.get("discount")
@@ -199,6 +200,7 @@ def parse_item_report_category_summary(
     # Separately track complimentary and cancelled amounts
     comp_buckets: Dict[Tuple[str, str], float] = {}
     canc_buckets: Dict[Tuple[str, str], float] = {}
+    service_buckets: Dict[str, Dict[str, float]] = {}
 
     for _, row in data.iterrows():
         raw_date = row.iloc[date_col] if date_col < len(row) else None
@@ -234,6 +236,14 @@ def parse_item_report_category_summary(
             continue
         if status != "success":
             continue
+
+        if timestamp_col is not None and timestamp_col < len(row):
+            timestamp = pd.to_datetime(row.iloc[timestamp_col], errors="coerce")
+            if not pd.isna(timestamp):
+                service_type = "Lunch" if int(timestamp.hour) < 18 else "Dinner"
+                service_buckets.setdefault(date_str, {"Lunch": 0.0, "Dinner": 0.0})[
+                    service_type
+                ] += _cell(row, sub_total_col) - _cell(row, discount_col)
 
         if key not in buckets:
             normalized = _normalize_category(group_name)
@@ -288,9 +298,18 @@ def parse_item_report_category_summary(
         rows.append(row_out)
 
     period_start, period_end = _extract_period(df)
+    service_sales_by_date = {
+        date: [
+            {"type": service_type, "amount": round(amount, 2)}
+            for service_type, amount in buckets_by_service.items()
+            if amount > 0
+        ]
+        for date, buckets_by_service in service_buckets.items()
+    }
     meta: Dict[str, Any] = {
         "period_start": period_start,
         "period_end": period_end,
         "row_count": len(rows),
+        "service_sales_by_date": service_sales_by_date,
     }
     return rows, [], meta
