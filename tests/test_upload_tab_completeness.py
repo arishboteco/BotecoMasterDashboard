@@ -24,12 +24,19 @@ def test_outlet_completeness_includes_comp_report(monkeypatch):
     monkeypatch.setattr(upload_tab.st, "markdown", lambda text, **_k: lines.append(str(text)))
 
     result = SimpleNamespace(
+        files=[
+            FileResult(
+                filename="comp.xlsx",
+                kind="order_comp_summary",
+                kind_label="Complimentary Orders Summary",
+                importable=True,
+            )
+        ],
         location_results={1: []},
         category_by_loc={1: []},
         new_flow_meta={
             "comp.xlsx": {
                 "detected_location_id": 1,
-                "file_type": "order_comp_summary",
             }
         },
     )

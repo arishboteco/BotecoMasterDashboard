@@ -52,11 +52,17 @@ def _render_outlet_completeness(upload_result, loc_name_map: dict) -> None:
     growth_locs_from_meta: set = set()
     item_locs_from_meta: set = set()
     comp_locs: set = set()
-    for meta in new_flow_meta.values():
+    files_by_name = {
+        getattr(fr, "filename", ""): fr for fr in getattr(upload_result, "files", [])
+    }
+
+    for filename, meta in new_flow_meta.items():
         loc_id = meta.get("detected_location_id")
         if not loc_id:
             continue
         file_type = str(meta.get("file_type", ""))
+        if not file_type:
+            file_type = str(getattr(files_by_name.get(filename), "kind", ""))
         source_report = str(meta.get("source_report", ""))
         if file_type == "growth_report_day_wise":
             growth_locs_from_meta.add(loc_id)
