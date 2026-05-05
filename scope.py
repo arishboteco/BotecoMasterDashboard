@@ -251,6 +251,8 @@ def get_daily_report_bundle(
                 base["categories"] = list(detailed.get("categories") or [])
             if detailed.get("services") is not None:
                 base["services"] = list(detailed.get("services") or [])
+            if float(base.get("target") or 0) <= 0:
+                base["target"] = _synthetic_daily_summary(lid, date_str).get("target", 0.0)
             parts_raw.append(base)
         else:
             base = _synthetic_daily_summary(lid, date_str)
