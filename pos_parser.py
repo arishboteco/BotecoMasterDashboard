@@ -1,4 +1,3 @@
-import calendar
 import re
 import streamlit as st
 from collections import defaultdict
@@ -689,11 +688,7 @@ def calculate_mtd_metrics(
 
     avg_daily = total_sales / days_counted if days_counted > 0 else 0
 
-    # Prorate target to days elapsed so the % shows "on pace" rather than raw % of monthly target
-    days_in_month = calendar.monthrange(year, month)[1]
-    days_elapsed = int(str(as_of_date)[:10][8:10]) if as_of_date else days_in_month
-    prorated_target = target_monthly * (days_elapsed / days_in_month) if target_monthly > 0 else 0
-    pct_target = (total_sales / prorated_target) * 100 if prorated_target > 0 else 0
+    pct_target = (total_sales / target_monthly) * 100 if target_monthly > 0 else 0
 
     return {
         "mtd_total_covers": total_covers,
@@ -735,11 +730,7 @@ def calculate_mtd_metrics_multi(
 
     avg_daily = total_sales / days_counted if days_counted > 0 else 0
 
-    # Prorate target to days elapsed so the % shows "on pace" rather than raw % of monthly target
-    days_in_month = calendar.monthrange(year, month)[1]
-    days_elapsed = int(str(as_of_date)[:10][8:10]) if as_of_date else days_in_month
-    prorated_target = target_monthly * (days_elapsed / days_in_month) if target_monthly > 0 else 0
-    pct_target = (total_sales / prorated_target) * 100 if prorated_target > 0 else 0
+    pct_target = (total_sales / target_monthly) * 100 if target_monthly > 0 else 0
 
     return {
         "mtd_total_covers": total_covers,

@@ -147,7 +147,7 @@ def _sales_summary_row_bg(label: str, status_color: str | None = None) -> str | 
         return C_ROW_TARGET_NEUTRAL
     if label == "Forecast Month-End":
         return C_ROW_FORECAST
-    if label in {"% of Target", "Forecast vs Target", "Required Daily Run Rate"}:
+    if label in {"Actual % of Target", "Forecast % of Target", "Required Daily Run Rate"}:
         if label == "Required Daily Run Rate":
             return C_ROW_TARGET_NEUTRAL if status_color == C_GREEN else C_ROW_REQUIRED_RUN_RATE
         return _target_row_bg(status_color)
@@ -1070,7 +1070,7 @@ def _build_sales_summary(
 
     add_mtd_row("MTD Net (Excl. Disc.)", _mtd_net_excl, fmt="currency", bold=True)
     add_mtd_row("Sales Target", "mtd_target", fmt="currency")
-    add_mtd_row("% of Target", "mtd_pct_target", fmt="pct", bold=True, right_color=ach_color)
+    add_mtd_row("Actual % of Target", "mtd_pct_target", fmt="pct", bold=True, right_color=ach_color)
 
     def _forecast_end(d):
         return compute_forecast_metrics(d)["forecast_month_end_sales"]
@@ -1082,7 +1082,7 @@ def _build_sales_summary(
         return _pct(val) if val is not None else "N/A"
 
     add_mtd_row(
-        "Forecast vs Target",
+        "Forecast % of Target",
         _forecast_target_pct,
         fmt="str",
         right_color=statuses["forecast"]["color"],
@@ -1152,9 +1152,9 @@ def _build_sales_summary(
         if not row:
             continue
         status_color = None
-        if row[0] == "% of Target":
+        if row[0] == "Actual % of Target":
             status_color = ach_color
-        elif row[0] in {"Forecast vs Target", "Required Daily Run Rate"}:
+        elif row[0] in {"Forecast % of Target", "Required Daily Run Rate"}:
             status_color = statuses["forecast"]["color"]
         bg = _sales_summary_row_bg(str(row[0]), status_color)
         if bg:
@@ -1195,7 +1195,7 @@ def _build_sales_summary(
             "MTD Total Covers",
             "MTD Net Sales",
             "MTD Net (Excl. Disc.)",
-            "% of Target",
+            "Actual % of Target",
         ):
             style_cmds.append(("FONTNAME", (0, i), (-1, i), FONT_BOLD))
 
@@ -1203,9 +1203,9 @@ def _build_sales_summary(
     for i, row in enumerate(all_rows):
         if row and row[0] == "APC (Day)":
             style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(statuses["apc"]["color"])))
-        if row and row[0] == "% of Target":
+        if row and row[0] == "Actual % of Target":
             style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(ach_color)))
-        if row and row[0] == "Forecast vs Target":
+        if row and row[0] == "Forecast % of Target":
             style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(statuses["forecast"]["color"])))
 
     tbl.setStyle(TableStyle(style_cmds))
@@ -2230,7 +2230,7 @@ def generate_whatsapp_text(
         f"  \u2022 Total Covers: {int(r.get('mtd_total_covers') or 0):,}\n"
         f"  \u2022 Net Sales: {config.CURRENCY_FORMAT.format(r.get('mtd_net_sales', 0))}\n"
         f"  \u2022 Avg Daily: {config.CURRENCY_FORMAT.format(r.get('mtd_avg_daily', 0))}\n"
-        f"  \u2022 Pace vs Target: {float(r.get('mtd_pct_target') or 0):.0f}%\n"
+        f"  \u2022 Actual % of Target: {float(r.get('mtd_pct_target') or 0):.0f}%\n"
     )
 
     if per_outlet and len(per_outlet) >= 2:

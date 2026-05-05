@@ -180,7 +180,7 @@ class TestSalesSummaryRowBackgrounds:
         assert (
             _background_hex_for_label(table, "Sales Target") == sheet_reports.C_ROW_TARGET_NEUTRAL
         )
-        assert _background_hex_for_label(table, "% of Target") == sheet_reports.C_ROW_TARGET_BAD
+        assert _background_hex_for_label(table, "Actual % of Target") == sheet_reports.C_ROW_TARGET_BAD
         assert (
             _background_hex_for_label(table, "Forecast Month-End") == sheet_reports.C_ROW_FORECAST
         )

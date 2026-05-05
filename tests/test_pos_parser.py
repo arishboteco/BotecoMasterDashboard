@@ -180,3 +180,25 @@ class TestMtdComplimentary:
         )
 
         assert out["mtd_complimentary"] == 140
+
+
+class TestMtdTargetPercentage:
+    def test_single_location_uses_full_month_target_for_mtd_pct(self, monkeypatch):
+        monkeypatch.setattr(
+            "database.get_summaries_for_month",
+            lambda location_id, year, month: [
+                {"date": "2026-04-01", "net_total": 400_000, "covers": 100},
+                {"date": "2026-04-02", "net_total": 200_000, "covers": 50},
+            ],
+        )
+
+        out = calculate_mtd_metrics(
+            1,
+            target_monthly=4_000_000,
+            year=2026,
+            month=4,
+            as_of_date="2026-04-15",
+        )
+
+        assert out["mtd_net_sales"] == 600_000
+        assert out["mtd_pct_target"] == 15.0
