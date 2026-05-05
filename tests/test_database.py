@@ -93,6 +93,31 @@ def test_supabase_client_prefers_service_key_for_server_side_reads(monkeypatch):
 
 
 class TestGetServiceSalesForDateRange:
+    def test_supabase_accepts_success_order_status_with_space(self, monkeypatch):
+        rows = [
+            {
+                "created_date_time": "2026-04-08 12:15:00",
+                "net_amount": 250.0,
+                "bill_status": "Success Order",
+            },
+            {
+                "created_date_time": "2026-04-08 19:10:00",
+                "net_amount": 750.0,
+                "bill_status": "Success Order",
+            },
+        ]
+        monkeypatch.setattr(database, "use_supabase", lambda: True)
+        monkeypatch.setattr(database, "get_supabase_client", lambda: _BillItemsClient(rows))
+
+        result = database_analytics.get_service_sales_for_date_range(
+            [1], "2026-04-08", "2026-04-08"
+        )
+
+        assert result == [
+            {"type": "Lunch", "amount": 250.0},
+            {"type": "Dinner", "amount": 750.0},
+        ]
+
     def test_supabase_classifies_17xx_timestamps_as_lunch(self, monkeypatch):
         rows = [
             {

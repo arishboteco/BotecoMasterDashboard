@@ -18,7 +18,7 @@ from db.category_rows import CATEGORY_ROW_PREFIX
 def _bill_items_success(status: Any) -> bool:
     """Match Petpooja / CSV bill status (case-insensitive)."""
     s = str(status or "").strip().lower()
-    return s in ("", "successorder")
+    return s in ("", "successorder", "success order")
 
 
 def _restaurants_for_location_ids(location_ids: List[int]) -> List[str]:
