@@ -34,12 +34,12 @@ def date_nav(
     if picker_key not in st.session_state:
         st.session_state[picker_key] = st.session_state[session_key]
 
-    prev_col, date_col, next_col = st.columns([1, 3, 1])
+    prev_col, date_col, next_col = st.columns([0.55, 2.9, 0.55])
     with prev_col:
         st.button(
             "\u2190",
             key=f"{session_key}_prev",
-            width="stretch",
+            width=44,
             on_click=_shift_session_date,
             args=(session_key, picker_key, -1),
         )
@@ -47,7 +47,7 @@ def date_nav(
         st.button(
             "\u2192",
             key=f"{session_key}_next",
-            width="stretch",
+            width=44,
             on_click=_shift_session_date,
             args=(session_key, picker_key, 1),
         )

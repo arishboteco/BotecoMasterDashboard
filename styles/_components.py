@@ -131,22 +131,25 @@ COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ─�
     .report-date-nav {
         max-width: 760px;
         margin: 0.15rem auto 0.45rem;
-        padding: 0.6rem 0.7rem;
-        border: 1px solid var(--border-subtle);
-        border-radius: var(--radius-lg);
-        background: linear-gradient(180deg, var(--surface-elevated) 0%, var(--surface) 100%);
-        box-shadow: var(--shadow-sm);
     }
     .report-date-nav [data-testid="stHorizontalBlock"] {
         align-items: center;
         justify-content: center;
-        gap: 0.5rem;
+        gap: 0;
         max-width: 680px;
         margin: 0 auto;
+        border: 1px solid var(--border-subtle);
+        border-radius: 999px;
+        background: linear-gradient(180deg, var(--surface-elevated) 0%, var(--surface) 100%);
+        box-shadow: var(--shadow-sm);
+        overflow: hidden;
     }
     .report-date-nav [data-testid="stButton"] {
         display: flex;
         justify-content: center;
+        align-items: center;
+        max-width: 46px;
+        min-width: 46px;
     }
     .report-date-nav [data-testid="stButton"] > button {
         width: 44px !important;
@@ -158,10 +161,10 @@ COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ─�
         padding: 0 !important;
         font-size: 1.05rem !important;
         font-weight: 700 !important;
-        border-radius: 999px !important;
+        border-radius: 0 !important;
         color: var(--brand-dark) !important;
-        background: var(--surface-elevated) !important;
-        border: 1px solid var(--brand-light) !important;
+        background: transparent !important;
+        border: none !important;
         box-shadow: var(--shadow-xs);
         transition: background var(--transition-fast),
                     border-color var(--transition-fast),
@@ -169,32 +172,39 @@ COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ─�
                     transform var(--transition-fast),
                     box-shadow var(--transition-fast);
     }
+    .report-date-nav [data-testid="stHorizontalBlock"] > div:first-child [data-testid="stButton"] > button {
+        border-right: 1px solid var(--border-subtle) !important;
+    }
+    .report-date-nav [data-testid="stHorizontalBlock"] > div:last-child [data-testid="stButton"] > button {
+        border-left: 1px solid var(--border-subtle) !important;
+    }
     .report-date-nav [data-testid="stButton"] > button:hover {
         background: var(--brand-soft) !important;
-        border-color: var(--brand) !important;
         color: var(--brand-dark) !important;
-        transform: translateY(-1px);
     }
     .report-date-nav [data-testid="stButton"] > button:focus-visible {
         outline: none;
         box-shadow: 0 0 0 3px var(--focus-ring), var(--shadow-sm);
     }
     .report-date-nav [data-testid="stDateInput"] {
-        max-width: 260px;
+        max-width: none;
         margin: 0 auto;
+    }
+    .report-date-nav [data-testid="stDateInput"] > div {
+        border-radius: 0 !important;
     }
     .report-date-nav [data-testid="stDateInput"] input {
         text-align: center;
         font-weight: 650;
         letter-spacing: 0.015em;
         line-height: 1.2;
-        border-radius: var(--radius-md);
-        border: 1px solid var(--border-subtle);
-        background: var(--surface-elevated);
+        border-radius: 0 !important;
+        border: none !important;
+        background: transparent !important;
+        box-shadow: none !important;
     }
     .report-date-nav [data-testid="stDateInput"] input:focus {
-        border-color: var(--brand-light);
-        box-shadow: 0 0 0 3px var(--focus-ring);
+        box-shadow: inset 0 0 0 2px var(--brand-light) !important;
     }
     .kpi-snapshot-card {
         padding: 0.95rem;
@@ -292,14 +302,37 @@ COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ─�
     .kpi-delta.is-negative { color: var(--kpi-delta-negative-fg) !important; }
     @media (max-width: 900px) {
         .report-date-nav {
-            padding: 0.55rem;
+            border-radius: var(--radius-lg);
         }
         .report-date-nav [data-testid="stHorizontalBlock"] {
             flex-direction: column;
             align-items: stretch;
+            border-radius: var(--radius-lg);
+            overflow: visible;
         }
         .report-date-nav [data-testid="stDateInput"] {
             max-width: 100%;
+        }
+        .report-date-nav [data-testid="stButton"] {
+            max-width: 100%;
+            min-width: 0;
+        }
+        .report-date-nav [data-testid="stButton"] > button {
+            width: 100% !important;
+            max-width: none !important;
+            border: 1px solid var(--border-subtle) !important;
+            border-radius: var(--radius-md) !important;
+            background: var(--surface-elevated) !important;
+        }
+        .report-date-nav [data-testid="stHorizontalBlock"] > div:first-child [data-testid="stButton"] > button,
+        .report-date-nav [data-testid="stHorizontalBlock"] > div:last-child [data-testid="stButton"] > button {
+            border-left: 1px solid var(--border-subtle) !important;
+            border-right: 1px solid var(--border-subtle) !important;
+        }
+        .report-date-nav [data-testid="stDateInput"] input {
+            border: 1px solid var(--border-subtle) !important;
+            border-radius: var(--radius-md) !important;
+            background: var(--surface-elevated) !important;
         }
         .kpi-snapshot-grid {
             grid-template-columns: 1fr;
