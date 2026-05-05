@@ -144,7 +144,11 @@ def test_daily_report_bundle_backfills_missing_daily_target(monkeypatch):
     )
     monkeypatch.setattr(scope.database, "get_recent_summaries", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(scope.utils, "compute_weekday_mix", lambda _rows: {"Tue": 1.0})
-    monkeypatch.setattr(scope.utils, "compute_day_targets", lambda monthly, _mix: {"Tue": monthly / 30})
+    monkeypatch.setattr(
+        scope.utils,
+        "compute_day_targets",
+        lambda monthly, _mix, days_in_month=30: {"Tue": monthly / days_in_month},
+    )
     monkeypatch.setattr(scope.utils, "get_target_for_date", lambda targets, _date: targets["Tue"])
     monkeypatch.setattr(scope, "enrich_summary_for_display", lambda s, *_args, **_kwargs: s)
 
@@ -154,3 +158,27 @@ def test_daily_report_bundle_backfills_missing_daily_target(monkeypatch):
     assert outlets[0][2]["target"] == 10000.0
     assert combined is not None
     assert combined["target"] == 10000.0
+
+
+def test_synthetic_daily_summary_uses_actual_days_in_month(monkeypatch):
+    monkeypatch.setattr(
+        scope.database,
+        "get_location_settings",
+        lambda _lid: {"id": 1, "name": "Boteco - Indiqube", "target_monthly_sales": 6200000},
+    )
+    monkeypatch.setattr(scope.database, "get_recent_summaries", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(scope.utils, "compute_weekday_mix", lambda _rows: {"Sunday": 1.0})
+
+    captured: dict = {}
+
+    def _fake_compute_day_targets(monthly_target, weekday_mix, days_in_month=30):
+        captured["days_in_month"] = days_in_month
+        return {"Sunday": monthly_target / days_in_month}
+
+    monkeypatch.setattr(scope.utils, "compute_day_targets", _fake_compute_day_targets)
+    monkeypatch.setattr(scope.utils, "get_target_for_date", lambda targets, _date: targets["Sunday"])
+
+    out = scope._synthetic_daily_summary(1, "2026-05-03")
+
+    assert captured["days_in_month"] == 31
+    assert out["target"] == 200000.0

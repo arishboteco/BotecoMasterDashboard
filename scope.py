@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import calendar
 import math
 from collections import defaultdict
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import config
@@ -177,7 +179,9 @@ def _synthetic_daily_summary(location_id: int, date_str: str) -> Dict[str, Any]:
     )
     recent = database.get_recent_summaries(location_id, weeks=8)
     weekday_mix = utils.compute_weekday_mix(recent)
-    day_targets = utils.compute_day_targets(monthly, weekday_mix)
+    dt = datetime.strptime(str(date_str)[:10], "%Y-%m-%d")
+    days_in_month = calendar.monthrange(dt.year, dt.month)[1]
+    day_targets = utils.compute_day_targets(monthly, weekday_mix, days_in_month=days_in_month)
     day_target = utils.get_target_for_date(day_targets, date_str)
 
     return {
