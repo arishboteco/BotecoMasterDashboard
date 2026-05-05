@@ -233,7 +233,14 @@ def render_footfall_editor(
                     repo.delete(location_id, date)
                     changed += 1
             else:
-                repo.upsert(location_id, date, lc, dc, None, edited_by)
+                repo.upsert(
+                    location_id,
+                    date,
+                    lunch_covers=lc,
+                    dinner_covers=dc,
+                    note=None,
+                    edited_by=edited_by,
+                )
                 changed += 1
 
         if changed:
