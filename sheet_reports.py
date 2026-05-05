@@ -724,6 +724,7 @@ def _sales_summary_eod_prefix_rows(
     day_lbl: str,
     pct_tgt: float,
     net_total: Any,
+    target_total: Any,
     ach_color: str,
 ) -> List[List[Any]]:
     """Two top rows for the sales summary table: title and date/KPI strip."""
@@ -754,12 +755,13 @@ def _sales_summary_eod_prefix_rows(
 
     pct_str = f"{pct_tgt:.0f}% of target"
     net_str = escape(_r(net_total) + " net")
+    target_str = escape(_r(target_total) + " target")
     kpi_xml = (
         f'<para alignment="right" leading="{FONT_SIZE_BANNER_SUB + 3}">'
         f'<font name="{FONT_BOLD}" size="{FONT_SIZE_BANNER_TITLE}" color="{ach_color}">'
         f"{escape(pct_str)}</font><br/>"
         f'<font name="{FONT_NAME}" size="{FONT_SIZE_BANNER_SUB}" color="{C_WHITE}">'
-        f"{net_str}</font></para>"
+        f"{net_str} vs {target_str}</font></para>"
     )
     sty_kpi_wrap = ParagraphStyle(
         name="EODSalesKpiWrap",
@@ -882,6 +884,7 @@ def _build_sales_summary(
     iso = str(r.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]
     day_lbl = _sheet_date_label(iso)
     pct_tgt = float(r.get("pct_target") or 0)
+    target_total = float(r.get("target") or 0)
     statuses = compute_metric_statuses(r, daily_sales_history=daily_sales_history)
     ach_color = statuses["target"]["color"]
 
@@ -1107,6 +1110,7 @@ def _build_sales_summary(
         day_lbl,
         pct_tgt,
         r.get("net_total", 0),
+        target_total,
         ach_color,
     )
     all_rows = prefix_rows + list(rows)

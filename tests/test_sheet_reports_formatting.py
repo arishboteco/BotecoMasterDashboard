@@ -34,6 +34,11 @@ def _background_hex_for_label(table, label: str) -> str | None:
     return None
 
 
+def _sales_summary_kpi_banner_text(table) -> str:
+    nested = table._cellvalues[1][0]
+    return nested._cellvalues[0][1].text
+
+
 class TestRupeeFormatting:
     def test_decimal_currency_rounds_to_whole_rupees(self):
         assert sheet_reports._r(72885.08) == "\u20b972,885"
@@ -188,3 +193,30 @@ class TestSalesSummaryRowBackgrounds:
             _background_hex_for_label(table, "Required Daily Run Rate")
             == sheet_reports.C_ROW_REQUIRED_RUN_RATE
         )
+
+
+class TestSalesSummaryHeaderKpiText:
+    def test_kpi_banner_displays_net_and_target_amounts(self):
+        report_data = {
+            "date": "2026-05-03",
+            "net_total": 281670.8,
+            "target": 366309.03,
+            "pct_target": 76.89,
+            "gross_total": 300000,
+            "covers": 100,
+            "apc": 2816.7,
+            "mtd_total_covers": 1000,
+            "mtd_net_sales": 1000000,
+            "mtd_discount": 0,
+            "mtd_complimentary": 0,
+            "mtd_avg_daily": 33333,
+            "mtd_target": 1500000,
+            "mtd_pct_target": 66.6,
+        }
+
+        table = _first_table(
+            sheet_reports._build_sales_summary(report_data, location_name="All locations")
+        )
+        banner_text = _sales_summary_kpi_banner_text(table)
+
+        assert "net vs" in banner_text
