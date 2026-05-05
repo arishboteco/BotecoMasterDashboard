@@ -9,6 +9,8 @@ import streamlit as st
 
 def _sync_session_date_from_picker(session_key: str, picker_key: str) -> None:
     """Sync canonical session date from the date_input widget state."""
+    if picker_key not in st.session_state:
+        return
     st.session_state[session_key] = st.session_state[picker_key]
 
 
