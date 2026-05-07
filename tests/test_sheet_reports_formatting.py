@@ -39,6 +39,12 @@ def _sales_summary_kpi_banner_text(table) -> str:
     return nested._cellvalues[0][1].text
 
 
+def _cell_text_hex(table, row_label: str, col_index: int) -> str:
+    row_index = next(idx for idx, row in enumerate(table._cellvalues) if row and row[0] == row_label)
+    color = table._cellStyles[row_index][col_index].color
+    return color.hexval().replace("0x", "#").upper()
+
+
 class TestRupeeFormatting:
     def test_decimal_currency_rounds_to_whole_rupees(self):
         assert sheet_reports._r(72885.08) == "\u20b972,885"
@@ -220,3 +226,49 @@ class TestSalesSummaryHeaderKpiText:
         banner_text = _sales_summary_kpi_banner_text(table)
 
         assert "net vs" in banner_text
+
+
+class TestSalesSummaryMultiOutletForecastColors:
+    def test_forecast_target_colors_are_applied_per_outlet(self):
+        report_data = {
+            "date": "2026-05-06",
+            "pct_target": 65,
+            "target": 196785,
+            "gross_total": 147142,
+            "discount": 4152,
+            "apc": 1212,
+            "apc_baseline_7d": 1250,
+            "mtd_target": 8000000,
+            "mtd_net_sales": 1100628,
+            "mtd_discount": 4678,
+        }
+        per_outlet = [
+            (
+                "Bagmane",
+                {
+                    "date": "2026-05-06",
+                    "mtd_target": 4000000,
+                    "mtd_net_sales": 286608,
+                },
+            ),
+            (
+                "Indiqube",
+                {
+                    "date": "2026-05-06",
+                    "mtd_target": 4000000,
+                    "mtd_net_sales": 814020,
+                },
+            ),
+        ]
+
+        table = _first_table(
+            sheet_reports._build_sales_summary(
+                report_data,
+                location_name="All locations",
+                per_outlet=per_outlet,
+            )
+        )
+
+        assert _cell_text_hex(table, "Forecast % of Target", 1) == sheet_reports.C_RED
+        assert _cell_text_hex(table, "Forecast % of Target", 2) == sheet_reports.C_GREEN
+        assert _cell_text_hex(table, "Forecast % of Target", 3) == sheet_reports.C_RED
