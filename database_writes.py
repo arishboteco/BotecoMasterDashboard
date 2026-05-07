@@ -188,6 +188,9 @@ def save_daily_summary(location_id: int, data: Dict[str, Any]) -> int:
 
 def _save_daily_summary_sqlite(location_id: int, date_str: str, data: Dict[str, Any]) -> int:
     """Persist legacy daily_summaries + item_sales + service_sales."""
+    turns_raw = data.get("turns")
+    turns_value = round(float(turns_raw), 1) if turns_raw is not None else 0.0
+
     with database.db_connection() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -213,7 +216,7 @@ def _save_daily_summary_sqlite(location_id: int, date_str: str, data: Dict[str, 
                 """,
                 (
                     int(data.get("covers", 0) or 0),
-                    float(data.get("turns", 0) or 0),
+                    turns_value,
                     float(data.get("gross_total", 0) or 0),
                     float(data.get("net_total", 0) or 0),
                     float(data.get("cash_sales", 0) or 0),
@@ -253,7 +256,7 @@ def _save_daily_summary_sqlite(location_id: int, date_str: str, data: Dict[str, 
                     location_id,
                     date_str,
                     int(data.get("covers", 0) or 0),
-                    float(data.get("turns", 0) or 0),
+                    turns_value,
                     float(data.get("gross_total", 0) or 0),
                     float(data.get("net_total", 0) or 0),
                     float(data.get("cash_sales", 0) or 0),
