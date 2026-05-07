@@ -367,7 +367,73 @@ class TestSalesSummaryMultiOutletForecastBackground:
             )
         )
 
-        assert _background_hex_for_label(table, "Forecast % of Target") == sheet_reports.C_ROW_TARGET_NEUTRAL
+        row_index = next(
+            idx for idx, row in enumerate(table._cellvalues) if row and row[0] == "Forecast % of Target"
+        )
+        label_bg = None
+        for command in getattr(table, "_bkgrndcmds", []):
+            name, start, end, color = command[:4]
+            if name != "BACKGROUND":
+                continue
+            if start[0] <= 0 <= end[0] and start[1] <= row_index <= end[1]:
+                label_bg = color.hexval().replace("0x", "#").upper()
+
+        assert label_bg == sheet_reports.C_ROW_TARGET_NEUTRAL
+
+    def test_forecast_row_applies_cellwise_background_in_multi_outlet(self):
+        report_data = {
+            "date": "2026-05-06",
+            "pct_target": 65,
+            "target": 196785,
+            "gross_total": 147142,
+            "net_total": 128483,
+            "mtd_target": 8000000,
+            "mtd_net_sales": 1100628,
+            "mtd_discount": 4678,
+            "mtd_total_covers": 745,
+        }
+        per_outlet = [
+            (
+                "Bagmane",
+                {
+                    "date": "2026-05-06",
+                    "mtd_target": 4000000,
+                    "mtd_net_sales": 286608,
+                },
+            ),
+            (
+                "Indiqube",
+                {
+                    "date": "2026-05-06",
+                    "mtd_target": 4000000,
+                    "mtd_net_sales": 814020,
+                },
+            ),
+        ]
+
+        table = _first_table(
+            sheet_reports._build_sales_summary(
+                report_data,
+                location_name="All locations",
+                per_outlet=per_outlet,
+            )
+        )
+
+        row_index = next(
+            idx for idx, row in enumerate(table._cellvalues) if row and row[0] == "Forecast % of Target"
+        )
+        bg_by_col = {}
+        for command in getattr(table, "_bkgrndcmds", []):
+            name, start, end, color = command[:4]
+            if name != "BACKGROUND":
+                continue
+            if start[1] <= row_index <= end[1]:
+                for col in range(start[0], end[0] + 1):
+                    bg_by_col[col] = color.hexval().replace("0x", "#").upper()
+
+        assert bg_by_col[1] == sheet_reports.C_ROW_TARGET_BAD
+        assert bg_by_col[2] == sheet_reports.C_ROW_TARGET_GOOD
+        assert bg_by_col[3] == sheet_reports.C_ROW_TARGET_BAD
 
 
 class TestDynamicCategoryServiceColumnWidths:

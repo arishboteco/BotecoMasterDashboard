@@ -1170,6 +1170,30 @@ def _build_sales_summary(
         bg = _sales_summary_row_bg(str(row[0]), status_color, is_multi_outlet=bool(multi))
         if bg:
             style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(bg)))
+        if multi and row[0] == "Forecast % of Target" and per_outlet:
+            style_cmds.append(("BACKGROUND", (0, i), (0, i), _hex(C_ROW_TARGET_NEUTRAL)))
+            cell_status_colors: List[str] = []
+            for _, od in per_outlet:
+                pct_val = compute_forecast_metrics(od).get("forecast_target_pct")
+                cell_status_colors.append(
+                    status_from_threshold(
+                        pct_val,
+                        green_min=100,
+                        amber_min=95,
+                        higher_is_better=True,
+                    )["color"]
+                )
+            combined_pct_val = compute_forecast_metrics(r).get("forecast_target_pct")
+            cell_status_colors.append(
+                status_from_threshold(
+                    combined_pct_val,
+                    green_min=100,
+                    amber_min=95,
+                    higher_is_better=True,
+                )["color"]
+            )
+            for col_index, color in enumerate(cell_status_colors, start=1):
+                style_cmds.append(("BACKGROUND", (col_index, i), (col_index, i), _hex(_target_row_bg(color))))
 
     # Net Total row highlight (row before MTD section label)
     net_total_row = n_header - 1 + META_ROWS
