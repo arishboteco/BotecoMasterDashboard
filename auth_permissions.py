@@ -54,3 +54,15 @@ def get_report_display_name() -> str:
         if loc["id"] == ids[0]:
             return str(loc["name"])
     return st.session_state.get("location_name") or "Boteco"
+
+
+def get_primary_location_id() -> int:
+    """Return a concrete location id for single-location operations."""
+    lid = st.session_state.get("location_id")
+    if lid is not None:
+        return int(lid)
+
+    ids = get_report_location_ids()
+    if ids:
+        return int(ids[0])
+    return 1

@@ -128,7 +128,9 @@ else:
     )
 
     # Build shared context
-    import_loc_id = int(st.session_state.location_id)
+    import_loc_id = auth.get_primary_location_id()
+    if location_id is None:
+        location_id = import_loc_id
     location_settings = database.get_location_settings(location_id)
     if import_loc_id == location_id:
         import_location_settings = location_settings

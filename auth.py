@@ -347,3 +347,8 @@ def get_report_location_ids() -> List[int]:
 def get_report_display_name() -> str:
     """Backward-compatible wrapper for report scope display naming."""
     return auth_permissions.get_report_display_name()
+
+
+def get_primary_location_id() -> int:
+    """Backward-compatible wrapper for primary location selection."""
+    return auth_permissions.get_primary_location_id()

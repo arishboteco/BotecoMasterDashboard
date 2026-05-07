@@ -121,3 +121,22 @@ def test_apply_user_to_session_unassigned_manager_gets_all_scope(monkeypatch):
 
     assert auth.st.session_state.location_id is None
     assert auth.st.session_state.view_scope == "all"
+
+
+def test_get_primary_location_id_for_unassigned_manager(monkeypatch):
+    """Primary location should resolve from visible report scope when unassigned."""
+    monkeypatch.setattr(
+        auth_permissions.database,
+        "get_all_locations",
+        lambda: [
+            {"id": 2, "name": "Zeta"},
+            {"id": 1, "name": "Alpha"},
+        ],
+    )
+    monkeypatch.setattr(
+        auth_permissions.st,
+        "session_state",
+        {"user_role": "manager", "view_scope": "all", "location_id": None},
+    )
+
+    assert auth_permissions.get_primary_location_id() == 1
