@@ -155,6 +155,9 @@ class TestCategoryServiceTotalRows:
 
 
 class TestSalesSummaryRowBackgrounds:
+    def test_discount_row_uses_non_red_background_tint(self):
+        assert sheet_reports.C_ROW_DEDUCTION != "#FDECEC"
+
     def test_sales_summary_uses_section_backgrounds_without_zebra_banding(self):
         report_data = {
             "date": "2026-04-27",
