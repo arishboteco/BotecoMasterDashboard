@@ -89,3 +89,31 @@ class TestCacheInvalidation:
         assert called["location_ids"] == [2, 5]
         assert called["analytics"] == 1
         assert called["reports"] == 1
+
+    def test_invalidate_footfall_caches_clears_mtd_metrics_cache(self, monkeypatch):
+        called = {"mtd_clear": 0}
+
+        monkeypatch.setattr(
+            cache_invalidation,
+            "invalidate_reports",
+            lambda: None,
+        )
+        monkeypatch.setattr(
+            cache_invalidation,
+            "invalidate_analytics",
+            lambda: None,
+        )
+        monkeypatch.setattr(
+            cache_invalidation,
+            "invalidate_location_reads",
+            lambda _location_id: None,
+        )
+        monkeypatch.setattr(
+            cache_invalidation.pos_parser.calculate_mtd_metrics_multi,
+            "clear",
+            lambda: called.__setitem__("mtd_clear", called["mtd_clear"] + 1),
+        )
+
+        cache_invalidation.invalidate_footfall_caches([7])
+
+        assert called["mtd_clear"] == 1

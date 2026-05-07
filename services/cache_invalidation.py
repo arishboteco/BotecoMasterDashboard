@@ -5,6 +5,7 @@ from __future__ import annotations
 import tabs.analytics_tab as analytics_tab
 import tabs.report_tab as report_tab
 from database_reads import clear_location_cache
+import pos_parser
 
 
 def invalidate_after_import(location_ids: list[int]) -> None:
@@ -38,5 +39,6 @@ def invalidate_footfall_caches(location_ids: list[int]) -> None:
     """
     for location_id in location_ids:
         invalidate_location_reads(location_id)
+    pos_parser.calculate_mtd_metrics_multi.clear()
     invalidate_analytics()
     invalidate_reports()
