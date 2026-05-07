@@ -135,7 +135,12 @@ def _target_row_bg(color: str | None) -> str:
     return C_ROW_TARGET_BAD
 
 
-def _sales_summary_row_bg(label: str, status_color: str | None = None) -> str | None:
+def _sales_summary_row_bg(
+    label: str,
+    status_color: str | None = None,
+    *,
+    is_multi_outlet: bool = False,
+) -> str | None:
     """Return the semantic background for a sales summary row label."""
     if label in OPS_SUMMARY_ROWS:
         return C_ROW_OPS
@@ -148,6 +153,8 @@ def _sales_summary_row_bg(label: str, status_color: str | None = None) -> str | 
     if label == "Forecast Month-End":
         return C_ROW_FORECAST
     if label in {"Actual % of Target", "Forecast % of Target", "Required Daily Run Rate"}:
+        if is_multi_outlet and label in {"Forecast % of Target", "Required Daily Run Rate"}:
+            return C_ROW_TARGET_NEUTRAL
         if label == "Required Daily Run Rate":
             return C_ROW_TARGET_NEUTRAL if status_color == C_GREEN else C_ROW_REQUIRED_RUN_RATE
         return _target_row_bg(status_color)
@@ -1160,7 +1167,7 @@ def _build_sales_summary(
             status_color = ach_color
         elif row[0] in {"Forecast % of Target", "Required Daily Run Rate"}:
             status_color = statuses["forecast"]["color"]
-        bg = _sales_summary_row_bg(str(row[0]), status_color)
+        bg = _sales_summary_row_bg(str(row[0]), status_color, is_multi_outlet=bool(multi))
         if bg:
             style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(bg)))
 

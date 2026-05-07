@@ -327,6 +327,49 @@ class TestSalesSummaryMultiOutletForecastColors:
         assert _cell_text_hex(table, "Forecast % of Target", 2) == sheet_reports.C_GREEN
 
 
+class TestSalesSummaryMultiOutletForecastBackground:
+    def test_forecast_row_background_is_neutral_for_multi_outlet(self):
+        report_data = {
+            "date": "2026-05-05",
+            "pct_target": 63,
+            "target": 142725,
+            "gross_total": 101461,
+            "net_total": 89670,
+            "mtd_target": 8000000,
+            "mtd_net_sales": 972145,
+            "mtd_discount": 526,
+            "mtd_total_covers": 639,
+        }
+        per_outlet = [
+            (
+                "Bagmane",
+                {
+                    "date": "2026-05-05",
+                    "mtd_target": 4000000,
+                    "mtd_net_sales": 236925,
+                },
+            ),
+            (
+                "Indiqube",
+                {
+                    "date": "2026-05-05",
+                    "mtd_target": 4000000,
+                    "mtd_net_sales": 735220,
+                },
+            ),
+        ]
+
+        table = _first_table(
+            sheet_reports._build_sales_summary(
+                report_data,
+                location_name="All locations",
+                per_outlet=per_outlet,
+            )
+        )
+
+        assert _background_hex_for_label(table, "Forecast % of Target") == sheet_reports.C_ROW_TARGET_NEUTRAL
+
+
 class TestDynamicCategoryServiceColumnWidths:
     def test_category_multi_outlet_allocates_more_width_to_large_mtd_values(self):
         report_data = {
