@@ -272,3 +272,49 @@ class TestSalesSummaryMultiOutletForecastColors:
         assert _cell_text_hex(table, "Forecast % of Target", 1) == sheet_reports.C_RED
         assert _cell_text_hex(table, "Forecast % of Target", 2) == sheet_reports.C_GREEN
         assert _cell_text_hex(table, "Forecast % of Target", 3) == sheet_reports.C_RED
+
+
+class TestDynamicCategoryServiceColumnWidths:
+    def test_category_multi_outlet_allocates_more_width_to_large_mtd_values(self):
+        report_data = {
+            "date": "2026-05-06",
+            "categories": [{"category": "Food", "amount": 100.0}],
+        }
+        per_outlet = [
+            ("Bagmane", {"categories": [{"category": "Food", "amount": 20.0}]}),
+            ("Indiqube", {"categories": [{"category": "Food", "amount": 80.0}]}),
+        ]
+        table = _first_table(
+            sheet_reports._build_category(
+                report_data,
+                location_name="All locations",
+                mtd_category={"Food": 123456789.0},
+                day_lbl="Wed, 6 May 2026",
+                per_outlet=per_outlet,
+            )
+        )
+
+        # Columns in multi mode: label, outlet1, outlet2, combined, mtd
+        assert table._colWidths[4] > table._colWidths[3]
+
+    def test_service_multi_outlet_allocates_more_width_to_large_mtd_values(self):
+        report_data = {
+            "date": "2026-05-06",
+            "services": [{"service_type": "Lunch", "amount": 100.0}],
+        }
+        per_outlet = [
+            ("Bagmane", {"services": [{"service_type": "Lunch", "amount": 20.0}]}),
+            ("Indiqube", {"services": [{"service_type": "Lunch", "amount": 80.0}]}),
+        ]
+        table = _first_table(
+            sheet_reports._build_service(
+                report_data,
+                location_name="All locations",
+                mtd_service={"Lunch": 123456789.0},
+                day_lbl="Wed, 6 May 2026",
+                per_outlet=per_outlet,
+            )
+        )
+
+        # Columns in multi mode: label, outlet1, outlet2, combined, mtd
+        assert table._colWidths[4] > table._colWidths[3]
