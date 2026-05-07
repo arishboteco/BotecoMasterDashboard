@@ -1375,12 +1375,14 @@ def _build_category(
             cat_order.append(k)
 
     if multi:
-        n_data = len(per_outlet) + 1
-        label_w = avail_w * 0.42
-        mtd_w = avail_w * 0.12
-        remaining = avail_w - label_w - mtd_w
-        data_w = remaining / n_data
-        col_w = [label_w] + [data_w] * n_data + [mtd_w]
+        # Content-aware weighted widths to avoid clipping in Combined/MTD totals.
+        label_w = avail_w * 0.41
+        remaining = avail_w - label_w
+        outlet_count = len(per_outlet)
+        base_weights = [1.0] * outlet_count + [1.15, 1.45]  # combined, mtd
+        weight_sum = sum(base_weights)
+        data_widths = [remaining * (w / weight_sum) for w in base_weights]
+        col_w = [label_w] + data_widths
     else:
         col_w = [avail_w * 0.60, avail_w * 0.20, avail_w * 0.20]
 
@@ -1502,12 +1504,14 @@ def _build_service(
             svc_order.append(k)
 
     if multi:
-        n_data = len(per_outlet) + 1
-        label_w = avail_w * 0.42
-        mtd_w = avail_w * 0.12
-        remaining = avail_w - label_w - mtd_w
-        data_w = remaining / n_data
-        col_w = [label_w] + [data_w] * n_data + [mtd_w]
+        # Content-aware weighted widths to avoid clipping in Combined/MTD totals.
+        label_w = avail_w * 0.41
+        remaining = avail_w - label_w
+        outlet_count = len(per_outlet)
+        base_weights = [1.0] * outlet_count + [1.15, 1.45]  # combined, mtd
+        weight_sum = sum(base_weights)
+        data_widths = [remaining * (w / weight_sum) for w in base_weights]
+        col_w = [label_w] + data_widths
     else:
         col_w = [avail_w * 0.60, avail_w * 0.20, avail_w * 0.20]
 
