@@ -25,7 +25,11 @@ def get_report_location_ids() -> List[int]:
     """Locations included in Daily Report / Analytics for the current scope."""
     locs = database.get_all_locations()
     vs = st.session_state.get("view_scope")
+    role = st.session_state.get("user_role")
+    lid = st.session_state.get("location_id")
     if is_admin() and vs == "all":
+        return [loc["id"] for loc in sorted(locs, key=lambda x: x["name"])]
+    if role == "manager" and vs == "all" and lid is None:
         return [loc["id"] for loc in sorted(locs, key=lambda x: x["name"])]
     if vs and str(vs) != "all":
         try:
@@ -37,7 +41,6 @@ def get_report_location_ids() -> List[int]:
                 vs,
                 ex,
             )
-    lid = st.session_state.get("location_id")
     return [int(lid)] if lid is not None else [1]
 
 

@@ -37,13 +37,16 @@ def _get_cookie_manager() -> Optional[CookieController]:
 
 def _apply_user_to_session(user: dict, token: str) -> None:
     """Populate session state from a verified user dict and token."""
+    user_location_id = user.get("location_id")
     st.session_state.authenticated = True
     st.session_state.username = user["username"]
     st.session_state.user_role = user["role"]
-    st.session_state.location_id = user.get("location_id") or 1
+    st.session_state.location_id = user_location_id
     st.session_state.location_name = user.get("location_name") or "Boteco"
     st.session_state.session_token = token
     if user.get("role") == "admin":
+        st.session_state.view_scope = "all"
+    elif user.get("role") == "manager" and user_location_id is None:
         st.session_state.view_scope = "all"
     else:
         st.session_state.view_scope = str(st.session_state.location_id)
