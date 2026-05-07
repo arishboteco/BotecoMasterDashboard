@@ -273,6 +273,59 @@ class TestSalesSummaryMultiOutletForecastColors:
         assert _cell_text_hex(table, "Forecast % of Target", 2) == sheet_reports.C_GREEN
         assert _cell_text_hex(table, "Forecast % of Target", 3) == sheet_reports.C_RED
 
+    def test_forecast_color_matches_rendered_percent_when_history_present(self):
+        report_data = {
+            "date": "2026-05-06",
+            "pct_target": 65,
+            "target": 196785,
+            "gross_total": 147142,
+            "discount": 4152,
+            "apc": 1212,
+            "apc_baseline_7d": 1250,
+            "mtd_target": 8000000,
+            "mtd_net_sales": 1100628,
+            "mtd_discount": 4678,
+        }
+        per_outlet = [
+            (
+                "Bagmane",
+                {
+                    "date": "2026-05-06",
+                    "mtd_target": 4000000,
+                    "mtd_net_sales": 286608,
+                },
+            ),
+            (
+                "Indiqube",
+                {
+                    "date": "2026-05-06",
+                    "mtd_target": 4000000,
+                    "mtd_net_sales": 814020,
+                },
+            ),
+        ]
+        daily_sales_history = [
+            {"date": "2026-05-01", "net_total": 30000},
+            {"date": "2026-05-02", "net_total": 25000},
+            {"date": "2026-05-03", "net_total": 22000},
+            {"date": "2026-05-04", "net_total": 24000},
+            {"date": "2026-05-05", "net_total": 26000},
+            {"date": "2026-05-06", "net_total": 23000},
+            {"date": "2026-05-07", "net_total": 21000},
+        ]
+
+        table = _first_table(
+            sheet_reports._build_sales_summary(
+                report_data,
+                location_name="All locations",
+                per_outlet=per_outlet,
+                daily_sales_history=daily_sales_history,
+            )
+        )
+
+        # Rendered text is still 105% for Indiqube; text color should be green.
+        assert _cell_text_hex(table, "Forecast % of Target", 2) == sheet_reports.C_GREEN
+
 
 class TestDynamicCategoryServiceColumnWidths:
     def test_category_multi_outlet_allocates_more_width_to_large_mtd_values(self):

@@ -887,13 +887,6 @@ def _build_sales_summary(
     target_total = float(r.get("target") or 0)
     statuses = compute_metric_statuses(r, daily_sales_history=daily_sales_history)
     ach_color = statuses["target"]["color"]
-    forecast_colors_by_col: List[str] = []
-    if multi and per_outlet:
-        forecast_colors_by_col = [
-            compute_metric_statuses(od, daily_sales_history=daily_sales_history)["forecast"]["color"]
-            for _, od in per_outlet
-        ]
-        forecast_colors_by_col.append(statuses["forecast"]["color"])
 
     elements = []
 
@@ -1217,8 +1210,28 @@ def _build_sales_summary(
         if row and row[0] == "Actual % of Target":
             style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(ach_color)))
         if row and row[0] == "Forecast % of Target":
-            if multi and forecast_colors_by_col:
-                for col_index, color in enumerate(forecast_colors_by_col, start=1):
+            if multi and per_outlet:
+                cell_colors: List[str] = []
+                for _, od in per_outlet:
+                    pct_val = compute_forecast_metrics(od).get("forecast_target_pct")
+                    cell_colors.append(
+                        status_from_threshold(
+                            pct_val,
+                            green_min=100,
+                            amber_min=95,
+                            higher_is_better=True,
+                        )["color"]
+                    )
+                combined_pct_val = compute_forecast_metrics(r).get("forecast_target_pct")
+                cell_colors.append(
+                    status_from_threshold(
+                        combined_pct_val,
+                        green_min=100,
+                        amber_min=95,
+                        higher_is_better=True,
+                    )["color"]
+                )
+                for col_index, color in enumerate(cell_colors, start=1):
                     style_cmds.append(("TEXTCOLOR", (col_index, i), (col_index, i), _hex(color)))
             else:
                 style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(statuses["forecast"]["color"])))
