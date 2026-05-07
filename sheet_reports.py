@@ -54,27 +54,27 @@ pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", os.path.join(FONT_DIR, "DejaVu
 # ── Palette (Boteco Mango) ─────────────────────────────────────────────────
 C_PAGE = "#F7FAFC"
 C_CARD = "#FFFFFF"
-C_BRAND = "#1F5FA8"
+C_BRAND = "#1E5AA8"
 C_BRAND_DARK = "#174A82"
-C_BANNER = "#1A3A5C"
-C_HEADER = "#EEF2F7"
+C_BANNER = "#17395A"
+C_HEADER = "#EAF3FB"
 C_SLATE = "#1E293B"
 C_DATE_LABEL = "#A5BCD2"
 C_MUTED = "#64748B"
 C_BORDER = "#E2E8F0"
-C_BAND = "#EDF2F7"
-C_ROW_OPS = "#EAF3FF"
-C_ROW_DEDUCTION = "#F9E7E1"
-C_ROW_EXCEPTION = "#F8EDD2"
-C_ROW_FORECAST = "#DCEAFB"
-C_ROW_REQUIRED_RUN_RATE = "#DCEAFB"
+C_BAND = "#E8EEF4"
+C_ROW_OPS = "#EEF6FF"
+C_ROW_DEDUCTION = "#F8EDEB"
+C_ROW_EXCEPTION = "#FFF6DB"
+C_ROW_FORECAST = "#E8EEF4"
+C_ROW_REQUIRED_RUN_RATE = "#E8EEF4"
 C_ROW_TARGET_NEUTRAL = "#EEF2F7"
-C_ROW_TARGET_GOOD = "#DDF2DF"
-C_ROW_TARGET_WARN = "#F7E7C1"
-C_ROW_TARGET_BAD = "#FBE2DF"
-C_GREEN = "#2E7D32"
-C_AMBER = "#946B00"
-C_RED = "#DC2626"
+C_ROW_TARGET_GOOD = "#EAF7EA"
+C_ROW_TARGET_WARN = "#FFF4D6"
+C_ROW_TARGET_BAD = "#FDECEC"
+C_GREEN = "#1A7F37"
+C_AMBER = "#9A6700"
+C_RED = "#D92D20"
 C_WHITE = "#FFFFFF"
 
 FONT_NAME = "DejaVuSans"
@@ -126,6 +126,49 @@ OPS_SUMMARY_ROWS = {"Covers", "Turns", "APC (Day)", "APC (Month)"}
 DEDUCTION_SUMMARY_ROWS = {"Discount", "MTD Discount"}
 EXCEPTION_SUMMARY_ROWS = {"Complimentary", "MTD Complimentary"}
 
+ROW_GROUPS = {
+    "operational": {"Covers", "Turns"},
+    "payment": {
+        "Cash",
+        "Card",
+        "GPay",
+        "UPI",
+        "Bank Transfer",
+        "BOH",
+        "Due Payment",
+        "Wallet",
+        "Zomato",
+        "Other / Wallet",
+    },
+    "gross_total": {"EOD Gross Total"},
+    "tax_service": {"CGST @ 2.5%", "SGST @ 2.5%", "Service Charge"},
+    "discount": {"Discount", "MTD Discount"},
+    "complimentary": {"Complimentary", "MTD Complimentary"},
+    "net_total": {"EOD Net Total"},
+    "mtd_metric": {
+        "MTD Total Covers",
+        "APC (Day)",
+        "APC (Month)",
+        "Daily Avg. Net Sales",
+        "Forecast Month-End",
+        "Required Daily Run Rate",
+    },
+    "summary_metric": {"MTD Net Sales", "MTD Net (Excl. Disc.)", "Sales Target"},
+    "conditional_performance": {"Actual % of Target", "Forecast % of Target"},
+}
+
+ROW_STYLE_MAP = {
+    "operational": {"background": C_ROW_OPS, "text": "#243247", "bold": False},
+    "payment": {"background": C_WHITE, "text": "#2F3A4A", "bold": False},
+    "gross_total": {"background": C_BAND, "text": "#243247", "bold": True},
+    "tax_service": {"background": "#F7F8FA", "text": "#2F3A4A", "bold": False},
+    "discount": {"background": C_ROW_DEDUCTION, "text": "#7A4B3A", "bold": False},
+    "complimentary": {"background": C_ROW_EXCEPTION, "text": "#7A5D1B", "bold": False},
+    "net_total": {"background": C_BANNER, "text": C_WHITE, "bold": True},
+    "mtd_metric": {"background": C_ROW_OPS, "text": "#243247", "bold": False},
+    "summary_metric": {"background": C_BAND, "text": "#243247", "bold": True},
+}
+
 
 def _target_row_bg(color: str | None) -> str:
     if color == C_GREEN:
@@ -133,6 +176,23 @@ def _target_row_bg(color: str | None) -> str:
     if color == C_AMBER:
         return C_ROW_TARGET_WARN
     return C_ROW_TARGET_BAD
+
+
+def _sales_summary_row_group(label: str) -> str | None:
+    for group, labels in ROW_GROUPS.items():
+        if label in labels:
+            return group
+    return None
+
+
+def _performance_style(value: Optional[float]) -> Dict[str, str]:
+    if value is None:
+        return {"background": C_ROW_TARGET_NEUTRAL, "text": C_MUTED}
+    if value >= 100:
+        return {"background": C_ROW_TARGET_GOOD, "text": C_GREEN}
+    if value >= 80:
+        return {"background": C_ROW_TARGET_WARN, "text": C_AMBER}
+    return {"background": C_ROW_TARGET_BAD, "text": C_RED}
 
 
 def _sales_summary_row_bg(
@@ -1162,38 +1222,55 @@ def _build_sales_summary(
     for i, row in enumerate(all_rows):
         if not row:
             continue
-        status_color = None
-        if row[0] == "Actual % of Target":
-            status_color = ach_color
-        elif row[0] in {"Forecast % of Target", "Required Daily Run Rate"}:
-            status_color = statuses["forecast"]["color"]
-        bg = _sales_summary_row_bg(str(row[0]), status_color, is_multi_outlet=bool(multi))
-        if bg:
-            style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(bg)))
-        if multi and row[0] == "Forecast % of Target" and per_outlet:
-            style_cmds.append(("BACKGROUND", (0, i), (0, i), _hex(C_ROW_TARGET_NEUTRAL)))
-            cell_status_colors: List[str] = []
-            for _, od in per_outlet:
-                pct_val = compute_forecast_metrics(od).get("forecast_target_pct")
-                cell_status_colors.append(
-                    status_from_threshold(
-                        pct_val,
-                        green_min=100,
-                        amber_min=95,
-                        higher_is_better=True,
-                    )["color"]
+        label = str(row[0])
+        row_group = _sales_summary_row_group(label)
+        row_style = ROW_STYLE_MAP.get(row_group or "")
+        if row_style and not (multi and label == "Forecast % of Target"):
+            style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(row_style["background"])))
+            style_cmds.append(("TEXTCOLOR", (0, i), (-1, i), _hex(row_style["text"])))
+            if row_style["bold"]:
+                style_cmds.append(("FONTNAME", (0, i), (-1, i), FONT_BOLD))
+
+        if label == "Actual % of Target":
+            if multi and per_outlet:
+                style_cmds.append(("BACKGROUND", (0, i), (0, i), _hex(C_ROW_TARGET_BAD)))
+                for col_index, cell in enumerate(row[1:], start=1):
+                    try:
+                        pct_val = float(str(cell).replace("%", "").strip())
+                    except ValueError:
+                        pct_val = None
+                    cell_style = _performance_style(pct_val)
+                    style_cmds.append(
+                        ("BACKGROUND", (col_index, i), (col_index, i), _hex(cell_style["background"]))
+                    )
+                    style_cmds.append(("TEXTCOLOR", (col_index, i), (col_index, i), _hex(cell_style["text"])))
+                    style_cmds.append(("FONTNAME", (col_index, i), (col_index, i), FONT_BOLD))
+            else:
+                cell_style = _performance_style(float(r.get("mtd_pct_target") or 0))
+                style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(cell_style["background"])))
+                style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(cell_style["text"])))
+                style_cmds.append(("FONTNAME", (0, i), (-1, i), FONT_BOLD))
+
+        if multi and label == "Forecast % of Target" and per_outlet:
+            style_cmds.append(("BACKGROUND", (0, i), (0, i), _hex(C_ROW_TARGET_WARN)))
+            style_cmds.append(("TEXTCOLOR", (0, i), (0, i), _hex(C_AMBER)))
+            for col_index, cell in enumerate(row[1:], start=1):
+                try:
+                    pct_val = float(str(cell).replace("%", "").strip())
+                except ValueError:
+                    pct_val = None
+                cell_style = _performance_style(pct_val)
+                style_cmds.append(
+                    ("BACKGROUND", (col_index, i), (col_index, i), _hex(cell_style["background"]))
                 )
-            combined_pct_val = compute_forecast_metrics(r).get("forecast_target_pct")
-            cell_status_colors.append(
-                status_from_threshold(
-                    combined_pct_val,
-                    green_min=100,
-                    amber_min=95,
-                    higher_is_better=True,
-                )["color"]
-            )
-            for col_index, color in enumerate(cell_status_colors, start=1):
-                style_cmds.append(("BACKGROUND", (col_index, i), (col_index, i), _hex(_target_row_bg(color))))
+                style_cmds.append(("TEXTCOLOR", (col_index, i), (col_index, i), _hex(cell_style["text"])))
+                style_cmds.append(("FONTNAME", (col_index, i), (col_index, i), FONT_BOLD))
+        elif label == "Forecast % of Target":
+            pct_val = compute_forecast_metrics(r).get("forecast_target_pct")
+            cell_style = _performance_style(pct_val)
+            style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(cell_style["background"])))
+            style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(cell_style["text"])))
+            style_cmds.append(("FONTNAME", (0, i), (-1, i), FONT_BOLD))
 
     # Net Total row highlight (row before MTD section label)
     net_total_row = n_header - 1 + META_ROWS
@@ -1219,10 +1296,10 @@ def _build_sales_summary(
             ]
         )
 
-    # Discount row - red text
+    # Discount rows use muted adjustment text, not alert red.
     for i, row in enumerate(all_rows):
         if row and row[0] in ("Discount", "MTD Discount"):
-            style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(C_RED)))
+            style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex("#A94442")))
 
     # MTD rows: bold for specific ones
     for i, row in enumerate(all_rows):
@@ -1239,33 +1316,7 @@ def _build_sales_summary(
         if row and row[0] == "APC (Day)":
             style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(statuses["apc"]["color"])))
         if row and row[0] == "Actual % of Target":
-            style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(ach_color)))
-        if row and row[0] == "Forecast % of Target":
-            if multi and per_outlet:
-                cell_colors: List[str] = []
-                for _, od in per_outlet:
-                    pct_val = compute_forecast_metrics(od).get("forecast_target_pct")
-                    cell_colors.append(
-                        status_from_threshold(
-                            pct_val,
-                            green_min=100,
-                            amber_min=95,
-                            higher_is_better=True,
-                        )["color"]
-                    )
-                combined_pct_val = compute_forecast_metrics(r).get("forecast_target_pct")
-                cell_colors.append(
-                    status_from_threshold(
-                        combined_pct_val,
-                        green_min=100,
-                        amber_min=95,
-                        higher_is_better=True,
-                    )["color"]
-                )
-                for col_index, color in enumerate(cell_colors, start=1):
-                    style_cmds.append(("TEXTCOLOR", (col_index, i), (col_index, i), _hex(color)))
-            else:
-                style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(statuses["forecast"]["color"])))
+            style_cmds.append(("FONTNAME", (0, i), (-1, i), FONT_BOLD))
 
     tbl.setStyle(TableStyle(style_cmds))
     elements.append(tbl)

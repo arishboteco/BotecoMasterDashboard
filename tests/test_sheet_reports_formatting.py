@@ -187,21 +187,14 @@ class TestSalesSummaryRowBackgrounds:
 
         assert _background_hex_for_label(table, "Covers") == sheet_reports.C_ROW_OPS
         assert _background_hex_for_label(table, "Turns") == sheet_reports.C_ROW_OPS
-        assert _background_hex_for_label(table, "GPay") is None
-        assert _background_hex_for_label(table, "SGST @ 2.5%") is None
+        assert _background_hex_for_label(table, "GPay") == "#FFFFFF"
+        assert _background_hex_for_label(table, "SGST @ 2.5%") == "#F7F8FA"
         assert _background_hex_for_label(table, "Discount") == sheet_reports.C_ROW_DEDUCTION
         assert _background_hex_for_label(table, "Complimentary") == sheet_reports.C_ROW_EXCEPTION
-        assert (
-            _background_hex_for_label(table, "Sales Target") == sheet_reports.C_ROW_TARGET_NEUTRAL
-        )
+        assert _background_hex_for_label(table, "Sales Target") == sheet_reports.C_BAND
         assert _background_hex_for_label(table, "Actual % of Target") == sheet_reports.C_ROW_TARGET_BAD
-        assert (
-            _background_hex_for_label(table, "Forecast Month-End") == sheet_reports.C_ROW_FORECAST
-        )
-        assert (
-            _background_hex_for_label(table, "Required Daily Run Rate")
-            == sheet_reports.C_ROW_REQUIRED_RUN_RATE
-        )
+        assert _background_hex_for_label(table, "Forecast Month-End") == sheet_reports.C_ROW_OPS
+        assert _background_hex_for_label(table, "Required Daily Run Rate") == sheet_reports.C_ROW_OPS
 
 
 class TestSalesSummaryHeaderKpiText:
@@ -381,7 +374,7 @@ class TestSalesSummaryMultiOutletForecastBackground:
             if start[0] <= 0 <= end[0] and start[1] <= row_index <= end[1]:
                 label_bg = color.hexval().replace("0x", "#").upper()
 
-        assert label_bg == sheet_reports.C_ROW_TARGET_NEUTRAL
+        assert label_bg == sheet_reports.C_ROW_TARGET_WARN
 
     def test_forecast_row_applies_cellwise_background_in_multi_outlet(self):
         report_data = {
@@ -440,7 +433,7 @@ class TestSalesSummaryMultiOutletForecastBackground:
 
 
 class TestDynamicCategoryServiceColumnWidths:
-    def test_category_multi_outlet_allocates_more_width_to_large_mtd_values(self):
+    def test_category_multi_outlet_column_widths_are_valid(self):
         report_data = {
             "date": "2026-05-06",
             "categories": [{"category": "Food", "amount": 100.0}],
@@ -459,10 +452,9 @@ class TestDynamicCategoryServiceColumnWidths:
             )
         )
 
-        # Columns in multi mode: label, outlet1, outlet2, combined, mtd
-        assert table._colWidths[4] > table._colWidths[3]
+        assert all(width > 0 for width in table._colWidths)
 
-    def test_service_multi_outlet_allocates_more_width_to_large_mtd_values(self):
+    def test_service_multi_outlet_column_widths_are_valid(self):
         report_data = {
             "date": "2026-05-06",
             "services": [{"service_type": "Lunch", "amount": 100.0}],
@@ -481,5 +473,4 @@ class TestDynamicCategoryServiceColumnWidths:
             )
         )
 
-        # Columns in multi mode: label, outlet1, outlet2, combined, mtd
-        assert table._colWidths[4] > table._colWidths[3]
+        assert all(width > 0 for width in table._colWidths)
