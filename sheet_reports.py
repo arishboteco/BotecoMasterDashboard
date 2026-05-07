@@ -79,14 +79,14 @@ C_WHITE = "#FFFFFF"
 
 FONT_NAME = "DejaVuSans"
 FONT_BOLD = "DejaVuSans-Bold"
-DPI = 150
+DPI = 132
 
 # ── Layout constants (points) ───────────────────────────────────────────────
-SECTION_WIDTHS = {1: 480, 2: 580}
-PAGE_PAD = 8
+SECTION_WIDTHS = {1: 430, 2: 520}
+PAGE_PAD = 0
 
 # Single horizontal inset for banner text, custom flowable labels, and table cells.
-CONTENT_PAD_X = 12
+CONTENT_PAD_X = 8
 
 
 def _content_width(n_outlets: int = 1) -> float:
@@ -99,20 +99,20 @@ BANNER_PAD_TOP = 10
 BANNER_PAD_BOTTOM = 8
 BANNER_PAD_LEFT = CONTENT_PAD_X
 BANNER_PAD_RIGHT = CONTENT_PAD_X
-ROW_PAD_TOP = 4
-ROW_PAD_BOTTOM = 4
+ROW_PAD_TOP = 5
+ROW_PAD_BOTTOM = 5
 CELL_PAD_LEFT = CONTENT_PAD_X
 CELL_PAD_RIGHT = CONTENT_PAD_X
 GAP_BELOW_BANNER = 6
 GAP_ABOVE_SECTION_LABEL = 6
 GAP_ABOVE_SUBSECTION = 8
 
-FONT_SIZE_ROW = 10
-FONT_SIZE_HEADER = 10
-FONT_SIZE_BANNER_TITLE = 11
-FONT_SIZE_BANNER_SUB = 9
-FONT_SIZE_BANNER_TITLE_SUMMARY = 12
-FONT_SIZE_BANNER_SUB_SUMMARY = 10
+FONT_SIZE_ROW = 11
+FONT_SIZE_HEADER = 11
+FONT_SIZE_BANNER_TITLE = 12
+FONT_SIZE_BANNER_SUB = 10
+FONT_SIZE_BANNER_TITLE_SUMMARY = 13
+FONT_SIZE_BANNER_SUB_SUMMARY = 11
 FONT_SIZE_SECTION_LABEL = 10
 FONT_SIZE_KPI_LABEL = 10
 FONT_SIZE_KPI_VALUE = 18
@@ -515,7 +515,7 @@ def _render_elements_to_png(
         w, h = flowable.wrap(avail_w, 100000)
         total_height += h
 
-    page_h = total_height + top_margin + bottom_margin + 24
+    page_h = total_height + top_margin + bottom_margin + 12
     if page_h < 100:
         page_h = 100
 
@@ -1998,7 +1998,7 @@ def generate_sheet_style_report_sections(
         per_outlet=per_outlet,
         daily_sales_history=daily_sales_history,
     )
-    width = SECTION_WIDTHS.get(n_outlets, min(520 + (n_outlets - 2) * 100, 720))
+    width = SECTION_WIDTHS.get(n_outlets, min(520 + (n_outlets - 2) * 90, 700))
     out["sales_summary"] = _render_elements_to_png(elements, width)
 
     # Category
@@ -2101,8 +2101,7 @@ def generate_sheet_style_report_image(
     composite = PILImage.new("RGB", (max_w, total_h), color=(247, 250, 252))
     y_off = 0
     for im in imgs:
-        x_off = (max_w - im.width) // 2
-        composite.paste(im, (x_off, y_off))
+        composite.paste(im, (0, y_off))
         y_off += im.height
 
     buf = BytesIO()
