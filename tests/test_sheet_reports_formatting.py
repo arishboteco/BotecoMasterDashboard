@@ -36,7 +36,16 @@ def _background_hex_for_label(table, label: str) -> str | None:
 
 def _sales_summary_kpi_banner_text(table) -> str:
     nested = table._cellvalues[1][0]
-    return nested._cellvalues[0][1].text
+    kpi_cell = nested._cellvalues[0][1]
+    if hasattr(kpi_cell, "text"):
+        return kpi_cell.text
+    if hasattr(kpi_cell, "_cellvalues"):
+        badge = kpi_cell._cellvalues[0][0]
+        sub = kpi_cell._cellvalues[1][0]
+        badge_text = badge.text if hasattr(badge, "text") else str(badge)
+        sub_text = sub.text if hasattr(sub, "text") else str(sub)
+        return f"{badge_text} {sub_text}"
+    return str(kpi_cell)
 
 
 def _cell_text_hex(table, row_label: str, col_index: int) -> str:
@@ -193,8 +202,8 @@ class TestSalesSummaryRowBackgrounds:
         assert _background_hex_for_label(table, "Complimentary") == sheet_reports.C_ROW_EXCEPTION
         assert _background_hex_for_label(table, "Sales Target") == sheet_reports.C_BAND
         assert _background_hex_for_label(table, "Actual % of Target") == sheet_reports.C_ROW_TARGET_BAD
-        assert _background_hex_for_label(table, "Forecast Month-End") == sheet_reports.C_ROW_OPS
-        assert _background_hex_for_label(table, "Required Daily Run Rate") == sheet_reports.C_ROW_OPS
+        assert _background_hex_for_label(table, "Forecast Month-End") == sheet_reports.C_BAND
+        assert _background_hex_for_label(table, "Required Daily Run Rate") == sheet_reports.C_BAND
 
 
 class TestSalesSummaryHeaderKpiText:
@@ -374,7 +383,7 @@ class TestSalesSummaryMultiOutletForecastBackground:
             if start[0] <= 0 <= end[0] and start[1] <= row_index <= end[1]:
                 label_bg = color.hexval().replace("0x", "#").upper()
 
-        assert label_bg == sheet_reports.C_ROW_TARGET_WARN
+        assert label_bg == sheet_reports.C_ROW_TARGET_NEUTRAL
 
     def test_forecast_row_applies_cellwise_background_in_multi_outlet(self):
         report_data = {

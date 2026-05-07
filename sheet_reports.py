@@ -150,10 +150,9 @@ ROW_GROUPS = {
         "APC (Day)",
         "APC (Month)",
         "Daily Avg. Net Sales",
-        "Forecast Month-End",
-        "Required Daily Run Rate",
     },
-    "summary_metric": {"MTD Net Sales", "MTD Net (Excl. Disc.)", "Sales Target"},
+    "summary_metric": {"MTD Net Sales", "MTD Net (Excl. Disc.)"},
+    "planning_metric": {"Sales Target", "Forecast Month-End", "Required Daily Run Rate"},
     "conditional_performance": {"Actual % of Target", "Forecast % of Target"},
 }
 
@@ -167,6 +166,7 @@ ROW_STYLE_MAP = {
     "net_total": {"background": C_BANNER, "text": C_WHITE, "bold": True},
     "mtd_metric": {"background": C_ROW_OPS, "text": "#243247", "bold": False},
     "summary_metric": {"background": C_BAND, "text": "#243247", "bold": True},
+    "planning_metric": {"background": C_BAND, "text": "#243247", "bold": False},
 }
 
 
@@ -823,24 +823,45 @@ def _sales_summary_eod_prefix_rows(
     pct_str = f"{pct_tgt:.0f}% of target"
     net_str = escape(_r(net_total) + " net")
     target_str = escape(_r(target_total) + " target")
-    kpi_xml = (
-        f'<para alignment="right" leading="{FONT_SIZE_BANNER_SUB + 3}">'
-        f'<font name="{FONT_BOLD}" size="{FONT_SIZE_BANNER_TITLE}" color="{ach_color}">'
-        f"{escape(pct_str)}</font><br/>"
-        f'<font name="{FONT_NAME}" size="{FONT_SIZE_BANNER_SUB}" color="{C_WHITE}">'
-        f"{net_str} vs {target_str}</font></para>"
+    kpi_badge_style = ParagraphStyle(
+        name="EODSalesKpiBadge",
+        fontName=FONT_BOLD,
+        fontSize=FONT_SIZE_BANNER_TITLE,
+        textColor=_hex(ach_color),
+        alignment=TA_RIGHT,
+        leading=FONT_SIZE_BANNER_TITLE + 1,
     )
-    sty_kpi_wrap = ParagraphStyle(
-        name="EODSalesKpiWrap",
+    kpi_sub_style = ParagraphStyle(
+        name="EODSalesKpiSub",
         fontName=FONT_NAME,
         fontSize=FONT_SIZE_BANNER_SUB,
+        textColor=_hex(C_WHITE),
         alignment=TA_RIGHT,
         leading=FONT_SIZE_BANNER_SUB + 1,
     )
-    kpi_para = Paragraph(kpi_xml, sty_kpi_wrap)
+    kpi_badge_para = Paragraph(escape(pct_str), kpi_badge_style)
+    kpi_sub_para = Paragraph(f"{net_str} vs {target_str}", kpi_sub_style)
+    kpi_box = Table([[kpi_badge_para], [kpi_sub_para]], colWidths=[inner_w * 0.45])
+    kpi_box.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (0, 0), _hex(C_BANNER)),
+                ("BOX", (0, 0), (0, 0), 0.6, _hex(C_WHITE)),
+                ("TOPPADDING", (0, 0), (0, 0), 2),
+                ("BOTTOMPADDING", (0, 0), (0, 0), 2),
+                ("LEFTPADDING", (0, 0), (0, 0), 6),
+                ("RIGHTPADDING", (0, 0), (0, 0), 6),
+                ("TOPPADDING", (0, 1), (0, 1), 2),
+                ("BOTTOMPADDING", (0, 1), (0, 1), 0),
+                ("LEFTPADDING", (0, 1), (0, 1), 0),
+                ("RIGHTPADDING", (0, 1), (0, 1), 0),
+                ("ALIGN", (0, 0), (0, -1), "RIGHT"),
+            ]
+        )
+    )
 
     nested = Table(
-        [[date_para, kpi_para]],
+        [[date_para, kpi_box]],
         colWidths=[inner_w * 0.55, inner_w * 0.45],
     )
     nested.setStyle(
@@ -1252,8 +1273,8 @@ def _build_sales_summary(
                 style_cmds.append(("FONTNAME", (0, i), (-1, i), FONT_BOLD))
 
         if multi and label == "Forecast % of Target" and per_outlet:
-            style_cmds.append(("BACKGROUND", (0, i), (0, i), _hex(C_ROW_TARGET_WARN)))
-            style_cmds.append(("TEXTCOLOR", (0, i), (0, i), _hex(C_AMBER)))
+            style_cmds.append(("BACKGROUND", (0, i), (0, i), _hex(C_ROW_TARGET_NEUTRAL)))
+            style_cmds.append(("TEXTCOLOR", (0, i), (0, i), _hex(C_SLATE)))
             for col_index, cell in enumerate(row[1:], start=1):
                 try:
                     pct_val = float(str(cell).replace("%", "").strip())
