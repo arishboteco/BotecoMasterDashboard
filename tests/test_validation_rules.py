@@ -192,7 +192,7 @@ def test_turns_calculated_with_seat_count():
             "seat_count": 40,
         }
     )
-    assert result["turns"] == round(150 / 40, 2)
+    assert result["turns"] == round(150 / 40, 1)
 
 
 def test_turns_not_covers_over_100():

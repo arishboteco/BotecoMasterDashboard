@@ -755,7 +755,7 @@ def calculate_derived_metrics(data: Dict) -> Dict:
 
     seats = float(out.get("seat_count") or 0)
     if seats > 0:
-        out["turns"] = round(covers / seats, 2)
+        out["turns"] = round(covers / seats, 1)
     elif "turns" not in out or out.get("turns") is None:
         out["turns"] = None  # Seat count not configured — turns cannot be calculated meaningfully
 
