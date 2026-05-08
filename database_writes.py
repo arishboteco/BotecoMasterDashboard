@@ -413,6 +413,17 @@ def save_category_summary_batch(supabase: Any, records: List[Dict[str, Any]]) ->
         return row
 
     normalized = [_build(r) for r in records]
+    deduped_by_conflict: Dict[Tuple[int, str, str], Dict[str, Any]] = {}
+    for row in normalized:
+        key = (
+            int(row["location_id"]),
+            str(row["date"]),
+            str(row.get("normalized_category") or row.get("category_name") or ""),
+        )
+        # Keep the latest row for the conflict key to avoid
+        # `ON CONFLICT DO UPDATE command cannot affect row a second time`.
+        deduped_by_conflict[key] = row
+    normalized = list(deduped_by_conflict.values())
     # Upsert on normalized_category (new schema conflict key)
     for i in range(0, len(normalized), _SUPABASE_ROW_CHUNK):
         chunk = normalized[i : i + _SUPABASE_ROW_CHUNK]
