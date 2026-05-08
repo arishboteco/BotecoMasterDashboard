@@ -158,7 +158,7 @@ def parse_item_report_category_summary(
 
     Returns:
         (rows, errors, meta)
-        rows  — one dict per (date, normalized_category), shaped for
+        rows  — one dict per (date, category_name), shaped for
                 category_summary upsert.
         errors — blocking error strings (non-empty = import blocked).
         meta   — {"period_start", "period_end", "row_count"}.

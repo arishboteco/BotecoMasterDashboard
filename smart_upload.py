@@ -381,7 +381,7 @@ def process_smart_upload(
     location_results = _build_location_results_from_daily(daily_by_loc)
 
     # Attach category rows to each DayResult's merged dict so the save path
-    # can access them.  Category rows are keyed by (loc_id, date, normalized_category).
+    # can access them. Category rows are keyed by (loc_id, date, category_name).
     for loc_id_key, cat_rows in cat_by_loc.items():
         if loc_id_key not in location_results:
             # Item report without growth report → create skeleton DayResult entries

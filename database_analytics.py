@@ -267,11 +267,27 @@ def get_category_sales_for_date_range(
     """Get category sales totals for a date range."""
     import database
 
+    def _canonical_category(*values: Any) -> str:
+        for value in values:
+            text = str(value or "").strip()
+            if text and text.lower() not in {"nan", "none"}:
+                key = text.lower()
+                if "food" in key:
+                    return "Food"
+                if any(fragment in key for fragment in ("liquor", "wine", "beer", "spirits")):
+                    return "Liquor"
+                if any(fragment in key for fragment in ("soft drink", "mocktail", "aerated")):
+                    return "Soft Beverages"
+                if "coffee" in key or "hot beverages" in key:
+                    return "Coffee"
+                return text
+        return "Uncategorized"
+
     if database.use_supabase():
         supabase = database.get_supabase_client()
         result = (
             supabase.table("category_summary")
-            .select("category_name,net_amount,qty")
+            .select("category_name,group_name,normalized_category,net_amount,qty")
             .in_("location_id", location_ids)
             .gte("date", start_date)
             .lte("date", end_date)
@@ -280,7 +296,11 @@ def get_category_sales_for_date_range(
 
         cat_totals = {}
         for row in result.data:
-            cat = row["category_name"]
+            cat = _canonical_category(
+                row.get("normalized_category"),
+                row.get("group_name"),
+                row.get("category_name"),
+            )
             if cat not in cat_totals:
                 cat_totals[cat] = {"category": cat, "amount": 0.0, "qty": 0}
             cat_totals[cat]["amount"] += row.get("net_amount", 0) or 0
@@ -293,7 +313,11 @@ def get_category_sales_for_date_range(
         rows = get_category_totals_for_date_range(location_ids, start_date, end_date)
         cat_totals: Dict[str, Dict[str, Any]] = {}
         for row in rows:
-            cat = row.get("category_name") or "Uncategorized"
+            cat = _canonical_category(
+                row.get("normalized_category"),
+                row.get("group_name"),
+                row.get("category_name"),
+            )
             if cat not in cat_totals:
                 cat_totals[cat] = {"category": cat, "amount": 0.0, "qty": 0}
             cat_totals[cat]["amount"] += float(row.get("net_amount", 0) or 0)

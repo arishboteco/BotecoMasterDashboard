@@ -183,15 +183,16 @@ def test_wipe_all_data_supabase_includes_upload_history(monkeypatch):
     ]
 
 
-def test_save_category_summary_batch_deduplicates_conflict_rows():
+def test_save_category_summary_batch_deduplicates_exact_category_conflicts():
     import database_writes
 
     class _Query:
         def __init__(self, client):
             self.client = client
 
-        def upsert(self, rows, **_kwargs):
+        def upsert(self, rows, **kwargs):
             self.client.upsert_rows.extend(rows)
+            self.client.upsert_kwargs = kwargs
             return self
 
         def execute(self):
@@ -200,6 +201,7 @@ def test_save_category_summary_batch_deduplicates_conflict_rows():
     class _Client:
         def __init__(self):
             self.upsert_rows = []
+            self.upsert_kwargs = {}
 
         def table(self, _name):
             return _Query(self)
@@ -219,7 +221,7 @@ def test_save_category_summary_batch_deduplicates_conflict_rows():
             {
                 "location_id": 1,
                 "date": "2026-05-01",
-                "category_name": "BEER",
+                "category_name": "Beer",
                 "normalized_category": "beer",
                 "net_amount": 99.0,
                 "qty": 9,
@@ -228,6 +230,60 @@ def test_save_category_summary_batch_deduplicates_conflict_rows():
     )
 
     assert len(client.upsert_rows) == 1
+    assert client.upsert_kwargs["on_conflict"] == "location_id,date,category_name"
     assert client.upsert_rows[0]["normalized_category"] == "beer"
     assert client.upsert_rows[0]["net_amount"] == 99.0
     assert client.upsert_rows[0]["qty"] == 9
+
+
+def test_save_category_summary_batch_keeps_distinct_categories_same_normalized():
+    import database_writes
+
+    class _Query:
+        def __init__(self, client):
+            self.client = client
+
+        def upsert(self, rows, **kwargs):
+            self.client.upsert_rows.extend(rows)
+            self.client.upsert_kwargs = kwargs
+            return self
+
+        def execute(self):
+            return self
+
+    class _Client:
+        def __init__(self):
+            self.upsert_rows = []
+            self.upsert_kwargs = {}
+
+        def table(self, _name):
+            return _Query(self)
+
+    client = _Client()
+    database_writes.save_category_summary_batch(
+        client,
+        [
+            {
+                "location_id": 1,
+                "date": "2026-05-07",
+                "category_name": "Sake & Soju",
+                "group_name": "Liquor",
+                "normalized_category": "Liquor",
+                "net_amount": 410.0,
+                "qty": 2,
+            },
+            {
+                "location_id": 1,
+                "date": "2026-05-07",
+                "category_name": "Red Wine",
+                "group_name": "Liquor",
+                "normalized_category": "Liquor",
+                "net_amount": 590.0,
+                "qty": 1,
+            },
+        ],
+    )
+
+    assert client.upsert_kwargs["on_conflict"] == "location_id,date,category_name"
+    assert len(client.upsert_rows) == 2
+    assert {row["category_name"] for row in client.upsert_rows} == {"Sake & Soju", "Red Wine"}

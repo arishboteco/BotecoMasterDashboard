@@ -373,8 +373,9 @@ def save_category_summary_batch(supabase: Any, records: List[Dict[str, Any]]) ->
     """Bulk upsert category_summary records (Supabase), chunked.
 
     Supports both legacy rows (only location_id/date/category_name/net_amount/qty)
-    and new-flow rows with the full expanded schema.  The conflict key uses
-    normalized_category when available, otherwise category_name.
+    and new-flow rows with the full expanded schema. Conflict must remain on
+    (location_id, date, category_name) so multiple categories within the same
+    normalized bucket (e.g. Liquor) are preserved.
     """
     if not records:
         return
@@ -418,17 +419,18 @@ def save_category_summary_batch(supabase: Any, records: List[Dict[str, Any]]) ->
         key = (
             int(row["location_id"]),
             str(row["date"]),
-            str(row.get("normalized_category") or row.get("category_name") or ""),
+            str(row.get("category_name") or ""),
         )
         # Keep the latest row for the conflict key to avoid
         # `ON CONFLICT DO UPDATE command cannot affect row a second time`.
         deduped_by_conflict[key] = row
     normalized = list(deduped_by_conflict.values())
-    # Upsert on normalized_category (new schema conflict key)
+    # Upsert on category_name to match schema unique constraint and retain
+    # multiple categories that share one normalized_category.
     for i in range(0, len(normalized), _SUPABASE_ROW_CHUNK):
         chunk = normalized[i : i + _SUPABASE_ROW_CHUNK]
         supabase.table(SUPABASE_CATEGORY_SUMMARY).upsert(
-            chunk, on_conflict="location_id,date,normalized_category"
+            chunk, on_conflict="location_id,date,category_name"
         ).execute()
 
 
