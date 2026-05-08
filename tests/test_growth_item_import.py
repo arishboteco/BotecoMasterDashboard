@@ -563,6 +563,11 @@ class TestItemReportCategoryParser:
         assert food_rows, "No Food - PFA rows found"
         assert food_rows[0]["normalized_category"] == "Food"
 
+    def test_category_name_uses_category_column(self):
+        rows, errors, _ = self._parse()
+        assert not errors
+        assert {r["category_name"] for r in rows} == {"Mains", "Salads"}
+
     def test_sub_total_positive(self):
         rows, _, _ = self._parse()
         assert all(r["sub_total"] > 0 for r in rows)

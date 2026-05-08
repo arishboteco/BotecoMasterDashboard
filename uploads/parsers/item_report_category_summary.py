@@ -194,7 +194,7 @@ def parse_item_report_category_summary(
     if sub_total_col is None or final_total_col is None:
         return [], [f"Item Report {filename}: Sub Total / Final Total columns not found."], {}
 
-    # Accumulate per (date_str, group_name) bucket
+    # Accumulate per (date_str, category_name) bucket
     Bucket = Dict[str, Any]
     buckets: Dict[Tuple[str, str], Bucket] = {}
     # Separately track complimentary and cancelled amounts
@@ -214,17 +214,20 @@ def parse_item_report_category_summary(
         raw_status = str(row.iloc[status_col]).strip() if status_col is not None else "Success"
         status = raw_status.strip().lower()
 
-        # Determine the category label: prefer Group Name, fall back to Category
+        # Use Category for analytics labels and keep Group Name for normalization.
         group_raw = str(_col(row, colmap, "group name") or "").strip()
         cat_raw = str(_col(row, colmap, "category") or "").strip()
-        if group_raw and group_raw.lower() not in {"nan", "none"}:
-            group_name = group_raw
-        else:
-            group_name = cat_raw
-        if not group_name or group_name.lower() in {"nan", "none"}:
-            group_name = "Other"
+        category_name = cat_raw
+        if not category_name or category_name.lower() in {"nan", "none"}:
+            category_name = group_raw
+        if not category_name or category_name.lower() in {"nan", "none"}:
+            category_name = "Other"
 
-        key = (date_str, group_name)
+        group_name = group_raw
+        if not group_name or group_name.lower() in {"nan", "none"}:
+            group_name = category_name
+
+        key = (date_str, category_name)
 
         final_total_val = _f(row.iloc[final_total_col] if final_total_col < len(row) else 0)
 
@@ -249,6 +252,7 @@ def parse_item_report_category_summary(
             normalized = _normalize_category(group_name)
             buckets[key] = {
                 "date": date_str,
+                "category_name": category_name,
                 "group_name": group_name,
                 "normalized_category": normalized,
                 "qty": 0,
@@ -272,11 +276,11 @@ def parse_item_report_category_summary(
         b["service_charge_amount"] += _cell(row, sc_col)
 
     rows: List[Dict[str, Any]] = []
-    for (date_str, group_name), b in buckets.items():
-        key = (date_str, group_name)
+    for (date_str, category_name), b in buckets.items():
+        key = (date_str, category_name)
         row_out: Dict[str, Any] = {
             "date": b["date"],
-            "category_name": b["group_name"],
+            "category_name": b["category_name"],
             "group_name": b["group_name"],
             "normalized_category": b["normalized_category"],
             "qty": b["qty"],
