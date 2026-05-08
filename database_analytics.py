@@ -264,7 +264,49 @@ def get_category_sales_for_date_range(
     start_date: str,
     end_date: str,
 ) -> List[Dict[str, Any]]:
-    """Get category sales totals for a date range."""
+    """Get detailed category sales totals (category_name) for a date range."""
+    import database
+
+    if database.use_supabase():
+        supabase = database.get_supabase_client()
+        result = (
+            supabase.table("category_summary")
+            .select("category_name,net_amount,qty")
+            .in_("location_id", location_ids)
+            .gte("date", start_date)
+            .lte("date", end_date)
+            .execute()
+        )
+
+        cat_totals = {}
+        for row in result.data:
+            cat = str(row.get("category_name") or "").strip() or "Uncategorized"
+            if cat not in cat_totals:
+                cat_totals[cat] = {"category": cat, "amount": 0.0, "qty": 0}
+            cat_totals[cat]["amount"] += row.get("net_amount", 0) or 0
+            cat_totals[cat]["qty"] += row.get("qty", 0) or 0
+
+        return sorted(cat_totals.values(), key=lambda x: -x["amount"])
+    else:
+        from database_reads import get_category_totals_for_date_range
+
+        rows = get_category_totals_for_date_range(location_ids, start_date, end_date)
+        cat_totals: Dict[str, Dict[str, Any]] = {}
+        for row in rows:
+            cat = str(row.get("category_name") or "").strip() or "Uncategorized"
+            if cat not in cat_totals:
+                cat_totals[cat] = {"category": cat, "amount": 0.0, "qty": 0}
+            cat_totals[cat]["amount"] += float(row.get("net_amount", 0) or 0)
+            cat_totals[cat]["qty"] += int(row.get("qty", 0) or 0)
+        return sorted(cat_totals.values(), key=lambda x: -x["amount"])
+
+
+def get_category_sales_grouped_for_date_range(
+    location_ids: List[int],
+    start_date: str,
+    end_date: str,
+) -> List[Dict[str, Any]]:
+    """Get grouped category totals (Food/Liquor/...) for a date range."""
     import database
 
     def _canonical_category(*values: Any) -> str:

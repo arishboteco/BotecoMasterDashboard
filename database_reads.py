@@ -331,12 +331,12 @@ def _detail_lists_for_daily_summary(location_id: int, date: str) -> tuple[List[D
     derived for services from bill_items.
     """
     from database_analytics import (
-        get_category_sales_for_date_range,
+        get_category_sales_grouped_for_date_range,
         get_service_sales_for_date_range,
     )
 
     cats_out: List[Dict] = []
-    cat_rows = get_category_sales_for_date_range([location_id], date, date)
+    cat_rows = get_category_sales_grouped_for_date_range([location_id], date, date)
     for r in cat_rows or []:
         name = str(r.get("category") or "").strip()
         if not name:

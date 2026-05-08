@@ -950,8 +950,17 @@ def get_top_items_for_date_range(
 def get_category_sales_for_date_range(
     location_ids: List[int], start_date: str, end_date: str
 ) -> List[Dict]:
-    """Aggregate category sales across a date range for one or more locations."""
+    """Aggregate detailed category sales across a date range."""
     from database_analytics import get_category_sales_for_date_range as _impl
+
+    return _impl(location_ids, start_date, end_date)
+
+
+def get_category_sales_grouped_for_date_range(
+    location_ids: List[int], start_date: str, end_date: str
+) -> List[Dict]:
+    """Aggregate grouped category sales (Food/Liquor/...) across a date range."""
+    from database_analytics import get_category_sales_grouped_for_date_range as _impl
 
     return _impl(location_ids, start_date, end_date)
 

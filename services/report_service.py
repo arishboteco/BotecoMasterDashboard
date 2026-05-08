@@ -33,7 +33,9 @@ def build_mtd_maps(
 ) -> Tuple[dict, dict]:
     """Build category and service month-to-date maps for the requested scope/date."""
     start_date = f"{year}-{month:02d}-01"
-    cat_rows = database.get_category_sales_for_date_range(location_ids, start_date, as_of_date)
+    cat_rows = database.get_category_sales_grouped_for_date_range(
+        location_ids, start_date, as_of_date
+    )
     svc_rows = database.get_service_sales_for_date_range(location_ids, start_date, as_of_date)
 
     mtd_cat = {
