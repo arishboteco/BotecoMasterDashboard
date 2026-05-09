@@ -7,7 +7,7 @@ No Streamlit or database dependencies.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -131,7 +131,11 @@ def generate_forecast_dates(
     return [last_date + timedelta(days=i + 1) for i in range(forecast_days)]
 
 
-def calculate_forecast_days(analysis_period: str, data_points: int = 0) -> int:
+def calculate_forecast_days(
+    analysis_period: str,
+    data_points: int = 0,
+    selected_range_days: int = 0,
+) -> int:
     """Calculate forecast length based on selected analysis period.
 
     Forecast should extend beyond the selected period to be useful:
@@ -146,15 +150,36 @@ def calculate_forecast_days(analysis_period: str, data_points: int = 0) -> int:
     if data_points < 3:
         return 0  # Not enough data for any forecast
 
+    period_key = analysis_period.lower().replace(" ", "_")
+
+    if period_key in {"7d", "last_7_days", "30d", "last_30_days", "custom"}:
+        if selected_range_days > 0:
+            return max(1, min(7, selected_range_days // 2))
+        if period_key in {"7d", "last_7_days"}:
+            return 3
+        return 7
+
+    if period_key in {"this_month", "mtd"}:
+        today = date.today()
+        if today.month == 12:
+            next_month = date(today.year + 1, 1, 1)
+        else:
+            next_month = date(today.year, today.month + 1, 1)
+        return max(1, (next_month - today).days)
+
+    if period_key in {"qtd"}:
+        today = date.today()
+        quarter_start_month = ((today.month - 1) // 3) * 3 + 1
+        quarter_end_month = quarter_start_month + 2
+        if quarter_end_month == 12:
+            next_quarter = date(today.year + 1, 1, 1)
+        else:
+            next_quarter = date(today.year, quarter_end_month + 1, 1)
+        return max(1, (next_quarter - today).days)
+
     period_map = {
         "this_week": 7,
         "last_week": 7,
-        "last_7_days": 7,
-        "this_month": 30,
         "last_month": 30,
-        "last_30_days": 30,
-        "custom": 30,
     }
-
-    period_key = analysis_period.lower().replace(" ", "_")
-    return period_map.get(period_key, 30)
+    return period_map.get(period_key, 7)

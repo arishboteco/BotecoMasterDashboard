@@ -19,16 +19,42 @@ def resolve_period_window(
     if analysis_period == "Custom":
         if custom_start is None or custom_end is None:
             raise ValueError("Custom period requires start and end dates")
-        return custom_start, custom_end, None, None, None
+        start_date = custom_start
+        end_date = custom_end
+        period_key = "custom"
+    else:
+        period_map = {
+            "7D": "last_7_days",
+            "30D": "last_30_days",
+            "MTD": "this_month",
+            "QTD": "qtd",
+            "This Week": "this_week",
+            "Last Week": "last_week",
+            "Last 7 Days": "last_7_days",
+            "This Month": "this_month",
+            "Last Month": "last_month",
+            "Last 30 Days": "last_30_days",
+        }
+        period_key = period_map.get(
+            analysis_period,
+            analysis_period.lower().replace(" ", "_"),
+        )
 
-    period_key = analysis_period.lower().replace(" ", "_")
-    start_date, end_date = utils.get_date_range(period_key)
+        if period_key == "qtd":
+            today = date.today()
+            quarter_start_month = ((today.month - 1) // 3) * 3 + 1
+            start_date = date(today.year, quarter_start_month, 1)
+            end_date = today
+        else:
+            start_date, end_date = utils.get_date_range(period_key)
 
     prior_start: Optional[date] = None
     prior_end: Optional[date] = None
     prior_map = {
         "this_week": None,  # same-day-span logic below
         "this_month": None,  # same-day-span logic below
+        "qtd": None,  # same-day-span logic below
+        "custom": None,  # same-day-span logic below
         "last_week": "last_week_prior",
         "last_month": "last_month_prior",
     }

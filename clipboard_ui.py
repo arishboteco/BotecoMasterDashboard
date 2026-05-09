@@ -55,8 +55,16 @@ COPY_ICON_SVG = (
 
 
 def _html(html: str, height: int, component_key: str) -> None:
-    """Render HTML in an iframe using st.iframe."""
-    st.iframe(html, height=height)
+    """Render HTML in an iframe with Streamlit version compatibility."""
+    try:
+        st.iframe(html, height=height)
+        return
+    except AttributeError:
+        pass
+
+    import streamlit.components.v1 as components
+
+    components.html(html, height=height, scrolling=False)
 
 
 def _safe_id(key: str) -> str:

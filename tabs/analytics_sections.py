@@ -7,21 +7,128 @@ from datetime import date
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import streamlit as st
+from plotly.subplots import make_subplots
 
 import database
 import scope
 import ui_theme
 import utils
 from components import KpiMetric, kpi_row
-from tabs.chart_builders import _hex_to_rgba, _period_supports_trend_analysis
 from tabs.analytics_logic import build_daily_view_table
+from tabs.chart_builders import _hex_to_rgba, _period_supports_trend_analysis
 from tabs.forecasting import (
     calculate_forecast_days,
     linear_forecast,
     moving_average,
 )
+
+
+def _build_action_cards(
+    current_df: pd.DataFrame,
+    prior_df: pd.DataFrame,
+    monthly_target: float,
+    forecast_total: float,
+) -> list[dict[str, str]]:
+    """Build ranked, explainable action cards from available signals."""
+    cards: list[dict[str, str]] = []
+
+    if current_df.empty:
+        return cards
+
+    current_sales = float(pd.to_numeric(current_df["net_total"], errors="coerce").fillna(0).sum())
+    current_covers = float(pd.to_numeric(current_df["covers"], errors="coerce").fillna(0).sum())
+    current_apc = current_sales / current_covers if current_covers > 0 else 0.0
+
+    prior_sales = 0.0
+    prior_covers = 0.0
+    prior_apc = 0.0
+    if not prior_df.empty:
+        prior_sales = float(pd.to_numeric(prior_df["net_total"], errors="coerce").fillna(0).sum())
+        prior_covers = float(pd.to_numeric(prior_df["covers"], errors="coerce").fillna(0).sum())
+        prior_apc = prior_sales / prior_covers if prior_covers > 0 else 0.0
+
+    if monthly_target > 0 and forecast_total > 0 and forecast_total < monthly_target:
+        gap = monthly_target - forecast_total
+        cards.append(
+            {
+                "severity": "high",
+                "title": "Target at Risk",
+                "reason": (
+                    f"Forecast projects {utils.format_rupee_short(forecast_total)} vs "
+                    f"target {utils.format_rupee_short(monthly_target)}."
+                ),
+                "action": "Push high-conversion bundles on peak hours and monitor daily pace.",
+                "metric": f"Gap: {utils.format_rupee_short(gap)}",
+            }
+        )
+
+    if prior_sales > 0:
+        sales_change = ((current_sales - prior_sales) / prior_sales) * 100
+        if sales_change <= -8:
+            cards.append(
+                {
+                    "severity": "high",
+                    "title": "Sales Trend Softening",
+                    "reason": f"Sales are {sales_change:.1f}% below previous period.",
+                    "action": (
+                        "Audit low days and launch a short tactical promo "
+                        "for demand recovery."
+                    ),
+                    "metric": f"Delta: {sales_change:.1f}%",
+                }
+            )
+        elif sales_change >= 8:
+            cards.append(
+                {
+                    "severity": "medium",
+                    "title": "Momentum Opportunity",
+                    "reason": f"Sales are {sales_change:.1f}% above previous period.",
+                    "action": (
+                        "Protect momentum by keeping top categories in stock "
+                        "and staffing peak slots."
+                    ),
+                    "metric": f"Delta: +{sales_change:.1f}%",
+                }
+            )
+
+    if prior_covers > 0 and prior_apc > 0:
+        covers_change = ((current_covers - prior_covers) / prior_covers) * 100
+        apc_change = ((current_apc - prior_apc) / prior_apc) * 100
+        if covers_change >= 8 and apc_change <= -8:
+            cards.append(
+                {
+                    "severity": "high",
+                    "title": "APC Under Pressure",
+                    "reason": (
+                        f"Covers are +{covers_change:.1f}% but APC is "
+                        f"{apc_change:.1f}% vs previous period."
+                    ),
+                    "action": (
+                        "Prioritize upsell scripts and premium pairings "
+                        "to recover ticket size."
+                    ),
+                    "metric": f"APC: {utils.format_currency(current_apc)}",
+                }
+            )
+
+    if not cards:
+        cards.append(
+            {
+                "severity": "low",
+                "title": "Stable Performance",
+                "reason": "No major risk signal detected from forecast and prior-period deltas.",
+                "action": (
+                    "Maintain current run-rate and continue monitoring "
+                    "weekday/category shifts."
+                ),
+                "metric": "Signal: Neutral",
+            }
+        )
+
+    severity_rank = {"high": 0, "medium": 1, "low": 2}
+    cards = sorted(cards, key=lambda c: severity_rank.get(c["severity"], 3))
+    return cards[:3]
 
 
 def _style_achievement(val) -> str:
@@ -109,13 +216,21 @@ def _make_rupee_ticks(min_val: float, max_val: float) -> tuple:
     # Choose step size
     if max_val <= 1_00_000:
         step = 10_000
-        fmt_fn = lambda v: f"₹{v / 1_000:.0f}k"
+
+        def fmt_fn(v: int) -> str:
+            return f"₹{v / 1_000:.0f}k"
+
     elif max_val <= 5_00_000:
         step = 50_000
-        fmt_fn = lambda v: f"₹{v / 1_000:.0f}k"
+
+        def fmt_fn(v: int) -> str:
+            return f"₹{v / 1_000:.0f}k"
+
     else:
         step = 1_00_000
-        fmt_fn = lambda v: f"₹{v / 1_00_000:.1f}L"
+
+        def fmt_fn(v: int) -> str:
+            return f"₹{v / 1_00_000:.1f}L"
 
     start = 0
     tickvals = list(range(start, int(max_val) + 1, step))
@@ -138,6 +253,496 @@ def _daily_table_column_config() -> dict:
     }
 
 
+def _forecast_reliability_label(points: int) -> str:
+    if points >= 21:
+        return "High"
+    if points >= 10:
+        return "Medium"
+    return "Low"
+
+
+def render_forecast_command_center(
+    df: pd.DataFrame,
+    prior_df: pd.DataFrame,
+    analysis_period: str,
+    start_date: date,
+    end_date: date,
+    prior_start: date | None,
+    prior_end: date | None,
+    monthly_target: float,
+    total_sales: float,
+    avg_daily: float,
+    total_covers: int,
+    days_with_data: int,
+    prior_total: float | None,
+    prior_covers: int | None,
+    prior_avg: float | None,
+) -> None:
+    """Render forecast-first executive block with actionable cards."""
+    if df.empty:
+        return
+
+    dates = pd.to_datetime(df["date"])
+    values = pd.to_numeric(df["net_total"], errors="coerce").fillna(0).tolist()
+    selected_days = max(1, (end_date - start_date).days + 1)
+    forecast_days = calculate_forecast_days(
+        analysis_period,
+        data_points=len(values),
+        selected_range_days=selected_days,
+    )
+    forecast = linear_forecast(dates, values, forecast_days=forecast_days)
+    forecast_total = total_sales + sum(f["value"] for f in (forecast or []))
+    reliability = _forecast_reliability_label(len(values))
+
+    action_cards = _build_action_cards(
+        current_df=df,
+        prior_df=prior_df,
+        monthly_target=monthly_target,
+        forecast_total=forecast_total if forecast else 0.0,
+    )
+
+    forecast_value = utils.format_rupee_short(forecast_total) if forecast else "N/A"
+    target_gap = (
+        utils.format_rupee_short(max(0.0, monthly_target - forecast_total))
+        if monthly_target > 0 and forecast
+        else "N/A"
+    )
+    cov_delta = None
+    if prior_covers is not None and prior_covers > 0:
+        cov_growth = utils.calculate_growth(total_covers, prior_covers)
+        cov_delta = f"{cov_growth['percentage']:+.1f}%"
+
+    apc = total_sales / total_covers if total_covers > 0 else 0.0
+    prior_apc = (
+        (prior_total / prior_covers)
+        if prior_total is not None and prior_covers is not None and prior_covers > 0
+        else None
+    )
+    apc_delta = None
+    if prior_apc and prior_apc > 0:
+        apc_delta = f"{((apc - prior_apc) / prior_apc) * 100:+.1f}%"
+
+    metrics = [
+        KpiMetric(
+            label="Net Sales",
+            value=utils.format_rupee_short(total_sales),
+            delta=utils.format_delta(total_sales, prior_total) if prior_total else None,
+        ),
+        KpiMetric(
+            label="Forecast",
+            value=forecast_value,
+            delta=f"Reliability: {reliability}",
+        ),
+        KpiMetric(
+            label="Target Gap",
+            value=target_gap,
+            delta=(
+                "On track"
+                if monthly_target > 0 and forecast and forecast_total >= monthly_target
+                else None
+            ),
+        ),
+        KpiMetric(
+            label="APC / Covers",
+            value=f"{utils.format_currency(apc)} / {total_covers:,}",
+            delta=f"APC {apc_delta or 'N/A'} | Covers {cov_delta or 'N/A'}",
+        ),
+    ]
+    kpi_row(metrics)
+
+    left_col, right_col = st.columns([2, 1])
+    with left_col:
+        fig = go.Figure()
+        # Keep the hero chart to one story: observed points, smoothed trend, forecast.
+        if len(values) >= 7:
+            ma_values = moving_average(values, window=7)
+            ma_series = pd.Series(ma_values)
+            ma_mask = pd.notna(ma_series).values
+            fig.add_trace(
+                go.Scatter(
+                    x=dates,
+                    y=values,
+                    mode="markers",
+                    name="Daily sales",
+                    marker=dict(
+                        size=5,
+                        color=_hex_to_rgba(ui_theme.BRAND_PRIMARY, 0.35),
+                    ),
+                    hovertemplate="₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=dates[ma_mask],
+                    y=ma_series[ma_mask].tolist(),
+                    mode="lines",
+                    name="Trend",
+                    line=dict(color=ui_theme.BRAND_PRIMARY, width=3),
+                    hovertemplate="Trend: ₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
+                )
+            )
+        else:
+            fig.add_trace(
+                go.Scatter(
+                    x=dates,
+                    y=values,
+                    mode="lines+markers",
+                    name="Daily sales",
+                    line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
+                    marker=dict(size=5),
+                    hovertemplate="₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
+                )
+            )
+        if forecast:
+            f_dates = [f["date"] for f in forecast]
+            f_values = [f["value"] for f in forecast]
+            fig.add_trace(
+                go.Scatter(
+                    x=f_dates,
+                    y=f_values,
+                    mode="lines",
+                    name="Forecast",
+                    line=dict(color=ui_theme.BRAND_WARN, width=3),
+                    hovertemplate="Forecast: ₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
+                )
+            )
+            fig.add_vrect(
+                x0=f_dates[0],
+                x1=f_dates[-1],
+                fillcolor=_hex_to_rgba(ui_theme.BRAND_WARN, 0.08),
+                line_width=0,
+                layer="below",
+            )
+        fig.update_layout(
+            title="Forecast Trend",
+            xaxis_title="Date",
+            yaxis_title="Net Sales (₹)",
+            hovermode="x unified",
+            height=ui_theme.CHART_HEIGHT,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.22,
+                xanchor="center",
+                x=0.5,
+            ),
+        )
+        st.plotly_chart(fig, width="stretch")
+        if prior_start and prior_end:
+            st.caption(
+                "Previous period is summarized in the KPI deltas: {} to {}.".format(
+                    prior_start.strftime("%d %b %Y"),
+                    prior_end.strftime("%d %b %Y"),
+                )
+            )
+
+    with right_col:
+        st.markdown("### Recommended Actions")
+        for card in action_cards:
+            body = (
+                f"**{card['title']}**\n\n{card['reason']}\n\n"
+                f"**Action:** {card['action']}\n\n{card['metric']}"
+            )
+            tone = card["severity"]
+            if tone == "high":
+                st.error(body)
+            elif tone == "medium":
+                st.warning(body)
+            else:
+                st.info(body)
+
+
+def render_driver_analysis(
+    df: pd.DataFrame,
+    df_raw: pd.DataFrame,
+    multi_analytics: bool,
+) -> None:
+    """Render focused traffic and ticket-size diagnostics."""
+    if df.empty:
+        st.caption("No driver data for this period.")
+        return
+
+    st.markdown("### Traffic & Ticket Drivers")
+    st.caption("Use this layer to separate footfall movement from ticket-size movement.")
+
+    if multi_analytics and not df_raw.empty:
+        driver_df = (
+            df_raw.groupby("date")[["covers", "net_total"]]
+            .sum()
+            .reset_index()
+            .sort_values("date")
+        )
+    else:
+        driver_df = df[["date", "covers", "net_total"]].copy().sort_values("date")
+
+    driver_df["covers"] = pd.to_numeric(driver_df["covers"], errors="coerce").fillna(0)
+    driver_df["net_total"] = pd.to_numeric(driver_df["net_total"], errors="coerce").fillna(0)
+    driver_df["apc"] = driver_df.apply(
+        lambda row: row["net_total"] / row["covers"] if row["covers"] > 0 else 0,
+        axis=1,
+    )
+
+    covers_col, apc_col = st.columns(2)
+    with covers_col:
+        with st.container(border=True):
+            st.markdown("#### Covers")
+            fig_covers = go.Figure(
+                go.Bar(
+                    x=pd.to_datetime(driver_df["date"]),
+                    y=driver_df["covers"],
+                    name="Covers",
+                    marker_color=ui_theme.BRAND_SUCCESS,
+                    hovertemplate="%{y:,.0f} covers<br>%{x|%d %b}<extra></extra>",
+                )
+            )
+            fig_covers.update_layout(
+                xaxis_title="Date",
+                yaxis_title="Covers",
+                height=320,
+                hovermode="x unified",
+            )
+            st.plotly_chart(fig_covers, width="stretch")
+
+    with apc_col:
+        with st.container(border=True):
+            st.markdown("#### Average Per Cover")
+            fig_apc = go.Figure(
+                go.Scatter(
+                    x=pd.to_datetime(driver_df["date"]),
+                    y=driver_df["apc"],
+                    mode="lines+markers",
+                    name="APC",
+                    line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
+                    marker=dict(size=4),
+                    hovertemplate="₹%{y:,.0f} APC<br>%{x|%d %b}<extra></extra>",
+                )
+            )
+            avg_apc = float(driver_df["apc"].mean()) if not driver_df.empty else 0.0
+            if avg_apc > 0:
+                fig_apc.add_hline(
+                    y=avg_apc,
+                    line_dash="dash",
+                    line_color=ui_theme.CHART_BAR_MUTED,
+                    annotation_text=f"Avg {utils.format_currency(avg_apc)}",
+                )
+            fig_apc.update_layout(
+                xaxis_title="Date",
+                yaxis_title="APC (₹)",
+                height=320,
+                hovermode="x unified",
+            )
+            st.plotly_chart(fig_apc, width="stretch")
+
+    if st.toggle("Show driver data table", value=False, key="analytics_driver_table_toggle"):
+        with st.container(border=True):
+            st.caption("Daily driver table")
+            table = driver_df.rename(
+                columns={
+                    "date": "Date",
+                    "covers": "Covers",
+                    "net_total": "Net Sales (₹)",
+                    "apc": "APC (₹)",
+                }
+            )
+            table["Net Sales (₹)"] = table["Net Sales (₹)"].apply(
+                lambda val: utils.format_currency(float(val))
+            )
+            table["APC (₹)"] = table["APC (₹)"].apply(
+                lambda val: utils.format_currency(float(val))
+            )
+            table["Covers"] = table["Covers"].apply(lambda val: f"{int(val):,}")
+            st.dataframe(table, width="stretch", hide_index=True)
+
+
+def render_mix_snapshot(
+    report_loc_ids: list[int],
+    start_str: str,
+    end_str: str,
+    df: pd.DataFrame,
+    start_date: date,
+) -> None:
+    """Render concise category and weekday mix charts without default tables."""
+    st.markdown("### Mix & Timing")
+    st.caption("Use this layer to spot what is driving the period without digging through rows.")
+
+    cat_col, weekday_col = st.columns(2)
+    with cat_col:
+        with st.container(border=True):
+            st.markdown("#### Category Contribution")
+            cat_data = database.get_category_sales_for_date_range(
+                report_loc_ids,
+                start_str,
+                end_str,
+            )
+            if not cat_data:
+                st.caption("No category data for this period.")
+            else:
+                cat_df = pd.DataFrame(cat_data).head(8).copy()
+                total_cat = float(cat_df["amount"].sum())
+                cat_df["share"] = (
+                    cat_df["amount"] / total_cat * 100 if total_cat > 0 else 0
+                )
+                cat_df = cat_df.sort_values("amount", ascending=True)
+                fig_cat = go.Figure(
+                    go.Bar(
+                        x=cat_df["amount"],
+                        y=cat_df["category"],
+                        orientation="h",
+                        marker_color=ui_theme.BRAND_PRIMARY,
+                        text=[f"{x:.1f}%" for x in cat_df["share"]],
+                        textposition="auto",
+                        hovertemplate=(
+                            "%{y}<br>₹%{x:,.0f}<br>%{text} of top mix<extra></extra>"
+                        ),
+                    )
+                )
+                fig_cat.update_layout(
+                    xaxis_title="Net Sales",
+                    yaxis_title="",
+                    height=360,
+                    margin=dict(l=8, r=8, t=16, b=32),
+                )
+                fig_cat.update_xaxes(tickprefix="₹", tickformat=",")
+                st.plotly_chart(fig_cat, width="stretch")
+
+    with weekday_col:
+        with st.container(border=True):
+            st.markdown("#### Weekday Strength")
+            if len(df) < 7:
+                st.caption("Need at least 7 days of data for weekday strength.")
+            else:
+                wd_df = df[df["net_total"] > 0].copy()
+                wd_df["weekday"] = wd_df["date"].apply(utils.get_weekday_name)
+                wd_agg = (
+                    wd_df.groupby("weekday")[["net_total", "covers"]]
+                    .mean()
+                    .reset_index()
+                    .rename(columns={"net_total": "avg_sales", "covers": "avg_covers"})
+                )
+                day_order = [
+                    "Monday",
+                    "Tuesday",
+                    "Wednesday",
+                    "Thursday",
+                    "Friday",
+                    "Saturday",
+                    "Sunday",
+                ]
+                wd_agg["weekday"] = pd.Categorical(
+                    wd_agg["weekday"], categories=day_order, ordered=True
+                )
+                wd_agg = wd_agg.sort_values("weekday")
+
+                monthly_tgt = scope.sum_location_monthly_targets(report_loc_ids)
+                days_in_mo = utils.get_days_in_month(start_date.year, start_date.month)
+                daily_tgt = monthly_tgt / days_in_mo if monthly_tgt > 0 else 0
+                colors = [
+                    ui_theme.BRAND_SUCCESS
+                    if daily_tgt > 0 and val >= daily_tgt
+                    else ui_theme.BRAND_WARN
+                    if daily_tgt > 0 and val >= daily_tgt * 0.8
+                    else ui_theme.CHART_BAR_MUTED
+                    for val in wd_agg["avg_sales"]
+                ]
+                fig_wd = go.Figure(
+                    go.Bar(
+                        x=wd_agg["weekday"],
+                        y=wd_agg["avg_sales"],
+                        marker_color=colors,
+                        text=[utils.format_rupee_short(v) for v in wd_agg["avg_sales"]],
+                        textposition="outside",
+                        hovertemplate=(
+                            "%{x}<br>Avg sales: ₹%{y:,.0f}<extra></extra>"
+                        ),
+                    )
+                )
+                if daily_tgt > 0:
+                    fig_wd.add_hline(
+                        y=daily_tgt,
+                        line_dash="dash",
+                        line_color=ui_theme.CHART_BAR_MUTED,
+                        annotation_text=f"Target {utils.format_rupee_short(daily_tgt)}",
+                    )
+                fig_wd.update_layout(
+                    xaxis_title="",
+                    yaxis_title="Avg Net Sales",
+                    height=360,
+                    margin=dict(l=8, r=8, t=16, b=32),
+                )
+                fig_wd.update_yaxes(tickprefix="₹", tickformat=",")
+                st.plotly_chart(fig_wd, width="stretch")
+
+
+def render_target_snapshot(
+    report_loc_ids: list[int],
+    start_date: date,
+    df: pd.DataFrame,
+) -> None:
+    """Render a compact target snapshot without the legacy daily table."""
+    st.markdown("### Target Pace")
+    monthly_target = scope.sum_location_monthly_targets(report_loc_ids)
+    if monthly_target <= 0 or df.empty:
+        st.caption("No target data available for this period.")
+        return
+
+    target_df = df.copy().sort_values("date")
+    target_df["net_total"] = pd.to_numeric(target_df["net_total"], errors="coerce").fillna(0)
+    target_df["cumulative"] = target_df["net_total"].cumsum()
+    days_in_month = utils.get_days_in_month(start_date.year, start_date.month)
+    daily_target = monthly_target / days_in_month
+    target_df["target_pace"] = [daily_target * (idx + 1) for idx in range(len(target_df))]
+    actual_last = float(target_df["cumulative"].iloc[-1])
+    target_last = float(target_df["target_pace"].iloc[-1])
+    gap = actual_last - target_last
+
+    status_col, chart_col = st.columns([1, 2])
+    with status_col:
+        with st.container(border=True):
+            st.metric(
+                "Actual vs Pace",
+                utils.format_rupee_short(actual_last),
+                utils.format_rupee_short(gap),
+            )
+            st.metric("Required Daily Pace", utils.format_rupee_short(daily_target))
+            if gap >= 0:
+                st.success("On pace for the selected target period.")
+            else:
+                st.warning("Behind target pace. Focus on high-confidence demand days.")
+
+    with chart_col:
+        with st.container(border=True):
+            fig_target = go.Figure()
+            fig_target.add_trace(
+                go.Scatter(
+                    x=pd.to_datetime(target_df["date"]),
+                    y=target_df["cumulative"],
+                    mode="lines+markers",
+                    name="Actual",
+                    fill="tozeroy",
+                    fillcolor=_hex_to_rgba(ui_theme.BRAND_PRIMARY, 0.12),
+                    line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
+                )
+            )
+            fig_target.add_trace(
+                go.Scatter(
+                    x=pd.to_datetime(target_df["date"]),
+                    y=target_df["target_pace"],
+                    mode="lines",
+                    name="Target pace",
+                    line=dict(color=ui_theme.CHART_BAR_MUTED, width=2, dash="dash"),
+                )
+            )
+            fig_target.update_layout(
+                xaxis_title="Date",
+                yaxis_title="Cumulative Sales",
+                height=360,
+                hovermode="x unified",
+                margin=dict(l=8, r=8, t=16, b=32),
+            )
+            fig_target.update_yaxes(tickprefix="₹", tickformat=",")
+            st.plotly_chart(fig_target, width="stretch")
+
+
 def render_overview(
     analysis_period: str,
     start_date: date,
@@ -149,60 +754,62 @@ def render_overview(
     prior_covers: int | None,
     prior_avg: float | None,
 ) -> None:
-    with st.expander("Overview", expanded=True):
-        st.markdown("### Period Summary")
-        with st.container(border=True):
-            show_projection = analysis_period == "This Month"
+    st.markdown("### Period Summary")
+    with st.container(border=True):
+        show_projection = analysis_period in {"This Month", "MTD"}
 
-            def _delta_str(current, prior):
-                if prior is None or prior == 0:
-                    return None
-                return utils.format_delta(current, prior)
+        def _delta_str(current, prior):
+            if prior is None or prior == 0:
+                return None
+            return utils.format_delta(current, prior)
 
-            cov_delta = None
-            if prior_covers is not None and prior_covers > 0:
-                g = utils.calculate_growth(total_covers, prior_covers)
-                sign = "+" if g["change"] >= 0 else ""
-                cov_delta = f"{sign}{int(g['change']):,} ({sign}{utils.format_percent(g['percentage'])})"
+        cov_delta = None
+        if prior_covers is not None and prior_covers > 0:
+            g = utils.calculate_growth(total_covers, prior_covers)
+            sign = "+" if g["change"] >= 0 else ""
+            cov_delta = (
+                f"{sign}{int(g['change']):,} "
+                f"({sign}{utils.format_percent(g['percentage'])})"
+            )
 
-            metrics = [
-                KpiMetric(
-                    label="Total Sales",
-                    value=utils.format_rupee_short(total_sales),
-                    delta=_delta_str(total_sales, prior_total),
-                ),
-                KpiMetric(
-                    label="Total Covers",
-                    value=f"{total_covers:,}",
-                    delta=cov_delta,
-                ),
-                KpiMetric(
-                    label="Avg Daily Sales",
-                    value=utils.format_rupee_short(avg_daily),
-                    delta=_delta_str(avg_daily, prior_avg),
-                ),
-                KpiMetric(
-                    label="Days with Data",
-                    value=str(days_with_data),
-                ),
-            ]
+        metrics = [
+            KpiMetric(
+                label="Total Sales",
+                value=utils.format_rupee_short(total_sales),
+                delta=_delta_str(total_sales, prior_total),
+            ),
+            KpiMetric(
+                label="Total Covers",
+                value=f"{total_covers:,}",
+                delta=cov_delta,
+            ),
+            KpiMetric(
+                label="Avg Daily Sales",
+                value=utils.format_rupee_short(avg_daily),
+                delta=_delta_str(avg_daily, prior_avg),
+            ),
+            KpiMetric(
+                label="Days with Data",
+                value=str(days_with_data),
+            ),
+        ]
 
-            if show_projection:
-                days_in_mo = utils.get_days_in_month(start_date.year, start_date.month)
-                projected = utils.calculate_projected_sales(
-                    total_sales,
-                    days_with_data,
-                    days_in_mo,
+        if show_projection:
+            days_in_mo = utils.get_days_in_month(start_date.year, start_date.month)
+            projected = utils.calculate_projected_sales(
+                total_sales,
+                days_with_data,
+                days_in_mo,
+            )
+            metrics.append(
+                KpiMetric(
+                    label="Projected Month-End",
+                    value=utils.format_rupee_short(projected),
+                    help="Based on current run rate extrapolated to end of month.",
                 )
-                metrics.append(
-                    KpiMetric(
-                        label="Projected Month-End",
-                        value=utils.format_rupee_short(projected),
-                        help="Based on current run rate extrapolated to end of month.",
-                    )
-                )
+            )
 
-            kpi_row(metrics)
+        kpi_row(metrics)
 
 
 def render_sales_performance(
@@ -214,7 +821,8 @@ def render_sales_performance(
     show_ma_and_forecast = _period_supports_trend_analysis(analysis_period, len(df))
     forecast = None
 
-    with st.expander("Sales Performance", expanded=True):
+    st.markdown("### Sales Performance")
+    with st.container(border=True):
         col_chart1, col_chart2 = st.columns(2)
 
         # ── Daily Sales Trend ──────────────────────────────────
@@ -616,7 +1224,8 @@ def render_sales_performance(
             st.caption("No APC data for this period.")
 
         # ── Sales Performance drill-down table ───────────────────
-        with st.expander("View data"):
+        with st.container(border=True):
+            st.caption("Sales performance table")
             if multi_analytics and not df_raw.empty:
                 _sales_tbl = df_raw[["date", "Outlet", "net_total", "covers"]].copy()
             else:
@@ -727,7 +1336,8 @@ def render_revenue_breakdown(
         _cat_table = _cat_table.rename(
             columns={"category": "Category", "amount": "Amount"}
         )
-        with st.expander("View category data"):
+        with st.container(border=True):
+            st.caption("Category data")
             st.dataframe(_cat_table, width="stretch", hide_index=True)
     else:
         st.caption("No category data for this period.")
@@ -848,7 +1458,8 @@ def render_revenue_breakdown(
         )
 
         # Weekday drill-down table
-        with st.expander("View data"):
+        with st.container(border=True):
+            st.caption("Weekday data")
             wd_covers = (
                 wd_df.groupby("weekday")["covers"]
                 .mean()
@@ -1025,11 +1636,15 @@ def render_target_and_daily(
         # On-track / Behind badge
         if actual_last >= target_last:
             st.success(
-                f"✅ **On track** — {utils.format_rupee_short(actual_last - target_last)} ahead of target pace"
+                "✅ **On track** — "
+                f"{utils.format_rupee_short(actual_last - target_last)} "
+                "ahead of target pace"
             )
         else:
             st.error(
-                f"⚠️ **Behind by {utils.format_rupee_short(target_last - actual_last)}** — below target pace"
+                "⚠️ **Behind by "
+                f"{utils.format_rupee_short(target_last - actual_last)}" 
+                "** — below target pace"
             )
 
         _chart_summary(
@@ -1040,7 +1655,8 @@ def render_target_and_daily(
         )
 
         # Target achievement drill-down table
-        with st.expander("View data"):
+        with st.container(border=True):
+            st.caption("Target achievement data")
             _cols_needed = {"target", "pct_target"}
             _has_target_cols = (
                 multi_analytics
@@ -1169,7 +1785,8 @@ def render_payment_reconciliation(
     st.markdown("### Payment Reconciliation")
     st.caption(
         "Per-provider breakdown for reconciling against Paytm / PhonePe / GPay settlement "
-        "statements. Live data shows raw Payment Type labels; local mode shows the 5-bucket summary."
+        "statements. Live data shows raw Payment Type labels; "
+        "local mode shows the 5-bucket summary."
     )
 
     data = database_analytics.get_payment_provider_breakdown(
