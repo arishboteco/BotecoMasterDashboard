@@ -15,7 +15,7 @@ class TestResolvePeriodWindow:
             return
         raise AssertionError("Expected ValueError for missing custom dates")
 
-    def test_custom_period_returns_no_prior(self):
+    def test_custom_period_returns_same_length_prior(self):
         start, end, prior_start, prior_end, period_key = resolve_period_window(
             "Custom",
             custom_start=date(2026, 4, 1),
@@ -24,13 +24,13 @@ class TestResolvePeriodWindow:
 
         assert start == date(2026, 4, 1)
         assert end == date(2026, 4, 10)
-        assert prior_start is None
-        assert prior_end is None
-        assert period_key is None
+        assert prior_end == date(2026, 3, 31)
+        assert prior_start == date(2026, 3, 22)
+        assert period_key == "custom"
 
     def test_last_7_days_prior_has_exactly_7_days(self):
         start, end, prior_start, prior_end, period_key = resolve_period_window(
-            "Last 7 Days"
+            "7D"
         )
         current_days = (end - start).days + 1
         prior_days = (prior_end - prior_start).days + 1
@@ -42,7 +42,7 @@ class TestResolvePeriodWindow:
 
     def test_last_30_days_prior_has_exactly_30_days(self):
         start, end, prior_start, prior_end, period_key = resolve_period_window(
-            "Last 30 Days"
+            "30D"
         )
         current_days = (end - start).days + 1
         prior_days = (prior_end - prior_start).days + 1
@@ -65,7 +65,7 @@ class TestResolvePeriodWindow:
 
     def test_this_month_prior_is_last_month_exact(self):
         start, end, prior_start, prior_end, period_key = resolve_period_window(
-            "This Month"
+            "MTD"
         )
         current_days = (end - start).days + 1
         prior_days = (prior_end - prior_start).days + 1
@@ -73,6 +73,16 @@ class TestResolvePeriodWindow:
         assert current_days == prior_days
         assert prior_end == start - timedelta(days=1)
         assert prior_start == prior_end - timedelta(days=current_days - 1)
+
+    def test_qtd_prior_matches_current_span(self):
+        start, end, prior_start, prior_end, period_key = resolve_period_window("QTD")
+
+        current_days = (end - start).days + 1
+        prior_days = (prior_end - prior_start).days + 1
+
+        assert period_key == "qtd"
+        assert current_days == prior_days
+        assert prior_end == start - timedelta(days=1)
 
 
 class TestBuildDailyViewTable:

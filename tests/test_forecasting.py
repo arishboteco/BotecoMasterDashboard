@@ -154,36 +154,37 @@ class TestCalculateForecastDays:
         result = calculate_forecast_days("Last Week", data_points=10)
         assert result == 7
 
-    def test_last_7_days_returns_7_days(self):
-        result = calculate_forecast_days("Last 7 Days", data_points=10)
-        assert result == 7
+    def test_7d_returns_half_window_capped_at_7(self):
+        result = calculate_forecast_days("7D", data_points=10, selected_range_days=7)
+        assert result == 3
 
-    def test_this_month_returns_30_days(self):
+    def test_this_month_returns_days_until_month_end(self):
         result = calculate_forecast_days("This Month", data_points=10)
-        assert result == 30
+        assert result >= 1
+        assert result <= 31
 
     def test_last_month_returns_30_days(self):
         result = calculate_forecast_days("Last Month", data_points=10)
         assert result == 30
 
-    def test_last_30_days_returns_30_days(self):
-        result = calculate_forecast_days("Last 30 Days", data_points=10)
-        assert result == 30
+    def test_30d_returns_7_days(self):
+        result = calculate_forecast_days("30D", data_points=10, selected_range_days=30)
+        assert result == 7
 
-    def test_custom_returns_30_days(self):
-        result = calculate_forecast_days("Custom", data_points=10)
-        assert result == 30
+    def test_custom_returns_half_range_when_provided(self):
+        result = calculate_forecast_days("Custom", data_points=10, selected_range_days=10)
+        assert result == 5
 
-    def test_sufficient_data_returns_period_days(self):
-        """Even with 5 data points, period mapping applies (e.g., This Month -> 30 days)."""
-        result = calculate_forecast_days("This Month", data_points=5)
-        assert result == 30
+    def test_qtd_returns_days_until_quarter_end(self):
+        result = calculate_forecast_days("QTD", data_points=10)
+        assert result >= 1
+        assert result <= 92
 
     def test_insufficient_data_returns_0_days(self):
         """Less than 3 data points: no forecast possible."""
         result = calculate_forecast_days("This Month", data_points=2)
         assert result == 0
 
-    def test_unknown_period_defaults_to_30_days(self):
+    def test_unknown_period_defaults_to_7_days(self):
         result = calculate_forecast_days("Unknown Period", data_points=10)
-        assert result == 30
+        assert result == 7

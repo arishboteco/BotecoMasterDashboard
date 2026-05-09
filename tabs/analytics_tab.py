@@ -12,17 +12,17 @@ import config
 import database
 import scope
 import utils
-from components import classed_container, page_shell, section_title
+from components import classed_container, page_shell
 from components.feedback import empty_state
 from components.navigation import date_range_nav
 from tabs import TabContext
 from tabs.analytics_logic import resolve_period_window
 from tabs.analytics_sections import (
-    render_overview,
+    render_driver_analysis,
+    render_forecast_command_center,
+    render_mix_snapshot,
     render_payment_reconciliation,
-    render_revenue_breakdown,
-    render_sales_performance,
-    render_target_and_daily,
+    render_target_snapshot,
 )
 
 # In-process cache registered with cache_manager for coordinated invalidation
@@ -85,7 +85,13 @@ def _add_target_columns(
         for lid, day_targets in loc_day_targets.items()
         for wd, val in (day_targets or {}).items()
     }
-    keys = list(zip(df["location_id"].tolist(), weekday_names.tolist()))
+    keys = list(
+        zip(
+            df["location_id"].tolist(),
+            weekday_names.tolist(),
+            strict=False,
+        )
+    )
     df["target"] = pd.Series(
         [target_lookup.get(k, 0.0) for k in keys], index=df.index
     )
@@ -121,39 +127,56 @@ def render(ctx: TabContext) -> None:
     with shell.filters:
         with classed_container(
             "tab-analytics-mobile-filters",
+            "analytics-filter-compact",
             "mobile-layout-stack",
             "mobile-layout-filters",
         ):
-            section_title("Filters", "Choose period and scope for analytics.", icon="filter_alt")
-            col_per1, col_per2 = st.columns([2, 3])
-            with col_per1:
-                default_period = "Last Month"
-                if "analysis_period" not in st.session_state:
-                    st.session_state.analysis_period = default_period
-                analysis_period = st.selectbox(
+            period_col, outlet_col = st.columns([1, 2])
+            if "analysis_period" not in st.session_state:
+                st.session_state.analysis_period = "30D"
+            period_options = ["7D", "30D", "MTD", "QTD", "Custom"]
+            current_period = st.session_state.get("analysis_period", "30D")
+            if current_period not in period_options:
+                current_period = "30D"
+            with period_col:
+                analysis_period = st.radio(
                     "Time Period",
-                    [
-                        "This Week",
-                        "Last Week",
-                        "Last 7 Days",
-                        "This Month",
-                        "Last Month",
-                        "Last 30 Days",
-                        "Custom",
-                    ],
+                    options=period_options,
+                    horizontal=True,
+                    index=period_options.index(current_period),
                     key="analysis_period",
+                    label_visibility="collapsed",
                 )
+
+            selected_outlet = "All outlets"
+            if len(ctx.report_loc_ids) > 1 and ctx.all_locs:
+                _loc_options = ["All outlets"] + [
+                    loc["name"] for loc in sorted(ctx.all_locs, key=lambda x: x["name"])
+                ]
+                if "analytics_outlet_scope" not in st.session_state:
+                    st.session_state.analytics_outlet_scope = "All outlets"
+                _current = st.session_state.get("analytics_outlet_scope", "All outlets")
+                _default_idx = _loc_options.index(_current) if _current in _loc_options else 0
+                with outlet_col:
+                    selected_outlet = st.radio(
+                        "Select outlet",
+                        options=_loc_options,
+                        horizontal=True,
+                        index=_default_idx,
+                        key="analytics_outlet_radio",
+                        label_visibility="collapsed",
+                    )
+                st.session_state.analytics_outlet_scope = selected_outlet
 
             custom_start = None
             custom_end = None
             if analysis_period == "Custom":
-                with col_per2:
-                    custom_start, custom_end = date_range_nav(
-                        session_key_start="analytics_custom_start",
-                        session_key_end="analytics_custom_end",
-                        label_start="From",
-                        label_end="To",
-                    )
+                custom_start, custom_end = date_range_nav(
+                    session_key_start="analytics_custom_start",
+                    session_key_end="analytics_custom_end",
+                    label_start="From",
+                    label_end="To",
+                )
     start_date, end_date, prior_start, prior_end, _ = resolve_period_window(
         analysis_period,
         custom_start=custom_start,
@@ -167,31 +190,6 @@ def render(ctx: TabContext) -> None:
     analytics_loc_ids = ctx.report_loc_ids
 
     if multi_analytics and ctx.all_locs:
-        _loc_options = ["All outlets"] + [
-            loc["name"] for loc in sorted(ctx.all_locs, key=lambda x: x["name"])
-        ]
-        _default_idx = 0
-        if "analytics_outlet_scope" not in st.session_state:
-            st.session_state.analytics_outlet_scope = "All outlets"
-        _current = st.session_state.get("analytics_outlet_scope", "All outlets")
-        if _current in _loc_options:
-            _default_idx = _loc_options.index(_current)
-        with shell.filters:
-            with classed_container(
-                "tab-analytics-mobile-filters",
-                "mobile-layout-stack",
-                "mobile-layout-filters",
-            ):
-                selected_outlet = st.radio(
-                    "Select outlet",
-                    options=_loc_options,
-                    horizontal=True,
-                    index=_default_idx,
-                    key="analytics_outlet_radio",
-                    label_visibility="collapsed",
-                )
-        st.session_state.analytics_outlet_scope = selected_outlet
-
         if selected_outlet != "All outlets":
             analytics_loc_ids = []
             for loc in ctx.all_locs:
@@ -244,6 +242,11 @@ def render(ctx: TabContext) -> None:
             prior_covers = int(prior_df["covers"].sum()) if not prior_df.empty else None
             prior_avg = float(prior_df["net_total"].mean()) if not prior_df.empty else None
 
+            scope_label = (
+                "All outlets"
+                if multi_analytics and len(analytics_loc_ids) > 1
+                else "Single outlet"
+            )
             context_items = [
                 (
                     f'<span class="context-band-item"><strong>Window:</strong> '
@@ -251,7 +254,7 @@ def render(ctx: TabContext) -> None:
                 ),
                 (
                     f'<span class="context-band-item"><strong>Scope:</strong> '
-                    f"{'All outlets' if multi_analytics and len(analytics_loc_ids) > 1 else 'Single outlet'}</span>"
+                    f"{scope_label}</span>"
                 ),
             ]
             if prior_start and prior_end:
@@ -264,10 +267,15 @@ def render(ctx: TabContext) -> None:
                 unsafe_allow_html=True,
             )
 
-            st.markdown('<div class="kpi-primary-card">', unsafe_allow_html=True)
-            render_overview(
+            render_forecast_command_center(
+                df,
+                prior_df,
                 analysis_period,
                 start_date,
+                end_date,
+                prior_start,
+                prior_end,
+                scope.sum_location_monthly_targets(analytics_loc_ids),
                 total_sales,
                 avg_daily,
                 total_covers,
@@ -276,33 +284,47 @@ def render(ctx: TabContext) -> None:
                 prior_covers,
                 prior_avg,
             )
-            st.markdown("</div>", unsafe_allow_html=True)
 
             with classed_container("tab-analytics-mobile-sections", "mobile-layout-stack"):
                 st.markdown('<div class="section-stack">', unsafe_allow_html=True)
-                render_sales_performance(
-                    df,
-                    df_raw,
-                    multi_analytics,
-                    analysis_period=analysis_period,
+                st.markdown("### Analysis Layers")
+                st.caption(
+                    "Use these focused layers to explain the forecast without "
+                    "scrolling through every chart."
                 )
-                with classed_container("tab-analytics-mobile-secondary", "mobile-layout-secondary"):
-                    with st.expander("Revenue, Targets, and Reconciliation", expanded=False):
-                        render_revenue_breakdown(
+                with classed_container(
+                    "tab-analytics-mobile-secondary",
+                    "mobile-layout-secondary",
+                ):
+                    trend_tab, mix_tab, target_tab, recon_tab = st.tabs(
+                        [
+                            "Drivers",
+                            "Mix",
+                            "Targets & Daily",
+                            "Payments",
+                        ]
+                    )
+                    with trend_tab:
+                        render_driver_analysis(
+                            df,
+                            df_raw,
+                            multi_analytics,
+                        )
+                    with mix_tab:
+                        render_mix_snapshot(
                             analytics_loc_ids,
                             start_str,
                             end_str,
                             df,
                             start_date,
                         )
-                        render_target_and_daily(
+                    with target_tab:
+                        render_target_snapshot(
                             analytics_loc_ids,
                             start_date,
                             df,
-                            df_raw,
-                            multi_analytics,
-                            analysis_period=analysis_period,
                         )
+                    with recon_tab:
                         render_payment_reconciliation(analytics_loc_ids, start_str, end_str)
                 st.markdown("</div>", unsafe_allow_html=True)
 
@@ -311,9 +333,11 @@ def render(ctx: TabContext) -> None:
                 message="No data available",
                 hint=(
                     "This period has no sales data yet. "
-                    "Upload POS files from the <strong>Upload</strong> tab or select a different time range."
+                    "Upload POS files from the <strong>Upload</strong> tab "
+                    "or select a different time range."
                     "<br><br>"
-                    "<strong>Tip:</strong> Try selecting &lsquo;Last Month&rsquo; or &lsquo;Last 30 Days&rsquo; to see recent data."
+                    "<strong>Tip:</strong> Try selecting &lsquo;MTD&rsquo; or &lsquo;30D&rsquo; "
+                    "to see recent data."
                 ),
                 icon="insights",
             )
