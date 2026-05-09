@@ -248,6 +248,32 @@ VISUAL_POLISH = r"""    /* ── Final visual polish layer ──────�
         color: var(--text-secondary);
     }
 
+    .analytics-filter-compact.mobile-layout-filters {
+        padding: 0.35rem 0 !important;
+        margin-bottom: 0.35rem !important;
+        border: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+    }
+    .analytics-filter-compact [data-testid="stHorizontalBlock"] {
+        align-items: center !important;
+        gap: 1rem !important;
+    }
+    .analytics-filter-compact [data-testid="stRadio"] {
+        margin-bottom: 0 !important;
+    }
+    .analytics-filter-compact [role="radiogroup"] {
+        gap: 0.85rem !important;
+        align-items: center !important;
+    }
+    .analytics-filter-compact .stRadio > label {
+        display: none !important;
+    }
+    .context-band.context-band--muted {
+        padding: 0.75rem 1rem !important;
+        margin: 0.25rem 0 0.75rem !important;
+    }
+
     .sidebar,
     [data-testid="stSidebar"] {
         box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.1);

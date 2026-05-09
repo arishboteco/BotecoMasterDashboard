@@ -28,7 +28,16 @@ def _hex_to_rgba(hex_color: str, alpha: float = 0.2) -> str:
 
 def _period_supports_trend_analysis(period: str, data_points: int) -> bool:
     """Return True if period is long enough for MA and forecast."""
-    _long_periods = {"Last 7 Days", "Last 30 Days", "Last Month", "Custom"}
+    _long_periods = {
+        "7D",
+        "30D",
+        "MTD",
+        "QTD",
+        "Custom",
+        "Last 7 Days",
+        "Last 30 Days",
+        "Last Month",
+    }
     if period in _long_periods:
         return data_points >= 3
     return False
