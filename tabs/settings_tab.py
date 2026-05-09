@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from io import BytesIO
-
 import pandas as pd
 import streamlit as st
 
@@ -14,14 +12,12 @@ from auth import is_admin
 from components import (
     classed_container,
     divider,
-    filter_strip,
     info_banner,
     page_shell,
     primary_action_bar,
     section_title,
 )
 from components.forms import confirm_dialog
-from components.navigation import date_range_nav
 from tabs import TabContext
 
 
@@ -401,84 +397,6 @@ def render(ctx: TabContext) -> None:
                 )
             else:
                 st.caption("No users to delete.")
-
-        divider()
-
-        # ─────────────────────────────────────────────────────────
-        # DATA EXPORT
-        # ─────────────────────────────────────────────────────────
-        section_title(
-            "Data export",
-            subtitle="Download saved daily summaries as CSV or Excel",
-            icon="download",
-        )
-
-        filter_strip("Export filters", "Pick outlet and date range", icon="filter_alt")
-
-        with classed_container(
-            "tab-settings-mobile-export-filters", "mobile-layout-stack"
-        ):
-            exp_c1, exp_c2 = st.columns([1, 2])
-            with exp_c1:
-                exp_loc_opts = {"all": "All outlets"}
-                exp_loc_opts.update(
-                    {str(loc["id"]): loc["name"] for loc in (ctx.all_locs or [])}
-                )
-                exp_loc = st.selectbox(
-                    "Outlet",
-                    options=list(exp_loc_opts.keys()),
-                    format_func=lambda k: exp_loc_opts[k],
-                    key="export_outlet",
-                )
-            with exp_c2:
-                exp_start, exp_end = date_range_nav(
-                    session_key_start="export_start",
-                    session_key_end="export_end",
-                    label_start="From date",
-                    label_end="To date",
-                )
-
-        exp_loc_ids = [int(exp_loc)] if exp_loc != "all" else None
-        exp_rows = database.get_all_summaries_for_export(
-            location_ids=exp_loc_ids,
-            start_date=exp_start.strftime("%Y-%m-%d"),
-            end_date=exp_end.strftime("%Y-%m-%d"),
-        )
-
-        if exp_rows:
-            exp_df = pd.DataFrame(exp_rows)
-            st.caption(f"{len(exp_df):,} days across the selected range.")
-
-            dl1, dl2 = st.columns(2)
-            csv_bytes = exp_df.to_csv(index=False).encode("utf-8")
-            with dl1:
-                st.download_button(
-                    label=f"Download CSV ({len(exp_df):,} rows)",
-                    data=csv_bytes,
-                    file_name=f"boteco_export_{exp_start}_{exp_end}.csv",
-                    mime="text/csv",
-                    key="export_csv_btn",
-                    use_container_width=True,
-                )
-
-            excel_buf = BytesIO()
-            with pd.ExcelWriter(excel_buf, engine="openpyxl") as writer:
-                exp_df.to_excel(writer, index=False, sheet_name="Daily Summaries")
-            excel_buf.seek(0)
-            with dl2:
-                st.download_button(
-                    label=f"Download Excel ({len(exp_df):,} rows)",
-                    data=excel_buf.getvalue(),
-                    file_name=f"boteco_export_{exp_start}_{exp_end}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="export_excel_btn",
-                    use_container_width=True,
-                )
-
-            with st.expander("Preview (first 10 rows)", expanded=False):
-                st.dataframe(exp_df.head(10), width="stretch", hide_index=True)
-        else:
-            st.caption("No data found for the selected filters.")
 
         divider()
 
