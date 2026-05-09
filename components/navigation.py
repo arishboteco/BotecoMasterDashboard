@@ -52,12 +52,15 @@ def date_nav(
             args=(session_key, picker_key, 1),
         )
     with date_col:
-        _display = st.session_state[session_key].strftime("%d-%b-%y")
-        st.markdown(
-            f'<div style="display:flex;align-items:center;justify-content:center;'
-            f'height:38px;border:1px solid rgba(49,51,63,0.2);border-radius:0.5rem;'
-            f'font-size:0.9rem;">{_display}</div>',
-            unsafe_allow_html=True,
+        st.date_input(
+            label,
+            key=picker_key,
+            help=help_text,
+            format="DD-MM-YYYY",
+            label_visibility="collapsed",
+            width="stretch",
+            on_change=_sync_session_date_from_picker,
+            args=(session_key, picker_key),
         )
 
     return st.session_state[session_key]
