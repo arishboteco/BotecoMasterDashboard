@@ -1,8 +1,7 @@
-"""Settings tab — Account info, outlet CRUD, user CRUD, data export."""
+"""Settings tab — Account info, outlet CRUD, user CRUD."""
 
 from __future__ import annotations
 
-import pandas as pd
 import streamlit as st
 
 import config
@@ -226,29 +225,88 @@ def render(ctx: TabContext) -> None:
         )
 
         all_users = database.get_all_users()
+
         if all_users:
-            users_df = pd.DataFrame(all_users)
-            display_cols = ["username", "role", "location_name", "email", "created_at"]
-            display_cols = [c for c in display_cols if c in users_df.columns]
-            st.dataframe(
-                users_df[display_cols].rename(
-                    columns={
-                        "username": "Username",
-                        "role": "Role",
-                        "location_name": "Location",
-                        "email": "Email",
-                        "created_at": "Created",
-                    }
-                ),
-                width="stretch",
-                hide_index=True,
+            user_by_name = {u["username"]: u for u in all_users}
+
+            selected_username = st.radio(
+                "User",
+                options=list(user_by_name.keys()),
+                horizontal=True,
+                key="settings_user_radio",
+                label_visibility="collapsed",
             )
+            eu = user_by_name[selected_username]
+
+            # Current user info
+            ui1, ui2, ui3 = st.columns(3)
+            with ui1:
+                st.metric("Role", eu.get("role", "—").title())
+            with ui2:
+                st.metric("Location", eu.get("location_name") or "—")
+            with ui3:
+                st.metric("Email", eu.get("email") or "—")
+
+            # Edit form (always visible, driven by radio selection)
+            with st.form("edit_user_form"):
+                ef1, ef2, ef3 = st.columns(3)
+                with ef1:
+                    eu_role = st.selectbox(
+                        "Role",
+                        ["manager", "admin"],
+                        index=0 if eu.get("role") == "manager" else 1,
+                    )
+                with ef2:
+                    eu_loc_opts = {
+                        loc["id"]: loc["name"] for loc in (ctx.all_locs or [])
+                    }
+                    eu_loc_opts[0] = "— none —"
+                    eu_loc_ids = [0] + [loc["id"] for loc in (ctx.all_locs or [])]
+                    cur_loc = eu.get("location_id") or 0
+                    try:
+                        cur_idx = eu_loc_ids.index(cur_loc)
+                    except ValueError:
+                        cur_idx = 0
+                    eu_loc = st.selectbox(
+                        "Home location",
+                        options=eu_loc_ids,
+                        index=cur_idx,
+                        format_func=lambda i: eu_loc_opts.get(i, str(i)),
+                    )
+                with ef3:
+                    eu_email = st.text_input("Email", value=eu.get("email") or "")
+
+                pw1, pw2, _ = st.columns(3)
+                with pw1:
+                    eu_newpw = st.text_input(
+                        "New password",
+                        type="password",
+                        placeholder="Leave blank to keep current",
+                    )
+                with pw2:
+                    eu_confirmpw = st.text_input("Confirm new password", type="password")
+
+                if st.form_submit_button("Save changes", type="primary"):
+                    if eu_newpw and eu_newpw != eu_confirmpw:
+                        st.error("Passwords do not match.")
+                    else:
+                        ok, msg = database.update_user(
+                            eu["id"],
+                            role=eu_role,
+                            location_id=int(eu_loc) if eu_loc else None,
+                            email=eu_email,
+                            new_password=eu_newpw if eu_newpw else None,
+                        )
+                        if ok:
+                            st.success(msg)
+                            st.rerun()
+                        else:
+                            st.error(msg)
+
+            user_create_tab, user_del_tab = st.tabs(["Create user", "Delete user"])
         else:
             st.caption("No users found.")
-
-        user_create_tab, user_edit_tab, user_del_tab = st.tabs(
-            ["Create user", "Edit user", "Delete user"]
-        )
+            user_create_tab, user_del_tab = st.tabs(["Create user", "Delete user"])
 
         with user_create_tab:
             info_banner(
@@ -257,13 +315,12 @@ def render(ctx: TabContext) -> None:
                 tone="info",
             )
             with st.form("create_user_form"):
-                cu1, cu2 = st.columns(2)
+                cu1, cu2, cu3 = st.columns(3)
                 with cu1:
                     cu_username = st.text_input("Username")
-                    cu_password = st.text_input("Password", type="password")
-                    cu_confirm = st.text_input("Confirm password", type="password")
                 with cu2:
                     cu_role = st.selectbox("Role", ["manager", "admin"])
+                with cu3:
                     cu_loc_opts = {
                         loc["id"]: loc["name"] for loc in (ctx.all_locs or [])
                     }
@@ -273,6 +330,12 @@ def render(ctx: TabContext) -> None:
                         options=[0] + [loc["id"] for loc in (ctx.all_locs or [])],
                         format_func=lambda i: cu_loc_opts.get(i, str(i)),
                     )
+                pw1, pw2, em1 = st.columns(3)
+                with pw1:
+                    cu_password = st.text_input("Password", type="password")
+                with pw2:
+                    cu_confirm = st.text_input("Confirm password", type="password")
+                with em1:
                     cu_email = st.text_input("Email (optional)")
                 if st.form_submit_button("Create user", type="primary"):
                     if cu_password != cu_confirm:
@@ -291,110 +354,43 @@ def render(ctx: TabContext) -> None:
                         else:
                             st.error(msg)
 
-        with user_edit_tab:
-            if all_users:
-                eu_opts = {u["id"]: u["username"] for u in all_users}
-                eu_id = st.selectbox(
-                    "Select user to edit",
-                    options=list(eu_opts.keys()),
-                    format_func=lambda i: eu_opts[i],
-                    key="edit_user_select",
-                )
-                eu = next((u for u in all_users if u["id"] == eu_id), None)
-                if eu:
-                    with st.form("edit_user_form"):
-                        eu1, eu2 = st.columns(2)
-                        with eu1:
-                            eu_role = st.selectbox(
-                                "Role",
-                                ["manager", "admin"],
-                                index=0 if eu.get("role") == "manager" else 1,
-                            )
-                            eu_loc_opts = {
-                                loc["id"]: loc["name"]
-                                for loc in (ctx.all_locs or [])
-                            }
-                            eu_loc_opts[0] = "— none —"
-                            eu_loc_ids = [0] + [
-                                loc["id"] for loc in (ctx.all_locs or [])
-                            ]
-                            cur_loc = eu.get("location_id") or 0
-                            try:
-                                cur_idx = eu_loc_ids.index(cur_loc)
-                            except ValueError:
-                                cur_idx = 0
-                            eu_loc = st.selectbox(
-                                "Home location",
-                                options=eu_loc_ids,
-                                index=cur_idx,
-                                format_func=lambda i: eu_loc_opts.get(i, str(i)),
-                            )
-                            eu_email = st.text_input(
-                                "Email", value=eu.get("email") or ""
-                            )
-                        with eu2:
-                            eu_newpw = st.text_input(
-                                "New password (leave blank to keep current)",
-                                type="password",
-                            )
-                            eu_confirmpw = st.text_input(
-                                "Confirm new password", type="password"
-                            )
-                        if st.form_submit_button("Save user changes", type="primary"):
-                            if eu_newpw and eu_newpw != eu_confirmpw:
-                                st.error("Passwords do not match.")
-                            else:
-                                ok, msg = database.update_user(
-                                    eu_id,
-                                    role=eu_role,
-                                    location_id=int(eu_loc) if eu_loc else None,
-                                    email=eu_email,
-                                    new_password=eu_newpw if eu_newpw else None,
-                                )
-                                if ok:
-                                    st.success(msg)
-                                    st.rerun()
-                                else:
-                                    st.error(msg)
-            else:
-                st.caption("No users to edit.")
-
         with user_del_tab:
             if all_users:
-                du_opts = {u["id"]: u["username"] for u in all_users}
-                du_id = st.selectbox(
-                    "Select user to delete",
-                    options=list(du_opts.keys()),
-                    format_func=lambda i: du_opts[i],
-                    key="del_user_select",
-                )
-                if "_user_delete_result" in st.session_state:
-                    ok, msg = st.session_state.pop("_user_delete_result")
-                    if ok:
-                        st.success(msg)
-                    else:
-                        st.error(msg)
-                if st.button("Delete user", key="del_user_btn", type="secondary"):
-                    st.session_state["_pending_user_delete"] = du_id
-
                 _current_user = st.session_state.username
+                _target = user_by_name.get(selected_username) if all_users else None
+                if _target and _target["username"] == _current_user:
+                    info_banner("You cannot delete your own account.", tone="warning")
+                elif _target:
+                    info_banner(
+                        f"This will permanently delete **{_target['username']}**. "
+                        "Select the user via the pills above.",
+                        tone="error",
+                    )
+                    if "_user_delete_result" in st.session_state:
+                        ok, msg = st.session_state.pop("_user_delete_result")
+                        if ok:
+                            st.success(msg)
+                        else:
+                            st.error(msg)
+                    if st.button("Delete user", key="del_user_btn", type="secondary"):
+                        st.session_state["_pending_user_delete"] = _target["id"]
 
-                def _do_delete_user() -> None:
-                    _id = st.session_state.get("_pending_user_delete")
-                    ok, msg = database.delete_user(_id, _current_user)
-                    st.session_state.pop("_pending_user_delete", None)
-                    st.session_state["_user_delete_result"] = (ok, msg)
-                    st.rerun()
+                    def _do_delete_user() -> None:
+                        _id = st.session_state.get("_pending_user_delete")
+                        ok, msg = database.delete_user(_id, _current_user)
+                        st.session_state.pop("_pending_user_delete", None)
+                        st.session_state["_user_delete_result"] = (ok, msg)
+                        st.rerun()
 
-                confirm_dialog(
-                    message=(
-                        f"**Confirm:** permanently delete user "
-                        f"**{du_opts.get(st.session_state.get('_pending_user_delete'), '')}**?"
-                    ),
-                    confirm_key="_pending_user_delete",
-                    on_confirm=_do_delete_user,
-                    confirm_label="Yes, delete user",
-                )
+                    confirm_dialog(
+                        message=(
+                            f"**Confirm:** permanently delete user "
+                            f"**{_target['username']}**?"
+                        ),
+                        confirm_key="_pending_user_delete",
+                        on_confirm=_do_delete_user,
+                        confirm_label="Yes, delete user",
+                    )
             else:
                 st.caption("No users to delete.")
 
