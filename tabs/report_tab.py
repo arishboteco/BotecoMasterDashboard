@@ -11,13 +11,11 @@ import streamlit as st
 
 import clipboard_ui
 import database
-import scope
 import sheet_reports as reports
 import utils
 from components import (
     classed_container,
     date_nav,
-    divider,
     filter_strip,
     info_banner,
     page_shell,
@@ -65,11 +63,11 @@ def render(ctx: TabContext) -> None:
             "report-filter-shell",
         ):
             filter_strip("Report context", "Choose day.", icon="tune")
-            with classed_container("report-date-nav"):
-                selected_date = date_nav(
-                    session_key="report_date",
-                    label="Report date",
-                )
+            selected_date = date_nav(
+                session_key="report_date",
+                label="Report date",
+                date_format="ddd, DD MMM YYYY",
+            )
 
     date_str = selected_date.strftime("%Y-%m-%d")
     outlets_bundle, summary = report_service.load_report_bundle_cached(ctx.report_loc_ids, date_str)

@@ -10,13 +10,13 @@ def test_report_date_nav_control_bar_selectors_and_touch_targets_present() -> No
     css = _components.COMPACT_KPIS_FOR_REPORT_TAB
 
     required_fragments = [
-        ".report-date-nav {",
-        '.report-date-nav [data-testid="stHorizontalBlock"]',
-        '.report-date-nav [data-testid="stButton"] > button',
-        '.report-date-nav [data-testid="stButton"] > button:hover',
-        '.report-date-nav [data-testid="stButton"] > button:focus-visible',
-        '.report-date-nav [data-testid="stDateInput"] input',
-        '.report-date-nav [data-testid="stDateInput"] input:focus',
+        ".report-filter-shell {",
+        '.report-filter-shell [data-testid="stHorizontalBlock"]',
+        '.report-filter-shell [data-testid="stButton"] > button',
+        '.report-filter-shell [data-testid="stButton"] > button:hover',
+        '.report-filter-shell [data-testid="stButton"] > button:focus-visible',
+        '.report-filter-shell [data-testid="stDateInput"] input',
+        '.report-filter-shell [data-testid="stDateInput"] input:focus',
         "@media (max-width: 900px)",
     ]
 

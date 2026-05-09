@@ -128,11 +128,7 @@ COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ─�
     .report-filter-shell {
         margin-bottom: 0.55rem;
     }
-    .report-date-nav {
-        max-width: 760px;
-        margin: 0.15rem auto 0.45rem;
-    }
-    .report-date-nav [data-testid="stHorizontalBlock"] {
+    .report-filter-shell [data-testid="stHorizontalBlock"] {
         align-items: center;
         justify-content: center;
         gap: 0;
@@ -144,14 +140,14 @@ COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ─�
         box-shadow: var(--shadow-sm);
         overflow: hidden;
     }
-    .report-date-nav [data-testid="stButton"] {
+    .report-filter-shell [data-testid="stButton"] {
         display: flex;
         justify-content: center;
         align-items: center;
         max-width: 46px;
         min-width: 46px;
     }
-    .report-date-nav [data-testid="stButton"] > button {
+    .report-filter-shell [data-testid="stButton"] > button {
         width: 44px !important;
         min-width: 44px !important;
         max-width: 44px !important;
@@ -172,28 +168,28 @@ COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ─�
                     transform var(--transition-fast),
                     box-shadow var(--transition-fast);
     }
-    .report-date-nav [data-testid="stHorizontalBlock"] > div:first-child [data-testid="stButton"] > button {
+    .report-filter-shell [data-testid="stHorizontalBlock"] > div:first-child [data-testid="stButton"] > button {
         border-right: 1px solid var(--border-subtle) !important;
     }
-    .report-date-nav [data-testid="stHorizontalBlock"] > div:last-child [data-testid="stButton"] > button {
+    .report-filter-shell [data-testid="stHorizontalBlock"] > div:last-child [data-testid="stButton"] > button {
         border-left: 1px solid var(--border-subtle) !important;
     }
-    .report-date-nav [data-testid="stButton"] > button:hover {
+    .report-filter-shell [data-testid="stButton"] > button:hover {
         background: var(--brand-soft) !important;
         color: var(--brand-dark) !important;
     }
-    .report-date-nav [data-testid="stButton"] > button:focus-visible {
+    .report-filter-shell [data-testid="stButton"] > button:focus-visible {
         outline: none;
         box-shadow: 0 0 0 3px var(--focus-ring), var(--shadow-sm);
     }
-    .report-date-nav [data-testid="stDateInput"] {
+    .report-filter-shell [data-testid="stDateInput"] {
         max-width: none;
         margin: 0 auto;
     }
-    .report-date-nav [data-testid="stDateInput"] > div {
+    .report-filter-shell [data-testid="stDateInput"] > div {
         border-radius: 0 !important;
     }
-    .report-date-nav [data-testid="stDateInput"] input {
+    .report-filter-shell [data-testid="stDateInput"] input {
         text-align: center;
         font-weight: 650;
         letter-spacing: 0.015em;
@@ -203,7 +199,7 @@ COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ─�
         background: transparent !important;
         box-shadow: none !important;
     }
-    .report-date-nav [data-testid="stDateInput"] input:focus {
+    .report-filter-shell [data-testid="stDateInput"] input:focus {
         box-shadow: inset 0 0 0 2px var(--brand-light) !important;
     }
     .kpi-snapshot-card {
@@ -301,35 +297,32 @@ COMPACT_KPIS_FOR_REPORT_TAB = r"""    /* ── Compact KPIs for Report tab ─�
     .kpi-delta.is-positive { color: var(--kpi-delta-positive-fg) !important; }
     .kpi-delta.is-negative { color: var(--kpi-delta-negative-fg) !important; }
     @media (max-width: 900px) {
-        .report-date-nav {
-            border-radius: var(--radius-lg);
-        }
-        .report-date-nav [data-testid="stHorizontalBlock"] {
+        .report-filter-shell [data-testid="stHorizontalBlock"] {
             flex-direction: column;
             align-items: stretch;
             border-radius: var(--radius-lg);
             overflow: visible;
         }
-        .report-date-nav [data-testid="stDateInput"] {
+        .report-filter-shell [data-testid="stDateInput"] {
             max-width: 100%;
         }
-        .report-date-nav [data-testid="stButton"] {
+        .report-filter-shell [data-testid="stButton"] {
             max-width: 100%;
             min-width: 0;
         }
-        .report-date-nav [data-testid="stButton"] > button {
+        .report-filter-shell [data-testid="stButton"] > button {
             width: 100% !important;
             max-width: none !important;
             border: 1px solid var(--border-subtle) !important;
             border-radius: var(--radius-md) !important;
             background: var(--surface-elevated) !important;
         }
-        .report-date-nav [data-testid="stHorizontalBlock"] > div:first-child [data-testid="stButton"] > button,
-        .report-date-nav [data-testid="stHorizontalBlock"] > div:last-child [data-testid="stButton"] > button {
+        .report-filter-shell [data-testid="stHorizontalBlock"] > div:first-child [data-testid="stButton"] > button,
+        .report-filter-shell [data-testid="stHorizontalBlock"] > div:last-child [data-testid="stButton"] > button {
             border-left: 1px solid var(--border-subtle) !important;
             border-right: 1px solid var(--border-subtle) !important;
         }
-        .report-date-nav [data-testid="stDateInput"] input {
+        .report-filter-shell [data-testid="stDateInput"] input {
             border: 1px solid var(--border-subtle) !important;
             border-radius: var(--radius-md) !important;
             background: var(--surface-elevated) !important;
