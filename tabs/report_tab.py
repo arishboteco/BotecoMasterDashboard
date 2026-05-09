@@ -16,7 +16,6 @@ import utils
 from components import (
     classed_container,
     date_nav,
-    filter_strip,
     info_banner,
     page_shell,
 )
@@ -62,11 +61,27 @@ def render(ctx: TabContext) -> None:
             "mobile-layout-filters",
             "report-filter-shell",
         ):
-            filter_strip("Report context", icon="tune")
-            selected_date = date_nav(
-                session_key="report_date",
-                label="Report date",
-            )
+            _is_multi_outlet = len(ctx.report_loc_ids) > 1
+            if _is_multi_outlet and ctx.all_locs:
+                _report_loc_id_set = set(ctx.report_loc_ids)
+                _outlet_options = ["All outlets"] + [
+                    loc["name"]
+                    for loc in ctx.all_locs
+                    if loc["id"] in _report_loc_id_set
+                ]
+                _date_col, _outlet_col = st.columns([1, 2])
+                with _date_col:
+                    selected_date = date_nav(session_key="report_date", label="Report date")
+                with _outlet_col:
+                    st.radio(
+                        "Select outlet",
+                        options=_outlet_options,
+                        horizontal=True,
+                        key="png_outlet_selector",
+                        label_visibility="collapsed",
+                    )
+            else:
+                selected_date = date_nav(session_key="report_date", label="Report date")
 
     date_str = selected_date.strftime("%Y-%m-%d")
     outlets_bundle, summary = report_service.load_report_bundle_cached(ctx.report_loc_ids, date_str)
@@ -150,14 +165,7 @@ def render(ctx: TabContext) -> None:
                 return items
 
             if multi_outlet and outlets_bundle:
-                _outlet_options = ["All outlets"] + [name for _i, name, _ in outlets_bundle]
-                _selected_outlet = st.radio(
-                    "Select outlet for PNG report",
-                    options=_outlet_options,
-                    horizontal=True,
-                    key="png_outlet_selector",
-                    label_visibility="collapsed",
-                )
+                _selected_outlet = st.session_state.get("png_outlet_selector", "All outlets")
 
                 if _selected_outlet != "All outlets":
                     _selected_lid = None
