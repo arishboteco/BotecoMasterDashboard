@@ -56,7 +56,7 @@ def date_nav(
             label,
             key=picker_key,
             help=help_text,
-            format="YYYY-MM-DD",
+            format="DD-MMM-YY",
             label_visibility="collapsed",
             width="stretch",
             on_change=_sync_session_date_from_picker,
