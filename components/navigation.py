@@ -52,16 +52,17 @@ def date_nav(
             args=(session_key, picker_key, 1),
         )
     with date_col:
-        st.date_input(
-            label,
-            key=picker_key,
-            help=help_text,
-            format="DD-MMM-YY",
-            label_visibility="collapsed",
-            width="stretch",
-            on_change=_sync_session_date_from_picker,
-            args=(session_key, picker_key),
-        )
+        _display = st.session_state[session_key].strftime("%d-%b-%y")
+        with st.popover(_display, use_container_width=True):
+            st.date_input(
+                label,
+                key=picker_key,
+                help=help_text,
+                format="YYYY-MM-DD",
+                label_visibility="collapsed",
+                on_change=_sync_session_date_from_picker,
+                args=(session_key, picker_key),
+            )
 
     return st.session_state[session_key]
 
