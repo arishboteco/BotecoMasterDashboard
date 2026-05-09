@@ -827,7 +827,7 @@ def _sales_summary_eod_prefix_rows(
         name="EODSalesKpiBadge",
         fontName=FONT_BOLD,
         fontSize=FONT_SIZE_BANNER_TITLE,
-        textColor=_hex(ach_color),
+        textColor=_hex(C_WHITE),
         alignment=TA_RIGHT,
         leading=FONT_SIZE_BANNER_TITLE + 1,
     )
@@ -845,7 +845,7 @@ def _sales_summary_eod_prefix_rows(
     kpi_box.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (0, 0), _hex(C_BANNER)),
+                ("BACKGROUND", (0, 0), (0, 0), _hex(ach_color)),
                 ("BOX", (0, 0), (0, 0), 0.6, _hex(C_WHITE)),
                 ("TOPPADDING", (0, 0), (0, 0), 2),
                 ("BOTTOMPADDING", (0, 0), (0, 0), 2),
