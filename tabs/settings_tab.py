@@ -56,13 +56,16 @@ def render(ctx: TabContext) -> None:
             loc_names = [loc["name"] for loc in sort_locs]
             loc_by_name = {loc["name"]: loc for loc in sort_locs}
 
-            selected_name = st.radio(
+            selected_name = st.pills(
                 "Outlet",
                 options=loc_names,
-                horizontal=True,
-                key="settings_outlet_radio",
+                selection_mode="single",
+                default=loc_names[0],
+                key="settings_outlet_pills",
                 label_visibility="collapsed",
             )
+            if selected_name is None:
+                selected_name = loc_names[0]
             selected_loc = loc_by_name[selected_name]
             settings_location_id = selected_loc["id"]
             location_settings = database.get_location_settings(settings_location_id)
@@ -229,12 +232,11 @@ def render(ctx: TabContext) -> None:
         if all_users:
             user_by_name = {u["username"]: u for u in all_users}
 
-            selected_username = st.radio(
-                "User",
-                options=list(user_by_name.keys()),
-                horizontal=True,
-                key="settings_user_radio",
-                label_visibility="collapsed",
+            user_options = list(user_by_name.keys())
+            selected_username = st.selectbox(
+                "Select user",
+                options=user_options,
+                key="settings_user_select",
             )
             eu = user_by_name[selected_username]
 
