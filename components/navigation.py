@@ -25,7 +25,6 @@ def date_nav(
     session_key: str = "report_date",
     label: str = "Select a date",
     help_text: str | None = None,
-    date_format: str = "ddd, DD MMM YYYY",
 ) -> date:
     """Render date navigation as a single responsive control row."""
     picker_key = f"{session_key}_picker"
@@ -57,7 +56,7 @@ def date_nav(
             label,
             key=picker_key,
             help=help_text,
-            format=date_format,
+            format="YYYY-MM-DD",
             label_visibility="collapsed",
             width="stretch",
             on_change=_sync_session_date_from_picker,

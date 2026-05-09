@@ -62,11 +62,10 @@ def render(ctx: TabContext) -> None:
             "mobile-layout-filters",
             "report-filter-shell",
         ):
-            filter_strip("Report context", "Choose day.", icon="tune")
+            filter_strip("Report context", icon="tune")
             selected_date = date_nav(
                 session_key="report_date",
                 label="Report date",
-                date_format="ddd, DD MMM YYYY",
             )
 
     date_str = selected_date.strftime("%Y-%m-%d")
