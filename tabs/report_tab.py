@@ -19,6 +19,7 @@ from components import (
     info_banner,
     page_shell,
 )
+from components.navigation import init_date_state, shift_date, sync_date_from_picker
 from components.feedback import empty_state
 from services import report_service
 from tabs import TabContext
@@ -69,9 +70,35 @@ def render(ctx: TabContext) -> None:
                     for loc in ctx.all_locs
                     if loc["id"] in _report_loc_id_set
                 ]
-                _date_col, _outlet_col = st.columns([1, 2])
+                _picker_key = init_date_state("report_date")
+                _prev_col, _date_col, _next_col, _outlet_col = st.columns(
+                    [0.3, 1.2, 0.3, 4], vertical_alignment="center"
+                )
+                with _prev_col:
+                    st.button(
+                        "←",
+                        key="report_date_prev",
+                        width=44,
+                        on_click=shift_date,
+                        args=("report_date", _picker_key, -1),
+                    )
                 with _date_col:
-                    selected_date = date_nav(session_key="report_date", label="Report date")
+                    st.date_input(
+                        "Report date",
+                        key=_picker_key,
+                        format="DD-MM-YYYY",
+                        label_visibility="collapsed",
+                        on_change=sync_date_from_picker,
+                        args=("report_date", _picker_key),
+                    )
+                with _next_col:
+                    st.button(
+                        "→",
+                        key="report_date_next",
+                        width=44,
+                        on_click=shift_date,
+                        args=("report_date", _picker_key, 1),
+                    )
                 with _outlet_col:
                     st.radio(
                         "Select outlet",
@@ -80,6 +107,7 @@ def render(ctx: TabContext) -> None:
                         key="png_outlet_selector",
                         label_visibility="collapsed",
                     )
+                selected_date = st.session_state["report_date"]
             else:
                 selected_date = date_nav(session_key="report_date", label="Report date")
 
