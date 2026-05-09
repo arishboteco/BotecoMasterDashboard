@@ -31,20 +31,11 @@ def render(ctx: TabContext) -> None:
 
     # ── Account info (all users) ──────────────────────────────────
     with shell.filters:
-        with classed_container(
-            "tab-settings-mobile-filters",
-            "mobile-layout-stack",
-            "mobile-layout-filters",
-        ):
-            section_title("Your account", icon="person")
-            with st.container(border=True):
-                ac1, ac2, ac3 = st.columns(3)
-                with ac1:
-                    st.markdown(f"**Username:** {st.session_state.username}")
-                with ac2:
-                    st.markdown(f"**Role:** {st.session_state.user_role.title()}")
-                with ac3:
-                    st.markdown(f"**Home location:** {st.session_state.location_name}")
+        st.caption(
+            f"Signed in as **{st.session_state.username}** "
+            f"· {st.session_state.user_role.title()} "
+            f"· {st.session_state.location_name}"
+        )
 
     if not is_admin():
         st.info(
