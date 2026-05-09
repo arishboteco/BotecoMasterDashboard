@@ -92,13 +92,13 @@ def date_range_nav(
         start_date = st.date_input(
             label_start,
             key=session_key_start,
-            format="YYYY-MM-DD",
+            format="DD-MM-YYYY",
         )
     with col_end:
         end_date = st.date_input(
             label_end,
             key=session_key_end,
-            format="YYYY-MM-DD",
+            format="DD-MM-YYYY",
         )
 
     if start_date > end_date:

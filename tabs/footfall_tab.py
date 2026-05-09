@@ -238,6 +238,7 @@ def render(ctx: TabContext) -> None:
                     value=(month_start, today),
                     key="footfall_date_range",
                     label_visibility="collapsed",
+                    format="DD-MM-YYYY",
                 )
             with outlet_col:
                 selected_outlet_name = st.pills(
