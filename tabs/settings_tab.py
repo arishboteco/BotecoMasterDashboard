@@ -233,16 +233,11 @@ def render(ctx: TabContext) -> None:
             user_by_name = {u["username"]: u for u in all_users}
 
             user_options = list(user_by_name.keys())
-            selected_username = st.pills(
-                "User",
+            selected_username = st.selectbox(
+                "Select user",
                 options=user_options,
-                selection_mode="single",
-                default=user_options[0],
-                key="settings_user_pills",
-                label_visibility="collapsed",
+                key="settings_user_select",
             )
-            if selected_username is None:
-                selected_username = user_options[0]
             eu = user_by_name[selected_username]
 
             # Current user info
