@@ -100,10 +100,10 @@ def render(ctx: TabContext) -> None:
                         args=("report_date", _picker_key, 1),
                     )
                 with _outlet_col:
-                    st.radio(
+                    st.segmented_control(
                         "Select outlet",
                         options=_outlet_options,
-                        horizontal=True,
+                        default=_outlet_options[0],
                         key="png_outlet_selector",
                         label_visibility="collapsed",
                     )
@@ -193,7 +193,7 @@ def render(ctx: TabContext) -> None:
                 return items
 
             if multi_outlet and outlets_bundle:
-                _selected_outlet = st.session_state.get("png_outlet_selector", "All outlets")
+                _selected_outlet = st.session_state.get("png_outlet_selector") or "All outlets"
 
                 if _selected_outlet != "All outlets":
                     _selected_lid = None

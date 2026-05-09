@@ -1,5 +1,5 @@
 # Streamlit and core dependencies
-streamlit>=1.33.0
+streamlit>=1.40.0
 streamlit-authenticator>=0.2.0
 
 # Database

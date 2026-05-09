@@ -139,14 +139,13 @@ def render(ctx: TabContext) -> None:
             if current_period not in period_options:
                 current_period = "30D"
             with period_col:
-                analysis_period = st.radio(
+                analysis_period = st.segmented_control(
                     "Time Period",
                     options=period_options,
-                    horizontal=True,
-                    index=period_options.index(current_period),
+                    default=current_period,
                     key="analysis_period",
                     label_visibility="collapsed",
-                )
+                ) or current_period
 
             selected_outlet = "All outlets"
             if len(ctx.report_loc_ids) > 1 and ctx.all_locs:
@@ -158,14 +157,13 @@ def render(ctx: TabContext) -> None:
                 _current = st.session_state.get("analytics_outlet_scope", "All outlets")
                 _default_idx = _loc_options.index(_current) if _current in _loc_options else 0
                 with outlet_col:
-                    selected_outlet = st.radio(
+                    selected_outlet = st.segmented_control(
                         "Select outlet",
                         options=_loc_options,
-                        horizontal=True,
-                        index=_default_idx,
+                        default=_loc_options[_default_idx],
                         key="analytics_outlet_radio",
                         label_visibility="collapsed",
-                    )
+                    ) or _loc_options[_default_idx]
                 st.session_state.analytics_outlet_scope = selected_outlet
 
             custom_start = None
