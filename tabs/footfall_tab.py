@@ -14,7 +14,6 @@ import streamlit as st
 
 from components import (
     classed_container,
-    filter_strip,
     info_banner,
     page_shell,
     section_title,
@@ -232,9 +231,7 @@ def render(ctx: TabContext) -> None:
             "mobile-layout-stack",
             "mobile-layout-filters",
         ):
-            title_col, date_col, outlet_col = st.columns([1, 1, 2])
-            with title_col:
-                filter_strip("Footfall overrides", icon="tune")
+            date_col, outlet_col = st.columns([1, 2])
             with date_col:
                 date_range = st.date_input(
                     "Date range",
