@@ -45,11 +45,11 @@ def render(ctx: TabContext) -> None:
 
     with shell.content:
         # ─────────────────────────────────────────────────────────
-        # OUTLET ADMINISTRATION
+        # OUTLETS
         # ─────────────────────────────────────────────────────────
         section_title(
-            "Outlet administration",
-            subtitle="Manage locations, targets, and seat capacity",
+            "Outlets",
+            subtitle="Configure targets, seat counts, and manage outlet locations",
             icon="store",
         )
 
@@ -57,70 +57,92 @@ def render(ctx: TabContext) -> None:
             sorted(ctx.all_locs, key=lambda x: x["name"]) if ctx.all_locs else []
         )
 
-        outlet_edit_tab, outlet_add_tab, outlet_del_tab = st.tabs(
-            ["Edit outlet", "Add new outlet", "Delete outlet"]
-        )
+        if sort_locs:
+            loc_names = [loc["name"] for loc in sort_locs]
+            loc_by_name = {loc["name"]: loc for loc in sort_locs}
 
-        with outlet_edit_tab:
-            if sort_locs:
-                name_by_id = {loc["id"]: loc["name"] for loc in sort_locs}
-                settings_location_id = st.selectbox(
-                    "Select outlet to edit",
-                    options=[loc["id"] for loc in sort_locs],
-                    format_func=lambda i: name_by_id[i],
-                    key="settings_which_location",
+            selected_name = st.radio(
+                "Outlet",
+                options=loc_names,
+                horizontal=True,
+                key="settings_outlet_radio",
+                label_visibility="collapsed",
+            )
+            selected_loc = loc_by_name[selected_name]
+            settings_location_id = selected_loc["id"]
+            location_settings = database.get_location_settings(settings_location_id)
+
+            # Current stats
+            ms1, ms2, _ = st.columns(3)
+            with ms1:
+                current_target = (
+                    location_settings.get("target_monthly_sales", 0)
+                    if location_settings
+                    else 0
                 )
-                location_settings = database.get_location_settings(settings_location_id)
+                st.metric("Monthly target", utils.format_currency(current_target))
+            with ms2:
+                current_seats = (
+                    location_settings.get("seat_count") if location_settings else None
+                )
+                st.metric("Seat count", current_seats or "—")
 
-                with st.form("location_settings_form"):
-                    lf1, lf2, lf3 = st.columns(3)
-                    with lf1:
-                        new_name = st.text_input(
-                            "Location name",
-                            value=(
-                                location_settings.get("name", "")
-                                if location_settings
-                                else ""
-                            ),
-                        )
-                    with lf2:
-                        new_target = st.number_input(
-                            "Monthly target (₹)",
-                            min_value=0,
-                            value=int(
-                                location_settings.get(
-                                    "target_monthly_sales", config.MONTHLY_TARGET
-                                )
-                                if location_settings
-                                else config.MONTHLY_TARGET
-                            ),
-                            step=100000,
-                            help="Enter in rupees — e.g. 5000000 for ₹50,00,000",
-                        )
-                    with lf3:
-                        seat_default = 0
-                        if location_settings and location_settings.get("seat_count"):
-                            seat_default = int(location_settings["seat_count"])
-                        new_seats = st.number_input(
-                            "Seat count (for turns)",
-                            min_value=0,
-                            value=seat_default,
-                            step=1,
-                            help="Covers ÷ seats = turns. Leave 0 to use covers ÷ 100.",
-                        )
-                    if st.form_submit_button("Save outlet settings", type="primary"):
-                        database.update_location_settings(
-                            int(settings_location_id),
-                            {
-                                "name": new_name,
-                                "target_monthly_sales": new_target,
-                                "seat_count": int(new_seats) if new_seats > 0 else None,
-                            },
-                        )
-                        st.success("Outlet settings saved.")
-                        st.rerun()
-            else:
-                st.caption("No outlets found. Create one using the 'Add new outlet' tab.")
+            with st.form("location_settings_form"):
+                lf1, lf2, lf3 = st.columns(3)
+                with lf1:
+                    new_name = st.text_input(
+                        "Location name",
+                        value=(
+                            location_settings.get("name", "")
+                            if location_settings
+                            else ""
+                        ),
+                    )
+                with lf2:
+                    new_target = st.number_input(
+                        "Monthly target (₹)",
+                        min_value=0,
+                        value=int(
+                            location_settings.get(
+                                "target_monthly_sales", config.MONTHLY_TARGET
+                            )
+                            if location_settings
+                            else config.MONTHLY_TARGET
+                        ),
+                        step=100000,
+                        help="Enter in rupees — e.g. 5000000 for ₹50,00,000",
+                    )
+                with lf3:
+                    seat_default = 0
+                    if location_settings and location_settings.get("seat_count"):
+                        seat_default = int(location_settings["seat_count"])
+                    new_seats = st.number_input(
+                        "Seat count (for turns)",
+                        min_value=0,
+                        value=seat_default,
+                        step=1,
+                        help="Covers ÷ seats = turns. Leave 0 to use covers ÷ 100.",
+                    )
+                if st.form_submit_button("Save changes", type="primary"):
+                    database.update_location_settings(
+                        int(settings_location_id),
+                        {
+                            "name": new_name,
+                            "target_monthly_sales": new_target,
+                            "seat_count": int(new_seats) if new_seats > 0 else None,
+                        },
+                    )
+                    st.success("Outlet settings saved.")
+                    st.rerun()
+
+            outlet_add_tab, outlet_del_tab = st.tabs(
+                ["Add new outlet", "Delete outlet"]
+            )
+        else:
+            st.caption("No outlets found. Add one below.")
+            outlet_add_tab, outlet_del_tab = st.tabs(
+                ["Add new outlet", "Delete outlet"]
+            )
 
         with outlet_add_tab:
             with st.form("new_location_form"):
@@ -513,31 +535,3 @@ def render(ctx: TabContext) -> None:
                 for err in errors:
                     st.warning(f"- {err}")
 
-        divider()
-
-        # ─────────────────────────────────────────────────────────
-        # OUTLET OVERVIEW
-        # ─────────────────────────────────────────────────────────
-        section_title(
-            "Outlet overview",
-            subtitle="Targets and seat counts across all outlets",
-            icon="bar_chart",
-        )
-
-        locs_for_stats = sorted(
-            database.get_all_locations(), key=lambda x: x["name"]
-        )
-        if locs_for_stats:
-            num_cols = min(len(locs_for_stats), 3)
-            stat_cols = st.columns(num_cols)
-            for i, loc in enumerate(locs_for_stats):
-                with stat_cols[i % num_cols]:
-                    with st.container(border=True):
-                        st.markdown(f"**{loc['name']}**")
-                        st.caption(
-                            f"Monthly target: "
-                            f"{utils.format_currency(loc.get('target_monthly_sales', 0))}"
-                        )
-                        st.caption(f"Seats: {loc.get('seat_count') or '—'}")
-        else:
-            st.caption("No outlets configured yet.")
