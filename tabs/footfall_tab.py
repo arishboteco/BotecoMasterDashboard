@@ -232,13 +232,9 @@ def render(ctx: TabContext) -> None:
             "mobile-layout-stack",
             "mobile-layout-filters",
         ):
-            filter_strip(
-                "Footfall overrides",
-                "Select a date range and outlet, then choose a mode to edit or bulk-paste covers.",
-                icon="tune",
-            )
-
-            date_col, outlet_col = st.columns([1, 2])
+            title_col, date_col, outlet_col = st.columns([1, 1, 2])
+            with title_col:
+                filter_strip("Footfall overrides", icon="tune")
             with date_col:
                 date_range = st.date_input(
                     "Date range",
