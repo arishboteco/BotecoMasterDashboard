@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -19,6 +20,28 @@ from db.table_names import (
 )
 
 logger = boteco_logger.get_logger(__name__)
+
+
+def _execute_with_retry(query_builder, *, max_attempts: int = 3):
+    """Execute a Supabase query, retrying on transient socket errors (EAGAIN / ReadError)."""
+    import httpx
+
+    delay = 0.5
+    for attempt in range(max_attempts):
+        try:
+            return query_builder.execute()
+        except httpx.ReadError:
+            if attempt == max_attempts - 1:
+                raise
+            logger.warning(
+                "Transient Supabase ReadError (attempt %d/%d), retrying in %.1fs",
+                attempt + 1,
+                max_attempts,
+                delay,
+            )
+            time.sleep(delay)
+            delay *= 2
+
 
 _SUPABASE_COLUMN_RENAMES = {
     "complementary_amount": "complimentary",
@@ -97,13 +120,12 @@ def _hydrate_supabase_footfall_splits(
         return summaries
 
     supabase = database.get_supabase_client()
-    result = (
+    result = _execute_with_retry(
         supabase.table("bill_items")
         .select("restaurant,bill_date,bill_no,created_date_time,pax,net_amount,bill_status")
         .in_("restaurant", list(restaurant_to_location.keys()))
         .gte("bill_date", start_date)
         .lte("bill_date", end_date)
-        .execute()
     )
 
     bills: Dict[tuple[int, str, str], Dict[str, Any]] = {}
@@ -248,7 +270,7 @@ def get_all_locations() -> List[Dict]:
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = supabase.table("locations").select("*").order("name").execute()
+        result = _execute_with_retry(supabase.table("locations").select("*").order("name"))
         return result.data
     else:
         with database.db_connection() as conn:
@@ -264,12 +286,11 @@ def peek_daily_net_sales(location_id: int, date: str) -> Optional[float]:
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = (
+        result = _execute_with_retry(
             supabase.table(SUPABASE_DAILY_SUMMARY)
             .select("net_total")
             .eq("location_id", location_id)
             .eq("date", date)
-            .execute()
         )
         if not result.data:
             return None
@@ -303,12 +324,11 @@ def peek_existing_net_sales_batch(location_id: int, dates: List[str]) -> Dict[st
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = (
+        result = _execute_with_retry(
             supabase.table(SUPABASE_DAILY_SUMMARY)
             .select("date,net_total")
             .eq("location_id", location_id)
             .in_("date", dates)
-            .execute()
         )
         return {row["date"]: float(row["net_total"] or 0) for row in result.data}
     else:
@@ -369,12 +389,11 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = (
+        result = _execute_with_retry(
             supabase.table(SUPABASE_DAILY_SUMMARY)
             .select("*")
             .eq("location_id", location_id)
             .eq("date", date)
-            .execute()
         )
         if result.data:
             d = _normalize_row(dict(result.data[0]))
@@ -446,14 +465,13 @@ def get_summaries_for_date_range(
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = (
+        result = _execute_with_retry(
             supabase.table(SUPABASE_DAILY_SUMMARY)
             .select("*")
             .eq("location_id", location_id)
             .gte("date", start_date)
             .lte("date", end_date)
             .order("date")
-            .execute()
         )
         rows = _normalize_rows(list(result.data or []))
         rows = _hydrate_supabase_footfall_splits(rows, [location_id], start_date, end_date)
@@ -492,14 +510,13 @@ def get_summaries_for_date_range_multi(
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = (
+        result = _execute_with_retry(
             supabase.table(SUPABASE_DAILY_SUMMARY)
             .select("*")
             .in_("location_id", location_ids)
             .gte("date", start_date)
             .lte("date", end_date)
             .order("date")
-            .execute()
         )
         rows = _normalize_rows(list(result.data or []))
         rows = _hydrate_supabase_footfall_splits(rows, list(location_ids), start_date, end_date)
@@ -530,13 +547,12 @@ def get_category_totals_for_date_range(
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = (
+        result = _execute_with_retry(
             supabase.table(SUPABASE_CATEGORY_SUMMARY)
             .select("*")
             .in_("location_id", location_ids)
             .gte("date", start_date)
             .lte("date", end_date)
-            .execute()
         )
         return result.data
     else:
@@ -620,13 +636,12 @@ def get_most_recent_date_with_data(location_ids: List[int]) -> Optional[str]:
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = (
+        result = _execute_with_retry(
             supabase.table(SUPABASE_DAILY_SUMMARY)
             .select("date")
             .in_("location_id", location_ids)
             .order("date", desc=True)
             .limit(1)
-            .execute()
         )
         if not result.data:
             return None
@@ -655,13 +670,12 @@ def get_recent_summaries(location_id: int, weeks: int = 8) -> List[Dict]:
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = (
+        result = _execute_with_retry(
             supabase.table(SUPABASE_DAILY_SUMMARY)
             .select("*")
             .eq("location_id", location_id)
             .order("date", desc=True)
             .limit(weeks * 7)
-            .execute()
         )
         return _normalize_rows(result.data)
     else:
@@ -695,13 +709,12 @@ def get_upload_history(location_id: int, limit: int = 50) -> List[Dict]:
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = (
+        result = _execute_with_retry(
             supabase.table("upload_history")
             .select("*")
             .eq("location_id", location_id)
             .order("uploaded_at", desc=True)
             .limit(limit)
-            .execute()
         )
         return result.data
     else:
@@ -732,7 +745,7 @@ def get_all_summaries_for_export(
 
         location_map = {
             loc["id"]: loc["name"]
-            for loc in supabase.table("locations").select("id,name").execute().data
+            for loc in _execute_with_retry(supabase.table("locations").select("id,name")).data
         }
 
         query = supabase.table(SUPABASE_DAILY_SUMMARY).select("*")
@@ -744,7 +757,7 @@ def get_all_summaries_for_export(
         if end_date:
             query = query.lte("date", end_date)
 
-        result = query.order("date").execute()
+        result = _execute_with_retry(query.order("date"))
         rows = list(result.data or [])
     else:
         tbl = _sqlite_daily_table()
