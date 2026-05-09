@@ -231,7 +231,7 @@ def render(ctx: TabContext) -> None:
             "mobile-layout-stack",
             "mobile-layout-filters",
         ):
-            date_col, outlet_col = st.columns([1, 2])
+            date_col, outlet_col, mode_col = st.columns([1, 2, 1])
             with date_col:
                 date_range = st.date_input(
                     "Date range",
@@ -246,6 +246,14 @@ def render(ctx: TabContext) -> None:
                     key="footfall_outlet_selector",
                     label_visibility="collapsed",
                 ) or default_name
+            with mode_col:
+                mode = st.segmented_control(
+                    "Mode",
+                    options=["Edit covers", "Bulk paste"],
+                    default="Edit covers",
+                    key="footfall_mode",
+                    label_visibility="collapsed",
+                ) or "Edit covers"
 
     if isinstance(date_range, (list, tuple)):
         if len(date_range) == 2:
@@ -267,14 +275,6 @@ def render(ctx: TabContext) -> None:
     edited_by = str(st.session_state.get("username") or "")
 
     with shell.content:
-        mode = st.segmented_control(
-            "Mode",
-            options=["Edit covers", "Bulk paste"],
-            default="Edit covers",
-            key="footfall_mode",
-            label_visibility="collapsed",
-        ) or "Edit covers"
-
         st.divider()
 
         if mode == "Edit covers":
