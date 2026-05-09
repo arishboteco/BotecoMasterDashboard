@@ -231,12 +231,13 @@ def render(ctx: TabContext) -> None:
             "mobile-layout-stack",
             "mobile-layout-filters",
         ):
-            date_col, outlet_col, mode_col = st.columns([1, 2, 1])
+            date_col, outlet_col, mode_col = st.columns([1, 1, 1], gap="small")
             with date_col:
                 date_range = st.date_input(
                     "Date range",
                     value=(month_start, today),
                     key="footfall_date_range",
+                    label_visibility="collapsed",
                 )
             with outlet_col:
                 selected_outlet_name = st.pills(
