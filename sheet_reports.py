@@ -1070,7 +1070,7 @@ def _build_sales_summary(
     for lbl, key in pay_keys:
         combined_v = float(r.get(key) or 0)
         outlet_vs = [float(od.get(key) or 0) for _, od in per_outlet] if multi else []
-        if has_day_sales or combined_v != 0 or any(v != 0 for v in outlet_vs):
+        if combined_v != 0 or any(v != 0 for v in outlet_vs):
             add_row(lbl, key)
 
     add_row("EOD Gross Total", "gross_total", bold=True, bg=C_BAND)
