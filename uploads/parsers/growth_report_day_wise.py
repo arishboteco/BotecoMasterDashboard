@@ -14,6 +14,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
+from services.payment_mapping import payment_method_key, payment_method_name
+
 # ---------------------------------------------------------------------------
 # Payment column mappings
 # ---------------------------------------------------------------------------
@@ -139,9 +141,9 @@ def _norm(value: Any) -> str:
 def _clean_payment_header(value: Any) -> str:
     """Normalise a payment column header, collapsing whitespace inside brackets."""
     s = _norm(value)
-    s = re.sub(r"\[\s+", "[", s)   # "[ G PAY]"  → "[G PAY]"
-    s = re.sub(r"\s+\]", "]", s)   # "[G PAY ]"  → "[G PAY]"
-    s = re.sub(r"\s+", " ", s)     # "g  pay"    → "g pay"
+    s = re.sub(r"\[\s+", "[", s)  # "[ G PAY]"  → "[G PAY]"
+    s = re.sub(r"\s+\]", "]", s)  # "[G PAY ]"  → "[G PAY]"
+    s = re.sub(r"\s+", " ", s)  # "g  pay"    → "g pay"
     # Normalise trailing empty parens
     if s.endswith("()"):
         s = s[:-2].rstrip()
@@ -229,6 +231,16 @@ def _header_map(df: pd.DataFrame, header_idx: int) -> Dict[str, int]:
     return out
 
 
+def _header_display_map(df: pd.DataFrame, header_idx: int) -> Dict[str, str]:
+    """Return normalised-header → original display header mapping."""
+    out: Dict[str, str] = {}
+    for value in df.iloc[header_idx].values:
+        key = _clean_payment_header(value)
+        if key and key not in out:
+            out[key] = re.sub(r"\s+", " ", str(value).replace("\xa0", " ").strip())
+    return out
+
+
 def _last_col_for(df: pd.DataFrame, header_idx: int, target: str) -> Optional[int]:
     """Return the column index of the LAST occurrence of target in the header row.
 
@@ -246,18 +258,19 @@ def _last_col_for(df: pd.DataFrame, header_idx: int, target: str) -> Optional[in
 def _payment_columns(
     colmap: Dict[str, int], data: pd.DataFrame
 ) -> Tuple[Dict[str, int], Dict[str, int]]:
-    """Split header map into known-payment columns and fallback-to-other columns.
+    """Split header map into known-payment columns and dynamic payment columns.
 
-    Returns (payments_dict, fallback_to_other_dict).
-    fallback_to_other_dict contains unrecognized payment-shaped columns with
-    non-zero totals; their amounts are summed into other_sales instead of
-    blocking the import.
+    Returns (payments_dict, dynamic_payment_dict). Dynamic Other [...] payment
+    columns are stored as method rows instead of being collapsed into other_sales.
     """
     payments: Dict[str, int] = {}
-    fallback_to_other: Dict[str, int] = {}
+    dynamic_payments: Dict[str, int] = {}
     for header, idx in colmap.items():
         if header in ALLOWED_PAYMENT_COLUMNS:
             payments[header] = idx
+            continue
+        if header.startswith("other [") and header.endswith("]"):
+            dynamic_payments[header] = idx
             continue
         is_payment_shaped = header.startswith("other [") or header in {
             "cash",
@@ -269,15 +282,27 @@ def _payment_columns(
         }
         if not is_payment_shaped:
             continue
-        col_total = (
-            float(data.iloc[:, idx].map(_f).sum()) if idx < data.shape[1] else 0.0
-        )
+        col_total = float(data.iloc[:, idx].map(_f).sum()) if idx < data.shape[1] else 0.0
         if abs(col_total) < 0.005:
             continue  # zero column — silently ignore
-        # Non-zero unrecognized payment type: route to other_sales with a warning
         if header not in BASE_FIELDS:
-            fallback_to_other[header] = idx
-    return payments, fallback_to_other
+            dynamic_payments[header] = idx
+    return payments, dynamic_payments
+
+
+def _payment_method_row(
+    header: str, amount: float, display_header: str = ""
+) -> Dict[str, Any] | None:
+    raw_header = display_header or header
+    method_name = payment_method_name(raw_header)
+    method_key = payment_method_key(raw_header)
+    if not method_name or not method_key or abs(amount) < 0.005:
+        return None
+    return {
+        "payment_method": method_name,
+        "payment_key": method_key,
+        "amount": round(amount, 2),
+    }
 
 
 def _value(row: pd.Series, colmap: Dict[str, int], *names: str) -> Any:
@@ -294,9 +319,7 @@ def _extract_period(df: pd.DataFrame) -> Tuple[Optional[str], Optional[str]]:
         return None, None
     for i in range(min(10, len(df))):
         values = [
-            str(v)
-            for v in df.iloc[i].values
-            if str(v).strip().lower() not in {"nan", "none", ""}
+            str(v) for v in df.iloc[i].values if str(v).strip().lower() not in {"nan", "none", ""}
         ]
         joined = " ".join(values)
         match = re.search(r"(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})", joined)
@@ -337,6 +360,7 @@ def parse_growth_report_day_wise(
         return [], [f"Growth Report {filename}: header row not found."], {}
 
     colmap = _header_map(df, header_idx)
+    display_map = _header_display_map(df, header_idx)
     data = df.iloc[header_idx + 1 :].copy()
 
     idx_date = colmap.get("date")
@@ -348,7 +372,7 @@ def parse_growth_report_day_wise(
     if data.empty:
         return [], [f"Growth Report {filename}: no dated rows found."], {}
 
-    payments, fallback_to_other = _payment_columns(colmap, data)
+    payments, dynamic_payments = _payment_columns(colmap, data)
 
     # Locate the LAST occurrence of "service charge" in the header row so that
     # reports where the column appears twice (once as summary, once in the tax
@@ -400,6 +424,8 @@ def parse_growth_report_day_wise(
             gst_sc_val = _f(_value(row, colmap, "gst on sevice charge", "gst on service charge"))
         out["gst_on_service_charge"] = round(gst_sc_val, 2)
 
+        payment_methods: Dict[str, Dict[str, Any]] = {}
+
         # Initialise all payment fields to zero before accumulation
         for db_field in (
             "cash_sales",
@@ -417,14 +443,39 @@ def parse_growth_report_day_wise(
         for header, idx in payments.items():
             db_field = ALLOWED_PAYMENT_COLUMNS[header]
             if idx < len(row):
-                out[db_field] = round(float(out.get(db_field, 0) or 0) + _f(row.iloc[idx]), 2)
+                amount = _f(row.iloc[idx])
+                out[db_field] = round(float(out.get(db_field, 0) or 0) + amount, 2)
+                method_row = _payment_method_row(header, amount, display_map.get(header, header))
+                if method_row:
+                    existing = payment_methods.setdefault(
+                        method_row["payment_key"],
+                        {
+                            "payment_method": method_row["payment_method"],
+                            "payment_key": method_row["payment_key"],
+                            "amount": 0.0,
+                        },
+                    )
+                    existing["amount"] = round(float(existing["amount"] or 0) + amount, 2)
 
-        # Accumulate unrecognized payment types into other_sales
-        if fallback_to_other:
-            out["other_sales"] = float(out.get("other_sales", 0) or 0)
-            for header, idx in fallback_to_other.items():
-                if idx < len(row):
-                    out["other_sales"] = round(out["other_sales"] + _f(row.iloc[idx]), 2)
+        for header, idx in dynamic_payments.items():
+            if idx < len(row):
+                method_row = _payment_method_row(
+                    header, _f(row.iloc[idx]), display_map.get(header, header)
+                )
+                if method_row:
+                    existing = payment_methods.setdefault(
+                        method_row["payment_key"],
+                        {
+                            "payment_method": method_row["payment_method"],
+                            "payment_key": method_row["payment_key"],
+                            "amount": 0.0,
+                        },
+                    )
+                    existing["amount"] = round(
+                        float(existing["amount"] or 0) + method_row["amount"], 2
+                    )
+
+        out["payment_methods"] = [payment_methods[key] for key in sorted(payment_methods.keys())]
 
         rows.append(out)
 
@@ -434,6 +485,11 @@ def parse_growth_report_day_wise(
         "period_end": period_end,
         "row_count": len(rows),
     }
-    if fallback_to_other:
-        meta["fallback_payment_types"] = sorted(fallback_to_other.keys())
+    if dynamic_payments:
+        dynamic_names = {
+            name
+            for header in dynamic_payments
+            if (name := payment_method_name(display_map.get(header, header)))
+        }
+        meta["dynamic_payment_types"] = sorted(dynamic_names)
     return rows, [], meta

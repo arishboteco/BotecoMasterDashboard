@@ -47,37 +47,110 @@ def _growth_report_bytes(
     """
     rows = [
         # Row 0: date filter
-        {"Date": "Date:", "Orders": "2026-04-01 to 2026-04-01",
-         "Net Sales": None, "Total Tax": None, "Cash": None, "Card": None,
-         "UPI": None, "My Amount": None, "Discount": None,
-         "Service Charge": None, "CGST": None, "SGST": None,
-         "Gst on sevice charge": None, "Round Off": None, "Total": None,
-         "Expenses": None, "Due Payment": None},
+        {
+            "Date": "Date:",
+            "Orders": "2026-04-01 to 2026-04-01",
+            "Net Sales": None,
+            "Total Tax": None,
+            "Cash": None,
+            "Card": None,
+            "UPI": None,
+            "My Amount": None,
+            "Discount": None,
+            "Service Charge": None,
+            "CGST": None,
+            "SGST": None,
+            "Gst on sevice charge": None,
+            "Round Off": None,
+            "Total": None,
+            "Expenses": None,
+            "Due Payment": None,
+        },
         # Row 1: name
-        {"Date": "Name:", "Orders": "Growth Report: Day Wise",
-         "Net Sales": None, "Total Tax": None, "Cash": None, "Card": None,
-         "UPI": None, "My Amount": None, "Discount": None,
-         "Service Charge": None, "CGST": None, "SGST": None,
-         "Gst on sevice charge": None, "Round Off": None, "Total": None,
-         "Expenses": None, "Due Payment": None},
+        {
+            "Date": "Name:",
+            "Orders": "Growth Report: Day Wise",
+            "Net Sales": None,
+            "Total Tax": None,
+            "Cash": None,
+            "Card": None,
+            "UPI": None,
+            "My Amount": None,
+            "Discount": None,
+            "Service Charge": None,
+            "CGST": None,
+            "SGST": None,
+            "Gst on sevice charge": None,
+            "Round Off": None,
+            "Total": None,
+            "Expenses": None,
+            "Due Payment": None,
+        },
         # Row 2: restaurant name
-        {"Date": "Restaurant Name:", "Orders": restaurant_name,
-         "Net Sales": None, "Total Tax": None, "Cash": None, "Card": None,
-         "UPI": None, "My Amount": None, "Discount": None,
-         "Service Charge": None, "CGST": None, "SGST": None,
-         "Gst on sevice charge": None, "Round Off": None, "Total": None,
-         "Expenses": None, "Due Payment": None},
+        {
+            "Date": "Restaurant Name:",
+            "Orders": restaurant_name,
+            "Net Sales": None,
+            "Total Tax": None,
+            "Cash": None,
+            "Card": None,
+            "UPI": None,
+            "My Amount": None,
+            "Discount": None,
+            "Service Charge": None,
+            "CGST": None,
+            "SGST": None,
+            "Gst on sevice charge": None,
+            "Round Off": None,
+            "Total": None,
+            "Expenses": None,
+            "Due Payment": None,
+        },
         # Rows 3-4: blank
-        {k: None for k in ["Date", "Orders", "Net Sales", "Total Tax", "Cash",
-                            "Card", "UPI", "My Amount", "Discount",
-                            "Service Charge", "CGST", "SGST",
-                            "Gst on sevice charge", "Round Off", "Total",
-                            "Expenses", "Due Payment"]},
-        {k: None for k in ["Date", "Orders", "Net Sales", "Total Tax", "Cash",
-                            "Card", "UPI", "My Amount", "Discount",
-                            "Service Charge", "CGST", "SGST",
-                            "Gst on sevice charge", "Round Off", "Total",
-                            "Expenses", "Due Payment"]},
+        {
+            k: None
+            for k in [
+                "Date",
+                "Orders",
+                "Net Sales",
+                "Total Tax",
+                "Cash",
+                "Card",
+                "UPI",
+                "My Amount",
+                "Discount",
+                "Service Charge",
+                "CGST",
+                "SGST",
+                "Gst on sevice charge",
+                "Round Off",
+                "Total",
+                "Expenses",
+                "Due Payment",
+            ]
+        },
+        {
+            k: None
+            for k in [
+                "Date",
+                "Orders",
+                "Net Sales",
+                "Total Tax",
+                "Cash",
+                "Card",
+                "UPI",
+                "My Amount",
+                "Discount",
+                "Service Charge",
+                "CGST",
+                "SGST",
+                "Gst on sevice charge",
+                "Round Off",
+                "Total",
+                "Expenses",
+                "Due Payment",
+            ]
+        },
         # Row 5 is written as the DataFrame header (pandas writes it)
     ]
     if rupee_headers:
@@ -146,14 +219,15 @@ def _item_report_bytes(
     """Build a minimal Item Report Excel that the parser can read."""
     timestamps = timestamps or ["2026-04-01 20:00:00", "2026-04-01 21:00:00"]
     title_rows = [
-        {"col0": "Date:", "col1": "2026-04-01 to 2026-04-01",
-         **{f"x{i}": None for i in range(18)}},
-        {"col0": "Name:", "col1": "Item Report With Customer/Order Details",
-         **{f"x{i}": None for i in range(18)}},
-        {"col0": "Restaurant Name:", "col1": restaurant_name,
-         **{f"x{i}": None for i in range(18)}},
-        {**{f"col{i}" if i < 2 else f"x{i-2}": None for i in range(20)}},
-        {**{f"col{i}" if i < 2 else f"x{i-2}": None for i in range(20)}},
+        {"col0": "Date:", "col1": "2026-04-01 to 2026-04-01", **{f"x{i}": None for i in range(18)}},
+        {
+            "col0": "Name:",
+            "col1": "Item Report With Customer/Order Details",
+            **{f"x{i}": None for i in range(18)},
+        },
+        {"col0": "Restaurant Name:", "col1": restaurant_name, **{f"x{i}": None for i in range(18)}},
+        {**{f"col{i}" if i < 2 else f"x{i - 2}": None for i in range(20)}},
+        {**{f"col{i}" if i < 2 else f"x{i - 2}": None for i in range(20)}},
     ]
     data = {
         "Date": ["2026-04-01", "2026-04-01"],
@@ -345,12 +419,11 @@ class TestPaymentMapping:
         assert normalize_payment_column("Card") == "card_sales"
         assert normalize_payment_column("UPI") == "upi_sales"
 
-    def test_generic_other_nonzero_raises(self):
+    def test_generic_other_nonzero_is_allowed_for_dynamic_payment_method(self):
         from services.payment_mapping import validate_payment_columns_or_raise
 
         df = pd.DataFrame({"Other [Unknown]": [100.0]})
-        with pytest.raises(ValueError, match="Import blocked"):
-            validate_payment_columns_or_raise(["Other [Unknown]"], df)
+        validate_payment_columns_or_raise(["Other [Unknown]"], df)
 
     def test_razorpay_zero_ok(self):
         from services.payment_mapping import validate_payment_columns_or_raise
@@ -359,19 +432,18 @@ class TestPaymentMapping:
         # Should NOT raise — zero is allowed for ignored columns
         validate_payment_columns_or_raise(["Other [Razorpay]"], df)
 
-    def test_razorpay_nonzero_raises(self):
+    def test_razorpay_nonzero_is_allowed_for_dynamic_payment_method(self):
         from services.payment_mapping import validate_payment_columns_or_raise
 
         df = pd.DataFrame({"Other [Razorpay]": [50.0]})
-        with pytest.raises(ValueError, match="Import blocked"):
-            validate_payment_columns_or_raise(["Other [Razorpay]"], df)
+        validate_payment_columns_or_raise(["Other [Razorpay]"], df)
 
-    def test_unmapped_payment_nonzero_raises(self):
+    def test_unmapped_non_other_payment_nonzero_still_raises(self):
         from services.payment_mapping import validate_payment_columns_or_raise
 
-        df = pd.DataFrame({"Other [XYZ]": [200.0]})
+        df = pd.DataFrame({"Custom Tender": [200.0]})
         with pytest.raises(ValueError, match="Import blocked"):
-            validate_payment_columns_or_raise(["Other [XYZ]"], df)
+            validate_payment_columns_or_raise(["Custom Tender"], df)
 
 
 # ---------------------------------------------------------------------------
@@ -447,14 +519,41 @@ class TestGrowthReportParser:
         assert not errors, errors
         assert rows[0]["due_payment_sales"] == 500.0
 
-    def test_unmapped_nonzero_payment_blocks_import(self):
+    def test_other_bracket_payment_methods_are_dynamic_groupings(self):
         from uploads.parsers.growth_report_day_wise import parse_growth_report_day_wise
 
-        content = _growth_report_bytes(extra_cols={"Other [XYZ]": 100.0})
+        content = _growth_report_bytes(
+            payment_cols={
+                "Other [Zomato Delivery]": 1234.0,
+                "Other [Razorpay]": 567.0,
+                "Other [ABC New Method]": 89.0,
+            }
+        )
         rows, errors, meta = parse_growth_report_day_wise(content, "test.xlsx")
-        assert rows == []
-        assert any("Import blocked" in e for e in errors)
-        assert meta.get("unmapped_payment_types")
+        assert not errors, errors
+        row = rows[0]
+        assert row.get("other_sales", 0) == 0
+        methods = {method["payment_key"]: method for method in row["payment_methods"]}
+        assert methods["zomato_delivery"] == {
+            "payment_method": "Zomato Delivery",
+            "payment_key": "zomato_delivery",
+            "amount": 1234.0,
+        }
+        assert methods["razorpay"] == {
+            "payment_method": "Razorpay",
+            "payment_key": "razorpay",
+            "amount": 567.0,
+        }
+        assert methods["abc_new_method"] == {
+            "payment_method": "ABC New Method",
+            "payment_key": "abc_new_method",
+            "amount": 89.0,
+        }
+        assert meta.get("dynamic_payment_types") == [
+            "ABC New Method",
+            "Razorpay",
+            "Zomato Delivery",
+        ]
 
     def test_meta_has_period(self):
         _, _, meta = self._parse()
@@ -519,9 +618,7 @@ class TestItemReportCategoryParser:
         )
 
         content = _item_report_bytes(restaurant_name=restaurant)
-        rows, errors, meta = parse_item_report_category_summary(
-            content, "test.xlsx", location_id=1
-        )
+        rows, errors, meta = parse_item_report_category_summary(content, "test.xlsx", location_id=1)
         return rows, errors, meta
 
     def test_returns_category_rows(self):
@@ -582,12 +679,8 @@ class TestItemReportCategoryParser:
             parse_item_report_category_summary,
         )
 
-        content = _item_report_bytes(
-            timestamps=["2026-04-01 17:30:00", "2026-04-01 18:00:00"]
-        )
-        rows, errors, meta = parse_item_report_category_summary(
-            content, "test.xlsx", location_id=1
-        )
+        content = _item_report_bytes(timestamps=["2026-04-01 17:30:00", "2026-04-01 18:00:00"])
+        rows, errors, meta = parse_item_report_category_summary(content, "test.xlsx", location_id=1)
 
         assert not errors
         assert rows
@@ -655,3 +748,19 @@ class TestDatabaseWritesNewFlow:
         # gpay_sales must not be mapped to upi_sales
         assert row["gpay_sales"] == 15000.0
         assert row["upi_sales"] == 30000.0
+
+    def test_build_daily_summary_keeps_dynamic_payment_methods_out_of_other_sales(self):
+        from database_writes import build_daily_summary_row_new_flow
+
+        row = build_daily_summary_row_new_flow(
+            1,
+            "2026-04-01",
+            {
+                "net_total": 1000,
+                "payment_methods": [
+                    {"payment_method": "Razorpay", "payment_key": "razorpay", "amount": 1000.0}
+                ],
+            },
+        )
+
+        assert "other_sales" not in row

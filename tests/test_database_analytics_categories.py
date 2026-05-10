@@ -5,6 +5,48 @@ import database_analytics
 import database_reads
 
 
+def test_payment_provider_breakdown_uses_dynamic_payment_methods_supabase(monkeypatch):
+    class _Query:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def select(self, _cols):
+            return self
+
+        def in_(self, _col, _vals):
+            return self
+
+        def gte(self, _col, _val):
+            return self
+
+        def lte(self, _col, _val):
+            return self
+
+        def execute(self):
+            return type("R", (), {"data": self._rows})
+
+    class _Client:
+        def table(self, name):
+            assert name == "payment_method_sales"
+            return _Query(
+                [
+                    {"payment_method": "Zomato Delivery", "amount": 1200.0},
+                    {"payment_method": "Razorpay", "amount": 800.0},
+                    {"payment_method": "Razorpay", "amount": 200.0},
+                ]
+            )
+
+    monkeypatch.setattr(database, "use_supabase", lambda: True)
+    monkeypatch.setattr(database, "get_supabase_client", lambda: _Client())
+
+    out = database_analytics.get_payment_provider_breakdown([1], "2026-05-01", "2026-05-31")
+
+    assert out == [
+        {"provider": "Zomato Delivery", "txn_count": None, "gross_amount": 1200.0},
+        {"provider": "Razorpay", "txn_count": None, "gross_amount": 1000.0},
+    ]
+
+
 def test_get_category_sales_returns_detailed_categories_supabase(monkeypatch):
     class _Query:
         def __init__(self, rows):

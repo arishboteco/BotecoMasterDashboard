@@ -94,9 +94,9 @@ def _process_new_flow_files(
     global_notes: List[str],
     comp_files: Optional[List[Tuple[str, bytes]]] = None,
 ) -> Tuple[
-    Dict[int, List[Dict[str, Any]]],   # daily_rows by location_id
-    Dict[int, List[Dict[str, Any]]],   # category_rows by location_id
-    Dict[str, Dict[str, Any]],          # file_meta by filename
+    Dict[int, List[Dict[str, Any]]],  # daily_rows by location_id
+    Dict[int, List[Dict[str, Any]]],  # category_rows by location_id
+    Dict[str, Dict[str, Any]],  # file_meta by filename
     Dict[int, Dict[str, List[Dict[str, Any]]]],  # service rows by location/date
 ]:
     """Parse growth and item reports, routing by auto-detected outlet.
@@ -141,9 +141,7 @@ def _process_new_flow_files(
 
         daily_by_loc[loc_id].extend(rows)
         if fr:
-            fr.notes.append(
-                f"Parsed {len(rows)} day(s) → {loc_name} (match: {match_type})"
-            )
+            fr.notes.append(f"Parsed {len(rows)} day(s) → {loc_name} (match: {match_type})")
             fallback_pmts = meta.get("fallback_payment_types", [])
             if fallback_pmts:
                 fr.notes.append(
@@ -193,7 +191,7 @@ def _process_new_flow_files(
             )
 
     # --- Complimentary Orders Summary → merge into daily rows ---
-    for fname, content in (comp_files or []):
+    for fname, content in comp_files or []:
         fr = filename_to_fr.get(fname)
         loc_id, loc_name, match_type = _detect_location_for_file(
             content, fname, fallback_location_id
@@ -499,9 +497,7 @@ def process_smart_upload(
     # Route legacy fragments to location_results
     if legacy_fragments:
         all_locations = database.get_all_locations()
-        restaurant_to_loc = build_restaurant_location_map(
-            all_locations, config.RESTAURANT_NAME_MAP
-        )
+        restaurant_to_loc = build_restaurant_location_map(all_locations, config.RESTAURANT_NAME_MAP)
         tagged_fragments, untagged_fragments = group_fragments_by_restaurant(legacy_fragments)
         routed_fragments = route_tagged_fragments_by_location(
             tagged_by_restaurant=tagged_fragments,
@@ -518,9 +514,7 @@ def process_smart_upload(
 
         untagged_days = merge_fragments_by_date(untagged_fragments, timing_services)
         if untagged_days:
-            new_flow_dates_fallback = {
-                dr.date for dr in location_results.get(location_id, [])
-            }
+            new_flow_dates_fallback = {dr.date for dr in location_results.get(location_id, [])}
             for day_result in untagged_days:
                 if day_result.date not in new_flow_dates_fallback:
                     location_results.setdefault(location_id, []).append(day_result)
@@ -601,6 +595,7 @@ def save_smart_upload_results(
     )
 
     daily_rows: List[Dict[str, Any]] = []
+    payment_method_rows: List[Dict[str, Any]] = []
     cat_records: List[Dict[str, Any]] = []
     synthetic_bill_items: List[Dict[str, Any]] = []
     upload_batch: List[Dict[str, Any]] = []
@@ -625,6 +620,17 @@ def save_smart_upload_results(
                     daily_rows.append(
                         db_writes.build_daily_summary_row_new_flow(loc_id, date_str, merged)
                     )
+                    for payment_method in merged.get("payment_methods") or []:
+                        payment_method_rows.append(
+                            {
+                                "location_id": loc_id,
+                                "date": date_str,
+                                "payment_method": payment_method["payment_method"],
+                                "payment_key": payment_method["payment_key"],
+                                "amount": payment_method["amount"],
+                                "source_report": "growth_report_day_wise",
+                            }
+                        )
                     dates_locs.add((date_str, loc_id))
                     item_services = item_service_by_loc.get(loc_id, {}).get(date_str, [])
                     if item_services:
@@ -670,9 +676,7 @@ def save_smart_upload_results(
                     )
                     continue
 
-                daily_rows.append(
-                    _build_legacy_daily_row(loc_id, date_str, merged)
-                )
+                daily_rows.append(_build_legacy_daily_row(loc_id, date_str, merged))
                 for cat in merged.get("categories") or []:
                     cat_name = str(cat.get("category", "") or "").strip()
                     if not cat_name:
@@ -739,9 +743,7 @@ def save_smart_upload_results(
                 db_writes.delete_category_summary_batch(client, dates_locs)
             except (ValueError, TypeError, KeyError, RuntimeError) as ex:
                 logger.warning("Category pre-delete skipped pairs=%d error=%s", len(dates_locs), ex)
-                messages.append(
-                    "⚠️ Could not clear previous category rows; continuing with upsert."
-                )
+                messages.append("⚠️ Could not clear previous category rows; continuing with upsert.")
             try:
                 db_writes.save_category_summary_batch(client, cat_records)
                 messages.append(f"Saved {len(cat_records)} category summary record(s)")
@@ -749,12 +751,19 @@ def save_smart_upload_results(
                 logger.exception("Category save failed uploaded_by=%s", uploaded_by)
                 messages.append(f"⚠️ Error saving category summaries: {ex}")
 
+        if payment_method_rows:
+            try:
+                db_writes.delete_payment_method_sales_batch(client, dates_locs)
+                db_writes.save_payment_method_sales_batch(client, payment_method_rows)
+                messages.append(f"Saved {len(payment_method_rows)} payment method record(s)")
+            except (ValueError, TypeError, KeyError, RuntimeError) as ex:
+                logger.exception("Payment method save failed uploaded_by=%s", uploaded_by)
+                messages.append(f"⚠️ Error saving payment method records: {ex}")
+
     # ── Step 4: Raw bill_items from Dynamic Report CSVs (Supabase only, legacy) ──
     if is_supabase and client:
         dynamic_files = [
-            fr
-            for fr in result.files
-            if fr.kind == "dynamic_report" and fr.content and not fr.error
+            fr for fr in result.files if fr.kind == "dynamic_report" and fr.content and not fr.error
         ]
         all_locations = database.get_all_locations() if dynamic_files else []
         for fr in dynamic_files:
@@ -918,9 +927,7 @@ def _build_item_report_bill_items_from_services(
     return records
 
 
-def _build_legacy_daily_row(
-    loc_id: int, date_str: str, merged: Dict[str, Any]
-) -> Dict[str, Any]:
+def _build_legacy_daily_row(loc_id: int, date_str: str, merged: Dict[str, Any]) -> Dict[str, Any]:
     """Build a daily_summary payload from a legacy (dynamic_report) merged dict."""
     return {
         "location_id": loc_id,

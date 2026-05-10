@@ -12,10 +12,12 @@ from db.category_rows import CATEGORY_ROW_PREFIX
 from db.table_names import (
     SQLITE_DAILY_SUMMARIES,
     SQLITE_ITEM_SALES,
+    SQLITE_PAYMENT_METHOD_SALES,
     SQLITE_SERVICE_SALES,
     SUPABASE_BILL_ITEMS,
     SUPABASE_CATEGORY_SUMMARY,
     SUPABASE_DAILY_SUMMARY,
+    SUPABASE_PAYMENT_METHOD_SALES,
 )
 
 logger = get_logger(__name__)
@@ -127,8 +129,7 @@ def build_daily_summary_row_new_flow(
         "card_sales": round(float(data.get("card_sales", 0) or 0), 2),
         "gpay_sales": round(float(data.get("gpay_sales", 0) or 0), 2),
         "zomato_sales": round(float(data.get("zomato_sales", 0) or 0), 2),
-        # other_sales: only written when the parser mapped fallback payment types to it
-        **( {"other_sales": round(float(data["other_sales"] or 0), 2)} if "other_sales" in data else {} ),
+        # Dynamic payment methods are stored in payment_method_sales; do not create new other_sales.
         # New fields from schema migration
         "my_amount": round(float(data.get("my_amount", 0) or 0), 2),
         "total_tax": round(float(data.get("total_tax", 0) or 0), 2),
@@ -168,6 +169,40 @@ def upsert_daily_summaries_supabase_batch(supabase: Any, rows: List[Dict[str, An
         chunk = rows[i : i + _SUPABASE_ROW_CHUNK]
         supabase.table(SUPABASE_DAILY_SUMMARY).upsert(
             chunk, on_conflict="location_id,date"
+        ).execute()
+
+
+def save_payment_method_sales_batch(supabase: Any, rows: List[Dict[str, Any]]) -> None:
+    """Bulk upsert normalized payment-method rows."""
+    if not rows:
+        return
+    normalized = []
+    for row in rows:
+        amount = round(float(row.get("amount", 0) or 0), 2)
+        if abs(amount) < 0.005:
+            continue
+        normalized.append(
+            {
+                "location_id": int(row["location_id"]),
+                "date": str(row["date"]),
+                "payment_method": str(row["payment_method"]),
+                "payment_key": str(row["payment_key"]),
+                "amount": amount,
+                "source_report": str(row.get("source_report", "growth_report_day_wise")),
+            }
+        )
+    for i in range(0, len(normalized), _SUPABASE_ROW_CHUNK):
+        chunk = normalized[i : i + _SUPABASE_ROW_CHUNK]
+        supabase.table(SUPABASE_PAYMENT_METHOD_SALES).upsert(
+            chunk, on_conflict="location_id,date,payment_key"
+        ).execute()
+
+
+def delete_payment_method_sales_batch(supabase: Any, dates_locs: set) -> None:
+    """Delete normalized payment-method rows for date/location pairs before reimport."""
+    for date_str, loc_id in sorted(dates_locs):
+        supabase.table(SUPABASE_PAYMENT_METHOD_SALES).delete().eq("date", date_str).eq(
+            "location_id", loc_id
         ).execute()
 
 
@@ -284,6 +319,10 @@ def _save_daily_summary_sqlite(location_id: int, date_str: str, data: Dict[str, 
 
         cur.execute(f"DELETE FROM {SQLITE_ITEM_SALES} WHERE summary_id = ?", (summary_id,))
         cur.execute(f"DELETE FROM {SQLITE_SERVICE_SALES} WHERE summary_id = ?", (summary_id,))
+        cur.execute(
+            f"DELETE FROM {SQLITE_PAYMENT_METHOD_SALES} WHERE location_id = ? AND date = ?",
+            (location_id, date_str),
+        )
 
         item_rows: List[tuple] = []
         for cat in data.get("categories") or []:
@@ -334,6 +373,31 @@ def _save_daily_summary_sqlite(location_id: int, date_str: str, data: Dict[str, 
                 VALUES (?, ?, ?)
                 """,
                 service_rows,
+            )
+
+        payment_rows: List[tuple] = []
+        for method in data.get("payment_methods") or []:
+            amount = round(float(method.get("amount", 0) or 0), 2)
+            if abs(amount) < 0.005:
+                continue
+            payment_rows.append(
+                (
+                    location_id,
+                    date_str,
+                    str(method.get("payment_method", "") or "").strip(),
+                    str(method.get("payment_key", "") or "").strip(),
+                    amount,
+                    str(method.get("source_report", "growth_report_day_wise")),
+                )
+            )
+        if payment_rows:
+            cur.executemany(
+                f"""
+                INSERT INTO {SQLITE_PAYMENT_METHOD_SALES} (
+                    location_id, date, payment_method, payment_key, amount, source_report
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                payment_rows,
             )
 
         conn.commit()
@@ -490,6 +554,7 @@ def clear_all_data(supabase: Any) -> None:
     supabase.table(SUPABASE_BILL_ITEMS).delete().neq("id", 0).execute()
     supabase.table(SUPABASE_DAILY_SUMMARY).delete().neq("id", 0).execute()
     supabase.table(SUPABASE_CATEGORY_SUMMARY).delete().neq("id", 0).execute()
+    supabase.table(SUPABASE_PAYMENT_METHOD_SALES).delete().neq("id", 0).execute()
     supabase.table("upload_history").delete().neq("id", 0).execute()
 
 
@@ -510,6 +575,7 @@ def wipe_all_data() -> Tuple[Dict[str, int], List[str]]:
                 SUPABASE_BILL_ITEMS,
                 SUPABASE_DAILY_SUMMARY,
                 SUPABASE_CATEGORY_SUMMARY,
+                SUPABASE_PAYMENT_METHOD_SALES,
                 "upload_history",
             ]:
                 result = admin.table(table).select("id", count="exact").execute()
@@ -526,12 +592,15 @@ def wipe_all_data() -> Tuple[Dict[str, int], List[str]]:
             counts["item_sales"] = int(cur.fetchone()[0])
             cur.execute(f"SELECT COUNT(*) FROM {SQLITE_SERVICE_SALES}")
             counts["service_sales"] = int(cur.fetchone()[0])
+            cur.execute(f"SELECT COUNT(*) FROM {SQLITE_PAYMENT_METHOD_SALES}")
+            counts["payment_method_sales"] = int(cur.fetchone()[0])
             cur.execute("SELECT COUNT(*) FROM upload_history")
             counts["upload_history"] = int(cur.fetchone()[0])
             cur.execute(f"SELECT COUNT(*) FROM {SQLITE_DAILY_SUMMARIES}")
             counts["daily_summaries"] = int(cur.fetchone()[0])
             cur.execute(f"DELETE FROM {SQLITE_ITEM_SALES}")
             cur.execute(f"DELETE FROM {SQLITE_SERVICE_SALES}")
+            cur.execute(f"DELETE FROM {SQLITE_PAYMENT_METHOD_SALES}")
             cur.execute("DELETE FROM upload_history")
             cur.execute(f"DELETE FROM {SQLITE_DAILY_SUMMARIES}")
             conn.commit()

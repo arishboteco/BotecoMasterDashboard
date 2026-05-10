@@ -356,6 +356,23 @@ def init_database():
         )
     """)
 
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS payment_method_sales (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            location_id INTEGER NOT NULL,
+            date DATE NOT NULL,
+            payment_method TEXT NOT NULL,
+            payment_key TEXT NOT NULL,
+            amount REAL DEFAULT 0,
+            source_report TEXT DEFAULT 'growth_report_day_wise',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(location_id, date, payment_key),
+            FOREIGN KEY (location_id) REFERENCES locations(id)
+        )
+        """
+    )
+
     # Upload history table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS upload_history (
@@ -457,6 +474,12 @@ def init_database():
         """
         CREATE INDEX IF NOT EXISTS idx_service_sales_summary_id
         ON service_sales(summary_id)
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_payment_method_sales_loc_date
+        ON payment_method_sales(location_id, date)
         """
     )
     cursor.execute(

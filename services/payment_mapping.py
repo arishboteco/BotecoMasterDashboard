@@ -46,14 +46,6 @@ _ALLOWED: Dict[str, str] = {
 # These are allowed to appear with zero value; non-zero blocks the import.
 _IGNORED_IF_ZERO = {
     "cod",
-    "other [upi]",
-    "other [zomato]",
-    "other [swiggy]",
-    "other [dineout]",
-    "other [zomato delivery]",
-    "other [swiggy delivery]",
-    "other [coupon]",
-    "other [razorpay]",
 }
 
 
@@ -78,6 +70,34 @@ def normalize_payment_column(raw_name: str) -> Optional[str]:
     return _ALLOWED.get(key)
 
 
+def payment_method_name(raw_name: str) -> Optional[str]:
+    """Return display name for a payment column, including dynamic Other [...] methods."""
+    raw = str(raw_name or "").replace("\xa0", " ").strip()
+    key = _norm(raw)
+    if not key or key in _IGNORED_IF_ZERO:
+        return None
+    if key.startswith("other [") and key.endswith("]"):
+        inner = re.sub(r"\s+", " ", raw[raw.find("[") + 1 : raw.rfind("]")].strip())
+        if not inner:
+            return None
+        return " ".join(
+            part.upper() if part.isupper() and len(part) <= 3 else part.title()
+            for part in inner.split(" ")
+        )
+    if key in _ALLOWED or key in {"cash", "card", "due payment", "not paid", "wallet", "upi"}:
+        return raw or key.title()
+    return None
+
+
+def payment_method_key(raw_name: str) -> Optional[str]:
+    """Return stable snake_case key for a payment method column."""
+    name = payment_method_name(raw_name)
+    if not name:
+        return None
+    key = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+    return key or None
+
+
 def _col_total(df: pd.DataFrame, col_name: str) -> float:
     """Sum a named DataFrame column, treating non-numeric as 0."""
     if col_name not in df.columns:
@@ -85,9 +105,7 @@ def _col_total(df: pd.DataFrame, col_name: str) -> float:
     return float(
         df[col_name]
         .map(
-            lambda v: 0.0
-            if (v is None or (isinstance(v, float) and pd.isna(v)))
-            else _to_float(v)
+            lambda v: 0.0 if (v is None or (isinstance(v, float) and pd.isna(v))) else _to_float(v)
         )
         .sum()
     )
@@ -95,9 +113,7 @@ def _col_total(df: pd.DataFrame, col_name: str) -> float:
 
 def _to_float(value: object) -> float:
     try:
-        return float(
-            str(value).replace(",", "").replace("₹", "").strip()
-        )
+        return float(str(value).replace(",", "").replace("₹", "").strip())
     except (ValueError, TypeError):
         return 0.0
 
@@ -120,12 +136,12 @@ def validate_payment_columns_or_raise(
         key = _norm(raw)
         if key in _ALLOWED:
             continue  # known and mapped
+        if key.startswith("other [") and key.endswith("]"):
+            continue  # dynamic payment method, stored by normalized method name
         if key in _IGNORED_IF_ZERO:
             total = _col_total(dataframe, raw)
             if abs(total) > 0.005:
-                problems.append(
-                    f"Other [{raw}] is marked as zero-only but has value {total:.2f}"
-                )
+                problems.append(f"Other [{raw}] is marked as zero-only but has value {total:.2f}")
             continue
         # For anything else that looks payment-shaped, check if it has value
         is_payment_shaped = key.startswith("other [") or key in {
@@ -137,6 +153,9 @@ def validate_payment_columns_or_raise(
             "upi",
         }
         if not is_payment_shaped:
+            total = _col_total(dataframe, raw)
+            if abs(total) > 0.005:
+                problems.append(f"Unmapped payment type: {raw} (total {total:.2f})")
             continue
         total = _col_total(dataframe, raw)
         if abs(total) > 0.005:

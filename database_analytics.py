@@ -428,8 +428,7 @@ def get_service_sales_for_date_range(
         rows = [
             row
             for row in (result.data or [])
-            if _bill_items_success(row.get("bill_status"))
-            and (row.get("net_amount", 0) or 0) > 0
+            if _bill_items_success(row.get("bill_status")) and (row.get("net_amount", 0) or 0) > 0
         ]
 
         if not rows:
@@ -508,8 +507,7 @@ def get_daily_service_sales_for_date_range(
         rows = [
             row
             for row in (result.data or [])
-            if _bill_items_success(row.get("bill_status"))
-            and (row.get("net_amount", 0) or 0) > 0
+            if _bill_items_success(row.get("bill_status")) and (row.get("net_amount", 0) or 0) > 0
         ]
 
         if not rows:
@@ -570,9 +568,7 @@ def get_daily_service_sales_for_date_range(
             d = str(row.get("date") or "")[:10]
             if not d:
                 continue
-            bucket = per_date.setdefault(
-                d, {"net": 0.0, "lunch": 0.0, "dinner": 0.0}
-            )
+            bucket = per_date.setdefault(d, {"net": 0.0, "lunch": 0.0, "dinner": 0.0})
             bucket["net"] += float(row.get("net_total") or 0)
             bucket["lunch"] += float(row.get("lunch_covers") or 0)
             bucket["dinner"] += float(row.get("dinner_covers") or 0)
@@ -724,9 +720,9 @@ def get_top_items_for_date_range(
     else:
         if not location_ids:
             return []
+        placeholders = ",".join("?" * len(location_ids))
         with database.db_connection() as conn:
             cur = conn.cursor()
-            placeholders = ",".join("?" * len(location_ids))
             cur.execute(
                 f"""
                 SELECT i.item_name, i.category, SUM(i.qty) AS qty, SUM(i.amount) AS amount
@@ -824,6 +820,31 @@ def get_payment_provider_breakdown(
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
+        try:
+            result = (
+                supabase.table("payment_method_sales")
+                .select("payment_method,amount")
+                .in_("location_id", location_ids)
+                .gte("date", start_date)
+                .lte("date", end_date)
+                .execute()
+            )
+            method_rows = result.data or []
+        except Exception:
+            method_rows = []
+        if method_rows:
+            totals: Dict[str, Dict[str, Any]] = {}
+            for row in method_rows:
+                provider = str(row.get("payment_method") or "Other").strip() or "Other"
+                if provider not in totals:
+                    totals[provider] = {
+                        "provider": provider,
+                        "txn_count": None,
+                        "gross_amount": 0.0,
+                    }
+                totals[provider]["gross_amount"] += float(row.get("amount") or 0)
+            return sorted(totals.values(), key=lambda x: -x["gross_amount"])
+
         restaurants = _restaurants_for_location_ids(location_ids)
         result = (
             supabase.table("bill_items")
@@ -859,9 +880,31 @@ def get_payment_provider_breakdown(
     else:
         if not location_ids:
             return []
+        placeholders = ",".join("?" * len(location_ids))
         with database.db_connection() as conn:
             cur = conn.cursor()
-            placeholders = ",".join("?" * len(location_ids))
+            cur.execute(
+                f"""
+                SELECT payment_method, COALESCE(SUM(amount), 0) AS amount
+                FROM payment_method_sales
+                WHERE location_id IN ({placeholders})
+                  AND date >= ? AND date <= ?
+                GROUP BY payment_method
+                ORDER BY amount DESC
+                """,
+                (*location_ids, start_date, end_date),
+            )
+            method_rows = cur.fetchall()
+            if method_rows:
+                return [
+                    {
+                        "provider": str(row["payment_method"]),
+                        "txn_count": None,
+                        "gross_amount": float(row["amount"] or 0),
+                    }
+                    for row in method_rows
+                    if float(row["amount"] or 0) > 0
+                ]
             cur.execute(
                 f"""
                 SELECT
