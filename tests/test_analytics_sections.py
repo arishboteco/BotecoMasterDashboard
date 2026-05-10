@@ -102,3 +102,87 @@ def test_build_action_cards_flags_apc_covers_divergence():
 
     assert cards
     assert any("APC" in card["title"] for card in cards)
+
+
+def test_build_weekpart_insight_uses_friday_as_weekend():
+    df = pd.DataFrame(
+        [
+            {"date": "2026-05-07", "covers": 40},
+            {"date": "2026-05-08", "covers": 70},
+            {"date": "2026-05-09", "covers": 80},
+            {"date": "2026-05-10", "covers": 90},
+        ]
+    )
+
+    insight = analytics_sections._build_weekpart_insight(df)
+
+    assert insight["weekday_count"] == 1
+    assert insight["weekend_count"] == 3
+    assert insight["weekday_avg"] == 40.0
+    assert insight["weekend_avg"] == 80.0
+
+
+def test_build_weekpart_insight_commentary_weekend_led():
+    df = pd.DataFrame(
+        [
+            {"date": "2026-05-05", "covers": 40},
+            {"date": "2026-05-06", "covers": 45},
+            {"date": "2026-05-09", "covers": 90},
+            {"date": "2026-05-10", "covers": 95},
+        ]
+    )
+
+    insight = analytics_sections._build_weekpart_insight(df)
+
+    assert insight["status"] == "ok"
+    assert insight["delta_pct"] > 0
+    assert "Weekend-led pattern" in insight["commentary"]
+
+
+def test_build_weekpart_insight_insufficient_data_when_bucket_missing():
+    df = pd.DataFrame(
+        [
+            {"date": "2026-05-05", "covers": 50},
+            {"date": "2026-05-06", "covers": 55},
+        ]
+    )
+
+    insight = analytics_sections._build_weekpart_insight(df)
+
+    assert insight["status"] == "insufficient"
+    assert insight["commentary"] == "Insufficient data for comparison"
+
+
+def test_render_driver_analysis_renders_covers_as_line(monkeypatch):
+    df = pd.DataFrame(
+        [
+            {"date": "2026-05-05", "covers": 40, "net_total": 40000.0},
+            {"date": "2026-05-06", "covers": 50, "net_total": 50000.0},
+        ]
+    )
+    captured = []
+
+    monkeypatch.setattr(analytics_sections.st, "markdown", lambda *_a, **_k: None)
+    monkeypatch.setattr(analytics_sections.st, "caption", lambda *_a, **_k: None)
+    monkeypatch.setattr(analytics_sections.st, "toggle", lambda *_a, **_k: False)
+    monkeypatch.setattr(
+        analytics_sections.st,
+        "columns",
+        lambda *_a, **_k: (_NoopContext(), _NoopContext()),
+    )
+    monkeypatch.setattr(analytics_sections.st, "container", lambda *_a, **_k: _NoopContext())
+    monkeypatch.setattr(
+        analytics_sections.st,
+        "plotly_chart",
+        lambda fig, **_k: captured.append(fig),
+    )
+
+    analytics_sections.render_driver_analysis(
+        df=df,
+        df_raw=pd.DataFrame(),
+        multi_analytics=False,
+    )
+
+    covers_fig = captured[0]
+    assert covers_fig.data[0].type == "scatter"
+    assert covers_fig.data[0].mode == "lines+markers"

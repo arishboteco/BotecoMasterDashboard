@@ -23,6 +23,9 @@ from tabs.forecasting import (
     moving_average,
 )
 
+_WEEKEND_DAYS = {"Friday", "Saturday", "Sunday"}
+_WEEKDAY_DAYS = {"Monday", "Tuesday", "Wednesday", "Thursday"}
+
 
 def _build_action_cards(
     current_df: pd.DataFrame,
@@ -72,8 +75,7 @@ def _build_action_cards(
                     "title": "Sales Trend Softening",
                     "reason": f"Sales are {sales_change:.1f}% below previous period.",
                     "action": (
-                        "Audit low days and launch a short tactical promo "
-                        "for demand recovery."
+                        "Audit low days and launch a short tactical promo for demand recovery."
                     ),
                     "metric": f"Delta: {sales_change:.1f}%",
                 }
@@ -105,8 +107,7 @@ def _build_action_cards(
                         f"{apc_change:.1f}% vs previous period."
                     ),
                     "action": (
-                        "Prioritize upsell scripts and premium pairings "
-                        "to recover ticket size."
+                        "Prioritize upsell scripts and premium pairings to recover ticket size."
                     ),
                     "metric": f"APC: {utils.format_currency(current_apc)}",
                 }
@@ -119,8 +120,7 @@ def _build_action_cards(
                 "title": "Stable Performance",
                 "reason": "No major risk signal detected from forecast and prior-period deltas.",
                 "action": (
-                    "Maintain current run-rate and continue monitoring "
-                    "weekday/category shifts."
+                    "Maintain current run-rate and continue monitoring weekday/category shifts."
                 ),
                 "metric": "Signal: Neutral",
             }
@@ -146,8 +146,7 @@ def _style_achievement(val) -> str:
             f"color: {ui_theme.ACHIEVEMENT_MED_TEXT}"
         )
     return (
-        f"background-color: {ui_theme.ACHIEVEMENT_LOW_BG}; "
-        f"color: {ui_theme.ACHIEVEMENT_LOW_TEXT}"
+        f"background-color: {ui_theme.ACHIEVEMENT_LOW_BG}; color: {ui_theme.ACHIEVEMENT_LOW_TEXT}"
     )
 
 
@@ -259,6 +258,96 @@ def _forecast_reliability_label(points: int) -> str:
     if points >= 10:
         return "Medium"
     return "Low"
+
+
+def _split_covers_weekpart(driver_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    work = driver_df.copy()
+    work["date"] = pd.to_datetime(work["date"], errors="coerce")
+    work["covers"] = pd.to_numeric(work["covers"], errors="coerce").fillna(0.0)
+    work = work[work["date"].notna()].copy()
+    work["weekday_name"] = work["date"].dt.day_name()
+    weekday_df = work[work["weekday_name"].isin(_WEEKDAY_DAYS)].copy()
+    weekend_df = work[work["weekday_name"].isin(_WEEKEND_DAYS)].copy()
+    return weekday_df, weekend_df
+
+
+def _build_weekpart_insight(driver_df: pd.DataFrame) -> dict[str, object]:
+    weekday_df, weekend_df = _split_covers_weekpart(driver_df)
+    weekday_count = int(len(weekday_df))
+    weekend_count = int(len(weekend_df))
+
+    if weekday_count == 0 or weekend_count == 0:
+        return {
+            "status": "insufficient",
+            "weekday_count": weekday_count,
+            "weekend_count": weekend_count,
+            "weekday_avg": 0.0,
+            "weekend_avg": 0.0,
+            "delta_pct": None,
+            "delta_abs": None,
+            "commentary": "Insufficient data for comparison",
+            "caution": None,
+        }
+
+    weekday_avg = float(weekday_df["covers"].mean())
+    weekend_avg = float(weekend_df["covers"].mean())
+    delta_abs = weekend_avg - weekday_avg
+    delta_pct = None if weekday_avg <= 0 else (delta_abs / weekday_avg) * 100.0
+
+    if delta_pct is None:
+        commentary = "Weekday average is zero; comparing with absolute covers difference only."
+    elif delta_pct >= 3:
+        commentary = (
+            f"Weekend-led pattern: covers are up {delta_pct:.1f}% vs weekdays, "
+            "indicating stronger late-week demand."
+        )
+    elif delta_pct <= -3:
+        commentary = (
+            f"Weekday-led pattern: weekend covers are down {abs(delta_pct):.1f}% vs "
+            "weekdays; review Friday-Sunday conversion/visibility."
+        )
+    else:
+        commentary = "Balanced pattern: weekday and weekend covers are largely stable."
+
+    caution = (
+        "Low sample size; interpret trend carefully."
+        if min(weekday_count, weekend_count) < 2
+        else None
+    )
+
+    return {
+        "status": "ok",
+        "weekday_count": weekday_count,
+        "weekend_count": weekend_count,
+        "weekday_avg": weekday_avg,
+        "weekend_avg": weekend_avg,
+        "delta_pct": delta_pct,
+        "delta_abs": delta_abs,
+        "commentary": commentary,
+        "caution": caution,
+    }
+
+
+def _render_weekpart_insight(insight: dict[str, object]) -> None:
+    if insight.get("status") != "ok":
+        st.caption("Insufficient data for comparison")
+        return
+
+    weekday_avg = float(insight["weekday_avg"])
+    weekend_avg = float(insight["weekend_avg"])
+    delta_pct = insight.get("delta_pct")
+    delta_label = f"{delta_pct:+.1f}%" if isinstance(delta_pct, (float, int)) else "N/A"
+    st.caption(
+        "Avg Weekday (Mon-Thu): {:,.1f} | Avg Weekend (Fri-Sun): {:,.1f} | Delta: {}".format(
+            weekday_avg,
+            weekend_avg,
+            delta_label,
+        )
+    )
+    st.caption(str(insight.get("commentary") or ""))
+    caution = insight.get("caution")
+    if caution:
+        st.caption(str(caution))
 
 
 def render_forecast_command_center(
@@ -467,10 +556,7 @@ def render_driver_analysis(
 
     if multi_analytics and not df_raw.empty:
         driver_df = (
-            df_raw.groupby("date")[["covers", "net_total"]]
-            .sum()
-            .reset_index()
-            .sort_values("date")
+            df_raw.groupby("date")[["covers", "net_total"]].sum().reset_index().sort_values("date")
         )
     else:
         driver_df = df[["date", "covers", "net_total"]].copy().sort_values("date")
@@ -487,11 +573,13 @@ def render_driver_analysis(
         with st.container(border=True):
             st.markdown("#### Covers")
             fig_covers = go.Figure(
-                go.Bar(
+                go.Scatter(
                     x=pd.to_datetime(driver_df["date"]),
                     y=driver_df["covers"],
+                    mode="lines+markers",
                     name="Covers",
-                    marker_color=ui_theme.BRAND_SUCCESS,
+                    line=dict(color=ui_theme.BRAND_SUCCESS, width=2),
+                    marker=dict(size=4),
                     hovertemplate="%{y:,.0f} covers<br>%{x|%d %b}<extra></extra>",
                 )
             )
@@ -502,6 +590,8 @@ def render_driver_analysis(
                 hovermode="x unified",
             )
             st.plotly_chart(fig_covers, width="stretch")
+            insight = _build_weekpart_insight(driver_df[["date", "covers"]])
+            _render_weekpart_insight(insight)
 
     with apc_col:
         with st.container(border=True):
@@ -547,9 +637,7 @@ def render_driver_analysis(
             table["Net Sales (₹)"] = table["Net Sales (₹)"].apply(
                 lambda val: utils.format_currency(float(val))
             )
-            table["APC (₹)"] = table["APC (₹)"].apply(
-                lambda val: utils.format_currency(float(val))
-            )
+            table["APC (₹)"] = table["APC (₹)"].apply(lambda val: utils.format_currency(float(val)))
             table["Covers"] = table["Covers"].apply(lambda val: f"{int(val):,}")
             st.dataframe(table, width="stretch", hide_index=True)
 
@@ -579,9 +667,7 @@ def render_mix_snapshot(
             else:
                 cat_df = pd.DataFrame(cat_data).head(8).copy()
                 total_cat = float(cat_df["amount"].sum())
-                cat_df["share"] = (
-                    cat_df["amount"] / total_cat * 100 if total_cat > 0 else 0
-                )
+                cat_df["share"] = cat_df["amount"] / total_cat * 100 if total_cat > 0 else 0
                 cat_df = cat_df.sort_values("amount", ascending=True)
                 fig_cat = go.Figure(
                     go.Bar(
@@ -591,9 +677,7 @@ def render_mix_snapshot(
                         marker_color=ui_theme.BRAND_PRIMARY,
                         text=[f"{x:.1f}%" for x in cat_df["share"]],
                         textposition="auto",
-                        hovertemplate=(
-                            "%{y}<br>₹%{x:,.0f}<br>%{text} of top mix<extra></extra>"
-                        ),
+                        hovertemplate=("%{y}<br>₹%{x:,.0f}<br>%{text} of top mix<extra></extra>"),
                     )
                 )
                 fig_cat.update_layout(
@@ -651,9 +735,7 @@ def render_mix_snapshot(
                         marker_color=colors,
                         text=[utils.format_rupee_short(v) for v in wd_agg["avg_sales"]],
                         textposition="outside",
-                        hovertemplate=(
-                            "%{x}<br>Avg sales: ₹%{y:,.0f}<extra></extra>"
-                        ),
+                        hovertemplate=("%{x}<br>Avg sales: ₹%{y:,.0f}<extra></extra>"),
                     )
                 )
                 if daily_tgt > 0:
@@ -768,8 +850,7 @@ def render_overview(
             g = utils.calculate_growth(total_covers, prior_covers)
             sign = "+" if g["change"] >= 0 else ""
             cov_delta = (
-                f"{sign}{int(g['change']):,} "
-                f"({sign}{utils.format_percent(g['percentage'])})"
+                f"{sign}{int(g['change']):,} ({sign}{utils.format_percent(g['percentage'])})"
             )
 
         metrics = [
@@ -846,15 +927,11 @@ def render_sales_performance(
                 # Add 7-day MA per outlet as dashed lines
                 if show_ma_and_forecast:
                     outlet_colors = {
-                        trace.name: trace.line.color
-                        if hasattr(trace.line, "color")
-                        else None
+                        trace.name: trace.line.color if hasattr(trace.line, "color") else None
                         for trace in fig_line.data
                     }
                     for outlet_name in df_raw["Outlet"].unique():
-                        outlet_df = df_raw[df_raw["Outlet"] == outlet_name].sort_values(
-                            "date"
-                        )
+                        outlet_df = df_raw[df_raw["Outlet"] == outlet_name].sort_values("date")
                         outlet_values = outlet_df["net_total"].tolist()
                         outlet_dates = pd.to_datetime(outlet_df["date"])
 
@@ -863,9 +940,7 @@ def render_sales_performance(
                         ma_mask = pd.notna(ma_series).values
                         ma_valid = ma_series[ma_mask]
                         if not ma_valid.empty:
-                            ma_color = outlet_colors.get(
-                                outlet_name, ui_theme.CHART_MA_ACCENT
-                            )
+                            ma_color = outlet_colors.get(outlet_name, ui_theme.CHART_MA_ACCENT)
                             fig_line.add_trace(
                                 go.Scatter(
                                     x=outlet_dates[ma_mask],
@@ -878,9 +953,7 @@ def render_sales_performance(
                                 )
                             )
 
-                        forecast_days = calculate_forecast_days(
-                            analysis_period, len(outlet_values)
-                        )
+                        forecast_days = calculate_forecast_days(analysis_period, len(outlet_values))
                         forecast = linear_forecast(
                             outlet_dates,
                             outlet_values,
@@ -900,9 +973,7 @@ def render_sales_performance(
                                     y=f_values,
                                     mode="lines",
                                     name=f"{outlet_name} Forecast",
-                                    line=dict(
-                                        color=ui_theme.BRAND_WARN, width=2, dash="dash"
-                                    ),
+                                    line=dict(color=ui_theme.BRAND_WARN, width=2, dash="dash"),
                                     opacity=0.8,
                                     showlegend=False,
                                     **hover_fc,
@@ -967,12 +1038,8 @@ def render_sales_performance(
                         )
 
                     # Forecast
-                    forecast_days = calculate_forecast_days(
-                        analysis_period, len(values)
-                    )
-                    forecast = linear_forecast(
-                        dates, values, forecast_days=forecast_days
-                    )
+                    forecast_days = calculate_forecast_days(analysis_period, len(values))
+                    forecast = linear_forecast(dates, values, forecast_days=forecast_days)
                     if forecast:
                         f_dates = [f["date"] for f in forecast]
                         f_values = [f["value"] for f in forecast]
@@ -987,9 +1054,7 @@ def render_sales_performance(
                                 y=f_values,
                                 mode="lines",
                                 name="Forecast",
-                                line=dict(
-                                    color=ui_theme.BRAND_WARN, width=2, dash="dash"
-                                ),
+                                line=dict(color=ui_theme.BRAND_WARN, width=2, dash="dash"),
                                 opacity=0.8,
                                 **hover_fc,
                             )
@@ -1055,9 +1120,7 @@ def render_sales_performance(
             if multi_analytics and not df_raw.empty:
                 fig_covers = go.Figure()
                 for outlet_name in df_raw["Outlet"].unique():
-                    outlet_df = df_raw[df_raw["Outlet"] == outlet_name].sort_values(
-                        "date"
-                    )
+                    outlet_df = df_raw[df_raw["Outlet"] == outlet_name].sort_values("date")
                     outlet_dates = pd.to_datetime(outlet_df["date"])
                     outlet_covers = outlet_df["covers"].tolist()
 
@@ -1072,9 +1135,7 @@ def render_sales_performance(
                     )
 
                     if show_ma_and_forecast:
-                        forecast_days = calculate_forecast_days(
-                            analysis_period, len(outlet_covers)
-                        )
+                        forecast_days = calculate_forecast_days(analysis_period, len(outlet_covers))
                         forecast = linear_forecast(
                             outlet_dates,
                             outlet_covers,
@@ -1139,12 +1200,8 @@ def render_sales_performance(
 
                 # Forecast area (only for longer periods)
                 if show_ma_and_forecast:
-                    forecast_days = calculate_forecast_days(
-                        analysis_period, len(covers)
-                    )
-                    forecast = linear_forecast(
-                        dates, covers, forecast_days=forecast_days
-                    )
+                    forecast_days = calculate_forecast_days(analysis_period, len(covers))
+                    forecast = linear_forecast(dates, covers, forecast_days=forecast_days)
                     if forecast:
                         f_dates = [f["date"] for f in forecast]
                         f_values = [max(0, f["value"]) for f in forecast]
@@ -1157,9 +1214,7 @@ def render_sales_performance(
                                 name="Forecast",
                                 fill="tozeroy",
                                 fillcolor=_hex_to_rgba(ui_theme.BRAND_INFO, 0.15),
-                                line=dict(
-                                    color=ui_theme.BRAND_INFO, width=2, dash="dash"
-                                ),
+                                line=dict(color=ui_theme.BRAND_INFO, width=2, dash="dash"),
                                 opacity=0.6,
                                 **hover_cov_fc,
                             )
@@ -1233,9 +1288,7 @@ def render_sales_performance(
             if "apc" in df.columns:
                 if multi_analytics and not df_raw.empty:
                     _sales_tbl["apc"] = _sales_tbl.apply(
-                        lambda r: (
-                            r["net_total"] / r["covers"] if r["covers"] > 0 else 0
-                        ),
+                        lambda r: r["net_total"] / r["covers"] if r["covers"] > 0 else 0,
                         axis=1,
                     )
                 else:
@@ -1276,9 +1329,7 @@ def render_revenue_breakdown(
 ) -> None:
     # ── Category Mix ───────────────────────────────────────────
     st.markdown("### Category Mix")
-    cat_data = database.get_category_sales_for_date_range(
-        report_loc_ids, start_str, end_str
-    )
+    cat_data = database.get_category_sales_for_date_range(report_loc_ids, start_str, end_str)
     if cat_data:
         cat_df = pd.DataFrame(cat_data)
         total_cat = float(cat_df["amount"].sum())
@@ -1330,12 +1381,8 @@ def render_revenue_breakdown(
         _cat_table["% of Total"] = _cat_table["amount"].apply(
             lambda x: f"{x / total_cat * 100:.1f}%" if total_cat > 0 else "0%"
         )
-        _cat_table["amount"] = _cat_table["amount"].apply(
-            lambda x: utils.format_currency(float(x))
-        )
-        _cat_table = _cat_table.rename(
-            columns={"category": "Category", "amount": "Amount"}
-        )
+        _cat_table["amount"] = _cat_table["amount"].apply(lambda x: utils.format_currency(float(x)))
+        _cat_table = _cat_table.rename(columns={"category": "Category", "amount": "Amount"})
         with st.container(border=True):
             st.caption("Category data")
             st.dataframe(_cat_table, width="stretch", hide_index=True)
@@ -1363,9 +1410,7 @@ def render_revenue_breakdown(
             "Saturday",
             "Sunday",
         ]
-        wd_agg["weekday"] = pd.Categorical(
-            wd_agg["weekday"], categories=day_order, ordered=True
-        )
+        wd_agg["weekday"] = pd.Categorical(wd_agg["weekday"], categories=day_order, ordered=True)
         wd_agg = wd_agg.sort_values("weekday")
         monthly_tgt = scope.sum_location_monthly_targets(report_loc_ids)
         if monthly_tgt > 0 and len(report_loc_ids) == 1:
@@ -1490,13 +1535,9 @@ def render_revenue_breakdown(
             wd_table["Avg Net Sales (₹)"] = wd_table["Avg Net Sales (₹)"].apply(
                 lambda x: utils.format_currency(float(x))
             )
-            wd_table["Avg Covers"] = wd_table["Avg Covers"].apply(
-                lambda x: f"{float(x):.0f}"
-            )
+            wd_table["Avg Covers"] = wd_table["Avg Covers"].apply(lambda x: f"{float(x):.0f}")
             st.dataframe(
-                wd_table[
-                    ["Day of Week", "Avg Net Sales (₹)", "Avg Covers", "Count of Days"]
-                ],
+                wd_table[["Day of Week", "Avg Net Sales (₹)", "Avg Covers", "Count of Days"]],
                 width="stretch",
                 hide_index=True,
             )
@@ -1538,9 +1579,7 @@ def render_target_and_daily(
                 lambda d: utils.get_target_for_date(day_targets, str(d))
             )
             target_df["achievement"] = target_df.apply(
-                lambda r: (
-                    r["net_total"] / r["day_target"] * 100 if r["day_target"] > 0 else 0
-                ),
+                lambda r: r["net_total"] / r["day_target"] * 100 if r["day_target"] > 0 else 0,
                 axis=1,
             )
         else:
@@ -1569,9 +1608,7 @@ def render_target_and_daily(
 
         df_sorted = target_df.sort_values("date")
         df_sorted["cumulative"] = df_sorted["net_total"].cumsum()
-        target_line = [
-            monthly_target * (i / len(df_sorted)) for i in range(1, len(df_sorted) + 1)
-        ]
+        target_line = [monthly_target * (i / len(df_sorted)) for i in range(1, len(df_sorted) + 1)]
 
         # Determine fill color based on on-track status
         actual_last = df_sorted["cumulative"].iloc[-1]
@@ -1643,7 +1680,7 @@ def render_target_and_daily(
         else:
             st.error(
                 "⚠️ **Behind by "
-                f"{utils.format_rupee_short(target_last - actual_last)}" 
+                f"{utils.format_rupee_short(target_last - actual_last)}"
                 "** — below target pace"
             )
 
@@ -1659,22 +1696,16 @@ def render_target_and_daily(
             st.caption("Target achievement data")
             _cols_needed = {"target", "pct_target"}
             _has_target_cols = (
-                multi_analytics
-                and not df_raw.empty
-                and _cols_needed.issubset(df_raw.columns)
+                multi_analytics and not df_raw.empty and _cols_needed.issubset(df_raw.columns)
             )
 
             if _has_target_cols:
-                _tgt_tbl = df_raw[
-                    ["date", "Outlet", "net_total", "target", "pct_target"]
-                ].copy()
+                _tgt_tbl = df_raw[["date", "Outlet", "net_total", "target", "pct_target"]].copy()
                 _tgt_tbl["pct_target"] = _tgt_tbl["pct_target"].apply(
                     lambda x: f"{float(x or 0):.2f}%"
                 )
             else:
-                _target_col = (
-                    "day_target" if "day_target" in target_df.columns else None
-                )
+                _target_col = "day_target" if "day_target" in target_df.columns else None
                 _cols = ["date", "net_total"]
                 if _target_col:
                     _cols.extend([_target_col, "achievement"])
@@ -1721,9 +1752,7 @@ def render_target_and_daily(
             rename_map["Outlet"] = "Outlet"
         dv_display = dv_display.rename(columns=rename_map)
 
-        styler = dv_display.style.map(
-            _style_achievement, subset=["Achievement %"]
-        ).format(
+        styler = dv_display.style.map(_style_achievement, subset=["Achievement %"]).format(
             {
                 "Covers": "{:,.0f}",
                 "Net Sales (₹)": lambda x: utils.format_indian_currency(float(x)),
@@ -1740,9 +1769,7 @@ def render_target_and_daily(
         )
         st.dataframe(styler, width="stretch", hide_index=True)
     else:
-        daily_view = build_daily_view_table(
-            df, pd.DataFrame(), multi_analytics=False, numeric=True
-        )
+        daily_view = build_daily_view_table(df, pd.DataFrame(), multi_analytics=False, numeric=True)
 
         dv_display = daily_view.rename(
             columns={
@@ -1753,9 +1780,7 @@ def render_target_and_daily(
                 "pct_target": "Achievement %",
             }
         )
-        styler = dv_display.style.map(
-            _style_achievement, subset=["Achievement %"]
-        ).format(
+        styler = dv_display.style.map(_style_achievement, subset=["Achievement %"]).format(
             {
                 "Covers": "{:,.0f}",
                 "Net Sales (₹)": lambda x: utils.format_indian_currency(float(x)),
@@ -1789,9 +1814,7 @@ def render_payment_reconciliation(
         "local mode shows the 5-bucket summary."
     )
 
-    data = database_analytics.get_payment_provider_breakdown(
-        report_loc_ids, start_str, end_str
-    )
+    data = database_analytics.get_payment_provider_breakdown(report_loc_ids, start_str, end_str)
 
     if not data:
         st.caption("No payment data for this period.")
