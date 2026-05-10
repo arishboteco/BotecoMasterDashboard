@@ -42,6 +42,19 @@ def _normalize_detail_lists(summary: Dict[str, Any]) -> Dict[str, Any]:
     if svcs or svcs_raw is not None:
         out["services"] = svcs
 
+    pmts_raw = out.get("payment_methods")
+    pmts = []
+    for pmt in pmts_raw if isinstance(pmts_raw, list) else []:
+        amount = float(pmt.get("amount") or 0)
+        if amount == 0:
+            continue
+        name = str(pmt.get("payment_method") or "").strip()
+        key = str(pmt.get("payment_key") or name.lower().replace(" ", "_")).strip()
+        if name and key:
+            pmts.append({"payment_method": name, "payment_key": key, "amount": amount})
+    if pmts or pmts_raw is not None:
+        out["payment_methods"] = pmts
+
     return out
 
 
@@ -151,6 +164,18 @@ def aggregate_daily_summaries(
         {"type": k, "amount": v} for k, v in sorted(svc_amt.items(), key=lambda x: -x[1]) if v > 0
     ]
 
+    pmt_rows: Dict[str, Dict[str, Any]] = {}
+    for s in summaries:
+        for pmt in s.get("payment_methods") or []:
+            key = str(pmt.get("payment_key") or "").strip()
+            name = str(pmt.get("payment_method") or "").strip()
+            if not key or not name:
+                continue
+            if key not in pmt_rows:
+                pmt_rows[key] = {"payment_method": name, "payment_key": key, "amount": 0.0}
+            pmt_rows[key]["amount"] += float(pmt.get("amount") or 0)
+    out["payment_methods"] = [row for row in pmt_rows.values() if row["amount"] > 0]
+
     out.pop("id", None)
     tgt = float(out.get("target") or 0)
     net = float(out.get("net_total") or 0)
@@ -255,6 +280,8 @@ def get_daily_report_bundle(
                 base["categories"] = list(detailed.get("categories") or [])
             if detailed.get("services") is not None:
                 base["services"] = list(detailed.get("services") or [])
+            if detailed.get("payment_methods") is not None:
+                base["payment_methods"] = list(detailed.get("payment_methods") or [])
             if float(base.get("target") or 0) <= 0:
                 base["target"] = _synthetic_daily_summary(lid, date_str).get("target", 0.0)
             parts_raw.append(base)

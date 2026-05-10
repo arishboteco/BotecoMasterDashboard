@@ -49,7 +49,9 @@ def _sales_summary_kpi_banner_text(table) -> str:
 
 
 def _cell_text_hex(table, row_label: str, col_index: int) -> str:
-    row_index = next(idx for idx, row in enumerate(table._cellvalues) if row and row[0] == row_label)
+    row_index = next(
+        idx for idx, row in enumerate(table._cellvalues) if row and row[0] == row_label
+    )
     color = table._cellStyles[row_index][col_index].color
     return color.hexval().replace("0x", "#").upper()
 
@@ -65,6 +67,28 @@ class TestRupeeFormatting:
 class TestForecastFormatting:
     def test_currency_formatter_handles_forecast_values(self):
         assert sheet_reports._r(300000.4) == "\u20b9300,000"
+
+
+class TestSalesSummaryPaymentMethods:
+    def test_sales_summary_renders_normalized_payment_methods(self):
+        elements = sheet_reports._build_sales_summary(
+            {
+                "date": "2026-04-08",
+                "net_total": 1000.0,
+                "gross_total": 1200.0,
+                "covers": 10,
+                "payment_methods": [
+                    {"payment_method": "Zomato", "payment_key": "zomato", "amount": 750.0}
+                ],
+                "target": 10000.0,
+            },
+            location_name="Boteco",
+        )
+
+        table = _first_table(elements)
+        rows_by_label = {row[0]: row for row in table._cellvalues if row}
+
+        assert rows_by_label["Zomato"][1] == "\u20b9750"
 
 
 class TestCategorySuperCategoryDisplay:
@@ -201,7 +225,10 @@ class TestSalesSummaryRowBackgrounds:
         assert _background_hex_for_label(table, "Discount") == sheet_reports.C_ROW_DEDUCTION
         assert _background_hex_for_label(table, "Complimentary") == sheet_reports.C_ROW_EXCEPTION
         assert _background_hex_for_label(table, "Sales Target") == sheet_reports.C_BAND
-        assert _background_hex_for_label(table, "Actual % of Target") == sheet_reports.C_ROW_TARGET_BAD
+        assert (
+            _background_hex_for_label(table, "Actual % of Target")
+            == sheet_reports.C_ROW_TARGET_BAD
+        )
         assert _background_hex_for_label(table, "Forecast Month-End") == sheet_reports.C_BAND
         assert _background_hex_for_label(table, "Required Daily Run Rate") == sheet_reports.C_BAND
 
@@ -373,7 +400,9 @@ class TestSalesSummaryMultiOutletForecastBackground:
         )
 
         row_index = next(
-            idx for idx, row in enumerate(table._cellvalues) if row and row[0] == "Forecast % of Target"
+            idx
+            for idx, row in enumerate(table._cellvalues)
+            if row and row[0] == "Forecast % of Target"
         )
         label_bg = None
         for command in getattr(table, "_bkgrndcmds", []):
@@ -425,7 +454,9 @@ class TestSalesSummaryMultiOutletForecastBackground:
         )
 
         row_index = next(
-            idx for idx, row in enumerate(table._cellvalues) if row and row[0] == "Forecast % of Target"
+            idx
+            for idx, row in enumerate(table._cellvalues)
+            if row and row[0] == "Forecast % of Target"
         )
         bg_by_col = {}
         for command in getattr(table, "_bkgrndcmds", []):

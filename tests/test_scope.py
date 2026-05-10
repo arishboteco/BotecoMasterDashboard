@@ -39,10 +39,16 @@ def test_daily_report_bundle_uses_detailed_rows_for_services_and_categories(
             1: {
                 "services": [{"service_type": "Lunch", "amount": 1000.0}],
                 "categories": [{"category": "Food", "qty": 10, "amount": 1000.0}],
+                "payment_methods": [
+                    {"payment_method": "Zomato", "payment_key": "zomato", "amount": 500.0}
+                ],
             },
             2: {
                 "services": [{"service_type": "Lunch", "amount": 1200.0}],
                 "categories": [{"category": "Food", "qty": 12, "amount": 1200.0}],
+                "payment_methods": [
+                    {"payment_method": "Razorpay", "payment_key": "razorpay", "amount": 250.0}
+                ],
             },
         }[location_id],
     )
@@ -65,6 +71,10 @@ def test_daily_report_bundle_uses_detailed_rows_for_services_and_categories(
     assert combined["complimentary"] == 100.0
     assert combined["services"] == [{"type": "Lunch", "amount": 2200.0}]
     assert combined["categories"] == [{"category": "Food", "qty": 22, "amount": 2200.0}]
+    assert combined["payment_methods"] == [
+        {"payment_method": "Zomato", "payment_key": "zomato", "amount": 500.0},
+        {"payment_method": "Razorpay", "payment_key": "razorpay", "amount": 250.0},
+    ]
 
 
 def test_daily_report_bundle_accepts_total_key_for_category_amount(monkeypatch):
@@ -176,7 +186,9 @@ def test_synthetic_daily_summary_uses_actual_days_in_month(monkeypatch):
         return {"Sunday": monthly_target / days_in_month}
 
     monkeypatch.setattr(scope.utils, "compute_day_targets", _fake_compute_day_targets)
-    monkeypatch.setattr(scope.utils, "get_target_for_date", lambda targets, _date: targets["Sunday"])
+    monkeypatch.setattr(
+        scope.utils, "get_target_for_date", lambda targets, _date: targets["Sunday"]
+    )
 
     out = scope._synthetic_daily_summary(1, "2026-05-03")
 

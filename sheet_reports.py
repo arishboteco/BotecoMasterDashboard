@@ -987,6 +987,50 @@ def _meta_header_table_style_cmds(
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+_PAYMENT_METHOD_FIXED_FIELDS = {
+    "cash": "cash_sales",
+    "card": "card_sales",
+    "gpay": "gpay_sales",
+    "g pay": "gpay_sales",
+    "upi": "upi_sales",
+    "bank transfer": "bank_transfer_sales",
+    "boh": "boh_sales",
+    "due payment": "due_payment_sales",
+    "not paid": "due_payment_sales",
+    "wallet": "wallet_sales",
+    "zomato": "zomato_sales",
+}
+
+
+def _payment_method_norm(label: str) -> str:
+    return re.sub(r"\s+", " ", str(label or "").strip().lower())
+
+
+def _payment_method_amount(summary: Dict, label: str) -> float:
+    """Return normalized payment-method amount unless a legacy field already shows it."""
+    fixed_field = _PAYMENT_METHOD_FIXED_FIELDS.get(_payment_method_norm(label))
+    if fixed_field and float(summary.get(fixed_field) or 0) != 0:
+        return 0.0
+    total = 0.0
+    for method in summary.get("payment_methods") or []:
+        if _payment_method_norm(method.get("payment_method")) == _payment_method_norm(label):
+            total += float(method.get("amount") or 0)
+    return total
+
+
+def _payment_method_labels(*summaries: Dict) -> List[str]:
+    labels: List[str] = []
+    seen = set()
+    for summary in summaries:
+        for method in (summary or {}).get("payment_methods") or []:
+            label = str(method.get("payment_method") or "").strip()
+            key = _payment_method_norm(label)
+            if label and key not in seen:
+                labels.append(label)
+                seen.add(key)
+    return labels
+
+
 def _build_sales_summary(
     r: Dict,
     location_name: str,
@@ -1104,6 +1148,13 @@ def _build_sales_summary(
         outlet_vs = [float(od.get(key) or 0) for _, od in per_outlet] if multi else []
         if combined_v != 0 or any(v != 0 for v in outlet_vs):
             add_row(lbl, key)
+
+    payment_sources = [r] + ([od for _, od in per_outlet] if multi else [])
+    for label in _payment_method_labels(*payment_sources):
+        combined_v = _payment_method_amount(r, label)
+        outlet_vs = [_payment_method_amount(od, label) for _, od in per_outlet] if multi else []
+        if combined_v != 0 or any(v != 0 for v in outlet_vs):
+            add_row(label, lambda d, payment_label=label: _payment_method_amount(d, payment_label))
 
     add_row("EOD Gross Total", "gross_total", bold=True, bg=C_BAND)
 
@@ -1294,9 +1345,21 @@ def _build_sales_summary(
                         pct_val = None
                     cell_style = _performance_style(pct_val)
                     style_cmds.append(
-                        ("BACKGROUND", (col_index, i), (col_index, i), _hex(cell_style["background"]))
+                        (
+                            "BACKGROUND",
+                            (col_index, i),
+                            (col_index, i),
+                            _hex(cell_style["background"]),
+                        )
                     )
-                    style_cmds.append(("TEXTCOLOR", (col_index, i), (col_index, i), _hex(cell_style["text"])))
+                    style_cmds.append(
+                        (
+                            "TEXTCOLOR",
+                            (col_index, i),
+                            (col_index, i),
+                            _hex(cell_style["text"]),
+                        )
+                    )
                     style_cmds.append(("FONTNAME", (col_index, i), (col_index, i), FONT_BOLD))
             else:
                 cell_style = _performance_style(float(r.get("mtd_pct_target") or 0))
@@ -1316,7 +1379,9 @@ def _build_sales_summary(
                 style_cmds.append(
                     ("BACKGROUND", (col_index, i), (col_index, i), _hex(cell_style["background"]))
                 )
-                style_cmds.append(("TEXTCOLOR", (col_index, i), (col_index, i), _hex(cell_style["text"])))
+                style_cmds.append(
+                    ("TEXTCOLOR", (col_index, i), (col_index, i), _hex(cell_style["text"]))
+                )
                 style_cmds.append(("FONTNAME", (col_index, i), (col_index, i), FONT_BOLD))
         elif label == "Forecast % of Target":
             pct_val = compute_forecast_metrics(r).get("forecast_target_pct")
@@ -2343,6 +2408,10 @@ def generate_whatsapp_text(
         ("Zomato", r.get("zomato_sales", 0)),
         ("Other", r.get("other_sales", 0)),
     ]
+    for label in _payment_method_labels(r):
+        amount = _payment_method_amount(r, label)
+        if amount > 0:
+            pay_items.append((label, amount))
     pay_lines = "\n".join(
         f"  \u2022 {lbl}: {config.CURRENCY_FORMAT.format(float(v or 0))} ({_pct_of(float(v or 0))})"
         for lbl, v in pay_items

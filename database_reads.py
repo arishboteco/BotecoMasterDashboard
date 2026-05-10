@@ -14,9 +14,11 @@ from db.category_rows import CATEGORY_ROW_PREFIX
 from db.table_names import (
     SQLITE_DAILY_SUMMARIES,
     SQLITE_ITEM_SALES,
+    SQLITE_PAYMENT_METHOD_SALES,
     SQLITE_SERVICE_SALES,
     SUPABASE_CATEGORY_SUMMARY,
     SUPABASE_DAILY_SUMMARY,
+    SUPABASE_PAYMENT_METHOD_SALES,
 )
 
 logger = boteco_logger.get_logger(__name__)
@@ -383,6 +385,45 @@ def _detail_lists_for_daily_summary(location_id: int, date: str) -> tuple[List[D
     return cats_out, svcs_out
 
 
+def _payment_methods_for_daily_summary(location_id: int, date: str) -> List[Dict]:
+    """Return normalized payment-method rows for one location/date."""
+    import database
+
+    if database.use_supabase():
+        supabase = database.get_supabase_client()
+        result = _execute_with_retry(
+            supabase.table(SUPABASE_PAYMENT_METHOD_SALES)
+            .select("payment_method,payment_key,amount")
+            .eq("location_id", location_id)
+            .eq("date", date)
+            .order("payment_key")
+        )
+        rows = result.data or []
+    else:
+        with database.db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"""
+                SELECT payment_method, payment_key, amount
+                FROM {SQLITE_PAYMENT_METHOD_SALES}
+                WHERE location_id = ? AND date = ?
+                ORDER BY payment_key
+                """,
+                (location_id, date),
+            )
+            rows = [dict(row) for row in cursor.fetchall()]
+
+    return [
+        {
+            "payment_method": str(row.get("payment_method") or ""),
+            "payment_key": str(row.get("payment_key") or ""),
+            "amount": float(row.get("amount") or 0),
+        }
+        for row in rows
+        if float(row.get("amount") or 0) != 0
+    ]
+
+
 def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
     """Get daily summary for a specific date."""
     import database
@@ -401,6 +442,7 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
                 cats, svcs = _detail_lists_for_daily_summary(location_id, date)
                 d["categories"] = cats
                 d["services"] = svcs
+                d["payment_methods"] = _payment_methods_for_daily_summary(location_id, date)
             except (ValueError, TypeError, KeyError, RuntimeError) as ex:
                 logger.warning(
                     "Detail list hydration failed in database_reads.py "
@@ -429,6 +471,7 @@ def get_daily_summary(location_id: int, date: str) -> Optional[Dict]:
             sid = int(d["id"])
             d["categories"] = _sqlite_categories_for_summary(conn, sid)
             d["services"] = _sqlite_services_for_summary(conn, sid)
+            d["payment_methods"] = _payment_methods_for_daily_summary(location_id, date)
             if not d["services"]:
                 try:
                     from database_analytics import get_service_sales_for_date_range

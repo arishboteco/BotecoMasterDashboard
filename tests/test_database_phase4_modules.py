@@ -51,6 +51,9 @@ def test_database_writes_module_saves_daily_summary(initialized_db):
         "gpay_sales": 300.0,
         "zomato_sales": 50.0,
         "other_sales": 50.0,
+        "payment_methods": [
+            {"payment_method": "Zomato", "payment_key": "zomato", "amount": 50.0}
+        ],
         "categories": [{"category": "Food", "qty": 2, "amount": 600.0}],
         "services": [{"type": "Dinner", "amount": 700.0}],
         "top_items": [{"item_name": "Fries", "qty": 3, "amount": 300.0}],
@@ -63,6 +66,9 @@ def test_database_writes_module_saves_daily_summary(initialized_db):
     assert fetched is not None
     assert fetched["net_total"] == 900.0
     assert len(fetched["categories"]) == 1
+    assert fetched["payment_methods"] == [
+        {"payment_method": "Zomato", "payment_key": "zomato", "amount": 50.0}
+    ]
 
 
 def test_phase7_performance_indexes_exist(initialized_db):
