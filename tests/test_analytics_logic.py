@@ -3,8 +3,14 @@
 from datetime import date, timedelta
 
 import pandas as pd
+import pytest
 
-from tabs.analytics_logic import build_daily_view_table, resolve_period_window
+from tabs.analytics_logic import (
+    build_daily_view_table,
+    build_zomato_economics,
+    classify_platform_cost_coverage,
+    resolve_period_window,
+)
 
 
 class TestResolvePeriodWindow:
@@ -144,3 +150,41 @@ class TestBuildDailyViewTable:
             pd.DataFrame(), pd.DataFrame(), multi_analytics=True
         )
         assert out.empty
+
+
+class TestZomatoEconomics:
+    def test_builds_platform_cost_coverage_metrics(self):
+        result = build_zomato_economics(
+            zomato_pay_sales=10_00_000,
+            fee_pct=5.9,
+            contribution_margin_pct=60,
+            incremental_sales=2_50_000,
+            target_coverage_ratio=1.5,
+        )
+
+        assert result["platform_cost"] == pytest.approx(59_000)
+        assert result["incremental_contribution"] == pytest.approx(1_50_000)
+        assert result["coverage_ratio"] == pytest.approx(2.542, abs=0.001)
+        assert result["break_even_incremental_sales"] == pytest.approx(98_333.33, abs=0.01)
+        assert result["target_incremental_sales"] == pytest.approx(1_47_500)
+
+    def test_zero_cost_returns_no_ratio_or_required_sales(self):
+        result = build_zomato_economics(
+            zomato_pay_sales=0,
+            fee_pct=5.9,
+            contribution_margin_pct=60,
+            incremental_sales=50_000,
+            target_coverage_ratio=1.5,
+        )
+
+        assert result["platform_cost"] == 0
+        assert result["coverage_ratio"] is None
+        assert result["break_even_incremental_sales"] == 0
+        assert result["target_incremental_sales"] == 0
+
+    def test_classifies_coverage_ratio_for_decision_copy(self):
+        assert classify_platform_cost_coverage(None)["label"] == "No Zomato cost"
+        assert classify_platform_cost_coverage(0.8)["label"] == "Losing money"
+        assert classify_platform_cost_coverage(1.2)["label"] == "Barely justified"
+        assert classify_platform_cost_coverage(2.0)["label"] == "Healthy"
+        assert classify_platform_cost_coverage(3.0)["label"] == "Strong channel"

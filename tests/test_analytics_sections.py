@@ -262,3 +262,72 @@ def test_weekly_covers_commentary_reports_increasing_trend():
     text = analytics_sections._weekly_covers_commentary(weekly_df)
 
     assert "increasing" in text
+
+
+def test_render_zomato_economics_uses_manual_inputs(monkeypatch):
+    markdown_calls = []
+    captions = []
+    metrics = []
+    dataframes = []
+
+    monkeypatch.setattr(
+        analytics_sections.st,
+        "markdown",
+        lambda body, *_a, **_k: markdown_calls.append(body),
+    )
+    monkeypatch.setattr(
+        analytics_sections.st,
+        "caption",
+        lambda body, *_a, **_k: captions.append(body),
+    )
+    monkeypatch.setattr(analytics_sections.st, "container", lambda *_a, **_k: _NoopContext())
+    monkeypatch.setattr(
+        analytics_sections.st,
+        "columns",
+        lambda *_a, **_k: (_NoopContext(), _NoopContext(), _NoopContext(), _NoopContext()),
+    )
+    monkeypatch.setattr(
+        analytics_sections.st,
+        "number_input",
+        lambda label, **_k: {
+            "Zomato fee %": 5.9,
+            "Contribution margin %": 60.0,
+            "Estimated incremental booking sales": 250000.0,
+            "Target coverage ratio": 1.5,
+        }[label],
+    )
+    monkeypatch.setattr(
+        analytics_sections,
+        "kpi_row",
+        lambda rows: metrics.extend(rows),
+    )
+    monkeypatch.setattr(
+        analytics_sections.st,
+        "dataframe",
+        lambda df, **_k: dataframes.append(df),
+    )
+    monkeypatch.setattr(analytics_sections.st, "success", lambda body: captions.append(body))
+    monkeypatch.setattr(analytics_sections.st, "warning", lambda body: captions.append(body))
+    monkeypatch.setattr(analytics_sections.st, "error", lambda body: captions.append(body))
+    monkeypatch.setattr(analytics_sections.st, "info", lambda body: captions.append(body))
+
+    analytics_sections.render_zomato_economics(zomato_pay_sales=12_00_000)
+
+    assert any("Zomato Economics" in call for call in markdown_calls)
+    assert any(metric.label == "Coverage Ratio" and metric.value == "2.12x" for metric in metrics)
+    assert any("Healthy channel" in caption for caption in captions)
+    assert dataframes
+
+
+def test_render_zomato_economics_handles_no_zomato_sales(monkeypatch):
+    captions = []
+    monkeypatch.setattr(analytics_sections.st, "markdown", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        analytics_sections.st,
+        "caption",
+        lambda body, *_a, **_k: captions.append(body),
+    )
+
+    analytics_sections.render_zomato_economics(zomato_pay_sales=0)
+
+    assert captions == ["No Zomato Pay sales in this period."]

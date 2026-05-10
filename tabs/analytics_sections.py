@@ -15,7 +15,11 @@ import scope
 import ui_theme
 import utils
 from components import KpiMetric, kpi_row
-from tabs.analytics_logic import build_daily_view_table
+from tabs.analytics_logic import (
+    build_daily_view_table,
+    build_zomato_economics,
+    classify_platform_cost_coverage,
+)
 from tabs.chart_builders import _hex_to_rgba, _period_supports_trend_analysis
 from tabs.forecasting import (
     calculate_forecast_days,
@@ -25,6 +29,11 @@ from tabs.forecasting import (
 
 _WEEKEND_DAYS = {"Friday", "Saturday", "Sunday"}
 _WEEKDAY_DAYS = {"Monday", "Tuesday", "Wednesday", "Thursday"}
+
+
+def _format_ratio(ratio: float | None) -> str:
+    """Format a multiplier ratio for KPI display."""
+    return "N/A" if ratio is None else f"{ratio:.2f}x"
 
 
 def _build_action_cards(
@@ -2020,3 +2029,131 @@ def render_payment_reconciliation(
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key="recon_excel_btn",
         )
+
+    zomato_pay_sales = float(
+        recon_df[
+            recon_df["provider"].astype(str).str.contains("zomato", case=False, na=False)
+        ]["gross_amount"].sum()
+    )
+    render_zomato_economics(zomato_pay_sales)
+
+
+def render_zomato_economics(zomato_pay_sales: float) -> None:
+    """Render manual Zomato Pay incrementality economics for the selected period."""
+    st.markdown("### Zomato Economics")
+    if zomato_pay_sales <= 0:
+        st.caption("No Zomato Pay sales in this period.")
+        return
+
+    st.caption(
+        "Manual decision model: compare estimated incremental booking contribution "
+        "against total Zomato Pay cost for this period."
+    )
+
+    with st.container(border=True):
+        input_cols = st.columns(4)
+        with input_cols[0]:
+            fee_pct = st.number_input(
+                "Zomato fee %",
+                min_value=0.0,
+                max_value=100.0,
+                value=5.9,
+                step=0.1,
+                key="zomato_fee_pct",
+            )
+        with input_cols[1]:
+            contribution_margin_pct = st.number_input(
+                "Contribution margin %",
+                min_value=0.0,
+                max_value=100.0,
+                value=60.0,
+                step=1.0,
+                key="zomato_contribution_margin_pct",
+            )
+        with input_cols[2]:
+            incremental_sales = st.number_input(
+                "Estimated incremental booking sales",
+                min_value=0.0,
+                value=float(zomato_pay_sales * 0.15),
+                step=10_000.0,
+                key="zomato_incremental_sales",
+            )
+        with input_cols[3]:
+            target_coverage_ratio = st.number_input(
+                "Target coverage ratio",
+                min_value=0.0,
+                value=1.5,
+                step=0.1,
+                key="zomato_target_coverage_ratio",
+            )
+
+        economics = build_zomato_economics(
+            zomato_pay_sales=zomato_pay_sales,
+            fee_pct=fee_pct,
+            contribution_margin_pct=contribution_margin_pct,
+            incremental_sales=incremental_sales,
+            target_coverage_ratio=target_coverage_ratio,
+        )
+        coverage = classify_platform_cost_coverage(economics["coverage_ratio"])
+
+        kpi_row(
+            [
+                KpiMetric(
+                    label="Zomato Pay Sales",
+                    value=utils.format_rupee_short(economics["zomato_pay_sales"] or 0),
+                ),
+                KpiMetric(
+                    label=f"Estimated Cost @ {fee_pct:.1f}%",
+                    value=utils.format_rupee_short(economics["platform_cost"] or 0),
+                ),
+                KpiMetric(
+                    label="Incremental Contribution",
+                    value=utils.format_rupee_short(economics["incremental_contribution"] or 0),
+                ),
+                KpiMetric(
+                    label="Coverage Ratio",
+                    value=_format_ratio(economics["coverage_ratio"]),
+                    delta=coverage["label"],
+                ),
+            ]
+        )
+
+        decision_label = "Healthy channel" if coverage["label"] == "Healthy" else coverage["label"]
+        decision_text = (
+            f"**{decision_label}**  \n"
+            f"{coverage['message']}  \n\n"
+            f"Break-even incremental sales: "
+            f"{utils.format_rupee_short(economics['break_even_incremental_sales'] or 0)}  \n"
+            f"Sales needed for {target_coverage_ratio:.1f}x target: "
+            f"{utils.format_rupee_short(economics['target_incremental_sales'] or 0)}  \n"
+            f"Current estimate: {utils.format_rupee_short(economics['incremental_sales'] or 0)}"
+        )
+        if coverage["severity"] == "success":
+            st.success(decision_text)
+        elif coverage["severity"] == "warning":
+            st.warning(decision_text)
+        elif coverage["severity"] == "error":
+            st.error(decision_text)
+        else:
+            st.info(decision_text)
+
+        sensitivity_rows = []
+        for pct in (5, 10, 15, 25):
+            assumed_sales = zomato_pay_sales * pct / 100
+            assumed = build_zomato_economics(
+                zomato_pay_sales=zomato_pay_sales,
+                fee_pct=fee_pct,
+                contribution_margin_pct=contribution_margin_pct,
+                incremental_sales=assumed_sales,
+                target_coverage_ratio=target_coverage_ratio,
+            )
+            assumed_coverage = classify_platform_cost_coverage(assumed["coverage_ratio"])
+            sensitivity_rows.append(
+                {
+                    "Incremental Assumption": f"{pct}% of Zomato Pay",
+                    "Incremental Sales": utils.format_rupee_short(assumed_sales),
+                    "Coverage Ratio": _format_ratio(assumed["coverage_ratio"]),
+                    "Decision": assumed_coverage["label"],
+                }
+            )
+        st.dataframe(pd.DataFrame(sensitivity_rows), width="stretch", hide_index=True)
