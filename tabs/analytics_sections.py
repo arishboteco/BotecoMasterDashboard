@@ -350,6 +350,56 @@ def _render_weekpart_insight(insight: dict[str, object]) -> None:
         st.caption(str(caution))
 
 
+def _build_weekly_weekend_lift(driver_df: pd.DataFrame) -> pd.DataFrame:
+    work = driver_df.copy()
+    work["date"] = pd.to_datetime(work["date"], errors="coerce")
+    work["covers"] = pd.to_numeric(work["covers"], errors="coerce").fillna(0.0)
+    work = work[work["date"].notna()].copy()
+    if work.empty:
+        return pd.DataFrame()
+
+    work["weekday_name"] = work["date"].dt.day_name()
+    work["week_start"] = work["date"] - pd.to_timedelta(work["date"].dt.weekday, unit="D")
+
+    rows: list[dict[str, object]] = []
+    for week_start, wk in work.groupby("week_start"):
+        weekday = wk[wk["weekday_name"].isin(_WEEKDAY_DAYS)]
+        weekend = wk[wk["weekday_name"].isin(_WEEKEND_DAYS)]
+        if weekday.empty or weekend.empty:
+            continue
+        weekday_avg = float(weekday["covers"].mean())
+        weekend_avg = float(weekend["covers"].mean())
+        if weekday_avg <= 0:
+            continue
+        lift_pct = ((weekend_avg / weekday_avg) - 1.0) * 100.0
+        rows.append(
+            {
+                "week_start": week_start,
+                "weekday_avg": weekday_avg,
+                "weekend_avg": weekend_avg,
+                "lift_pct": lift_pct,
+            }
+        )
+
+    if not rows:
+        return pd.DataFrame()
+    out = pd.DataFrame(rows).sort_values("week_start").reset_index(drop=True)
+    return out
+
+
+def _weekly_lift_commentary(lift_df: pd.DataFrame) -> str:
+    if lift_df.empty or len(lift_df) < 2:
+        return "Need at least 2 full weeks to comment on weekend lift trend."
+    recent = float(lift_df.iloc[-1]["lift_pct"])
+    prior = float(lift_df.iloc[-2]["lift_pct"])
+    delta = recent - prior
+    if delta >= 3:
+        return f"Weekend lift is improving week-over-week (+{delta:.1f} pts)."
+    if delta <= -3:
+        return f"Weekend lift is softening week-over-week ({delta:.1f} pts)."
+    return "Weekend lift is broadly stable week-over-week."
+
+
 def render_forecast_command_center(
     df: pd.DataFrame,
     prior_df: pd.DataFrame,
@@ -579,19 +629,65 @@ def render_driver_analysis(
                     mode="lines+markers",
                     name="Covers",
                     line=dict(color=ui_theme.BRAND_SUCCESS, width=2),
-                    marker=dict(size=4),
-                    hovertemplate="%{y:,.0f} covers<br>%{x|%d %b}<extra></extra>",
+                    marker=dict(size=3),
+                    opacity=0.75,
+                    hovertemplate="%{y:,.0f} covers<br>%{x|%a, %d %b}<extra></extra>",
                 )
             )
+            covers_values = driver_df["covers"].tolist()
+            if len(covers_values) >= 7:
+                ma_values = moving_average(covers_values, window=7)
+                ma_series = pd.Series(ma_values)
+                ma_valid = ma_series[pd.notna(ma_series)]
+                if not ma_valid.empty:
+                    fig_covers.add_trace(
+                        go.Scatter(
+                            x=pd.to_datetime(driver_df["date"])[pd.notna(ma_series)],
+                            y=ma_valid.tolist(),
+                            mode="lines",
+                            name="7-day Avg",
+                            line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
+                            hovertemplate=(
+                                "%{y:,.0f} covers (7-day avg)<br>"
+                                "%{x|%a, %d %b}<extra></extra>"
+                            ),
+                        )
+                    )
             fig_covers.update_layout(
                 xaxis_title="Date",
                 yaxis_title="Covers",
                 height=320,
                 hovermode="x unified",
+                xaxis=dict(tickformat="%a %d %b"),
             )
             st.plotly_chart(fig_covers, width="stretch")
             insight = _build_weekpart_insight(driver_df[["date", "covers"]])
             _render_weekpart_insight(insight)
+
+            lift_df = _build_weekly_weekend_lift(driver_df[["date", "covers"]])
+            if lift_df.empty:
+                st.caption("Need full Mon-Thu and Fri-Sun coverage to compute weekly lift.")
+            else:
+                fig_lift = go.Figure(
+                    go.Scatter(
+                        x=lift_df["week_start"],
+                        y=lift_df["lift_pct"],
+                        mode="lines+markers",
+                        name="Weekend Lift %",
+                        line=dict(color=ui_theme.BRAND_WARN, width=2),
+                        marker=dict(size=4),
+                        hovertemplate="Week of %{x|%d %b}: %{y:+.1f}%<extra></extra>",
+                    )
+                )
+                fig_lift.update_layout(
+                    xaxis_title="Week Start",
+                    yaxis_title="Weekend Lift %",
+                    height=220,
+                    margin=dict(l=0, r=0, t=8, b=0),
+                    xaxis=dict(tickformat="%a %d %b"),
+                )
+                st.plotly_chart(fig_lift, width="stretch")
+                st.caption(_weekly_lift_commentary(lift_df))
 
     with apc_col:
         with st.container(border=True):

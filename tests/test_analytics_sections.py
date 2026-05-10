@@ -186,3 +186,42 @@ def test_render_driver_analysis_renders_covers_as_line(monkeypatch):
     covers_fig = captured[0]
     assert covers_fig.data[0].type == "scatter"
     assert covers_fig.data[0].mode == "lines+markers"
+
+
+def test_build_weekly_weekend_lift_returns_week_rows():
+    df = pd.DataFrame(
+        [
+            {"date": "2026-05-04", "covers": 50},
+            {"date": "2026-05-05", "covers": 60},
+            {"date": "2026-05-06", "covers": 70},
+            {"date": "2026-05-07", "covers": 80},
+            {"date": "2026-05-08", "covers": 100},
+            {"date": "2026-05-09", "covers": 110},
+            {"date": "2026-05-10", "covers": 120},
+            {"date": "2026-05-11", "covers": 55},
+            {"date": "2026-05-12", "covers": 65},
+            {"date": "2026-05-13", "covers": 75},
+            {"date": "2026-05-14", "covers": 85},
+            {"date": "2026-05-15", "covers": 95},
+            {"date": "2026-05-16", "covers": 105},
+            {"date": "2026-05-17", "covers": 115},
+        ]
+    )
+
+    out = analytics_sections._build_weekly_weekend_lift(df)
+
+    assert len(out) == 2
+    assert "lift_pct" in out.columns
+
+
+def test_weekly_lift_commentary_uses_period_over_period_signal():
+    lift_df = pd.DataFrame(
+        [
+            {"week_start": pd.Timestamp("2026-05-04"), "lift_pct": 30.0},
+            {"week_start": pd.Timestamp("2026-05-11"), "lift_pct": 38.5},
+        ]
+    )
+
+    text = analytics_sections._weekly_lift_commentary(lift_df)
+
+    assert "improving" in text
