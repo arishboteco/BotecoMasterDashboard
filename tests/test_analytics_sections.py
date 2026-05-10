@@ -225,3 +225,40 @@ def test_weekly_lift_commentary_uses_period_over_period_signal():
     text = analytics_sections._weekly_lift_commentary(lift_df)
 
     assert "improving" in text
+
+
+def test_build_weekly_covers_trend_returns_avg_daily_series():
+    df = pd.DataFrame(
+        [
+            {"date": "2026-05-04", "covers": 70},
+            {"date": "2026-05-05", "covers": 80},
+            {"date": "2026-05-06", "covers": 90},
+            {"date": "2026-05-12", "covers": 100},
+            {"date": "2026-05-13", "covers": 110},
+        ]
+    )
+
+    out = analytics_sections._build_weekly_covers_trend(df)
+
+    assert len(out) == 2
+    assert "avg_daily_covers" in out.columns
+    assert "days_count" in out.columns
+
+
+def test_weekly_covers_commentary_reports_increasing_trend():
+    weekly_df = pd.DataFrame(
+        [
+            {
+                "week_start": pd.Timestamp("2026-05-04"),
+                "avg_daily_covers": 80.0,
+            },
+            {
+                "week_start": pd.Timestamp("2026-05-11"),
+                "avg_daily_covers": 92.0,
+            },
+        ]
+    )
+
+    text = analytics_sections._weekly_covers_commentary(weekly_df)
+
+    assert "increasing" in text
