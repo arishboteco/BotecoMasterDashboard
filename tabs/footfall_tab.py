@@ -14,7 +14,6 @@ import streamlit as st
 
 from components import (
     classed_container,
-    filter_strip,
     info_banner,
     page_shell,
     section_title,
@@ -218,138 +217,154 @@ def render(ctx: TabContext) -> None:
     today = date_cls.today()
     month_start = today.replace(day=1)
 
+    outlet_names = [loc["name"] for loc in visible_locs]
+    outlet_id_by_name = {loc["name"]: int(loc["id"]) for loc in visible_locs}
+    default_id = _default_outlet_id(ctx)
+    default_name = next(
+        (loc["name"] for loc in visible_locs if int(loc["id"]) == default_id),
+        outlet_names[0],
+    )
+
     with shell.filters:
         with classed_container(
             "tab-footfall-mobile-filters",
             "mobile-layout-stack",
             "mobile-layout-filters",
         ):
-            filter_strip(
-                "Footfall overrides",
-                "Select a date range and outlet, then edit Lunch/Dinner covers inline.",
-                icon="tune",
-            )
-
-            outlet_options = {int(loc["id"]): loc["name"] for loc in visible_locs}
-            default_id = _default_outlet_id(ctx)
-            option_ids = list(outlet_options.keys())
-            try:
-                default_index = option_ids.index(default_id) if default_id is not None else 0
-            except ValueError:
-                default_index = 0
-
-            f1, f2, f3 = st.columns([1, 1, 2])
-            with f1:
-                start_date = st.date_input("From", value=month_start, key="footfall_start_date")
-            with f2:
-                end_date = st.date_input("To", value=today, key="footfall_end_date")
-            with f3:
-                selected_outlet_id = st.selectbox(
-                    "Outlet",
-                    options=option_ids,
-                    index=default_index,
-                    format_func=lambda i: outlet_options[i],
-                    key="footfall_override_outlet",
+            date_col, outlet_col, mode_col = st.columns([1, 1, 1], gap="small")
+            with date_col:
+                date_range = st.date_input(
+                    "Date range",
+                    value=(month_start, today),
+                    key="footfall_date_range",
+                    label_visibility="collapsed",
+                    format="DD-MM-YYYY",
                 )
+            with outlet_col:
+                selected_outlet_name = st.pills(
+                    "Outlet",
+                    options=outlet_names,
+                    default=default_name,
+                    key="footfall_outlet_selector",
+                    label_visibility="collapsed",
+                ) or default_name
+            with mode_col:
+                mode = st.segmented_control(
+                    "Mode",
+                    options=["Edit covers", "Bulk paste"],
+                    default="Edit covers",
+                    key="footfall_mode",
+                    label_visibility="collapsed",
+                ) or "Edit covers"
+
+    if isinstance(date_range, (list, tuple)):
+        if len(date_range) == 2:
+            start_date, end_date = date_range[0], date_range[1]
+        else:
+            start_date = end_date = date_range[0]
+    else:
+        start_date = end_date = date_range or today
 
     if start_date > end_date:
         with shell.content:
             st.warning("'From' date must be before 'To' date.")
         return
 
+    selected_outlet_id = outlet_id_by_name[selected_outlet_name]
     start_str = start_date.strftime("%Y-%m-%d")
     end_str = end_date.strftime("%Y-%m-%d")
-    loc_name = outlet_options[selected_outlet_id]
+    loc_name = selected_outlet_name
     edited_by = str(st.session_state.get("username") or "")
 
     with shell.content:
-        section_title("Footfall covers", icon="people")
-        st.caption(
-            "Rows marked **✓ Set** already have an override saved. "
-            "Rows marked **○ Not set** will use POS-derived values. "
-            "Leave Lunch or Dinner blank to keep using the POS value for that service."
-        )
-
         st.divider()
-        st.subheader("Bulk paste overrides")
-        st.caption(
-            "Paste rows with Date, Service, Covers (Brand optional). "
-            "Selected outlet is used for all rows; existing override dates are skipped."
-        )
-        bulk_text = st.text_area(
-            "Paste table rows",
-            key="footfall_bulk_paste_text",
-            height=220,
-            help="Supports tab-delimited paste from Google Sheets/Excel and CSV text.",
-        )
 
-        parsed_key = "footfall_bulk_parsed"
-        invalid_key = "footfall_bulk_invalid"
-        grouped_key = "footfall_bulk_grouped"
+        if mode == "Edit covers":
+            section_title("Footfall covers", icon="people")
+            st.caption(
+                "Rows marked **✓ Set** already have an override saved. "
+                "Rows marked **○ Not set** will use POS-derived values. "
+                "Leave Lunch or Dinner blank to keep using the POS value for that service."
+            )
 
-        if st.button("Preview parsed rows", key="footfall_bulk_preview"):
-            parse_result = _parse_bulk_footfall_text(bulk_text)
-            if not parse_result.required_headers_present:
-                st.session_state[parsed_key] = []
-                st.session_state[invalid_key] = [
-                    {"row": "-", "reason": msg} for msg in parse_result.errors
-                ]
-                st.session_state[grouped_key] = []
-            else:
-                normalized, invalid_rows = _normalize_bulk_rows(parse_result.rows)
-                grouped_rows = _group_bulk_rows_by_date(normalized)
-                st.session_state[parsed_key] = normalized
-                st.session_state[invalid_key] = invalid_rows
-                st.session_state[grouped_key] = grouped_rows
+            dates = fetch_dates_with_data(int(selected_outlet_id), start_str, end_str)
 
-        grouped_rows = list(st.session_state.get(grouped_key, []))
-        invalid_rows = list(st.session_state.get(invalid_key, []))
+            if not dates:
+                info_banner(
+                    f"No imported data found for **{loc_name}** between {start_str} and {end_str}. "
+                    "Upload a Growth Report first, then return here to enter footfall.",
+                    tone="neutral",
+                    icon="info",
+                )
+                return
 
-        if invalid_rows:
-            st.warning(f"{len(invalid_rows)} row(s) are invalid.")
-            st.dataframe(pd.DataFrame(invalid_rows), use_container_width=True, hide_index=True)
-
-        if grouped_rows:
-            st.caption(f"Preview: {len(grouped_rows)} date row(s) ready to apply.")
-            st.dataframe(pd.DataFrame(grouped_rows), use_container_width=True, hide_index=True)
-
-        if st.button(
-            "Apply bulk upload",
-            key="footfall_bulk_apply",
-            disabled=not bool(grouped_rows),
-            type="primary",
-        ):
-            summary = _apply_bulk_overrides(
+            changed = render_footfall_editor(
                 location_id=int(selected_outlet_id),
+                dates=dates,
+                loc_name=loc_name,
                 edited_by=edited_by,
-                grouped_rows=grouped_rows,
+                key_prefix="footfall_tab_",
             )
-            st.success(
-                f"Created {summary['created']} override(s). "
-                f"Skipped {summary['skipped_existing']} existing date(s)."
-            )
-            if summary["created"] > 0:
+            if changed:
                 st.rerun()
 
-        st.divider()
-
-        dates = fetch_dates_with_data(int(selected_outlet_id), start_str, end_str)
-
-        if not dates:
-            info_banner(
-                f"No imported data found for **{loc_name}** between {start_str} and {end_str}. "
-                "Upload a Growth Report first, then return here to enter footfall.",
-                tone="neutral",
-                icon="info",
+        else:
+            section_title("Bulk paste overrides", icon="content_paste")
+            st.caption(
+                "Paste rows with Date, Service, Covers (Brand optional). "
+                "Selected outlet is used for all rows; existing override dates are skipped."
             )
-            return
+            bulk_text = st.text_area(
+                "Paste table rows",
+                key="footfall_bulk_paste_text",
+                height=220,
+                help="Supports tab-delimited paste from Google Sheets/Excel and CSV text.",
+            )
 
-        changed = render_footfall_editor(
-            location_id=int(selected_outlet_id),
-            dates=dates,
-            loc_name=loc_name,
-            edited_by=edited_by,
-            key_prefix="footfall_tab_",
-        )
-        if changed:
-            st.rerun()
+            parsed_key = "footfall_bulk_parsed"
+            invalid_key = "footfall_bulk_invalid"
+            grouped_key = "footfall_bulk_grouped"
+
+            if st.button("Preview parsed rows", key="footfall_bulk_preview"):
+                parse_result = _parse_bulk_footfall_text(bulk_text)
+                if not parse_result.required_headers_present:
+                    st.session_state[parsed_key] = []
+                    st.session_state[invalid_key] = [
+                        {"row": "-", "reason": msg} for msg in parse_result.errors
+                    ]
+                    st.session_state[grouped_key] = []
+                else:
+                    normalized, invalid_rows = _normalize_bulk_rows(parse_result.rows)
+                    grouped_rows = _group_bulk_rows_by_date(normalized)
+                    st.session_state[parsed_key] = normalized
+                    st.session_state[invalid_key] = invalid_rows
+                    st.session_state[grouped_key] = grouped_rows
+
+            grouped_rows = list(st.session_state.get(grouped_key, []))
+            invalid_rows = list(st.session_state.get(invalid_key, []))
+
+            if invalid_rows:
+                st.warning(f"{len(invalid_rows)} row(s) are invalid.")
+                st.dataframe(pd.DataFrame(invalid_rows), use_container_width=True, hide_index=True)
+
+            if grouped_rows:
+                st.caption(f"Preview: {len(grouped_rows)} date row(s) ready to apply.")
+                st.dataframe(pd.DataFrame(grouped_rows), use_container_width=True, hide_index=True)
+
+            if st.button(
+                "Apply bulk upload",
+                key="footfall_bulk_apply",
+                disabled=not bool(grouped_rows),
+                type="primary",
+            ):
+                summary = _apply_bulk_overrides(
+                    location_id=int(selected_outlet_id),
+                    edited_by=edited_by,
+                    grouped_rows=grouped_rows,
+                )
+                st.success(
+                    f"Created {summary['created']} override(s). "
+                    f"Skipped {summary['skipped_existing']} existing date(s)."
+                )
+                if summary["created"] > 0:
+                    st.rerun()

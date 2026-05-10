@@ -231,6 +231,12 @@ def render(ctx: TabContext) -> None:
 
     # If we're in the post-import footfall step, render that and stop.
     if st.session_state.get("_post_import_state"):
+        with shell.filters:
+            workflow_progress(
+                total_steps=3,
+                current_step=3,
+                stage_label="Upload progress",
+            )
         _render_post_import_footfall(shell, ctx)
         with shell.footer_actions:
             _render_import_history(ctx)

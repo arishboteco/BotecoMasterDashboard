@@ -262,13 +262,6 @@ VISUAL_POLISH = r"""    /* ── Final visual polish layer ──────�
     .analytics-filter-compact [data-testid="stRadio"] {
         margin-bottom: 0 !important;
     }
-    .analytics-filter-compact [role="radiogroup"] {
-        gap: 0.85rem !important;
-        align-items: center !important;
-    }
-    .analytics-filter-compact .stRadio > label {
-        display: none !important;
-    }
     .context-band.context-band--muted {
         padding: 0.75rem 1rem !important;
         margin: 0.25rem 0 0.75rem !important;

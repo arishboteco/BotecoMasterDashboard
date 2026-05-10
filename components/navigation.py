@@ -7,18 +7,33 @@ from datetime import date, datetime, timedelta
 import streamlit as st
 
 
-def _sync_session_date_from_picker(session_key: str, picker_key: str) -> None:
+def sync_date_from_picker(session_key: str, picker_key: str) -> None:
     """Sync canonical session date from the date_input widget state."""
     if picker_key not in st.session_state:
         return
     st.session_state[session_key] = st.session_state[picker_key]
 
 
-def _shift_session_date(session_key: str, picker_key: str, days: int) -> None:
+def shift_date(session_key: str, picker_key: str, days: int) -> None:
     """Move the selected date by the given number of days."""
     next_date = st.session_state[session_key] + timedelta(days=days)
     st.session_state[session_key] = next_date
     st.session_state[picker_key] = next_date
+
+
+def init_date_state(session_key: str) -> str:
+    """Ensure session state is initialised; return the picker key."""
+    picker_key = f"{session_key}_picker"
+    if session_key not in st.session_state:
+        st.session_state[session_key] = datetime.now().date()
+    if picker_key not in st.session_state:
+        st.session_state[picker_key] = st.session_state[session_key]
+    return picker_key
+
+
+# Keep private aliases so existing internal callers still work.
+_sync_session_date_from_picker = sync_date_from_picker
+_shift_session_date = shift_date
 
 
 def date_nav(
@@ -27,20 +42,14 @@ def date_nav(
     help_text: str | None = None,
 ) -> date:
     """Render date navigation as a single responsive control row."""
-    picker_key = f"{session_key}_picker"
-
-    if session_key not in st.session_state:
-        st.session_state[session_key] = datetime.now().date()
-    if picker_key not in st.session_state:
-        st.session_state[picker_key] = st.session_state[session_key]
-
-    prev_col, date_col, next_col = st.columns([0.55, 2.9, 0.55])
+    picker_key = init_date_state(session_key)
+    prev_col, date_col, next_col = st.columns([0.55, 1.5, 0.55])
     with prev_col:
         st.button(
             "\u2190",
             key=f"{session_key}_prev",
             width=44,
-            on_click=_shift_session_date,
+            on_click=shift_date,
             args=(session_key, picker_key, -1),
         )
     with next_col:
@@ -48,7 +57,7 @@ def date_nav(
             "\u2192",
             key=f"{session_key}_next",
             width=44,
-            on_click=_shift_session_date,
+            on_click=shift_date,
             args=(session_key, picker_key, 1),
         )
     with date_col:
@@ -56,13 +65,11 @@ def date_nav(
             label,
             key=picker_key,
             help=help_text,
-            format="YYYY-MM-DD",
+            format="DD-MM-YYYY",
             label_visibility="collapsed",
-            width="stretch",
-            on_change=_sync_session_date_from_picker,
+            on_change=sync_date_from_picker,
             args=(session_key, picker_key),
         )
-
     return st.session_state[session_key]
 
 
@@ -85,13 +92,13 @@ def date_range_nav(
         start_date = st.date_input(
             label_start,
             key=session_key_start,
-            format="YYYY-MM-DD",
+            format="DD-MM-YYYY",
         )
     with col_end:
         end_date = st.date_input(
             label_end,
             key=session_key_end,
-            format="YYYY-MM-DD",
+            format="DD-MM-YYYY",
         )
 
     if start_date > end_date:

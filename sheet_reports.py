@@ -107,15 +107,15 @@ GAP_BELOW_BANNER = 6
 GAP_ABOVE_SECTION_LABEL = 6
 GAP_ABOVE_SUBSECTION = 8
 
-FONT_SIZE_ROW = 11
-FONT_SIZE_HEADER = 11
-FONT_SIZE_BANNER_TITLE = 12
-FONT_SIZE_BANNER_SUB = 10
-FONT_SIZE_BANNER_TITLE_SUMMARY = 13
-FONT_SIZE_BANNER_SUB_SUMMARY = 11
-FONT_SIZE_SECTION_LABEL = 10
-FONT_SIZE_KPI_LABEL = 10
-FONT_SIZE_KPI_VALUE = 18
+FONT_SIZE_ROW = 13
+FONT_SIZE_HEADER = 13
+FONT_SIZE_BANNER_TITLE = 14
+FONT_SIZE_BANNER_SUB = 12
+FONT_SIZE_BANNER_TITLE_SUMMARY = 15
+FONT_SIZE_BANNER_SUB_SUMMARY = 13
+FONT_SIZE_SECTION_LABEL = 12
+FONT_SIZE_KPI_LABEL = 12
+FONT_SIZE_KPI_VALUE = 20
 
 
 def _hex(hx: str) -> colors.HexColor:
@@ -827,7 +827,7 @@ def _sales_summary_eod_prefix_rows(
         name="EODSalesKpiBadge",
         fontName=FONT_BOLD,
         fontSize=FONT_SIZE_BANNER_TITLE,
-        textColor=_hex(ach_color),
+        textColor=_hex(C_WHITE),
         alignment=TA_RIGHT,
         leading=FONT_SIZE_BANNER_TITLE + 1,
     )
@@ -845,7 +845,7 @@ def _sales_summary_eod_prefix_rows(
     kpi_box.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (0, 0), _hex(C_BANNER)),
+                ("BACKGROUND", (0, 0), (0, 0), _hex(ach_color)),
                 ("BOX", (0, 0), (0, 0), 0.6, _hex(C_WHITE)),
                 ("TOPPADDING", (0, 0), (0, 0), 2),
                 ("BOTTOMPADDING", (0, 0), (0, 0), 2),
@@ -881,6 +881,38 @@ def _sales_summary_eod_prefix_rows(
         [title_para] + empty_tail,
         [nested] + empty_tail,
     ]
+
+
+def _auto_col_widths(
+    data_rows: List[List[str]],
+    avail_w: float,
+    cell_pad: float = CELL_PAD_LEFT + CELL_PAD_RIGHT,
+    min_label_frac: float = 0.32,
+) -> List[float]:
+    """Size each data column (cols 1+) to its widest cell; label col gets the rest."""
+    if not data_rows or not data_rows[0]:
+        return []
+    n_cols = len(data_rows[0])
+    n_rows = len(data_rows)
+    data_col_widths = []
+    for ci in range(1, n_cols):
+        max_w = 0.0
+        for ri, row in enumerate(data_rows):
+            if ci >= len(row):
+                continue
+            s = str(row[ci])
+            font = FONT_BOLD if ri == 0 or ri == n_rows - 1 else FONT_NAME
+            w = pdfmetrics.stringWidth(s, font, FONT_SIZE_ROW)
+            max_w = max(max_w, w)
+        data_col_widths.append(max_w + cell_pad)
+    total_data_w = sum(data_col_widths)
+    min_label_w = avail_w * min_label_frac
+    label_w = avail_w - total_data_w
+    if label_w < min_label_w:
+        scale = (avail_w - min_label_w) / total_data_w
+        data_col_widths = [w * scale for w in data_col_widths]
+        label_w = min_label_w
+    return [label_w] + data_col_widths
 
 
 def _section_table_prefix_rows(
@@ -1374,28 +1406,7 @@ def _build_category(
         if k not in cat_order:
             cat_order.append(k)
 
-    if multi:
-        # Content-aware weighted widths to avoid clipping in Combined/MTD totals.
-        label_w = avail_w * 0.41
-        remaining = avail_w - label_w
-        outlet_count = len(per_outlet)
-        base_weights = [1.0] * outlet_count + [1.15, 1.45]  # combined, mtd
-        weight_sum = sum(base_weights)
-        data_widths = [remaining * (w / weight_sum) for w in base_weights]
-        col_w = [label_w] + data_widths
-    else:
-        col_w = [avail_w * 0.60, avail_w * 0.20, avail_w * 0.20]
-
-    elements = []
-    HEADER_ROW = 2
-    FIRST_BODY_ROW = 3
-    prefix = _section_table_prefix_rows(
-        col_w,
-        f"Category Sales \u2014 {location_name[:28]}",
-        day_lbl,
-        style_tag="CatSec",
-    )
-
+    # Build data rows first so column widths can be measured from actual content.
     headers = (
         ["Category", "Daily", "MTD"]
         if not multi
@@ -1435,6 +1446,18 @@ def _build_category(
     else:
         tot_cells = ["Total", _r(daily_total), _r(mtd_total)]
     rows.append(tot_cells)
+
+    col_w = _auto_col_widths(rows, avail_w)
+
+    elements = []
+    HEADER_ROW = 2
+    FIRST_BODY_ROW = 3
+    prefix = _section_table_prefix_rows(
+        col_w,
+        f"Category Sales — {location_name[:28]}",
+        day_lbl,
+        style_tag="CatSec",
+    )
 
     all_rows = prefix + rows
     total_row_idx = len(all_rows) - 1
@@ -1503,26 +1526,16 @@ def _build_service(
         if k not in svc_order:
             svc_order.append(k)
 
-    if multi:
-        # Content-aware weighted widths to avoid clipping in Combined/MTD totals.
-        label_w = avail_w * 0.41
-        remaining = avail_w - label_w
-        outlet_count = len(per_outlet)
-        base_weights = [1.0] * outlet_count + [1.15, 1.45]  # combined, mtd
-        weight_sum = sum(base_weights)
-        data_widths = [remaining * (w / weight_sum) for w in base_weights]
-        col_w = [label_w] + data_widths
-    else:
-        col_w = [avail_w * 0.60, avail_w * 0.20, avail_w * 0.20]
-
     elements = []
     title_svc = f"Service Sales \u2014 {location_name[:28]}"
     HEADER_ROW = 2
     FIRST_BODY_ROW = 3
 
     if not svc_order:
+        n_data_cols = (len(per_outlet) + 2) if multi else 2
+        n_cols = 1 + n_data_cols
+        col_w = [avail_w * 0.40] + [(avail_w * 0.60) / n_data_cols] * n_data_cols
         prefix = _section_table_prefix_rows(col_w, title_svc, day_lbl, style_tag="SvcSec")
-        n_cols = len(col_w)
         empty_tail = [""] * (n_cols - 1)
         sty_msg = ParagraphStyle(
             name="SvcSecEmptyMsg",
@@ -1561,8 +1574,7 @@ def _build_service(
         elements.append(tbl)
         return elements
 
-    prefix = _section_table_prefix_rows(col_w, title_svc, day_lbl, style_tag="SvcSec")
-
+    # Build data rows first so column widths can be measured from actual content.
     headers = (
         ["Service", "Daily", "MTD"]
         if not multi
@@ -1601,6 +1613,9 @@ def _build_service(
     else:
         tot_cells = ["Total", _r(daily_total), _r(mtd_total)]
     rows.append(tot_cells)
+
+    col_w = _auto_col_widths(rows, avail_w)
+    prefix = _section_table_prefix_rows(col_w, title_svc, day_lbl, style_tag="SvcSec")
 
     all_rows = prefix + rows
     total_row_idx = len(all_rows) - 1

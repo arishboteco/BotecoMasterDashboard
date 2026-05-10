@@ -16,10 +16,10 @@ import utils
 from components import (
     classed_container,
     date_nav,
-    filter_strip,
     info_banner,
     page_shell,
 )
+from components.navigation import init_date_state, shift_date, sync_date_from_picker
 from components.feedback import empty_state
 from services import report_service
 from tabs import TabContext
@@ -62,11 +62,54 @@ def render(ctx: TabContext) -> None:
             "mobile-layout-filters",
             "report-filter-shell",
         ):
-            filter_strip("Report context", icon="tune")
-            selected_date = date_nav(
-                session_key="report_date",
-                label="Report date",
-            )
+            _is_multi_outlet = len(ctx.report_loc_ids) > 1
+            if _is_multi_outlet and ctx.all_locs:
+                _report_loc_id_set = set(ctx.report_loc_ids)
+                _outlet_options = ["All outlets"] + [
+                    loc["name"]
+                    for loc in ctx.all_locs
+                    if loc["id"] in _report_loc_id_set
+                ]
+                _picker_key = init_date_state("report_date")
+                _prev_col, _date_col, _next_col, _outlet_col = st.columns(
+                    [0.3, 1.2, 0.3, 4], vertical_alignment="center"
+                )
+                with _prev_col:
+                    st.button(
+                        "←",
+                        key="report_date_prev",
+                        width=44,
+                        on_click=shift_date,
+                        args=("report_date", _picker_key, -1),
+                    )
+                with _date_col:
+                    st.date_input(
+                        "Report date",
+                        key=_picker_key,
+                        format="DD-MM-YYYY",
+                        label_visibility="collapsed",
+                        on_change=sync_date_from_picker,
+                        args=("report_date", _picker_key),
+                    )
+                with _next_col:
+                    st.button(
+                        "→",
+                        key="report_date_next",
+                        width=44,
+                        on_click=shift_date,
+                        args=("report_date", _picker_key, 1),
+                    )
+                with _outlet_col:
+                    st.segmented_control(
+                        "Select outlet",
+                        options=_outlet_options,
+                        default=_outlet_options[0],
+                        key="png_outlet_selector",
+                        label_visibility="collapsed",
+                    )
+                selected_date = st.session_state["report_date"]
+            else:
+                selected_date = date_nav(session_key="report_date", label="Report date")
 
     date_str = selected_date.strftime("%Y-%m-%d")
     outlets_bundle, summary = report_service.load_report_bundle_cached(ctx.report_loc_ids, date_str)
@@ -150,14 +193,7 @@ def render(ctx: TabContext) -> None:
                 return items
 
             if multi_outlet and outlets_bundle:
-                _outlet_options = ["All outlets"] + [name for _i, name, _ in outlets_bundle]
-                _selected_outlet = st.radio(
-                    "Select outlet for PNG report",
-                    options=_outlet_options,
-                    horizontal=True,
-                    key="png_outlet_selector",
-                    label_visibility="collapsed",
-                )
+                _selected_outlet = st.session_state.get("png_outlet_selector") or "All outlets"
 
                 if _selected_outlet != "All outlets":
                     _selected_lid = None
