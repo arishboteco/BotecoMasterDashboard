@@ -23,7 +23,7 @@ def test_build_mtd_maps_caps_to_selected_date(monkeypatch):
 
     monkeypatch.setattr(
         report_service.database,
-        "get_category_sales_for_date_range",
+        "get_category_sales_grouped_for_date_range",
         _fake_cat,
     )
     monkeypatch.setattr(
@@ -43,7 +43,7 @@ def test_build_mtd_maps_caps_to_selected_date(monkeypatch):
 def test_build_mtd_maps_accepts_total_keys(monkeypatch):
     monkeypatch.setattr(
         report_service.database,
-        "get_category_sales_for_date_range",
+        "get_category_sales_grouped_for_date_range",
         lambda *_args, **_kwargs: [{"category": "Food", "total": 500.0}],
     )
     monkeypatch.setattr(
@@ -92,3 +92,15 @@ def test_get_foot_rows_cached_selects_multi_and_caches(monkeypatch):
 
     assert first == second
     assert calls["multi"] == 1
+
+
+def test_clear_report_cache_clears_all_report_cache_stores():
+    report_service._REPORT_CACHE[("report",)] = "stale-report"
+    report_service._MTD_CACHE[("mtd",)] = "stale-mtd"
+    report_service._FOOT_CACHE[("foot",)] = "stale-foot"
+
+    report_service.clear_report_cache()
+
+    assert report_service._REPORT_CACHE == {}
+    assert report_service._MTD_CACHE == {}
+    assert report_service._FOOT_CACHE == {}

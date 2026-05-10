@@ -14,8 +14,10 @@ _FOOT_CACHE: dict = cache_manager.register("foot")
 
 
 def clear_report_cache() -> None:
-    """Clear cached daily report bundle entries."""
+    """Clear cached daily report, MTD, and footfall data."""
     cache_manager.invalidate("report")
+    cache_manager.invalidate("mtd")
+    cache_manager.invalidate("foot")
 
 
 def load_report_bundle_cached(location_ids: List[int], date_str: str):

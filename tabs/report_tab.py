@@ -19,8 +19,8 @@ from components import (
     info_banner,
     page_shell,
 )
-from components.navigation import init_date_state, shift_date, sync_date_from_picker
 from components.feedback import empty_state
+from components.navigation import init_date_state, shift_date, sync_date_from_picker
 from services import report_service
 from tabs import TabContext
 
@@ -31,6 +31,14 @@ def clear_report_cache() -> None:
     Called when new data is imported or when a user requests a refresh.
     """
     report_service.clear_report_cache()
+
+
+def _refresh_report_data() -> None:
+    """Clear Report tab caches and rerun the current page."""
+    report_service.clear_report_cache()
+    st.cache_data.clear()
+    st.session_state["report_refresh_message"] = "Report data refreshed."
+    st.rerun()
 
 
 def _footfall_metric_ranges(selected_date: date) -> Tuple[str, str, str]:
@@ -71,8 +79,8 @@ def render(ctx: TabContext) -> None:
                     if loc["id"] in _report_loc_id_set
                 ]
                 _picker_key = init_date_state("report_date")
-                _prev_col, _date_col, _next_col, _outlet_col = st.columns(
-                    [0.3, 1.2, 0.3, 4], vertical_alignment="center"
+                _prev_col, _date_col, _next_col, _outlet_col, _refresh_col = st.columns(
+                    [0.3, 1.2, 0.3, 3.2, 0.9], vertical_alignment="center"
                 )
                 with _prev_col:
                     st.button(
@@ -107,11 +115,30 @@ def render(ctx: TabContext) -> None:
                         key="png_outlet_selector",
                         label_visibility="collapsed",
                     )
+                with _refresh_col:
+                    st.button(
+                        "Refresh report",
+                        key="report_refresh",
+                        on_click=_refresh_report_data,
+                        help="Reload report data from the database.",
+                    )
                 selected_date = st.session_state["report_date"]
             else:
-                selected_date = date_nav(session_key="report_date", label="Report date")
+                _date_nav_col, _refresh_col = st.columns([4, 1], vertical_alignment="center")
+                with _date_nav_col:
+                    selected_date = date_nav(session_key="report_date", label="Report date")
+                with _refresh_col:
+                    st.button(
+                        "Refresh report",
+                        key="report_refresh",
+                        on_click=_refresh_report_data,
+                        help="Reload report data from the database.",
+                    )
 
     date_str = selected_date.strftime("%Y-%m-%d")
+    refresh_message = st.session_state.pop("report_refresh_message", None)
+    if refresh_message:
+        st.success(refresh_message)
     outlets_bundle, summary = report_service.load_report_bundle_cached(ctx.report_loc_ids, date_str)
 
     with shell.content:

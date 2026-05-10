@@ -16,3 +16,13 @@ def test_png_preview_grid_does_not_render_redundant_section_headers() -> None:
     src = Path("tabs/report_tab.py").read_text(encoding="utf-8")
 
     assert "section_title(title, icon=\"image\")" not in src
+
+
+def test_report_tab_has_refresh_report_control() -> None:
+    source = Path("tabs/report_tab.py").read_text(encoding="utf-8")
+
+    assert "Refresh report" in source
+    assert "report_refresh" in source
+    assert "report_service.clear_report_cache()" in source
+    assert "st.cache_data.clear()" in source
+    assert "st.rerun()" in source
