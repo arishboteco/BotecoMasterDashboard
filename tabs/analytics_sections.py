@@ -444,6 +444,137 @@ def _weekly_covers_commentary(weekly_df: pd.DataFrame) -> str:
         return f"Week-over-week trend is decreasing: avg daily covers are down {abs(pct):.1f}%."
     return "Week-over-week trend is stable: avg daily covers are broadly flat."
 
+def render_sales_movement_waterfall(
+    current_df: pd.DataFrame,
+    prior_df: pd.DataFrame,
+) -> None:
+    """Render sales movement waterfall between current and prior period."""
+    if current_df.empty or prior_df.empty:
+        return
+
+    required_columns = {"net_total", "covers"}
+    if not required_columns.issubset(set(current_df.columns)):
+        return
+    if not required_columns.issubset(set(prior_df.columns)):
+        return
+
+    current_sales = float(
+        pd.to_numeric(current_df["net_total"], errors="coerce").fillna(0).sum()
+    )
+    current_covers = float(
+        pd.to_numeric(current_df["covers"], errors="coerce").fillna(0).sum()
+    )
+
+    prior_sales = float(
+        pd.to_numeric(prior_df["net_total"], errors="coerce").fillna(0).sum()
+    )
+    prior_covers = float(
+        pd.to_numeric(prior_df["covers"], errors="coerce").fillna(0).sum()
+    )
+
+    if prior_sales <= 0 or prior_covers <= 0 or current_covers <= 0:
+        return
+
+    prior_apc = prior_sales / prior_covers
+    current_apc = current_sales / current_covers
+
+    cover_effect = (current_covers - prior_covers) * prior_apc
+    apc_effect = current_covers * (current_apc - prior_apc)
+
+    total_movement = current_sales - prior_sales
+    explained_movement = cover_effect + apc_effect
+    residual_effect = total_movement - explained_movement
+
+    with st.container(border=True):
+        st.markdown("#### Sales Movement Breakdown")
+        st.caption(
+            "Explains whether sales changed because of guest count movement or APC movement."
+        )
+
+        fig_waterfall = go.Figure(
+            go.Waterfall(
+                name="Sales Movement",
+                orientation="v",
+                measure=[
+                    "absolute",
+                    "relative",
+                    "relative",
+                    "relative",
+                    "total",
+                ],
+                x=[
+                    "Prior Sales",
+                    "Cover Effect",
+                    "APC Effect",
+                    "Other / Rounding",
+                    "Current Sales",
+                ],
+                y=[
+                    prior_sales,
+                    cover_effect,
+                    apc_effect,
+                    residual_effect,
+                    current_sales,
+                ],
+                connector={"line": {"width": 1}},
+                hovertemplate="%{x}<br>₹%{y:,.0f}<extra></extra>",
+            )
+        )
+
+        fig_waterfall.update_layout(
+            title="Prior Period to Current Period Sales Movement",
+            yaxis_title="Sales ₹",
+            height=360,
+            margin=dict(l=0, r=0, t=50, b=40),
+            showlegend=False,
+        )
+
+        st.plotly_chart(fig_waterfall, width="stretch")
+
+        movement_summary = pd.DataFrame(
+            [
+                {
+                    "Driver": "Prior Sales",
+                    "Impact": utils.format_currency(prior_sales),
+                },
+                {
+                    "Driver": "Cover Effect",
+                    "Impact": utils.format_currency(cover_effect),
+                },
+                {
+                    "Driver": "APC Effect",
+                    "Impact": utils.format_currency(apc_effect),
+                },
+                {
+                    "Driver": "Other / Rounding",
+                    "Impact": utils.format_currency(residual_effect),
+                },
+                {
+                    "Driver": "Current Sales",
+                    "Impact": utils.format_currency(current_sales),
+                },
+            ]
+        )
+
+        with st.expander("View movement explanation"):
+            st.dataframe(movement_summary, width="stretch", hide_index=True)
+
+            if cover_effect > 0 and apc_effect > 0:
+                st.success(
+                    "Sales improved because both covers and APC moved positively."
+                )
+            elif cover_effect > 0 and apc_effect < 0:
+                st.warning(
+                    "Covers improved, but APC declined. This points to an upselling or menu-mix issue."
+                )
+            elif cover_effect < 0 and apc_effect > 0:
+                st.warning(
+                    "APC improved, but covers declined. This points to a traffic or demand issue."
+                )
+            elif cover_effect < 0 and apc_effect < 0:
+                st.error(
+                    "Both covers and APC declined. This needs demand recovery and ticket-size improvement."
+                )
 
 def render_forecast_command_center(
     df: pd.DataFrame,
@@ -513,7 +644,7 @@ def render_forecast_command_center(
             delta=utils.format_delta(total_sales, prior_total) if prior_total else None,
         ),
         KpiMetric(
-            label="Forecast",
+            label="Forecast Close",
             value=forecast_value,
             delta=f"Reliability: {reliability}",
         ),
@@ -523,84 +654,97 @@ def render_forecast_command_center(
             delta=(
                 "On track"
                 if monthly_target > 0 and forecast and forecast_total >= monthly_target
+                else "Behind pace"
+                if monthly_target > 0 and forecast
                 else None
             ),
         ),
         KpiMetric(
-            label="APC / Covers",
-            value=f"{utils.format_currency(apc)} / {total_covers:,}",
-            delta=f"APC {apc_delta or 'N/A'} | Covers {cov_delta or 'N/A'}",
+            label="Covers",
+            value=f"{total_covers:,}",
+            delta=f"{cov_delta or 'N/A'} vs prior",
+        ),
+        KpiMetric(
+            label="APC",
+            value=utils.format_currency(apc),
+            delta=f"{apc_delta or 'N/A'} vs prior",
         ),
     ]
-    kpi_row(metrics)
+    kpi_row(metrics, columns=5)
 
     left_col, right_col = st.columns([2, 1])
     with left_col:
-        fig = go.Figure()
-        # Keep the hero chart to one story: observed points, smoothed trend, forecast.
-        if len(values) >= 7:
-            ma_values = moving_average(values, window=7)
-            ma_series = pd.Series(ma_values)
-            ma_mask = pd.notna(ma_series).values
-            fig.add_trace(
-                go.Scatter(
-                    x=dates,
-                    y=values,
-                    mode="markers",
-                    name="Daily sales",
-                    marker=dict(
-                        size=5,
-                        color=_hex_to_rgba(ui_theme.BRAND_PRIMARY, 0.35),
-                    ),
-                    hovertemplate="₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
-                )
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=dates[ma_mask],
-                    y=ma_series[ma_mask].tolist(),
-                    mode="lines",
-                    name="Trend",
-                    line=dict(color=ui_theme.BRAND_PRIMARY, width=3),
-                    hovertemplate="Trend: ₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
-                )
-            )
+        chart_df = df.copy()
+        chart_df["date"] = pd.to_datetime(chart_df["date"], errors="coerce")
+        chart_df = chart_df[chart_df["date"].notna()].sort_values("date")
+
+        chart_df["net_total"] = pd.to_numeric(
+            chart_df["net_total"], errors="coerce"
+        ).fillna(0)
+
+        if "target" in chart_df.columns:
+            chart_df["target"] = pd.to_numeric(
+                chart_df["target"], errors="coerce"
+            ).fillna(0)
         else:
-            fig.add_trace(
-                go.Scatter(
-                    x=dates,
-                    y=values,
-                    mode="lines+markers",
-                    name="Daily sales",
-                    line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
-                    marker=dict(size=5),
-                    hovertemplate="₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
-                )
+            chart_df["target"] = 0
+
+        chart_df["cumulative_sales"] = chart_df["net_total"].cumsum()
+        chart_df["cumulative_target"] = chart_df["target"].cumsum()
+
+        fig = go.Figure()
+
+        fig.add_trace(
+            go.Scatter(
+                x=chart_df["date"],
+                y=chart_df["cumulative_sales"],
+                mode="lines+markers",
+                name="Actual Sales",
+                line=dict(color=ui_theme.BRAND_PRIMARY, width=3),
+                marker=dict(size=5),
+                hovertemplate="Actual: ₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
             )
+        )
+
+        fig.add_trace(
+            go.Scatter(
+                x=chart_df["date"],
+                y=chart_df["cumulative_target"],
+                mode="lines",
+                name="Target Pace",
+                line=dict(color=ui_theme.BRAND_WARN, width=2, dash="dash"),
+                hovertemplate="Target Pace: ₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
+            )
+        )
+
         if forecast:
+            last_actual_date = chart_df["date"].max()
+            last_actual_value = float(chart_df["cumulative_sales"].iloc[-1])
+
             f_dates = [f["date"] for f in forecast]
-            f_values = [f["value"] for f in forecast]
+            f_daily_values = [float(f["value"]) for f in forecast]
+
+            cumulative_forecast = []
+            running_total = last_actual_value
+            for value in f_daily_values:
+                running_total += value
+                cumulative_forecast.append(running_total)
+
             fig.add_trace(
                 go.Scatter(
-                    x=f_dates,
-                    y=f_values,
+                    x=[last_actual_date] + f_dates,
+                    y=[last_actual_value] + cumulative_forecast,
                     mode="lines",
-                    name="Forecast",
-                    line=dict(color=ui_theme.BRAND_WARN, width=3),
+                    name="Forecast Close",
+                    line=dict(color=ui_theme.BRAND_SUCCESS, width=3, dash="dot"),
                     hovertemplate="Forecast: ₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
                 )
             )
-            fig.add_vrect(
-                x0=f_dates[0],
-                x1=f_dates[-1],
-                fillcolor=_hex_to_rgba(ui_theme.BRAND_WARN, 0.08),
-                line_width=0,
-                layer="below",
-            )
+
         fig.update_layout(
-            title="Forecast Trend",
+            title="Cumulative Sales vs Target Pace",
             xaxis_title="Date",
-            yaxis_title="Net Sales (₹)",
+            yaxis_title="Sales ₹",
             hovermode="x unified",
             height=ui_theme.CHART_HEIGHT,
             legend=dict(
@@ -611,10 +755,12 @@ def render_forecast_command_center(
                 x=0.5,
             ),
         )
+
         st.plotly_chart(fig, width="stretch")
+
         if prior_start and prior_end:
             st.caption(
-                "Previous period is summarized in the KPI deltas: {} to {}.".format(
+                "Comparison period: {} to {}.".format(
                     prior_start.strftime("%d %b %Y"),
                     prior_end.strftime("%d %b %Y"),
                 )
@@ -635,6 +781,265 @@ def render_forecast_command_center(
             else:
                 st.info(body)
 
+    render_sales_movement_waterfall(df, prior_df)
+
+def render_category_pareto(
+    report_loc_ids: list[int],
+    start_str: str,
+    end_str: str,
+) -> None:
+    """Render category Pareto chart for Mix layer."""
+    category_rows = database.get_category_sales_for_date_range(
+        report_loc_ids,
+        start_str,
+        end_str,
+    )
+
+    if not category_rows:
+        st.info("No category sales available for Pareto analysis.")
+        return
+
+    pareto_df = pd.DataFrame(category_rows)
+
+    if pareto_df.empty:
+        st.info("No category sales available for Pareto analysis.")
+        return
+
+    if "category" not in pareto_df.columns or "amount" not in pareto_df.columns:
+        st.warning("Category Pareto could not be rendered because category or amount data is missing.")
+        return
+
+    pareto_df["amount"] = pd.to_numeric(
+        pareto_df["amount"],
+        errors="coerce",
+    ).fillna(0)
+
+    pareto_df = pareto_df[pareto_df["amount"] > 0].copy()
+
+    if pareto_df.empty:
+        st.info("No positive category sales available for Pareto analysis.")
+        return
+
+    pareto_df = (
+        pareto_df.groupby("category", as_index=False)["amount"]
+        .sum()
+        .sort_values("amount", ascending=False)
+    )
+
+    pareto_df["cumulative_sales"] = pareto_df["amount"].cumsum()
+    total_sales = float(pareto_df["amount"].sum())
+    pareto_df["cumulative_pct"] = pareto_df["cumulative_sales"] / total_sales * 100
+
+    with st.container(border=True):
+        st.markdown("#### Category Pareto")
+        st.caption(
+            "Bars show category sales. The line shows cumulative contribution, helping identify the few categories driving most revenue."
+        )
+
+        fig_pareto = make_subplots(specs=[[{"secondary_y": True}]])
+
+        fig_pareto.add_trace(
+            go.Bar(
+                x=pareto_df["category"],
+                y=pareto_df["amount"],
+                name="Category Sales",
+                marker_color=ui_theme.BRAND_PRIMARY,
+                hovertemplate="%{x}<br>Sales: ₹%{y:,.0f}<extra></extra>",
+            ),
+            secondary_y=False,
+        )
+
+        fig_pareto.add_trace(
+            go.Scatter(
+                x=pareto_df["category"],
+                y=pareto_df["cumulative_pct"],
+                name="Cumulative %",
+                mode="lines+markers",
+                line=dict(color=ui_theme.BRAND_WARN, width=3),
+                marker=dict(size=6),
+                hovertemplate="%{x}<br>Cumulative: %{y:.1f}%<extra></extra>",
+            ),
+            secondary_y=True,
+        )
+
+        fig_pareto.update_layout(
+            title="Category Pareto",
+            height=380,
+            margin=dict(l=0, r=0, t=50, b=90),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.35,
+                xanchor="center",
+                x=0.5,
+            ),
+            xaxis=dict(tickangle=-35),
+        )
+
+        fig_pareto.update_yaxes(title_text="Sales ₹", secondary_y=False)
+        fig_pareto.update_yaxes(
+            title_text="Cumulative %",
+            range=[0, 105],
+            secondary_y=True,
+        )
+
+        st.plotly_chart(fig_pareto, width="stretch")
+
+        with st.expander("View category Pareto data"):
+            display_df = pareto_df.copy()
+            display_df["Sales"] = display_df["amount"].apply(
+                lambda val: utils.format_currency(float(val))
+            )
+            display_df["Cumulative %"] = display_df["cumulative_pct"].apply(
+                lambda val: f"{val:.1f}%"
+            )
+            display_df = display_df[["category", "Sales", "Cumulative %"]]
+            display_df = display_df.rename(columns={"category": "Category"})
+            st.dataframe(display_df, width="stretch", hide_index=True)
+
+def render_outlet_leaderboard(
+    df_raw: pd.DataFrame,
+    multi_analytics: bool,
+) -> None:
+    """Render outlet-level performance leaderboard."""
+    if not multi_analytics or df_raw.empty or "Outlet" not in df_raw.columns:
+        return
+
+    required_columns = {"Outlet", "net_total", "covers"}
+    if not required_columns.issubset(set(df_raw.columns)):
+        return
+
+    outlet_df = df_raw.copy()
+
+    outlet_df["net_total"] = pd.to_numeric(
+        outlet_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
+    outlet_df["covers"] = pd.to_numeric(
+        outlet_df["covers"],
+        errors="coerce",
+    ).fillna(0)
+
+    if "target" in outlet_df.columns:
+        outlet_df["target"] = pd.to_numeric(
+            outlet_df["target"],
+            errors="coerce",
+        ).fillna(0)
+    else:
+        outlet_df["target"] = 0
+
+    outlet_summary = (
+        outlet_df.groupby("Outlet", as_index=False)
+        .agg(
+            net_total=("net_total", "sum"),
+            covers=("covers", "sum"),
+            target=("target", "sum"),
+        )
+        .sort_values("net_total", ascending=False)
+    )
+
+    if outlet_summary.empty:
+        return
+
+    outlet_summary["apc"] = outlet_summary.apply(
+        lambda row: row["net_total"] / row["covers"] if row["covers"] > 0 else 0,
+        axis=1,
+    )
+
+    outlet_summary["target_pct"] = outlet_summary.apply(
+        lambda row: row["net_total"] / row["target"] * 100
+        if row["target"] > 0
+        else 0,
+        axis=1,
+    )
+
+    outlet_summary["status"] = outlet_summary["target_pct"].apply(
+        lambda value: "On Track"
+        if value >= 100
+        else "Watch"
+        if value >= 70
+        else "At Risk"
+    )
+
+    colors = [
+        ui_theme.BRAND_SUCCESS
+        if value >= 100
+        else ui_theme.BRAND_WARN
+        if value >= 70
+        else "#EF4444"
+        for value in outlet_summary["target_pct"]
+    ]
+
+    with st.container(border=True):
+        st.markdown("#### Outlet Leaderboard")
+        st.caption(
+            "Compare outlets by sales, covers, APC and target achievement for the selected period."
+        )
+
+        fig_outlet = go.Figure()
+
+        fig_outlet.add_trace(
+            go.Bar(
+                x=outlet_summary["Outlet"],
+                y=outlet_summary["net_total"],
+                marker_color=colors,
+                name="Net Sales",
+                hovertemplate=(
+                    "%{x}<br>"
+                    "Sales: ₹%{y:,.0f}<br>"
+                    "<extra></extra>"
+                ),
+            )
+        )
+
+        fig_outlet.update_layout(
+            title="Outlet Sales Ranking",
+            xaxis_title="Outlet",
+            yaxis_title="Net Sales ₹",
+            height=320,
+            margin=dict(l=0, r=0, t=50, b=60),
+            showlegend=False,
+        )
+
+        st.plotly_chart(fig_outlet, width="stretch")
+
+        display_df = outlet_summary.copy()
+        display_df["Sales"] = display_df["net_total"].apply(
+            lambda value: utils.format_currency(float(value))
+        )
+        display_df["Covers"] = display_df["covers"].apply(
+            lambda value: f"{int(value):,}"
+        )
+        display_df["APC"] = display_df["apc"].apply(
+            lambda value: utils.format_currency(float(value))
+        )
+        display_df["Target"] = display_df["target"].apply(
+            lambda value: utils.format_currency(float(value))
+        )
+        display_df["Target %"] = display_df["target_pct"].apply(
+            lambda value: f"{value:.1f}%"
+        )
+
+        display_df = display_df[
+            [
+                "Outlet",
+                "Sales",
+                "Covers",
+                "APC",
+                "Target",
+                "Target %",
+                "status",
+            ]
+        ]
+
+        display_df = display_df.rename(
+            columns={
+                "status": "Status",
+            }
+        )
+
+        st.dataframe(display_df, width="stretch", hide_index=True)
 
 def render_driver_analysis(
     df: pd.DataFrame,
@@ -648,6 +1053,8 @@ def render_driver_analysis(
 
     st.markdown("### Traffic & Ticket Drivers")
     st.caption("Use this layer to separate footfall movement from ticket-size movement.")
+
+    render_outlet_leaderboard(df_raw, multi_analytics)
 
     if multi_analytics and not df_raw.empty:
         driver_df = (
@@ -765,6 +1172,141 @@ def render_driver_analysis(
             )
             st.plotly_chart(fig_apc, width="stretch")
 
+        with st.container(border=True):
+            st.markdown("#### Covers vs APC Matrix")
+            st.caption(
+                "Each point is a day. This shows whether sales are driven by footfall, ticket size, or both."
+            )
+
+        scatter_df = driver_df.copy()
+        scatter_df["date"] = pd.to_datetime(scatter_df["date"], errors="coerce")
+        scatter_df = scatter_df[scatter_df["date"].notna()].copy()
+
+        scatter_df["covers"] = pd.to_numeric(
+            scatter_df["covers"], errors="coerce"
+        ).fillna(0)
+        scatter_df["apc"] = pd.to_numeric(
+            scatter_df["apc"], errors="coerce"
+        ).fillna(0)
+        scatter_df["net_total"] = pd.to_numeric(
+            scatter_df["net_total"], errors="coerce"
+        ).fillna(0)
+
+        scatter_df["weekday"] = scatter_df["date"].dt.day_name()
+
+        if scatter_df.empty:
+            st.info("No valid driver rows available for the Covers vs APC Matrix.")
+        else:
+            fig_scatter = px.scatter(
+                scatter_df,
+                x="covers",
+                y="apc",
+                size="net_total",
+                color="weekday",
+                hover_data={
+                    "date": True,
+                    "covers": ":,.0f",
+                    "apc": ":,.0f",
+                    "net_total": ":,.0f",
+                    "weekday": True,
+                },
+                labels={
+                    "covers": "Covers",
+                    "apc": "APC ₹",
+                    "net_total": "Net Sales ₹",
+                    "weekday": "Weekday",
+                },
+                title="Covers vs APC",
+            )
+            avg_covers = float(scatter_df["covers"].mean())
+            avg_apc = float(scatter_df["apc"].mean())
+
+            max_covers = float(scatter_df["covers"].max())
+            max_apc = float(scatter_df["apc"].max())
+
+            fig_scatter.add_vline(
+                x=avg_covers,
+                line_width=1,
+                line_dash="dash",
+                line_color=ui_theme.CHART_BAR_MUTED,
+                annotation_text=f"Avg Covers: {avg_covers:.0f}",
+                annotation_position="top",
+            )
+
+            fig_scatter.add_hline(
+                y=avg_apc,
+                line_width=1,
+                line_dash="dash",
+                line_color=ui_theme.CHART_BAR_MUTED,
+                annotation_text=f"Avg APC: {utils.format_currency(avg_apc)}",
+                annotation_position="right",
+            )
+
+            fig_scatter.add_annotation(
+                x=max_covers,
+                y=max_apc,
+                text="Best Days<br>High Covers + High APC",
+                showarrow=False,
+                xanchor="right",
+                yanchor="top",
+                bgcolor="rgba(255,255,255,0.85)",
+                bordercolor=ui_theme.BORDER_SUBTLE,
+                borderwidth=1,
+                font=dict(size=11),
+            )
+
+            fig_scatter.add_annotation(
+                x=avg_covers * 0.55,
+                y=max_apc,
+                text="Premium but Low Traffic",
+                showarrow=False,
+                xanchor="left",
+                yanchor="top",
+                bgcolor="rgba(255,255,255,0.85)",
+                bordercolor=ui_theme.BORDER_SUBTLE,
+                borderwidth=1,
+                font=dict(size=11),
+            )
+
+            fig_scatter.add_annotation(
+                x=max_covers,
+                y=avg_apc * 0.55,
+                text="Busy but Low Spend<br>Upsell Opportunity",
+                showarrow=False,
+                xanchor="right",
+                yanchor="bottom",
+                bgcolor="rgba(255,255,255,0.85)",
+                bordercolor=ui_theme.BORDER_SUBTLE,
+                borderwidth=1,
+                font=dict(size=11),
+            )
+
+            fig_scatter.add_annotation(
+                x=avg_covers * 0.55,
+                y=avg_apc * 0.55,
+                text="Weak Days",
+                showarrow=False,
+                xanchor="left",
+                yanchor="bottom",
+                bgcolor="rgba(255,255,255,0.85)",
+                bordercolor=ui_theme.BORDER_SUBTLE,
+                borderwidth=1,
+                font=dict(size=11),
+            )
+
+            fig_scatter.update_layout(
+                height=360,
+                margin=dict(l=0, r=0, t=50, b=0),
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=-0.35,
+                    xanchor="center",
+                    x=0.5,
+                ),
+            )
+
+            st.plotly_chart(fig_scatter, width="stretch")
     if st.toggle("Show driver data table", value=False, key="analytics_driver_table_toggle"):
         with st.container(border=True):
             st.caption("Daily driver table")
@@ -783,6 +1325,294 @@ def render_driver_analysis(
             table["Covers"] = table["Covers"].apply(lambda val: f"{int(val):,}")
             st.dataframe(table, width="stretch", hide_index=True)
 
+def render_weekday_heatmap(df: pd.DataFrame) -> None:
+    """Render week-by-week weekday heatmap for Mix layer."""
+    if df.empty:
+        st.info("No data available for weekday heatmap.")
+        return
+
+    required_columns = {"date", "net_total", "covers"}
+    if not required_columns.issubset(set(df.columns)):
+        st.warning("Weekday heatmap could not be rendered because date, net_total, or covers data is missing.")
+        return
+
+    heatmap_df = df.copy()
+
+    heatmap_df["date"] = pd.to_datetime(heatmap_df["date"], errors="coerce")
+    heatmap_df = heatmap_df[heatmap_df["date"].notna()].copy()
+
+    if heatmap_df.empty:
+        st.info("No valid dated rows available for weekday heatmap.")
+        return
+
+    heatmap_df["net_total"] = pd.to_numeric(
+        heatmap_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
+    heatmap_df["covers"] = pd.to_numeric(
+        heatmap_df["covers"],
+        errors="coerce",
+    ).fillna(0)
+
+    if "target" in heatmap_df.columns:
+        heatmap_df["target"] = pd.to_numeric(
+            heatmap_df["target"],
+            errors="coerce",
+        ).fillna(0)
+    else:
+        heatmap_df["target"] = 0
+
+    heatmap_df["pct_target"] = heatmap_df.apply(
+        lambda row: row["net_total"] / row["target"] * 100
+        if row["target"] > 0
+        else 0,
+        axis=1,
+    )
+
+    heatmap_df["weekday"] = heatmap_df["date"].dt.day_name()
+    heatmap_df["week_start"] = heatmap_df["date"] - pd.to_timedelta(
+        heatmap_df["date"].dt.weekday,
+        unit="D",
+    )
+    heatmap_df["week_label"] = heatmap_df["week_start"].dt.strftime("Week of %d %b")
+
+    with st.container(border=True):
+        st.markdown("#### Weekday Heatmap")
+        st.caption(
+            "Shows how performance changes across weeks and weekdays. Use this to spot weak days, weekend dependency, and demand patterns."
+        )
+
+        selected_heatmap_metric = st.segmented_control(
+            "Heatmap Metric",
+            options=[
+                "Net Sales",
+                "Covers",
+                "Target %",
+            ],
+            default="Net Sales",
+            key="analytics_weekday_heatmap_metric",
+        )
+
+        if selected_heatmap_metric == "Net Sales":
+            value_col = "net_total"
+            aggfunc = "sum"
+            color_label = "Net Sales ₹"
+        elif selected_heatmap_metric == "Covers":
+            value_col = "covers"
+            aggfunc = "sum"
+            color_label = "Covers"
+        else:
+            value_col = "pct_target"
+            aggfunc = "mean"
+            color_label = "Target %"
+
+        weekday_order = [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday",
+        ]
+
+        pivot = heatmap_df.pivot_table(
+            index="week_label",
+            columns="weekday",
+            values=value_col,
+            aggfunc=aggfunc,
+            fill_value=0,
+        )
+
+        pivot = pivot.reindex(
+            columns=[day for day in weekday_order if day in pivot.columns]
+        )
+
+        week_order = (
+            heatmap_df[["week_start", "week_label"]]
+            .drop_duplicates()
+            .sort_values("week_start")["week_label"]
+            .tolist()
+        )
+        pivot = pivot.reindex(index=week_order)
+
+        if selected_heatmap_metric == "Net Sales":
+            text_values = pivot.map(
+                lambda value: utils.format_currency(float(value))
+            )
+        elif selected_heatmap_metric == "Covers":
+            text_values = pivot.map(lambda value: f"{int(value):,}")
+        else:
+            text_values = pivot.map(lambda value: f"{float(value):.1f}%")
+
+        fig_heatmap = go.Figure(
+            data=go.Heatmap(
+                z=pivot.values,
+                x=pivot.columns,
+                y=pivot.index,
+                text=text_values.values,
+                texttemplate="%{text}",
+                colorscale="Blues",
+                colorbar=dict(title=color_label),
+                hovertemplate=(
+                    "Week: %{y}<br>"
+                    "Day: %{x}<br>"
+                    f"{color_label}: %{{text}}"
+                    "<extra></extra>"
+                ),
+            )
+        )
+
+        fig_heatmap.update_layout(
+            title=f"Weekday Heatmap - {selected_heatmap_metric}",
+            height=360,
+            margin=dict(l=0, r=0, t=50, b=40),
+            xaxis_title="Day of Week",
+            yaxis_title="Week",
+        )
+
+        st.plotly_chart(fig_heatmap, width="stretch")
+
+def render_weekday_summary_table(df: pd.DataFrame) -> None:
+    """Render weekday-level sales, covers, APC and target achievement summary."""
+    if df.empty:
+        return
+
+    required_columns = {"date", "net_total", "covers"}
+    if not required_columns.issubset(set(df.columns)):
+        return
+
+    weekday_df = df.copy()
+
+    weekday_df["date"] = pd.to_datetime(weekday_df["date"], errors="coerce")
+    weekday_df = weekday_df[weekday_df["date"].notna()].copy()
+
+    if weekday_df.empty:
+        return
+
+    weekday_df["net_total"] = pd.to_numeric(
+        weekday_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
+    weekday_df["covers"] = pd.to_numeric(
+        weekday_df["covers"],
+        errors="coerce",
+    ).fillna(0)
+
+    if "target" in weekday_df.columns:
+        weekday_df["target"] = pd.to_numeric(
+            weekday_df["target"],
+            errors="coerce",
+        ).fillna(0)
+    else:
+        weekday_df["target"] = 0
+
+    weekday_df["weekday"] = weekday_df["date"].dt.day_name()
+
+    weekday_summary = (
+        weekday_df.groupby("weekday", as_index=False)
+        .agg(
+            sales=("net_total", "sum"),
+            covers=("covers", "sum"),
+            target=("target", "sum"),
+            days=("date", "count"),
+        )
+    )
+
+    weekday_summary["apc"] = weekday_summary.apply(
+        lambda row: row["sales"] / row["covers"] if row["covers"] > 0 else 0,
+        axis=1,
+    )
+
+    weekday_summary["target_pct"] = weekday_summary.apply(
+        lambda row: row["sales"] / row["target"] * 100
+        if row["target"] > 0
+        else 0,
+        axis=1,
+    )
+
+    weekday_summary["avg_sales_per_day"] = weekday_summary.apply(
+        lambda row: row["sales"] / row["days"] if row["days"] > 0 else 0,
+        axis=1,
+    )
+
+    weekday_summary["status"] = weekday_summary["target_pct"].apply(
+        lambda value: "Strong"
+        if value >= 100
+        else "Watch"
+        if value >= 70
+        else "Weak"
+    )
+
+    day_order = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    ]
+
+    weekday_summary["weekday"] = pd.Categorical(
+        weekday_summary["weekday"],
+        categories=day_order,
+        ordered=True,
+    )
+
+    weekday_summary = weekday_summary.sort_values("weekday")
+
+    display_df = weekday_summary.copy()
+    display_df["Sales"] = display_df["sales"].apply(
+        lambda value: utils.format_rupee_short(float(value))
+    )
+    display_df["Avg Sales / Day"] = display_df["avg_sales_per_day"].apply(
+        lambda value: utils.format_rupee_short(float(value))
+    )
+    display_df["Covers"] = display_df["covers"].apply(
+        lambda value: f"{int(value):,}"
+    )
+    display_df["APC"] = display_df["apc"].apply(
+        lambda value: utils.format_rupee_short(float(value))
+    )
+    display_df["Target %"] = display_df["target_pct"].apply(
+        lambda value: f"{value:.1f}%"
+    )
+
+    display_df = display_df.rename(
+        columns={
+            "weekday": "Day",
+            "days": "Days",
+            "status": "Status",
+        }
+    )
+
+    display_df = display_df[
+        [
+            "Day",
+            "Days",
+            "Sales",
+            "Avg Sales / Day",
+            "Covers",
+            "APC",
+            "Target %",
+            "Status",
+        ]
+    ]
+
+    with st.container(border=True):
+        st.markdown("#### Weekday Summary")
+        st.caption(
+            "Use this table to compare weekday performance and identify whether weak days are driven by covers, APC, or both."
+        )
+
+        st.dataframe(
+            display_df,
+            width="stretch",
+            hide_index=True,
+        )
 
 def render_mix_snapshot(
     report_loc_ids: list[int],
@@ -794,6 +1624,10 @@ def render_mix_snapshot(
     """Render concise category and weekday mix charts without default tables."""
     st.markdown("### Mix & Timing")
     st.caption("Use this layer to spot what is driving the period without digging through rows.")
+
+    render_category_pareto(report_loc_ids, start_str, end_str)
+    render_weekday_heatmap(df)
+    render_weekday_summary_table(df)
 
     cat_col, weekday_col = st.columns(2)
     with cat_col:
@@ -896,6 +1730,275 @@ def render_mix_snapshot(
                 fig_wd.update_yaxes(tickprefix="₹", tickformat=",")
                 st.plotly_chart(fig_wd, width="stretch")
 
+def render_target_pace_snapshot(df: pd.DataFrame) -> None:
+    """Render selected-period target pace snapshot."""
+    if df.empty:
+        return
+
+    required_columns = {"date", "net_total", "target"}
+    if not required_columns.issubset(set(df.columns)):
+        return
+
+    pace_df = df.copy()
+
+    pace_df["date"] = pd.to_datetime(pace_df["date"], errors="coerce")
+    pace_df = pace_df[pace_df["date"].notna()].copy()
+
+    if pace_df.empty:
+        return
+
+    pace_df["net_total"] = pd.to_numeric(
+        pace_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
+    pace_df["target"] = pd.to_numeric(
+        pace_df["target"],
+        errors="coerce",
+    ).fillna(0)
+
+    total_sales = float(pace_df["net_total"].sum())
+    total_target = float(pace_df["target"].sum())
+    days_count = int(len(pace_df))
+    days_with_sales = int(len(pace_df[pace_df["net_total"] > 0]))
+
+    achievement_pct = (total_sales / total_target * 100) if total_target > 0 else 0
+    variance = total_sales - total_target
+    avg_daily_sales = total_sales / days_with_sales if days_with_sales > 0 else 0
+    required_daily_sales = total_target / days_count if days_count > 0 else 0
+
+    status_delta = (
+        "Ahead of target"
+        if variance >= 0
+        else f"Behind by {utils.format_rupee_short(abs(variance))}"
+    )
+
+    with st.container(border=True):
+        st.markdown("#### Target Pace Snapshot")
+        st.caption(
+            "Quick summary of sales performance against the selected period target."
+        )
+
+        metrics = [
+            KpiMetric(
+                label="Selected Period Sales",
+                value=utils.format_rupee_short(total_sales),
+                delta=status_delta,
+            ),
+            KpiMetric(
+                label="Selected Period Target",
+                value=utils.format_rupee_short(total_target),
+                delta=f"{days_count} days in view",
+            ),
+            KpiMetric(
+                label="Achievement",
+                value=f"{achievement_pct:.1f}%",
+                delta="Target progress",
+            ),
+            KpiMetric(
+                label="Avg Daily Sales",
+                value=utils.format_rupee_short(avg_daily_sales),
+                delta=f"{days_with_sales} sales days",
+            ),
+            KpiMetric(
+                label="Required Daily Sales",
+                value=utils.format_rupee_short(required_daily_sales),
+                delta="To match target pace",
+            ),
+        ]
+
+        kpi_row(metrics, columns=5)
+
+def render_daily_target_variance(df: pd.DataFrame) -> None:
+    """Render daily sales variance against target."""
+    if df.empty:
+        st.info("No daily data available for target variance.")
+        return
+
+    variance_df = df.copy()
+
+    required_columns = {"date", "net_total", "target"}
+    if not required_columns.issubset(set(variance_df.columns)):
+        st.warning("Daily target variance could not be rendered because date, net_total, or target data is missing.")
+        return
+
+    variance_df["date"] = pd.to_datetime(variance_df["date"], errors="coerce")
+    variance_df = variance_df[variance_df["date"].notna()].copy()
+
+    variance_df["net_total"] = pd.to_numeric(
+        variance_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
+    variance_df["target"] = pd.to_numeric(
+        variance_df["target"],
+        errors="coerce",
+    ).fillna(0)
+
+    variance_df = variance_df.sort_values("date")
+    variance_df["variance"] = variance_df["net_total"] - variance_df["target"]
+
+    if variance_df.empty:
+        st.info("No valid daily rows available for target variance.")
+        return
+
+    colors = [
+        ui_theme.BRAND_SUCCESS if value >= 0 else ui_theme.BRAND_ERROR
+        for value in variance_df["variance"]
+    ]
+
+    with st.container(border=True):
+        st.markdown("#### Daily Target Variance")
+        st.caption(
+            "Green bars beat target. Red bars missed target. This helps identify which exact days created the target gap."
+        )
+
+        fig_variance = go.Figure()
+
+        fig_variance.add_trace(
+            go.Bar(
+                x=variance_df["date"],
+                y=variance_df["variance"],
+                name="Variance vs Target",
+                marker_color=colors,
+                hovertemplate=(
+                    "%{x|%d %b}<br>"
+                    "Variance: ₹%{y:,.0f}<extra></extra>"
+                ),
+            )
+        )
+
+        fig_variance.add_hline(
+            y=0,
+            line_width=1,
+            line_dash="dash",
+            line_color=ui_theme.CHART_BAR_MUTED,
+        )
+
+        fig_variance.update_layout(
+            title="Daily Variance vs Target",
+            xaxis_title="Date",
+            yaxis_title="Variance ₹",
+            height=340,
+            margin=dict(l=0, r=0, t=50, b=40),
+            showlegend=False,
+        )
+
+        st.plotly_chart(fig_variance, width="stretch")
+
+        with st.expander("View daily target variance data"):
+            display_df = variance_df.copy()
+            display_df["Date"] = display_df["date"].dt.strftime("%d %b %Y")
+            display_df["Net Sales"] = display_df["net_total"].apply(
+                lambda val: utils.format_currency(float(val))
+            )
+            display_df["Target"] = display_df["target"].apply(
+                lambda val: utils.format_currency(float(val))
+            )
+            display_df["Variance"] = display_df["variance"].apply(
+                lambda val: utils.format_currency(float(val))
+            )
+
+            display_df = display_df[
+                [
+                    "Date",
+                    "Net Sales",
+                    "Target",
+                    "Variance",
+                ]
+            ]
+
+            st.dataframe(display_df, width="stretch", hide_index=True)
+
+def render_top_bottom_target_days(df: pd.DataFrame) -> None:
+    """Render best and worst days versus target."""
+    if df.empty:
+        return
+
+    required_columns = {"date", "net_total", "target"}
+    if not required_columns.issubset(set(df.columns)):
+        return
+
+    days_df = df.copy()
+
+    days_df["date"] = pd.to_datetime(days_df["date"], errors="coerce")
+    days_df = days_df[days_df["date"].notna()].copy()
+
+    if days_df.empty:
+        return
+
+    days_df["net_total"] = pd.to_numeric(
+        days_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
+    days_df["target"] = pd.to_numeric(
+        days_df["target"],
+        errors="coerce",
+    ).fillna(0)
+
+    days_df["variance"] = days_df["net_total"] - days_df["target"]
+    days_df["achievement_pct"] = days_df.apply(
+        lambda row: row["net_total"] / row["target"] * 100
+        if row["target"] > 0
+        else 0,
+        axis=1,
+    )
+
+    days_df = days_df.sort_values("variance", ascending=False)
+
+    top_days = days_df.head(5).copy()
+    bottom_days = days_df.tail(5).sort_values("variance", ascending=True).copy()
+
+    def _format_target_days_table(table_df: pd.DataFrame) -> pd.DataFrame:
+        display_df = table_df.copy()
+        display_df["Date"] = display_df["date"].dt.strftime("%d %b %Y")
+        display_df["Net Sales"] = display_df["net_total"].apply(
+            lambda value: utils.format_rupee_short(float(value))
+        )
+        display_df["Target"] = display_df["target"].apply(
+            lambda value: utils.format_rupee_short(float(value))
+        )
+        display_df["Variance"] = display_df["variance"].apply(
+            lambda value: utils.format_rupee_short(float(value))
+        )
+        display_df["Achievement"] = display_df["achievement_pct"].apply(
+            lambda value: f"{value:.1f}%"
+        )
+
+        return display_df[
+            [
+                "Date",
+                "Net Sales",
+                "Target",
+                "Variance",
+                "Achievement",
+            ]
+        ]
+
+    with st.container(border=True):
+        st.markdown("#### Best & Worst Target Days")
+        st.caption(
+            "Quickly identify which days contributed most positively or negatively to target achievement."
+        )
+
+        top_col, bottom_col = st.columns(2)
+
+        with top_col:
+            st.markdown("##### Top 5 Days")
+            st.dataframe(
+                _format_target_days_table(top_days),
+                width="stretch",
+                hide_index=True,
+            )
+
+        with bottom_col:
+            st.markdown("##### Bottom 5 Days")
+            st.dataframe(
+                _format_target_days_table(bottom_days),
+                width="stretch",
+                hide_index=True,
+            )
 
 def render_target_snapshot(
     report_loc_ids: list[int],
@@ -903,6 +2006,11 @@ def render_target_snapshot(
     df: pd.DataFrame,
 ) -> None:
     """Render a compact target snapshot without the legacy daily table."""
+
+    render_target_pace_snapshot(df)
+    render_daily_target_variance(df)
+    render_top_bottom_target_days(df)
+    
     st.markdown("### Target Pace")
     monthly_target = scope.sum_location_monthly_targets(report_loc_ids)
     if monthly_target <= 0 or df.empty:

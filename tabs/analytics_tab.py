@@ -294,21 +294,27 @@ def render(ctx: TabContext) -> None:
                     "tab-analytics-mobile-secondary",
                     "mobile-layout-secondary",
                 ):
-                    trend_tab, mix_tab, target_tab, recon_tab = st.tabs(
-                        [
+                    selected_layer = st.segmented_control(
+                        "Analysis Layer",
+                        options=[
                             "Drivers",
                             "Mix",
                             "Targets & Daily",
                             "Payments",
-                        ]
+                        ],
+                        default="Drivers",
+                        key="analytics_layer_selector",
+                        label_visibility="collapsed",
                     )
-                    with trend_tab:
+
+                    if selected_layer == "Drivers":
                         render_driver_analysis(
                             df,
                             df_raw,
                             multi_analytics,
                         )
-                    with mix_tab:
+
+                    elif selected_layer == "Mix":
                         render_mix_snapshot(
                             analytics_loc_ids,
                             start_str,
@@ -316,14 +322,20 @@ def render(ctx: TabContext) -> None:
                             df,
                             start_date,
                         )
-                    with target_tab:
+
+                    elif selected_layer == "Targets & Daily":
                         render_target_snapshot(
                             analytics_loc_ids,
                             start_date,
                             df,
                         )
-                    with recon_tab:
-                        render_payment_reconciliation(analytics_loc_ids, start_str, end_str)
+
+                    elif selected_layer == "Payments":
+                        render_payment_reconciliation(
+                            analytics_loc_ids,
+                            start_str,
+                            end_str,
+                        )
                 st.markdown("</div>", unsafe_allow_html=True)
 
         else:
