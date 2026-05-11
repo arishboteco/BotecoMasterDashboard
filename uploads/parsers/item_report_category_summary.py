@@ -72,6 +72,19 @@ def _f(value: Any) -> float:
         return 0.0
 
 
+def _payment_method_from_item_type(value: Any) -> Optional[Dict[str, str]]:
+    """Normalize Item Report payment type to split methods used by reports."""
+    key = _norm(value)
+    if not key:
+        return None
+    compact = key.replace(" ", "")
+    if compact in {"gpay", "googlepay"} or ("google" in key and "pay" in key):
+        return {"payment_method": "GPay", "payment_key": "gpay"}
+    if "razorpay" in compact:
+        return {"payment_method": "Razorpay", "payment_key": "razorpay"}
+    return None
+
+
 def _load_frame(file_content: bytes, filename: str) -> Optional[pd.DataFrame]:
     bio = BytesIO(file_content)
     head = file_content[:2500].lower()
@@ -187,6 +200,7 @@ def parse_item_report_category_summary(
     discount_col = colmap.get("discount")
     tax_col = colmap.get("tax")
     final_total_col = colmap.get("final total")
+    payment_type_col = colmap.get("payment type")
     cgst_col = colmap.get("cgst amount")
     sgst_col = colmap.get("sgst amount")
     sc_col = colmap.get("service charge amount")
@@ -201,6 +215,7 @@ def parse_item_report_category_summary(
     comp_buckets: Dict[Tuple[str, str], float] = {}
     canc_buckets: Dict[Tuple[str, str], float] = {}
     service_buckets: Dict[str, Dict[str, float]] = {}
+    payment_split_buckets: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
     for _, row in data.iterrows():
         raw_date = row.iloc[date_col] if date_col < len(row) else None
@@ -239,6 +254,20 @@ def parse_item_report_category_summary(
             continue
         if status != "success":
             continue
+
+        if payment_type_col is not None and payment_type_col < len(row):
+            method = _payment_method_from_item_type(row.iloc[payment_type_col])
+            if method:
+                split_for_date = payment_split_buckets.setdefault(date_str, {})
+                split_row = split_for_date.setdefault(
+                    method["payment_key"],
+                    {
+                        "payment_method": method["payment_method"],
+                        "payment_key": method["payment_key"],
+                        "amount": 0.0,
+                    },
+                )
+                split_row["amount"] += final_total_val
 
         if timestamp_col is not None and timestamp_col < len(row):
             timestamp = pd.to_datetime(row.iloc[timestamp_col], errors="coerce")
@@ -310,10 +339,23 @@ def parse_item_report_category_summary(
         ]
         for date, buckets_by_service in service_buckets.items()
     }
+    payment_split_by_date = {
+        date: [
+            {
+                "payment_method": row["payment_method"],
+                "payment_key": row["payment_key"],
+                "amount": round(float(row["amount"] or 0), 2),
+            }
+            for row in sorted(split_rows.values(), key=lambda item: item["payment_key"])
+            if float(row["amount"] or 0) > 0
+        ]
+        for date, split_rows in sorted(payment_split_buckets.items())
+    }
     meta: Dict[str, Any] = {
         "period_start": period_start,
         "period_end": period_end,
         "row_count": len(rows),
         "service_sales_by_date": service_sales_by_date,
+        "payment_split_by_date": payment_split_by_date,
     }
     return rows, [], meta

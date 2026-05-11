@@ -445,17 +445,6 @@ def parse_growth_report_day_wise(
             if idx < len(row):
                 amount = _f(row.iloc[idx])
                 out[db_field] = round(float(out.get(db_field, 0) or 0) + amount, 2)
-                method_row = _payment_method_row(header, amount, display_map.get(header, header))
-                if method_row:
-                    existing = payment_methods.setdefault(
-                        method_row["payment_key"],
-                        {
-                            "payment_method": method_row["payment_method"],
-                            "payment_key": method_row["payment_key"],
-                            "amount": 0.0,
-                        },
-                    )
-                    existing["amount"] = round(float(existing["amount"] or 0) + amount, 2)
 
         for header, idx in dynamic_payments.items():
             if idx < len(row):

@@ -348,6 +348,164 @@ class TestRoutingAndMergeExtraction:
 
 
 class TestSaveSmartUploadResults:
+    def test_supabase_item_only_split_updates_existing_growth_daily_row(self, monkeypatch):
+        captured_daily_rows = []
+        captured_payment_rows = []
+        deleted_payment_pairs = []
+
+        monkeypatch.setattr(smart_upload.database, "use_supabase", lambda: True)
+        monkeypatch.setattr(smart_upload.database, "get_supabase_client", lambda: object())
+        monkeypatch.setattr(
+            smart_upload.database,
+            "get_daily_summary",
+            lambda loc_id, date: {
+                "date": date,
+                "gross_total": 1000.0,
+                "net_total": 900.0,
+                "upi_sales": 805.0,
+                "gpay_sales": 0.0,
+                "payment_methods": [
+                    {"payment_method": "Zomato", "payment_key": "zomato", "amount": 100.0},
+                    {"payment_method": "UPI", "payment_key": "upi", "amount": 805.0},
+                ],
+                "source_report": "growth_report_day_wise",
+            },
+        )
+
+        import database_writes
+
+        monkeypatch.setattr(
+            database_writes,
+            "upsert_daily_summaries_supabase_batch",
+            lambda client, rows: captured_daily_rows.extend(rows),
+        )
+        monkeypatch.setattr(
+            database_writes,
+            "delete_category_summary_batch",
+            lambda client, dates_locs: None,
+        )
+        monkeypatch.setattr(
+            database_writes,
+            "save_category_summary_batch",
+            lambda client, records: None,
+        )
+        monkeypatch.setattr(
+            database_writes,
+            "delete_payment_method_sales_batch",
+            lambda client, dates_locs: deleted_payment_pairs.extend(sorted(dates_locs)),
+        )
+        monkeypatch.setattr(
+            database_writes,
+            "save_payment_method_sales_batch",
+            lambda client, records: captured_payment_rows.extend(records),
+        )
+        monkeypatch.setattr(
+            database_writes,
+            "save_upload_records_batch",
+            lambda rows: None,
+        )
+        monkeypatch.setattr(
+            database_writes,
+            "delete_bill_items_by_dates_locs",
+            lambda client, dates_locs: None,
+        )
+        monkeypatch.setattr(
+            database_writes,
+            "save_bill_items",
+            lambda client, records: None,
+        )
+
+        result = SmartUploadResult(
+            files=[],
+            days=[],
+            location_results={
+                2: [
+                    DayResult(
+                        date="2026-05-05",
+                        merged={
+                            "date": "2026-05-05",
+                            "categories_new": [],
+                        },
+                        source_kinds=["item_order_details"],
+                    )
+                ]
+            },
+        )
+        result.item_payment_split_by_loc = {  # type: ignore[attr-defined]
+            2: {
+                "2026-05-05": [
+                    {"payment_method": "GPay", "payment_key": "gpay", "amount": 305.0},
+                    {"payment_method": "Razorpay", "payment_key": "razorpay", "amount": 500.0},
+                ]
+            }
+        }
+        result.category_by_loc = {2: []}  # type: ignore[attr-defined]
+        result.item_service_by_loc = {}  # type: ignore[attr-defined]
+        result.new_flow_meta = {}  # type: ignore[attr-defined]
+
+        saved, skipped, _messages = smart_upload.save_smart_upload_results(
+            result,
+            location_id=2,
+            uploaded_by="tester",
+        )
+
+        assert saved == 1
+        assert skipped == 0
+        assert captured_daily_rows == [
+            {
+                "location_id": 2,
+                "date": "2026-05-05",
+                "gross_total": 1000.0,
+                "net_total": 900.0,
+                "covers": 0,
+                "discount": 0.0,
+                "cgst": 0.0,
+                "sgst": 0.0,
+                "service_charge": 0.0,
+                "gst_on_service_charge": 0.0,
+                "cancelled_amount": 0.0,
+                "complementary_amount": 0.0,
+                "order_count": 0,
+                "cash_sales": 0.0,
+                "card_sales": 0.0,
+                "gpay_sales": 305.0,
+                "zomato_sales": 0.0,
+                "my_amount": 0.0,
+                "total_tax": 0.0,
+                "round_off": 0.0,
+                "expenses": 0.0,
+                "due_payment_sales": 0.0,
+                "wallet_sales": 0.0,
+                "upi_sales": 0.0,
+                "bank_transfer_sales": 0.0,
+                "boh_sales": 0.0,
+                "delivery_sales": 0.0,
+                "pickup_sales": 0.0,
+                "dine_in_sales": 0.0,
+                "menu_qr_sales": 0.0,
+                "source_report": "growth_report_day_wise",
+            }
+        ]
+        assert deleted_payment_pairs == [("2026-05-05", 2)]
+        assert captured_payment_rows == [
+            {
+                "location_id": 2,
+                "date": "2026-05-05",
+                "payment_method": "Zomato",
+                "payment_key": "zomato",
+                "amount": 100.0,
+                "source_report": "item_report_payment_split",
+            },
+            {
+                "location_id": 2,
+                "date": "2026-05-05",
+                "payment_method": "Razorpay",
+                "payment_key": "razorpay",
+                "amount": 500.0,
+                "source_report": "item_report_payment_split",
+            },
+        ]
+
     def test_supabase_saves_item_report_service_sales_using_timestamp_buckets(self, monkeypatch):
         captured_bill_items = []
 

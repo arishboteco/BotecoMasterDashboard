@@ -86,6 +86,63 @@ def _detect_location_for_file(
     return None, None, "none"
 
 
+def _apply_item_payment_split_to_daily_row(
+    row: Dict[str, Any],
+    item_split: List[Dict[str, Any]],
+) -> None:
+    """Replace generic UPI with Item Report GPay/Razorpay split when possible."""
+    upi_total = round(float(row.get("upi_sales", 0) or 0), 2)
+    if upi_total <= 0 or not item_split:
+        return
+    existing_methods = {m.get("payment_key") for m in row.get("payment_methods") or []}
+    if float(row.get("gpay_sales", 0) or 0) > 0 or "razorpay" in existing_methods:
+        return
+
+    split_total = round(sum(float(m.get("amount", 0) or 0) for m in item_split), 2)
+    if split_total <= 0:
+        return
+    scale = min(1.0, upi_total / split_total) if split_total > upi_total else 1.0
+    applied_total = 0.0
+    payment_methods = list(row.get("payment_methods") or [])
+    payment_methods = [
+        method
+        for method in payment_methods
+        if method.get("payment_key") not in {"gpay", "razorpay", "upi"}
+    ]
+
+    for method in item_split:
+        amount = round(float(method.get("amount", 0) or 0) * scale, 2)
+        if amount <= 0:
+            continue
+        applied_total += amount
+        if method.get("payment_key") == "gpay":
+            row["gpay_sales"] = round(float(row.get("gpay_sales", 0) or 0) + amount, 2)
+        elif method.get("payment_key") == "razorpay":
+            payment_methods.append(
+                {
+                    "payment_method": "Razorpay",
+                    "payment_key": "razorpay",
+                    "amount": amount,
+                }
+            )
+
+    row["payment_methods"] = payment_methods
+    row["upi_sales"] = round(max(0.0, upi_total - applied_total), 2)
+
+
+def _apply_item_payment_splits_to_daily_rows(
+    daily_by_loc: Dict[int, List[Dict[str, Any]]],
+    payment_split_by_loc: Dict[int, Dict[str, List[Dict[str, Any]]]],
+) -> None:
+    """Apply Item Report payment splits to parsed Growth daily rows."""
+    for loc_id, daily_rows in daily_by_loc.items():
+        split_by_date = payment_split_by_loc.get(loc_id, {})
+        if not split_by_date:
+            continue
+        for row in daily_rows:
+            _apply_item_payment_split_to_daily_row(row, split_by_date.get(str(row.get("date")), []))
+
+
 def _process_new_flow_files(
     growth_files: List[Tuple[str, bytes]],
     item_files: List[Tuple[str, bytes]],
@@ -98,6 +155,7 @@ def _process_new_flow_files(
     Dict[int, List[Dict[str, Any]]],  # category_rows by location_id
     Dict[str, Dict[str, Any]],  # file_meta by filename
     Dict[int, Dict[str, List[Dict[str, Any]]]],  # service rows by location/date
+    Dict[int, Dict[str, List[Dict[str, Any]]]],  # payment split rows by location/date
 ]:
     """Parse growth and item reports, routing by auto-detected outlet.
 
@@ -107,6 +165,7 @@ def _process_new_flow_files(
     daily_by_loc: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
     cat_by_loc: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
     item_service_by_loc: Dict[int, Dict[str, List[Dict[str, Any]]]] = defaultdict(dict)
+    item_payment_split_by_loc: Dict[int, Dict[str, List[Dict[str, Any]]]] = defaultdict(dict)
     file_meta: Dict[str, Dict[str, Any]] = {}
 
     # --- Growth Reports → daily_summary rows ---
@@ -185,10 +244,14 @@ def _process_new_flow_files(
         cat_by_loc[loc_id].extend(rows)
         for date_str, services in (meta.get("service_sales_by_date") or {}).items():
             item_service_by_loc[loc_id][date_str] = services
+        for date_str, payment_split in (meta.get("payment_split_by_date") or {}).items():
+            item_payment_split_by_loc[loc_id][date_str] = payment_split
         if fr:
             fr.notes.append(
                 f"Parsed {len(rows)} category row(s) → {loc_name} (match: {match_type})"
             )
+
+    _apply_item_payment_splits_to_daily_rows(daily_by_loc, item_payment_split_by_loc)
 
     # --- Complimentary Orders Summary → merge into daily rows ---
     for fname, content in comp_files or []:
@@ -260,7 +323,13 @@ def _process_new_flow_files(
                 f"{loc_name} (match: {match_type})"
             )
 
-    return dict(daily_by_loc), dict(cat_by_loc), file_meta, dict(item_service_by_loc)
+    return (
+        dict(daily_by_loc),
+        dict(cat_by_loc),
+        file_meta,
+        dict(item_service_by_loc),
+        dict(item_payment_split_by_loc),
+    )
 
 
 def _build_location_results_from_daily(
@@ -364,7 +433,13 @@ def process_smart_upload(
     item_files_new = classified.get("item_order_details", [])
     comp_files = classified.get("order_comp_summary", [])
 
-    daily_by_loc, cat_by_loc, new_flow_meta, item_service_by_loc = _process_new_flow_files(
+    (
+        daily_by_loc,
+        cat_by_loc,
+        new_flow_meta,
+        item_service_by_loc,
+        item_payment_split_by_loc,
+    ) = _process_new_flow_files(
         growth_files=growth_files,
         item_files=item_files_new,
         fallback_location_id=location_id,
@@ -538,6 +613,7 @@ def process_smart_upload(
     result.new_flow_meta = new_flow_meta  # type: ignore[attr-defined]
     result.category_by_loc = cat_by_loc  # type: ignore[attr-defined]
     result.item_service_by_loc = item_service_by_loc  # type: ignore[attr-defined]
+    result.item_payment_split_by_loc = item_payment_split_by_loc  # type: ignore[attr-defined]
 
     _elapsed = time.monotonic() - _t0
     total_days = sum(len(days) for days in location_results.values())
@@ -593,6 +669,9 @@ def save_smart_upload_results(
     item_service_by_loc: Dict[int, Dict[str, List[Dict[str, Any]]]] = getattr(
         result, "item_service_by_loc", {}
     )
+    item_payment_split_by_loc: Dict[int, Dict[str, List[Dict[str, Any]]]] = getattr(
+        result, "item_payment_split_by_loc", {}
+    )
 
     daily_rows: List[Dict[str, Any]] = []
     payment_method_rows: List[Dict[str, Any]] = []
@@ -600,6 +679,7 @@ def save_smart_upload_results(
     synthetic_bill_items: List[Dict[str, Any]] = []
     upload_batch: List[Dict[str, Any]] = []
     dates_locs: set = set()
+    payment_method_dates_locs: set = set()
 
     # ── Step 1: Build save payloads from location_results ──
     for loc_id, day_results in result.location_results.items():
@@ -631,6 +711,8 @@ def save_smart_upload_results(
                                 "source_report": "growth_report_day_wise",
                             }
                         )
+                    if merged.get("payment_methods"):
+                        payment_method_dates_locs.add((date_str, loc_id))
                     dates_locs.add((date_str, loc_id))
                     item_services = item_service_by_loc.get(loc_id, {}).get(date_str, [])
                     if item_services:
@@ -668,12 +750,57 @@ def save_smart_upload_results(
             if is_supabase:
                 has_dynamic = "dynamic_report" in source_kinds
                 has_item_report = "item_order_details" in source_kinds
+                item_split = item_payment_split_by_loc.get(loc_id, {}).get(date_str, [])
+                is_new_flow_item_only = has_item_report and not has_dynamic and (
+                    "categories_new" in merged or bool(item_split)
+                )
                 if not has_dynamic and not has_item_report:
                     skipped += 1
                     messages.append(
                         f"No Dynamic Report for {date_str} — legacy Supabase save "
                         "requires Dynamic Report CSV data."
                     )
+                    continue
+
+                if is_new_flow_item_only:
+                    existing_daily = (
+                        database.get_daily_summary(loc_id, date_str) if item_split else None
+                    )
+                    if existing_daily:
+                        updated_daily = dict(existing_daily)
+                        _apply_item_payment_split_to_daily_row(updated_daily, item_split)
+                        if updated_daily != existing_daily:
+                            daily_rows.append(
+                                db_writes.build_daily_summary_row_new_flow(
+                                    loc_id, date_str, updated_daily
+                                )
+                            )
+                            for payment_method in updated_daily.get("payment_methods") or []:
+                                payment_method_rows.append(
+                                    {
+                                        "location_id": loc_id,
+                                        "date": date_str,
+                                        "payment_method": payment_method["payment_method"],
+                                        "payment_key": payment_method["payment_key"],
+                                        "amount": payment_method["amount"],
+                                        "source_report": "item_report_payment_split",
+                                    }
+                                )
+                            payment_method_dates_locs.add((date_str, loc_id))
+                    elif item_split:
+                        messages.append(
+                            f"⚠️ Could not apply Item Report payment split for {date_str} "
+                            f"outlet {loc_id}: matching Growth daily summary not found."
+                        )
+
+                    item_services = item_service_by_loc.get(loc_id, {}).get(date_str, [])
+                    if item_services:
+                        synthetic_bill_items.extend(
+                            _build_item_report_bill_items_from_services(
+                                loc_id, date_str, {"services": item_services}
+                            )
+                        )
+                    saved += 1
                     continue
 
                 daily_rows.append(_build_legacy_daily_row(loc_id, date_str, merged))
@@ -753,7 +880,7 @@ def save_smart_upload_results(
 
         if payment_method_rows:
             try:
-                db_writes.delete_payment_method_sales_batch(client, dates_locs)
+                db_writes.delete_payment_method_sales_batch(client, payment_method_dates_locs)
                 db_writes.save_payment_method_sales_batch(client, payment_method_rows)
                 messages.append(f"Saved {len(payment_method_rows)} payment method record(s)")
             except (ValueError, TypeError, KeyError, RuntimeError) as ex:

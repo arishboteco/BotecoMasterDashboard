@@ -233,7 +233,7 @@ def _item_report_bytes(
         "Date": ["2026-04-01", "2026-04-01"],
         "Timestamp": timestamps,
         "Invoice No.": ["1001", "1001"],
-        "Payment Type": ["Cash", "Cash"],
+        "Payment Type": ["GPay", "G PAY"],
         "Order Type": ["Dine In", "Dine In"],
         "Area": ["Ground Floor", "Ground Floor"],
         "Item Name": ["Item A", "Item B"],
@@ -555,6 +555,26 @@ class TestGrowthReportParser:
             "Zomato Delivery",
         ]
 
+    def test_payment_methods_excludes_fixed_payment_columns(self):
+        from uploads.parsers.growth_report_day_wise import parse_growth_report_day_wise
+
+        content = _growth_report_bytes(
+            payment_cols={
+                "Other [G PAY]": 15000.0,
+                "Other [Razorpay]": 567.0,
+            }
+        )
+        rows, errors, _ = parse_growth_report_day_wise(content, "test.xlsx", location_id=1)
+
+        assert not errors, errors
+        assert rows[0]["cash_sales"] == 20000.0
+        assert rows[0]["card_sales"] == 50000.0
+        assert rows[0]["upi_sales"] == 30000.0
+        assert rows[0]["gpay_sales"] == 15000.0
+        assert rows[0]["payment_methods"] == [
+            {"payment_method": "Razorpay", "payment_key": "razorpay", "amount": 567.0}
+        ]
+
     def test_meta_has_period(self):
         _, _, meta = self._parse()
         # period_start/end extracted from header rows
@@ -691,6 +711,22 @@ class TestItemReportCategoryParser:
             ]
         }
 
+    def test_meta_has_payment_split_by_date_from_payment_type(self):
+        from uploads.parsers.item_report_category_summary import (
+            parse_item_report_category_summary,
+        )
+
+        content = _item_report_bytes()
+        rows, errors, meta = parse_item_report_category_summary(content, "test.xlsx", location_id=1)
+
+        assert not errors
+        assert rows
+        assert meta["payment_split_by_date"] == {
+            "2026-04-01": [
+                {"payment_method": "GPay", "payment_key": "gpay", "amount": 805.0}
+            ]
+        }
+
 
 # ---------------------------------------------------------------------------
 # 6. database_writes helper test
@@ -698,6 +734,96 @@ class TestItemReportCategoryParser:
 
 
 class TestDatabaseWritesNewFlow:
+    def test_item_payment_split_replaces_generic_growth_upi(self):
+        from smart_upload import _apply_item_payment_split_to_daily_row
+
+        row = {
+            "date": "2026-04-01",
+            "upi_sales": 805.0,
+            "gpay_sales": 0.0,
+            "payment_methods": [],
+        }
+        split = [
+            {"payment_method": "GPay", "payment_key": "gpay", "amount": 305.0},
+            {"payment_method": "Razorpay", "payment_key": "razorpay", "amount": 500.0},
+        ]
+
+        _apply_item_payment_split_to_daily_row(row, split)
+
+        assert row["upi_sales"] == 0.0
+        assert row["gpay_sales"] == 305.0
+        assert row["payment_methods"] == [
+            {"payment_method": "Razorpay", "payment_key": "razorpay", "amount": 500.0}
+        ]
+
+    def test_item_payment_split_keeps_unmatched_upi_remainder(self):
+        from smart_upload import _apply_item_payment_split_to_daily_row
+
+        row = {"date": "2026-04-01", "upi_sales": 1000.0, "gpay_sales": 0.0}
+        split = [
+            {"payment_method": "GPay", "payment_key": "gpay", "amount": 300.0},
+            {"payment_method": "Razorpay", "payment_key": "razorpay", "amount": 500.0},
+        ]
+
+        _apply_item_payment_split_to_daily_row(row, split)
+
+        assert row["upi_sales"] == 200.0
+        assert row["gpay_sales"] == 300.0
+        assert row["payment_methods"] == [
+            {"payment_method": "Razorpay", "payment_key": "razorpay", "amount": 500.0}
+        ]
+
+    def test_item_payment_split_removes_existing_normalized_upi_method(self):
+        from smart_upload import _apply_item_payment_split_to_daily_row
+
+        row = {
+            "date": "2026-04-01",
+            "upi_sales": 805.0,
+            "gpay_sales": 0.0,
+            "payment_methods": [
+                {"payment_method": "Cash", "payment_key": "cash", "amount": 100.0},
+                {"payment_method": "UPI", "payment_key": "upi", "amount": 805.0},
+            ],
+        }
+        split = [
+            {"payment_method": "Razorpay", "payment_key": "razorpay", "amount": 500.0}
+        ]
+
+        _apply_item_payment_split_to_daily_row(row, split)
+
+        assert row["upi_sales"] == 305.0
+        assert row["payment_methods"] == [
+            {"payment_method": "Cash", "payment_key": "cash", "amount": 100.0},
+            {"payment_method": "Razorpay", "payment_key": "razorpay", "amount": 500.0},
+        ]
+
+    def test_item_payment_split_applied_to_daily_rows_by_location_and_date(self):
+        from smart_upload import _apply_item_payment_splits_to_daily_rows
+
+        daily_by_loc = {
+            1: [
+                {"date": "2026-04-01", "upi_sales": 805.0, "gpay_sales": 0.0},
+                {"date": "2026-04-02", "upi_sales": 100.0, "gpay_sales": 0.0},
+            ]
+        }
+        split_by_loc = {
+            1: {
+                "2026-04-01": [
+                    {"payment_method": "GPay", "payment_key": "gpay", "amount": 305.0},
+                    {"payment_method": "Razorpay", "payment_key": "razorpay", "amount": 500.0},
+                ]
+            }
+        }
+
+        _apply_item_payment_splits_to_daily_rows(daily_by_loc, split_by_loc)
+
+        assert daily_by_loc[1][0]["upi_sales"] == 0.0
+        assert daily_by_loc[1][0]["gpay_sales"] == 305.0
+        assert daily_by_loc[1][0]["payment_methods"] == [
+            {"payment_method": "Razorpay", "payment_key": "razorpay", "amount": 500.0}
+        ]
+        assert daily_by_loc[1][1]["upi_sales"] == 100.0
+
     def test_build_daily_summary_includes_all_new_fields(self):
         from database_writes import build_daily_summary_row_new_flow
 
