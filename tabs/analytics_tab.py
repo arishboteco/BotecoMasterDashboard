@@ -283,60 +283,65 @@ def render(ctx: TabContext) -> None:
                 prior_avg,
             )
 
-            with classed_container("tab-analytics-mobile-sections", "mobile-layout-stack"):
-                st.markdown('<div class="section-stack">', unsafe_allow_html=True)
-                st.markdown("### Analysis Layers")
-                st.caption(
-                    "Use these focused layers to explain the forecast without "
-                    "scrolling through every chart."
-                )
+            with st.expander("Deep-dive analysis layers", expanded=False):
                 with classed_container(
-                    "tab-analytics-mobile-secondary",
-                    "mobile-layout-secondary",
+                    "tab-analytics-mobile-sections",
+                    "mobile-layout-stack",
                 ):
-                    selected_layer = st.segmented_control(
-                        "Analysis Layer",
-                        options=[
-                            "Drivers",
-                            "Mix",
-                            "Targets & Daily",
-                            "Payments",
-                        ],
-                        default="Drivers",
-                        key="analytics_layer_selector",
-                        label_visibility="collapsed",
+                    st.markdown('<div class="section-stack">', unsafe_allow_html=True)
+                    st.markdown("### Deep-Dive Analysis")
+                    st.caption(
+                        "Open one focused layer at a time when you need to diagnose the numbers."
                     )
 
-                    if selected_layer == "Drivers":
-                        render_driver_analysis(
-                            df,
-                            df_raw,
-                            multi_analytics,
+                    with classed_container(
+                        "tab-analytics-mobile-secondary",
+                        "mobile-layout-secondary",
+                    ):
+                        selected_layer = st.segmented_control(
+                            "Analysis Layer",
+                            options=[
+                                "Drivers",
+                                "Mix",
+                                "Targets & Daily",
+                                "Payments",
+                            ],
+                            default="Drivers",
+                            key="analytics_layer_selector",
+                            label_visibility="collapsed",
                         )
 
-                    elif selected_layer == "Mix":
-                        render_mix_snapshot(
-                            analytics_loc_ids,
-                            start_str,
-                            end_str,
-                            df,
-                            start_date,
-                        )
+                        if selected_layer == "Drivers":
+                            render_driver_analysis(
+                                df,
+                                df_raw,
+                                multi_analytics,
+                            )
 
-                    elif selected_layer == "Targets & Daily":
-                        render_target_snapshot(
-                            analytics_loc_ids,
-                            start_date,
-                            df,
-                        )
+                        elif selected_layer == "Mix":
+                            render_mix_snapshot(
+                                analytics_loc_ids,
+                                start_str,
+                                end_str,
+                                df,
+                                start_date,
+                            )
 
-                    elif selected_layer == "Payments":
-                        render_payment_reconciliation(
-                            analytics_loc_ids,
-                            start_str,
-                            end_str,
-                        )
-                st.markdown("</div>", unsafe_allow_html=True)
+                        elif selected_layer == "Targets & Daily":
+                            render_target_snapshot(
+                                analytics_loc_ids,
+                                start_date,
+                                df,
+                            )
+
+                        elif selected_layer == "Payments":
+                            render_payment_reconciliation(
+                                analytics_loc_ids,
+                                start_str,
+                                end_str,
+                            )
+
+                    st.markdown("</div>", unsafe_allow_html=True)
 
         else:
             empty_state(
