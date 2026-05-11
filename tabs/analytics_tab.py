@@ -131,31 +131,54 @@ def render(ctx: TabContext) -> None:
             "mobile-layout-stack",
             "mobile-layout-filters",
         ):
-            period_col, outlet_col = st.columns([1, 2])
-            if "analysis_period" not in st.session_state:
-                st.session_state.analysis_period = "30D"
-            period_options = ["7D", "30D", "MTD", "QTD", "Custom"]
+            period_col, outlet_col, comparison_col = st.columns([1.2, 2, 2])
+
+            period_options = [
+                "7D",
+                "30D",
+                "MTD",
+                "LM",
+                "QTD",
+                "YTD",
+                "Custom",
+            ]
+
             current_period = st.session_state.get("analysis_period", "30D")
+            if current_period == "Last Month":
+                current_period = "LM"
             if current_period not in period_options:
                 current_period = "30D"
+
             with period_col:
                 analysis_period = st.segmented_control(
                     "Time Period",
                     options=period_options,
                     default=current_period,
-                    key="analysis_period",
+                    key="analysis_period_selector",
                     label_visibility="collapsed",
                 ) or current_period
+
+            st.session_state.analysis_period = analysis_period
 
             selected_outlet = "All outlets"
             if len(ctx.report_loc_ids) > 1 and ctx.all_locs:
                 _loc_options = ["All outlets"] + [
                     loc["name"] for loc in sorted(ctx.all_locs, key=lambda x: x["name"])
                 ]
+
                 if "analytics_outlet_scope" not in st.session_state:
                     st.session_state.analytics_outlet_scope = "All outlets"
-                _current = st.session_state.get("analytics_outlet_scope", "All outlets")
-                _default_idx = _loc_options.index(_current) if _current in _loc_options else 0
+
+                _current = st.session_state.get(
+                    "analytics_outlet_scope",
+                    "All outlets",
+                )
+                _default_idx = (
+                    _loc_options.index(_current)
+                    if _current in _loc_options
+                    else 0
+                )
+
                 with outlet_col:
                     selected_outlet = st.segmented_control(
                         "Select outlet",
@@ -164,7 +187,31 @@ def render(ctx: TabContext) -> None:
                         key="analytics_outlet_radio",
                         label_visibility="collapsed",
                     ) or _loc_options[_default_idx]
+
                 st.session_state.analytics_outlet_scope = selected_outlet
+
+            comparison_options = [
+                "Previous Period",
+                "Same Period Last Month",
+                "Same Period Last Year",
+            ]
+
+            current_comparison = st.session_state.get(
+                "analytics_comparison_mode",
+                "Previous Period",
+            )
+
+            if current_comparison not in comparison_options:
+                current_comparison = "Previous Period"
+
+            with comparison_col:
+                comparison_mode = st.segmented_control(
+                    "Compare",
+                    options=comparison_options,
+                    default=current_comparison,
+                    key="analytics_comparison_mode",
+                    label_visibility="collapsed",
+                ) or current_comparison
 
             custom_start = None
             custom_end = None
@@ -179,6 +226,7 @@ def render(ctx: TabContext) -> None:
         analysis_period,
         custom_start=custom_start,
         custom_end=custom_end,
+        comparison_mode=comparison_mode,
     )
 
     start_str = start_date.strftime("%Y-%m-%d")
@@ -258,6 +306,7 @@ def render(ctx: TabContext) -> None:
             if prior_start and prior_end:
                 context_items.append(
                     f'<span class="context-band-item"><strong>Comparison:</strong> '
+                    f"{comparison_mode} · "
                     f"{prior_start.strftime('%d %b')} to {prior_end.strftime('%d %b %Y')}</span>"
                 )
             st.markdown(
