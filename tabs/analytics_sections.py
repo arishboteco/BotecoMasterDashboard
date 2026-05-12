@@ -1940,74 +1940,39 @@ def render_target_snapshot(
     start_date: date,
     df: pd.DataFrame,
 ) -> None:
-    """Render a compact target snapshot without the legacy daily table."""
-
-    render_target_pace_snapshot(df)
-    render_daily_target_variance(df)
-    render_top_bottom_target_days(df)
-    
-    st.markdown("### Target Pace")
-    monthly_target = scope.sum_location_monthly_targets(report_loc_ids)
-    if monthly_target <= 0 or df.empty:
-        st.caption("No target data available for this period.")
+    """Render focused target and daily diagnostics without redundant views."""
+    if df.empty:
+        st.caption("No target data for this period.")
         return
 
-    target_df = df.copy().sort_values("date")
-    target_df["net_total"] = pd.to_numeric(target_df["net_total"], errors="coerce").fillna(0)
-    target_df["cumulative"] = target_df["net_total"].cumsum()
-    days_in_month = utils.get_days_in_month(start_date.year, start_date.month)
-    daily_target = monthly_target / days_in_month
-    target_df["target_pace"] = [daily_target * (idx + 1) for idx in range(len(target_df))]
-    actual_last = float(target_df["cumulative"].iloc[-1])
-    target_last = float(target_df["target_pace"].iloc[-1])
-    gap = actual_last - target_last
+    st.markdown("### Targets & Daily")
+    st.caption(
+        "Use this layer to understand target achievement and identify which days created the gap."
+    )
 
-    status_col, chart_col = st.columns([1, 2])
-    with status_col:
-        with st.container(border=True):
-            st.metric(
-                "Actual vs Pace",
-                utils.format_rupee_short(actual_last),
-                utils.format_rupee_short(gap),
-            )
-            st.metric("Required Daily Pace", utils.format_rupee_short(daily_target))
-            if gap >= 0:
-                st.success("On pace for the selected target period.")
-            else:
-                st.warning("Behind target pace. Focus on high-confidence demand days.")
+    render_target_pace_snapshot(df)
 
-    with chart_col:
-        with st.container(border=True):
-            fig_target = go.Figure()
-            fig_target.add_trace(
-                go.Scatter(
-                    x=pd.to_datetime(target_df["date"]),
-                    y=target_df["cumulative"],
-                    mode="lines+markers",
-                    name="Actual",
-                    fill="tozeroy",
-                    fillcolor=_hex_to_rgba(ui_theme.BRAND_PRIMARY, 0.12),
-                    line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
-                )
+    render_daily_target_variance(df)
+
+    with st.expander("Best & worst target days", expanded=False):
+        render_top_bottom_target_days(df)
+
+    with st.expander("Daily target table", expanded=False):
+        daily_view = build_daily_view_table(
+            df=df,
+            df_raw=pd.DataFrame(),
+            multi_analytics=False,
+            numeric=False,
+        )
+
+        if daily_view.empty:
+            st.info("No daily target rows available.")
+        else:
+            st.dataframe(
+                daily_view,
+                width="stretch",
+                hide_index=True,
             )
-            fig_target.add_trace(
-                go.Scatter(
-                    x=pd.to_datetime(target_df["date"]),
-                    y=target_df["target_pace"],
-                    mode="lines",
-                    name="Target pace",
-                    line=dict(color=ui_theme.CHART_BAR_MUTED, width=2, dash="dash"),
-                )
-            )
-            fig_target.update_layout(
-                xaxis_title="Date",
-                yaxis_title="Cumulative Sales",
-                height=360,
-                hovermode="x unified",
-                margin=dict(l=8, r=8, t=16, b=32),
-            )
-            fig_target.update_yaxes(tickprefix="₹", tickformat=",")
-            st.plotly_chart(fig_target, width="stretch")
 
 
 def render_overview(
