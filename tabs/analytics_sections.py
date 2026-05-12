@@ -768,11 +768,18 @@ def render_forecast_command_center(
 
     with right_col:
         st.markdown("### Recommended Actions")
-        for card in action_cards:
+
+        visible_cards = action_cards[:2]
+        hidden_cards = action_cards[2:]
+
+        for card in visible_cards:
             body = (
-                f"**{card['title']}**\n\n{card['reason']}\n\n"
-                f"**Action:** {card['action']}\n\n{card['metric']}"
+                f"**{card['title']}**\n\n"
+                f"{card['reason']}\n\n"
+                f"**Action:** {card['action']}\n\n"
+                f"{card['metric']}"
             )
+
             tone = card["severity"]
             if tone == "high":
                 st.error(body)
@@ -780,6 +787,24 @@ def render_forecast_command_center(
                 st.warning(body)
             else:
                 st.info(body)
+
+        if hidden_cards:
+            with st.expander("More actions", expanded=False):
+                for card in hidden_cards:
+                    body = (
+                        f"**{card['title']}**\n\n"
+                        f"{card['reason']}\n\n"
+                        f"**Action:** {card['action']}\n\n"
+                        f"{card['metric']}"
+                    )
+
+                    tone = card["severity"]
+                    if tone == "high":
+                        st.error(body)
+                    elif tone == "medium":
+                        st.warning(body)
+                    else:
+                        st.info(body)
 
     render_sales_movement_waterfall(df, prior_df)
 
