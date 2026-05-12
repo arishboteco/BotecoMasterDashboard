@@ -1095,107 +1095,109 @@ def render_driver_analysis(
         axis=1,
     )
 
-    covers_col, apc_col = st.columns(2)
-    with covers_col:
-        with st.container(border=True):
-            st.markdown("#### Covers")
-            fig_covers = go.Figure(
-                go.Scatter(
-                    x=pd.to_datetime(driver_df["date"]),
-                    y=driver_df["covers"],
-                    mode="lines+markers",
-                    name="Covers",
-                    line=dict(color=ui_theme.BRAND_SUCCESS, width=2),
-                    marker=dict(size=3),
-                    opacity=0.75,
-                    hovertemplate="%{y:,.0f} covers<br>%{x|%a, %d %b}<extra></extra>",
+    with st.expander("Trend details: Covers and APC over time", expanded=False):
+        covers_col, apc_col = st.columns(2)
+        
+        with covers_col:
+            with st.container(border=True):
+                st.markdown("#### Covers")
+                fig_covers = go.Figure(
+                    go.Scatter(
+                        x=pd.to_datetime(driver_df["date"]),
+                        y=driver_df["covers"],
+                        mode="lines+markers",
+                        name="Covers",
+                        line=dict(color=ui_theme.BRAND_SUCCESS, width=2),
+                        marker=dict(size=3),
+                        opacity=0.75,
+                        hovertemplate="%{y:,.0f} covers<br>%{x|%a, %d %b}<extra></extra>",
+                    )
                 )
-            )
-            covers_values = driver_df["covers"].tolist()
-            if len(covers_values) >= 7:
-                ma_values = moving_average(covers_values, window=7)
-                ma_series = pd.Series(ma_values)
-                ma_valid = ma_series[pd.notna(ma_series)]
-                if not ma_valid.empty:
-                    fig_covers.add_trace(
+                covers_values = driver_df["covers"].tolist()
+                if len(covers_values) >= 7:
+                    ma_values = moving_average(covers_values, window=7)
+                    ma_series = pd.Series(ma_values)
+                    ma_valid = ma_series[pd.notna(ma_series)]
+                    if not ma_valid.empty:
+                        fig_covers.add_trace(
+                            go.Scatter(
+                                x=pd.to_datetime(driver_df["date"])[pd.notna(ma_series)],
+                                y=ma_valid.tolist(),
+                                mode="lines",
+                                name="7-day Avg",
+                                line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
+                                hovertemplate=(
+                                    "%{y:,.0f} covers (7-day avg)<br>"
+                                    "%{x|%a, %d %b}<extra></extra>"
+                                ),
+                            )
+                        )
+                fig_covers.update_layout(
+                    xaxis_title="Date",
+                    yaxis_title="Covers",
+                    height=320,
+                    hovermode="x unified",
+                    xaxis=dict(tickformat="%a %d %b"),
+                )
+                st.plotly_chart(fig_covers, width="stretch")
+
+                weekly_df = _build_weekly_covers_trend(driver_df[["date", "covers"]])
+                if weekly_df.empty:
+                    st.caption("Need valid date/cover rows to compute weekly trend.")
+                else:
+                    fig_weekly = go.Figure(
                         go.Scatter(
-                            x=pd.to_datetime(driver_df["date"])[pd.notna(ma_series)],
-                            y=ma_valid.tolist(),
-                            mode="lines",
-                            name="7-day Avg",
-                            line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
+                            x=weekly_df["week_start"],
+                            y=weekly_df["avg_daily_covers"],
+                            mode="lines+markers",
+                            name="Weekly Avg Covers",
+                            line=dict(color=ui_theme.BRAND_WARN, width=2),
+                            marker=dict(size=4),
                             hovertemplate=(
-                                "%{y:,.0f} covers (7-day avg)<br>"
-                                "%{x|%a, %d %b}<extra></extra>"
+                                "Week of %{x|%a, %d %b}: %{y:,.1f} avg covers/day"
+                                "<extra></extra>"
                             ),
                         )
                     )
-            fig_covers.update_layout(
-                xaxis_title="Date",
-                yaxis_title="Covers",
-                height=320,
-                hovermode="x unified",
-                xaxis=dict(tickformat="%a %d %b"),
-            )
-            st.plotly_chart(fig_covers, width="stretch")
+                    fig_weekly.update_layout(
+                        xaxis_title="Week Start",
+                        yaxis_title="Avg Covers / Day",
+                        height=220,
+                        margin=dict(l=0, r=0, t=8, b=0),
+                        xaxis=dict(tickformat="%a %d %b"),
+                    )
+                    st.plotly_chart(fig_weekly, width="stretch")
+                    st.caption(_weekly_covers_commentary(weekly_df))
 
-            weekly_df = _build_weekly_covers_trend(driver_df[["date", "covers"]])
-            if weekly_df.empty:
-                st.caption("Need valid date/cover rows to compute weekly trend.")
-            else:
-                fig_weekly = go.Figure(
+        with apc_col:
+            with st.container(border=True):
+                st.markdown("#### Average Per Cover")
+                fig_apc = go.Figure(
                     go.Scatter(
-                        x=weekly_df["week_start"],
-                        y=weekly_df["avg_daily_covers"],
+                        x=pd.to_datetime(driver_df["date"]),
+                        y=driver_df["apc"],
                         mode="lines+markers",
-                        name="Weekly Avg Covers",
-                        line=dict(color=ui_theme.BRAND_WARN, width=2),
+                        name="APC",
+                        line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
                         marker=dict(size=4),
-                        hovertemplate=(
-                            "Week of %{x|%a, %d %b}: %{y:,.1f} avg covers/day"
-                            "<extra></extra>"
-                        ),
+                        hovertemplate="₹%{y:,.0f} APC<br>%{x|%d %b}<extra></extra>",
                     )
                 )
-                fig_weekly.update_layout(
-                    xaxis_title="Week Start",
-                    yaxis_title="Avg Covers / Day",
-                    height=220,
-                    margin=dict(l=0, r=0, t=8, b=0),
-                    xaxis=dict(tickformat="%a %d %b"),
+                avg_apc = float(driver_df["apc"].mean()) if not driver_df.empty else 0.0
+                if avg_apc > 0:
+                    fig_apc.add_hline(
+                        y=avg_apc,
+                        line_dash="dash",
+                        line_color=ui_theme.CHART_BAR_MUTED,
+                        annotation_text=f"Avg {utils.format_currency(avg_apc)}",
+                    )
+                fig_apc.update_layout(
+                    xaxis_title="Date",
+                    yaxis_title="APC (₹)",
+                    height=320,
+                    hovermode="x unified",
                 )
-                st.plotly_chart(fig_weekly, width="stretch")
-                st.caption(_weekly_covers_commentary(weekly_df))
-
-    with apc_col:
-        with st.container(border=True):
-            st.markdown("#### Average Per Cover")
-            fig_apc = go.Figure(
-                go.Scatter(
-                    x=pd.to_datetime(driver_df["date"]),
-                    y=driver_df["apc"],
-                    mode="lines+markers",
-                    name="APC",
-                    line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
-                    marker=dict(size=4),
-                    hovertemplate="₹%{y:,.0f} APC<br>%{x|%d %b}<extra></extra>",
-                )
-            )
-            avg_apc = float(driver_df["apc"].mean()) if not driver_df.empty else 0.0
-            if avg_apc > 0:
-                fig_apc.add_hline(
-                    y=avg_apc,
-                    line_dash="dash",
-                    line_color=ui_theme.CHART_BAR_MUTED,
-                    annotation_text=f"Avg {utils.format_currency(avg_apc)}",
-                )
-            fig_apc.update_layout(
-                xaxis_title="Date",
-                yaxis_title="APC (₹)",
-                height=320,
-                hovermode="x unified",
-            )
-            st.plotly_chart(fig_apc, width="stretch")
+                st.plotly_chart(fig_apc, width="stretch")
 
         with st.container(border=True):
             st.markdown("#### Covers vs APC Matrix")
@@ -1332,7 +1334,7 @@ def render_driver_analysis(
             )
 
             st.plotly_chart(fig_scatter, width="stretch")
-    if st.toggle("Show driver data table", value=False, key="analytics_driver_table_toggle"):
+    with st.expander("Daily driver data table", expanded=False):
         with st.container(border=True):
             st.caption("Daily driver table")
             table = driver_df.rename(
