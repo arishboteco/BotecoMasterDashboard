@@ -1648,114 +1648,22 @@ def render_mix_snapshot(
     df: pd.DataFrame,
     start_date: date,
 ) -> None:
-    """Render concise category and weekday mix charts without default tables."""
+    """Render focused mix and timing diagnostics without redundant charts."""
+    if df.empty:
+        st.caption("No mix or timing data for this period.")
+        return
+
     st.markdown("### Mix & Timing")
-    st.caption("Use this layer to spot what is driving the period without digging through rows.")
+    st.caption(
+        "Use this layer to understand category concentration and weekday demand patterns."
+    )
 
     render_category_pareto(report_loc_ids, start_str, end_str)
+
     render_weekday_heatmap(df)
+
     render_weekday_summary_table(df)
-
-    cat_col, weekday_col = st.columns(2)
-    with cat_col:
-        with st.container(border=True):
-            st.markdown("#### Category Contribution")
-            cat_data = database.get_category_sales_for_date_range(
-                report_loc_ids,
-                start_str,
-                end_str,
-            )
-            if not cat_data:
-                st.caption("No category data for this period.")
-            else:
-                cat_df = pd.DataFrame(cat_data).head(8).copy()
-                total_cat = float(cat_df["amount"].sum())
-                cat_df["share"] = cat_df["amount"] / total_cat * 100 if total_cat > 0 else 0
-                cat_df = cat_df.sort_values("amount", ascending=True)
-                fig_cat = go.Figure(
-                    go.Bar(
-                        x=cat_df["amount"],
-                        y=cat_df["category"],
-                        orientation="h",
-                        marker_color=ui_theme.BRAND_PRIMARY,
-                        text=[f"{x:.1f}%" for x in cat_df["share"]],
-                        textposition="auto",
-                        hovertemplate=("%{y}<br>₹%{x:,.0f}<br>%{text} of top mix<extra></extra>"),
-                    )
-                )
-                fig_cat.update_layout(
-                    xaxis_title="Net Sales",
-                    yaxis_title="",
-                    height=360,
-                    margin=dict(l=8, r=8, t=16, b=32),
-                )
-                fig_cat.update_xaxes(tickprefix="₹", tickformat=",")
-                st.plotly_chart(fig_cat, width="stretch")
-
-    with weekday_col:
-        with st.container(border=True):
-            st.markdown("#### Weekday Strength")
-            if len(df) < 7:
-                st.caption("Need at least 7 days of data for weekday strength.")
-            else:
-                wd_df = df[df["net_total"] > 0].copy()
-                wd_df["weekday"] = wd_df["date"].apply(utils.get_weekday_name)
-                wd_agg = (
-                    wd_df.groupby("weekday")[["net_total", "covers"]]
-                    .mean()
-                    .reset_index()
-                    .rename(columns={"net_total": "avg_sales", "covers": "avg_covers"})
-                )
-                day_order = [
-                    "Monday",
-                    "Tuesday",
-                    "Wednesday",
-                    "Thursday",
-                    "Friday",
-                    "Saturday",
-                    "Sunday",
-                ]
-                wd_agg["weekday"] = pd.Categorical(
-                    wd_agg["weekday"], categories=day_order, ordered=True
-                )
-                wd_agg = wd_agg.sort_values("weekday")
-
-                monthly_tgt = scope.sum_location_monthly_targets(report_loc_ids)
-                days_in_mo = utils.get_days_in_month(start_date.year, start_date.month)
-                daily_tgt = monthly_tgt / days_in_mo if monthly_tgt > 0 else 0
-                colors = [
-                    ui_theme.BRAND_SUCCESS
-                    if daily_tgt > 0 and val >= daily_tgt
-                    else ui_theme.BRAND_WARN
-                    if daily_tgt > 0 and val >= daily_tgt * 0.8
-                    else ui_theme.CHART_BAR_MUTED
-                    for val in wd_agg["avg_sales"]
-                ]
-                fig_wd = go.Figure(
-                    go.Bar(
-                        x=wd_agg["weekday"],
-                        y=wd_agg["avg_sales"],
-                        marker_color=colors,
-                        text=[utils.format_rupee_short(v) for v in wd_agg["avg_sales"]],
-                        textposition="outside",
-                        hovertemplate=("%{x}<br>Avg sales: ₹%{y:,.0f}<extra></extra>"),
-                    )
-                )
-                if daily_tgt > 0:
-                    fig_wd.add_hline(
-                        y=daily_tgt,
-                        line_dash="dash",
-                        line_color=ui_theme.CHART_BAR_MUTED,
-                        annotation_text=f"Target {utils.format_rupee_short(daily_tgt)}",
-                    )
-                fig_wd.update_layout(
-                    xaxis_title="",
-                    yaxis_title="Avg Net Sales",
-                    height=360,
-                    margin=dict(l=8, r=8, t=16, b=32),
-                )
-                fig_wd.update_yaxes(tickprefix="₹", tickformat=",")
-                st.plotly_chart(fig_wd, width="stretch")
+    
 
 def render_target_pace_snapshot(df: pd.DataFrame) -> None:
     """Render selected-period target pace snapshot."""
