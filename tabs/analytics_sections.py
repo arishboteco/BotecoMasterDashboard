@@ -139,6 +139,340 @@ def _build_action_cards(
     cards = sorted(cards, key=lambda c: severity_rank.get(c["severity"], 3))
     return cards[:3]
 
+def _safe_pct_change(current: float | None, prior: float | None) -> float | None:
+    """Return percentage change, safely handling empty or zero prior values."""
+    if current is None or prior is None:
+        return None
+
+    current_value = float(current or 0)
+    prior_value = float(prior or 0)
+
+    if prior_value <= 0:
+        return None
+
+    return ((current_value - prior_value) / prior_value) * 100
+
+
+def _format_owner_delta(value: float | None) -> str:
+    """Format percentage deltas for owner-facing readout text."""
+    if value is None:
+        return "N/A"
+    return f"{value:+.1f}%"
+
+
+def render_owner_readout_and_data_confidence(
+    df: pd.DataFrame,
+    df_raw: pd.DataFrame,
+    prior_df: pd.DataFrame,
+    analysis_period: str,
+    start_date: date,
+    end_date: date,
+    monthly_target: float,
+    total_sales: float,
+    total_covers: int,
+    prior_total: float | None,
+    prior_covers: int | None,
+    analytics_loc_ids: list[int],
+) -> None:
+    """Render an owner-facing readout plus data confidence check."""
+    if df.empty:
+        return
+
+    work_df = df.copy()
+
+    work_df["date"] = pd.to_datetime(work_df["date"], errors="coerce")
+    work_df = work_df[work_df["date"].notna()].copy()
+
+    if work_df.empty:
+        return
+
+    work_df["net_total"] = pd.to_numeric(
+        work_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
+    work_df["covers"] = pd.to_numeric(
+        work_df["covers"],
+        errors="coerce",
+    ).fillna(0)
+
+    if "target" in work_df.columns:
+        work_df["target"] = pd.to_numeric(
+            work_df["target"],
+            errors="coerce",
+        ).fillna(0)
+    else:
+        work_df["target"] = 0
+
+    selected_target = float(work_df["target"].sum())
+    achievement_pct = (
+        total_sales / selected_target * 100
+        if selected_target > 0
+        else 0
+    )
+
+    current_apc = total_sales / total_covers if total_covers > 0 else 0.0
+
+    prior_apc = None
+    if (
+        prior_total is not None
+        and prior_covers is not None
+        and prior_covers > 0
+    ):
+        prior_apc = prior_total / prior_covers
+
+    sales_delta_pct = _safe_pct_change(total_sales, prior_total)
+    covers_delta_pct = _safe_pct_change(total_covers, prior_covers)
+    apc_delta_pct = _safe_pct_change(current_apc, prior_apc)
+
+    # Forecast close estimate using the existing forecast helper.
+    selected_range_days = max(1, (end_date - start_date).days + 1)
+    forecast_days = calculate_forecast_days(
+        analysis_period,
+        data_points=len(work_df),
+        selected_range_days=selected_range_days,
+    )
+
+    forecast_total = None
+    forecast_reliability = _forecast_reliability_label(len(work_df))
+
+    if forecast_days > 0:
+        forecast = linear_forecast(
+            work_df["date"],
+            work_df["net_total"].tolist(),
+            forecast_days=forecast_days,
+        )
+        if forecast:
+            forecast_total = total_sales + sum(float(item["value"]) for item in forecast)
+
+    # Owner readout decision rules.
+    severity = "info"
+    title = "Performance is stable"
+    diagnosis = "No major risk signal is visible from the current period, comparison period, target pace and APC movement."
+    primary_action = "Maintain current operating rhythm and keep monitoring outlet, weekday and category movement."
+    secondary_action = "Use the deep-dive layers only if a KPI starts moving materially."
+
+    forecast_gap = None
+    if monthly_target > 0 and forecast_total is not None:
+        forecast_gap = monthly_target - forecast_total
+
+    selected_target_gap = selected_target - total_sales if selected_target > 0 else None
+
+    if (
+        covers_delta_pct is not None
+        and apc_delta_pct is not None
+        and covers_delta_pct >= 8
+        and apc_delta_pct <= -8
+    ):
+        severity = "warning"
+        title = "Traffic is improving, but spend per guest is falling"
+        diagnosis = (
+            f"Covers are {_format_owner_delta(covers_delta_pct)} vs comparison, "
+            f"but APC is {_format_owner_delta(apc_delta_pct)}. "
+            "This means demand exists, but guests are spending less per cover."
+        )
+        primary_action = "Push high-margin upsells, premium pairings, cocktails, desserts and sharing platters during peak hours."
+        secondary_action = "Check the Mix layer to see whether premium categories are losing contribution."
+
+    elif sales_delta_pct is not None and sales_delta_pct <= -8:
+        severity = "error"
+        title = "Sales are soft versus the comparison period"
+        diagnosis = (
+            f"Net sales are {_format_owner_delta(sales_delta_pct)} vs comparison. "
+            "This points to a demand, visibility, conversion or operating issue."
+        )
+        primary_action = "Identify which outlet and weekdays created the drop, then run a tactical demand push."
+        secondary_action = "Use the Drivers layer to check whether the issue is covers, APC or both."
+
+    elif apc_delta_pct is not None and apc_delta_pct <= -8:
+        severity = "warning"
+        title = "APC is under pressure"
+        diagnosis = (
+            f"APC is {_format_owner_delta(apc_delta_pct)} vs comparison. "
+            "Guests are spending less per cover even if sales may look stable."
+        )
+        primary_action = "Review menu mix, server upsell behaviour and premium item availability."
+        secondary_action = "Use the Category Pareto and Weekday Summary to identify where spend quality is weakening."
+
+    elif covers_delta_pct is not None and covers_delta_pct <= -8:
+        severity = "warning"
+        title = "Guest count is under pressure"
+        diagnosis = (
+            f"Covers are {_format_owner_delta(covers_delta_pct)} vs comparison. "
+            "The main issue appears to be traffic rather than ticket size."
+        )
+        primary_action = "Check reservations, corporate bookings, aggregator visibility and local marketing for weak days."
+        secondary_action = "Use the Covers vs APC Matrix to separate low-traffic days from low-spend days."
+
+    elif selected_target > 0 and achievement_pct < 70:
+        severity = "error"
+        title = "Selected period is materially behind target"
+        diagnosis = (
+            f"Achievement is {achievement_pct:.1f}% against the selected-period target. "
+            "The business needs an immediate recovery plan for the remaining days."
+        )
+        primary_action = "Calculate the required daily sales and push high-conversion offers on the strongest weekdays."
+        secondary_action = "Use Daily Target Variance to identify the exact days creating the gap."
+
+    elif selected_target > 0 and achievement_pct >= 100:
+        severity = "success"
+        title = "Selected period is ahead of target"
+        diagnosis = (
+            f"Achievement is {achievement_pct:.1f}% against the selected-period target. "
+            "The priority is to protect the drivers that created this performance."
+        )
+        primary_action = "Protect availability of top categories and keep staffing aligned to peak demand."
+        secondary_action = "Use Mix and Drivers to identify which behaviours should be repeated."
+
+    if forecast_gap is not None and forecast_gap > 0:
+        if severity in {"info", "success"}:
+            severity = "warning"
+            title = "Forecast close is below monthly target"
+            diagnosis = (
+                f"Forecast close is {utils.format_rupee_short(forecast_total or 0)} "
+                f"against a monthly target of {utils.format_rupee_short(monthly_target)}. "
+                f"Projected gap is {utils.format_rupee_short(forecast_gap)}."
+            )
+            primary_action = "Focus the next operating cycle on days and categories with the highest conversion potential."
+            secondary_action = "Track required daily sales and review progress every 2–3 days."
+        else:
+            diagnosis += (
+                f" Forecast close is {utils.format_rupee_short(forecast_total or 0)} "
+                f"against target {utils.format_rupee_short(monthly_target)}."
+            )
+
+    evidence_lines = [
+        f"Net Sales: {utils.format_rupee_short(total_sales)} ({_format_owner_delta(sales_delta_pct)} vs comparison)",
+        f"Covers: {int(total_covers):,} ({_format_owner_delta(covers_delta_pct)} vs comparison)",
+        f"APC: {utils.format_currency(current_apc)} ({_format_owner_delta(apc_delta_pct)} vs comparison)",
+    ]
+
+    if selected_target > 0:
+        evidence_lines.append(
+            f"Selected Target Achievement: {achievement_pct:.1f}%"
+        )
+
+    if forecast_total is not None:
+        evidence_lines.append(
+            f"Forecast Close: {utils.format_rupee_short(forecast_total)} · Reliability: {forecast_reliability}"
+        )
+
+    # Data confidence checks.
+    expected_dates = set(pd.date_range(start_date, end_date).date)
+    observed_dates = set(work_df["date"].dt.date.dropna())
+    missing_dates = sorted(expected_dates - observed_dates)
+    missing_days_count = len(missing_dates)
+
+    zero_covers_with_sales = int(
+        len(work_df[(work_df["net_total"] > 0) & (work_df["covers"] <= 0)])
+    )
+
+    zero_sales_with_covers = int(
+        len(work_df[(work_df["net_total"] <= 0) & (work_df["covers"] > 0)])
+    )
+
+    missing_target_rows = int(len(work_df[work_df["target"] <= 0]))
+
+    duplicate_raw_rows = 0
+    if (
+        not df_raw.empty
+        and {"location_id", "date"}.issubset(set(df_raw.columns))
+    ):
+        duplicate_raw_rows = int(
+            df_raw.duplicated(subset=["location_id", "date"]).sum()
+        )
+
+    confidence_reasons = []
+
+    if missing_days_count > 0:
+        confidence_reasons.append(
+            f"{missing_days_count} date(s) are missing from the selected window."
+        )
+
+    if zero_covers_with_sales > 0:
+        confidence_reasons.append(
+            f"{zero_covers_with_sales} day(s) have sales but zero covers. APC may be unreliable."
+        )
+
+    if zero_sales_with_covers > 0:
+        confidence_reasons.append(
+            f"{zero_sales_with_covers} day(s) have covers but zero sales. Check upload or mapping."
+        )
+
+    if missing_target_rows > 0:
+        confidence_reasons.append(
+            f"{missing_target_rows} row(s) have no target. Target achievement may be incomplete."
+        )
+
+    if duplicate_raw_rows > 0:
+        confidence_reasons.append(
+            f"{duplicate_raw_rows} duplicate outlet-date row(s) found in raw data."
+        )
+
+    missing_ratio = missing_days_count / len(expected_dates) if expected_dates else 0
+
+    if (
+        duplicate_raw_rows > 0
+        or zero_covers_with_sales >= 2
+        or missing_ratio >= 0.20
+    ):
+        confidence_label = "Low"
+        confidence_severity = "error"
+    elif confidence_reasons:
+        confidence_label = "Medium"
+        confidence_severity = "warning"
+    else:
+        confidence_label = "High"
+        confidence_severity = "success"
+        confidence_reasons.append(
+            "Sales, covers, targets and selected dates look usable for decision-making."
+        )
+
+    with st.container(border=True):
+        owner_col, confidence_col = st.columns([2, 1])
+
+        with owner_col:
+            st.markdown("### Owner Readout")
+
+            body = (
+                f"**{title}**\n\n"
+                f"{diagnosis}\n\n"
+                f"**Priority action:** {primary_action}\n\n"
+                f"**Next check:** {secondary_action}"
+            )
+
+            if severity == "success":
+                st.success(body)
+            elif severity == "warning":
+                st.warning(body)
+            elif severity == "error":
+                st.error(body)
+            else:
+                st.info(body)
+
+            with st.expander("Why this readout was generated", expanded=False):
+                for line in evidence_lines:
+                    st.caption(line)
+
+        with confidence_col:
+            st.markdown("### Data Confidence")
+
+            confidence_body = (
+                f"**{confidence_label} confidence**\n\n"
+                + "\n\n".join(f"- {reason}" for reason in confidence_reasons[:5])
+            )
+
+            if confidence_severity == "success":
+                st.success(confidence_body)
+            elif confidence_severity == "warning":
+                st.warning(confidence_body)
+            else:
+                st.error(confidence_body)
+
+            st.caption(
+                f"Scope checked: {len(analytics_loc_ids)} outlet(s), "
+                f"{len(expected_dates)} calendar day(s)."
+            )
 
 def _style_achievement(val) -> str:
     """Pandas Styler.map function: color an Achievement % cell by band."""
@@ -1077,180 +1411,82 @@ def render_driver_analysis(
         return
 
     st.markdown("### Traffic & Ticket Drivers")
-    st.caption("Use this layer to separate footfall movement from ticket-size movement.")
+    st.caption("Use this layer to separate guest-count movement from ticket-size movement.")
 
+    # 1. Visible by default: outlet leaderboard
     render_outlet_leaderboard(df_raw, multi_analytics)
 
+    # 2. Build daily driver dataset
     if multi_analytics and not df_raw.empty:
         driver_df = (
-            df_raw.groupby("date")[["covers", "net_total"]].sum().reset_index().sort_values("date")
+            df_raw.groupby("date")[["covers", "net_total"]]
+            .sum()
+            .reset_index()
+            .sort_values("date")
         )
     else:
         driver_df = df[["date", "covers", "net_total"]].copy().sort_values("date")
 
-    driver_df["covers"] = pd.to_numeric(driver_df["covers"], errors="coerce").fillna(0)
-    driver_df["net_total"] = pd.to_numeric(driver_df["net_total"], errors="coerce").fillna(0)
+    driver_df["date"] = pd.to_datetime(driver_df["date"], errors="coerce")
+    driver_df = driver_df[driver_df["date"].notna()].copy()
+
+    driver_df["covers"] = pd.to_numeric(
+        driver_df["covers"],
+        errors="coerce",
+    ).fillna(0)
+
+    driver_df["net_total"] = pd.to_numeric(
+        driver_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
     driver_df["apc"] = driver_df.apply(
         lambda row: row["net_total"] / row["covers"] if row["covers"] > 0 else 0,
         axis=1,
     )
 
-    with st.expander("Trend details: Covers and APC over time", expanded=False):
-        covers_col, apc_col = st.columns(2)
-        
-        with covers_col:
-            with st.container(border=True):
-                st.markdown("#### Covers")
-                fig_covers = go.Figure(
-                    go.Scatter(
-                        x=pd.to_datetime(driver_df["date"]),
-                        y=driver_df["covers"],
-                        mode="lines+markers",
-                        name="Covers",
-                        line=dict(color=ui_theme.BRAND_SUCCESS, width=2),
-                        marker=dict(size=3),
-                        opacity=0.75,
-                        hovertemplate="%{y:,.0f} covers<br>%{x|%a, %d %b}<extra></extra>",
-                    )
-                )
-                covers_values = driver_df["covers"].tolist()
-                if len(covers_values) >= 7:
-                    ma_values = moving_average(covers_values, window=7)
-                    ma_series = pd.Series(ma_values)
-                    ma_valid = ma_series[pd.notna(ma_series)]
-                    if not ma_valid.empty:
-                        fig_covers.add_trace(
-                            go.Scatter(
-                                x=pd.to_datetime(driver_df["date"])[pd.notna(ma_series)],
-                                y=ma_valid.tolist(),
-                                mode="lines",
-                                name="7-day Avg",
-                                line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
-                                hovertemplate=(
-                                    "%{y:,.0f} covers (7-day avg)<br>"
-                                    "%{x|%a, %d %b}<extra></extra>"
-                                ),
-                            )
-                        )
-                fig_covers.update_layout(
-                    xaxis_title="Date",
-                    yaxis_title="Covers",
-                    height=320,
-                    hovermode="x unified",
-                    xaxis=dict(tickformat="%a %d %b"),
-                )
-                st.plotly_chart(fig_covers, width="stretch")
+    if driver_df.empty:
+        st.info("No valid driver rows available.")
+        return
 
-                weekly_df = _build_weekly_covers_trend(driver_df[["date", "covers"]])
-                if weekly_df.empty:
-                    st.caption("Need valid date/cover rows to compute weekly trend.")
-                else:
-                    fig_weekly = go.Figure(
-                        go.Scatter(
-                            x=weekly_df["week_start"],
-                            y=weekly_df["avg_daily_covers"],
-                            mode="lines+markers",
-                            name="Weekly Avg Covers",
-                            line=dict(color=ui_theme.BRAND_WARN, width=2),
-                            marker=dict(size=4),
-                            hovertemplate=(
-                                "Week of %{x|%a, %d %b}: %{y:,.1f} avg covers/day"
-                                "<extra></extra>"
-                            ),
-                        )
-                    )
-                    fig_weekly.update_layout(
-                        xaxis_title="Week Start",
-                        yaxis_title="Avg Covers / Day",
-                        height=220,
-                        margin=dict(l=0, r=0, t=8, b=0),
-                        xaxis=dict(tickformat="%a %d %b"),
-                    )
-                    st.plotly_chart(fig_weekly, width="stretch")
-                    st.caption(_weekly_covers_commentary(weekly_df))
-
-        with apc_col:
-            with st.container(border=True):
-                st.markdown("#### Average Per Cover")
-                fig_apc = go.Figure(
-                    go.Scatter(
-                        x=pd.to_datetime(driver_df["date"]),
-                        y=driver_df["apc"],
-                        mode="lines+markers",
-                        name="APC",
-                        line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
-                        marker=dict(size=4),
-                        hovertemplate="₹%{y:,.0f} APC<br>%{x|%d %b}<extra></extra>",
-                    )
-                )
-                avg_apc = float(driver_df["apc"].mean()) if not driver_df.empty else 0.0
-                if avg_apc > 0:
-                    fig_apc.add_hline(
-                        y=avg_apc,
-                        line_dash="dash",
-                        line_color=ui_theme.CHART_BAR_MUTED,
-                        annotation_text=f"Avg {utils.format_currency(avg_apc)}",
-                    )
-                fig_apc.update_layout(
-                    xaxis_title="Date",
-                    yaxis_title="APC (₹)",
-                    height=320,
-                    hovermode="x unified",
-                )
-                st.plotly_chart(fig_apc, width="stretch")
-
-        with st.container(border=True):
-            st.markdown("#### Covers vs APC Matrix")
-            st.caption(
-                "Each point is a day. This shows whether sales are driven by footfall, ticket size, or both."
-            )
+    # 3. Visible by default: Covers vs APC Matrix
+    with st.container(border=True):
+        st.markdown("#### Covers vs APC Matrix")
+        st.caption(
+            "Each point is a day. This shows whether sales are driven by footfall, ticket size, or both."
+        )
 
         scatter_df = driver_df.copy()
-        scatter_df["date"] = pd.to_datetime(scatter_df["date"], errors="coerce")
-        scatter_df = scatter_df[scatter_df["date"].notna()].copy()
-
-        scatter_df["covers"] = pd.to_numeric(
-            scatter_df["covers"], errors="coerce"
-        ).fillna(0)
-        scatter_df["apc"] = pd.to_numeric(
-            scatter_df["apc"], errors="coerce"
-        ).fillna(0)
-        scatter_df["net_total"] = pd.to_numeric(
-            scatter_df["net_total"], errors="coerce"
-        ).fillna(0)
-
         scatter_df["weekday"] = scatter_df["date"].dt.day_name()
 
-        if scatter_df.empty:
-            st.info("No valid driver rows available for the Covers vs APC Matrix.")
-        else:
-            fig_scatter = px.scatter(
-                scatter_df,
-                x="covers",
-                y="apc",
-                size="net_total",
-                color="weekday",
-                hover_data={
-                    "date": True,
-                    "covers": ":,.0f",
-                    "apc": ":,.0f",
-                    "net_total": ":,.0f",
-                    "weekday": True,
-                },
-                labels={
-                    "covers": "Covers",
-                    "apc": "APC ₹",
-                    "net_total": "Net Sales ₹",
-                    "weekday": "Weekday",
-                },
-                title="Covers vs APC",
-            )
-            avg_covers = float(scatter_df["covers"].mean())
-            avg_apc = float(scatter_df["apc"].mean())
+        fig_scatter = px.scatter(
+            scatter_df,
+            x="covers",
+            y="apc",
+            size="net_total",
+            color="weekday",
+            hover_data={
+                "date": True,
+                "covers": ":,.0f",
+                "apc": ":,.0f",
+                "net_total": ":,.0f",
+                "weekday": True,
+            },
+            labels={
+                "covers": "Covers",
+                "apc": "APC ₹",
+                "net_total": "Net Sales ₹",
+                "weekday": "Weekday",
+            },
+            title="Covers vs APC",
+        )
 
-            max_covers = float(scatter_df["covers"].max())
-            max_apc = float(scatter_df["apc"].max())
+        avg_covers = float(scatter_df["covers"].mean())
+        avg_apc = float(scatter_df["apc"].mean())
+        max_covers = float(scatter_df["covers"].max())
+        max_apc = float(scatter_df["apc"].max())
 
+        if avg_covers > 0:
             fig_scatter.add_vline(
                 x=avg_covers,
                 line_width=1,
@@ -1260,6 +1496,7 @@ def render_driver_analysis(
                 annotation_position="top",
             )
 
+        if avg_apc > 0:
             fig_scatter.add_hline(
                 y=avg_apc,
                 line_width=1,
@@ -1269,6 +1506,7 @@ def render_driver_analysis(
                 annotation_position="right",
             )
 
+        if max_covers > 0 and max_apc > 0:
             fig_scatter.add_annotation(
                 x=max_covers,
                 y=max_apc,
@@ -1321,36 +1559,132 @@ def render_driver_analysis(
                 font=dict(size=11),
             )
 
-            fig_scatter.update_layout(
-                height=360,
-                margin=dict(l=0, r=0, t=50, b=0),
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=-0.35,
-                    xanchor="center",
-                    x=0.5,
-                ),
-            )
+        fig_scatter.update_layout(
+            height=360,
+            margin=dict(l=0, r=0, t=50, b=0),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.35,
+                xanchor="center",
+                x=0.5,
+            ),
+        )
 
-            st.plotly_chart(fig_scatter, width="stretch")
+        st.plotly_chart(fig_scatter, width="stretch")
+
+    # 4. Collapsed: trend diagnostics
+    with st.expander("Trend details: Covers and APC over time", expanded=False):
+        covers_col, apc_col = st.columns(2)
+
+        with covers_col:
+            with st.container(border=True):
+                st.markdown("#### Covers Trend")
+
+                fig_covers = go.Figure(
+                    go.Scatter(
+                        x=driver_df["date"],
+                        y=driver_df["covers"],
+                        mode="lines+markers",
+                        name="Covers",
+                        line=dict(color=ui_theme.BRAND_SUCCESS, width=2),
+                        marker=dict(size=4),
+                        hovertemplate="%{y:,.0f} covers<br>%{x|%a, %d %b}<extra></extra>",
+                    )
+                )
+
+                covers_values = driver_df["covers"].tolist()
+                if len(covers_values) >= 7:
+                    ma_values = moving_average(covers_values, window=7)
+                    ma_series = pd.Series(ma_values)
+                    ma_valid = ma_series[pd.notna(ma_series)]
+
+                    if not ma_valid.empty:
+                        fig_covers.add_trace(
+                            go.Scatter(
+                                x=driver_df["date"][pd.notna(ma_series)],
+                                y=ma_valid.tolist(),
+                                mode="lines",
+                                name="7-day Avg",
+                                line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
+                                hovertemplate=(
+                                    "%{y:,.0f} covers (7-day avg)<br>"
+                                    "%{x|%a, %d %b}<extra></extra>"
+                                ),
+                            )
+                        )
+
+                fig_covers.update_layout(
+                    xaxis_title="Date",
+                    yaxis_title="Covers",
+                    height=320,
+                    hovermode="x unified",
+                    xaxis=dict(tickformat="%a %d %b"),
+                )
+
+                st.plotly_chart(fig_covers, width="stretch")
+
+                weekly_df = _build_weekly_covers_trend(driver_df[["date", "covers"]])
+                if weekly_df.empty:
+                    st.caption("Need valid date/cover rows to compute weekly trend.")
+                else:
+                    st.caption(_weekly_covers_commentary(weekly_df))
+
+        with apc_col:
+            with st.container(border=True):
+                st.markdown("#### APC Trend")
+
+                fig_apc = go.Figure(
+                    go.Scatter(
+                        x=driver_df["date"],
+                        y=driver_df["apc"],
+                        mode="lines+markers",
+                        name="APC",
+                        line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
+                        marker=dict(size=4),
+                        hovertemplate="₹%{y:,.0f} APC<br>%{x|%d %b}<extra></extra>",
+                    )
+                )
+
+                avg_apc = float(driver_df["apc"].mean()) if not driver_df.empty else 0.0
+                if avg_apc > 0:
+                    fig_apc.add_hline(
+                        y=avg_apc,
+                        line_dash="dash",
+                        line_color=ui_theme.CHART_BAR_MUTED,
+                        annotation_text=f"Avg {utils.format_currency(avg_apc)}",
+                    )
+
+                fig_apc.update_layout(
+                    xaxis_title="Date",
+                    yaxis_title="APC ₹",
+                    height=320,
+                    hovermode="x unified",
+                )
+
+                st.plotly_chart(fig_apc, width="stretch")
+
+    # 5. Collapsed: daily driver table
     with st.expander("Daily driver data table", expanded=False):
-        with st.container(border=True):
-            st.caption("Daily driver table")
-            table = driver_df.rename(
-                columns={
-                    "date": "Date",
-                    "covers": "Covers",
-                    "net_total": "Net Sales (₹)",
-                    "apc": "APC (₹)",
-                }
-            )
-            table["Net Sales (₹)"] = table["Net Sales (₹)"].apply(
-                lambda val: utils.format_currency(float(val))
-            )
-            table["APC (₹)"] = table["APC (₹)"].apply(lambda val: utils.format_currency(float(val)))
-            table["Covers"] = table["Covers"].apply(lambda val: f"{int(val):,}")
-            st.dataframe(table, width="stretch", hide_index=True)
+        table = driver_df.rename(
+            columns={
+                "date": "Date",
+                "covers": "Covers",
+                "net_total": "Net Sales ₹",
+                "apc": "APC ₹",
+            }
+        ).copy()
+
+        table["Date"] = table["Date"].dt.strftime("%d %b %Y")
+        table["Net Sales ₹"] = table["Net Sales ₹"].apply(
+            lambda value: utils.format_currency(float(value))
+        )
+        table["APC ₹"] = table["APC ₹"].apply(
+            lambda value: utils.format_currency(float(value))
+        )
+        table["Covers"] = table["Covers"].apply(lambda value: f"{int(value):,}")
+
+        st.dataframe(table, width="stretch", hide_index=True)
 
 def render_weekday_heatmap(df: pd.DataFrame) -> None:
     """Render week-by-week weekday heatmap for Mix layer."""
@@ -2952,114 +3286,227 @@ def render_payment_reconciliation(
     start_str: str,
     end_str: str,
 ) -> None:
-    """Render per-provider payment breakdown for ops team reconciliation."""
+    """Render payment summary, Zomato Pay economics, risks, and reconciliation downloads."""
     from io import BytesIO
 
     import database_analytics
 
     st.markdown("### Payment Reconciliation")
     st.caption(
-        "Per-provider breakdown for reconciling against Paytm / PhonePe / GPay settlement "
-        "statements. Live data shows raw Payment Type labels; "
-        "local mode shows the 5-bucket summary."
+        "Use this layer to reconcile payment settlements, identify provider concentration, and review Zomato Pay economics."
     )
 
-    data = database_analytics.get_payment_provider_breakdown(report_loc_ids, start_str, end_str)
+    data = database_analytics.get_payment_provider_breakdown(
+        report_loc_ids,
+        start_str,
+        end_str,
+    )
 
     if not data:
         st.caption("No payment data for this period.")
         return
 
     recon_df = pd.DataFrame(data)
+
+    if recon_df.empty or "gross_amount" not in recon_df.columns:
+        st.caption("No usable payment data for this period.")
+        return
+
+    recon_df["gross_amount"] = pd.to_numeric(
+        recon_df["gross_amount"],
+        errors="coerce",
+    ).fillna(0)
+
     total_gross = float(recon_df["gross_amount"].sum())
+
+    if "txn_count" in recon_df.columns:
+        recon_df["txn_count"] = pd.to_numeric(
+            recon_df["txn_count"],
+            errors="coerce",
+        ).fillna(0)
+    else:
+        recon_df["txn_count"] = 0
+
+    has_txn_count = recon_df["txn_count"].sum() > 0
+
     recon_df["% of Total"] = recon_df["gross_amount"].apply(
-        lambda x: f"{x / total_gross * 100:.1f}%" if total_gross > 0 else "0%"
+        lambda value: f"{value / total_gross * 100:.1f}%" if total_gross > 0 else "0.0%"
     )
 
-    has_txn_count = recon_df["txn_count"].notna().any()
+    provider_count = int(recon_df["provider"].nunique()) if "provider" in recon_df.columns else 0
+    top_provider = "N/A"
+    top_provider_share = 0.0
 
-    display_df = recon_df.copy()
-    display_df["Gross Amount (₹)"] = display_df["gross_amount"].apply(
-        lambda x: utils.format_currency(float(x))
-    )
-    display_df = display_df.rename(columns={"provider": "Provider"})
+    if "provider" in recon_df.columns and total_gross > 0:
+        provider_summary = (
+            recon_df.groupby("provider", as_index=False)["gross_amount"]
+            .sum()
+            .sort_values("gross_amount", ascending=False)
+        )
 
-    cols_to_show = ["Provider", "Gross Amount (₹)", "% of Total"]
-    if has_txn_count:
-        display_df = display_df.rename(columns={"txn_count": "Bills"})
-        display_df["Bills"] = display_df["Bills"].fillna(0).astype(int)
-        cols_to_show = ["Provider", "Bills", "Gross Amount (₹)", "% of Total"]
+        if not provider_summary.empty:
+            top_provider = str(provider_summary.iloc[0]["provider"])
+            top_provider_share = float(provider_summary.iloc[0]["gross_amount"] / total_gross * 100)
 
-    st.dataframe(display_df[cols_to_show], width="stretch", hide_index=True)
-
-    recon_metrics = [
+    summary_metrics = [
         KpiMetric(
-            label="Total Gross (period)",
+            label="Total Gross",
             value=utils.format_currency(total_gross),
         ),
+        KpiMetric(
+            label="Payment Providers",
+            value=f"{provider_count:,}",
+        ),
+        KpiMetric(
+            label="Top Provider",
+            value=top_provider,
+            delta=f"{top_provider_share:.1f}% of gross" if top_provider_share > 0 else None,
+        ),
     ]
+
     if has_txn_count:
-        recon_metrics.append(
+        summary_metrics.append(
             KpiMetric(
                 label="Total Bills",
                 value=f"{int(recon_df['txn_count'].sum()):,}",
             )
         )
-    kpi_row(recon_metrics)
 
-    export_df = recon_df[["provider", "txn_count", "gross_amount", "% of Total"]].copy()
-    export_df = export_df.rename(
-        columns={
-            "provider": "Provider",
-            "txn_count": "Bill Count",
-            "gross_amount": "Gross Amount",
-        }
+    kpi_row(summary_metrics, columns=min(len(summary_metrics), 4))
+
+    display_df = recon_df.copy()
+    display_df = display_df.rename(columns={"provider": "Provider"})
+
+    display_df["Gross Amount ₹"] = display_df["gross_amount"].apply(
+        lambda value: utils.format_currency(float(value))
     )
-    c1, c2 = st.columns(2)
-    with c1:
-        csv_bytes = export_df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="Download CSV",
-            data=csv_bytes,
-            file_name=f"payment_recon_{start_str}_{end_str}.csv",
-            mime="text/csv",
-            key="recon_csv_btn",
+
+    cols_to_show = ["Provider", "Gross Amount ₹", "% of Total"]
+
+    if has_txn_count:
+        display_df["Bills"] = display_df["txn_count"].apply(lambda value: f"{int(value):,}")
+        cols_to_show = ["Provider", "Bills", "Gross Amount ₹", "% of Total"]
+
+    with st.container(border=True):
+        st.markdown("#### Payment Summary")
+        st.caption(
+            "Provider-level payment view for checking settlement concentration and reconciling against payment statements."
         )
-    with c2:
-        excel_buf = BytesIO()
-        with pd.ExcelWriter(excel_buf, engine="openpyxl") as writer:
-            export_df.to_excel(writer, index=False, sheet_name="Payment Reconciliation")
-        excel_buf.seek(0)
-        st.download_button(
-            label="Download Excel",
-            data=excel_buf.getvalue(),
-            file_name=f"payment_recon_{start_str}_{end_str}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="recon_excel_btn",
+        st.dataframe(
+            display_df[cols_to_show],
+            width="stretch",
+            hide_index=True,
         )
 
-    zomato_pay_sales = float(
-        recon_df[
-            recon_df["provider"].astype(str).str.contains("zomato", case=False, na=False)
-        ]["gross_amount"].sum()
-    )
+    zomato_pay_sales = 0.0
+    if "provider" in recon_df.columns:
+        zomato_pay_sales = float(
+            recon_df[
+                recon_df["provider"]
+                .astype(str)
+                .str.contains("zomato", case=False, na=False)
+            ]["gross_amount"].sum()
+        )
+
     render_zomato_economics(zomato_pay_sales)
 
+    with st.expander("Exceptions / Risks", expanded=False):
+        risk_messages = []
 
+        if total_gross <= 0:
+            risk_messages.append("Total payment gross is zero for the selected period.")
+
+        if provider_count <= 1:
+            risk_messages.append(
+                "Only one payment provider is visible. Check whether payment labels are being grouped too broadly."
+            )
+
+        if top_provider_share >= 80:
+            risk_messages.append(
+                f"{top_provider} contributes {top_provider_share:.1f}% of payment gross. Verify this concentration against settlement reports."
+            )
+
+        if has_txn_count and (recon_df["txn_count"] <= 0).any():
+            risk_messages.append(
+                "One or more payment providers have zero bills. Check whether bill counts are missing or incorrectly mapped."
+            )
+
+        if zomato_pay_sales <= 0:
+            risk_messages.append(
+                "No Zomato Pay sales are visible in this period. This is fine if Zomato Pay was inactive, but verify if it should have been active."
+            )
+
+        if not risk_messages:
+            st.success("No major payment reconciliation risk detected from the available payment summary.")
+
+        for message in risk_messages:
+            st.warning(message)
+
+    with st.expander("Full payment table and downloads", expanded=False):
+        export_df = recon_df[["provider", "txn_count", "gross_amount", "% of Total"]].copy()
+        export_df = export_df.rename(
+            columns={
+                "provider": "Provider",
+                "txn_count": "Bill Count",
+                "gross_amount": "Gross Amount",
+            }
+        )
+
+        table_df = export_df.copy()
+        table_df["Gross Amount"] = table_df["Gross Amount"].apply(
+            lambda value: utils.format_currency(float(value))
+        )
+        table_df["Bill Count"] = table_df["Bill Count"].apply(
+            lambda value: f"{int(value):,}"
+        )
+
+        st.dataframe(table_df, width="stretch", hide_index=True)
+
+        download_col_1, download_col_2 = st.columns(2)
+
+        with download_col_1:
+            csv_bytes = export_df.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="Download CSV",
+                data=csv_bytes,
+                file_name=f"payment_recon_{start_str}_{end_str}.csv",
+                mime="text/csv",
+                key="recon_csv_btn",
+            )
+
+        with download_col_2:
+            excel_buf = BytesIO()
+            with pd.ExcelWriter(excel_buf, engine="openpyxl") as writer:
+                export_df.to_excel(
+                    writer,
+                    index=False,
+                    sheet_name="Payment Reconciliation",
+                )
+            excel_buf.seek(0)
+
+            st.download_button(
+                label="Download Excel",
+                data=excel_buf.getvalue(),
+                file_name=f"payment_recon_{start_str}_{end_str}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="recon_excel_btn",
+            )
 def render_zomato_economics(zomato_pay_sales: float) -> None:
     """Render manual Zomato Pay incrementality economics for the selected period."""
     st.markdown("### Zomato Economics")
+
     if zomato_pay_sales <= 0:
         st.caption("No Zomato Pay sales in this period.")
         return
 
     st.caption(
-        "Manual decision model: compare estimated incremental booking contribution "
-        "against total Zomato Pay cost for this period."
+        "Owner decision model: estimate how much Zomato Pay sales were truly incremental, "
+        "then check whether the contribution after food/direct variable costs covers the Zomato Pay fee."
     )
 
     with st.container(border=True):
         input_cols = st.columns(4)
+
         with input_cols[0]:
             fee_pct = st.number_input(
                 "Zomato fee %",
@@ -3068,24 +3515,39 @@ def render_zomato_economics(zomato_pay_sales: float) -> None:
                 value=5.9,
                 step=0.1,
                 key="zomato_fee_pct",
+                help="The commission or fee charged on Zomato Pay sales for this period.",
             )
+
         with input_cols[1]:
             contribution_margin_pct = st.number_input(
-                "Contribution margin %",
+                "Incremental contribution margin %",
                 min_value=0.0,
                 max_value=100.0,
                 value=60.0,
                 step=1.0,
                 key="zomato_contribution_margin_pct",
+                help=(
+                    "Money retained from estimated extra Zomato-driven sales after food and direct "
+                    "variable costs, before rent, fixed salaries, and other existing fixed costs. "
+                    "Example: if food cost is 33%, a conservative contribution margin may be around 55–60%."
+                ),
             )
+
         with input_cols[2]:
-            incremental_sales = st.number_input(
-                "Estimated incremental booking sales",
+            incremental_sales_pct = st.number_input(
+                "Assumed incremental sales %",
                 min_value=0.0,
-                value=float(zomato_pay_sales * 0.15),
-                step=10_000.0,
-                key="zomato_incremental_sales",
+                max_value=100.0,
+                value=15.0,
+                step=1.0,
+                key="zomato_incremental_sales_pct",
+                help=(
+                    "The percentage of Zomato Pay sales that you believe were truly extra sales "
+                    "because of Zomato. Example: 15% means you assume 15% of Zomato Pay sales "
+                    "would not have happened without Zomato."
+                ),
             )
+
         with input_cols[3]:
             target_coverage_ratio = st.number_input(
                 "Target coverage ratio",
@@ -3093,7 +3555,13 @@ def render_zomato_economics(zomato_pay_sales: float) -> None:
                 value=1.5,
                 step=0.1,
                 key="zomato_target_coverage_ratio",
+                help=(
+                    "1.0x means break-even. 1.5x means the incremental contribution should be "
+                    "50% higher than the Zomato Pay fee."
+                ),
             )
+
+        incremental_sales = zomato_pay_sales * incremental_sales_pct / 100
 
         economics = build_zomato_economics(
             zomato_pay_sales=zomato_pay_sales,
@@ -3102,7 +3570,14 @@ def render_zomato_economics(zomato_pay_sales: float) -> None:
             incremental_sales=incremental_sales,
             target_coverage_ratio=target_coverage_ratio,
         )
+
         coverage = classify_platform_cost_coverage(economics["coverage_ratio"])
+
+        st.caption(
+            f"Current assumption: {incremental_sales_pct:.1f}% of "
+            f"{utils.format_rupee_short(economics['zomato_pay_sales'] or 0)} Zomato Pay sales "
+            f"= {utils.format_rupee_short(economics['incremental_sales'] or 0)} estimated incremental sales."
+        )
 
         kpi_row(
             [
@@ -3111,8 +3586,12 @@ def render_zomato_economics(zomato_pay_sales: float) -> None:
                     value=utils.format_rupee_short(economics["zomato_pay_sales"] or 0),
                 ),
                 KpiMetric(
-                    label=f"Estimated Cost @ {fee_pct:.1f}%",
+                    label=f"Zomato Pay Fee Cost @ {fee_pct:.1f}%",
                     value=utils.format_rupee_short(economics["platform_cost"] or 0),
+                ),
+                KpiMetric(
+                    label="Estimated Incremental Sales",
+                    value=utils.format_rupee_short(economics["incremental_sales"] or 0),
                 ),
                 KpiMetric(
                     label="Incremental Contribution",
@@ -3121,21 +3600,41 @@ def render_zomato_economics(zomato_pay_sales: float) -> None:
                 KpiMetric(
                     label="Coverage Ratio",
                     value=_format_ratio(economics["coverage_ratio"]),
-                    delta=coverage["label"],
                 ),
             ]
         )
 
+        break_even_sales = economics["break_even_incremental_sales"] or 0
+        target_sales = economics["target_incremental_sales"] or 0
+
+        break_even_pct = (
+            break_even_sales / zomato_pay_sales * 100
+            if zomato_pay_sales > 0
+            else 0
+        )
+
+        target_pct = (
+            target_sales / zomato_pay_sales * 100
+            if zomato_pay_sales > 0
+            else 0
+        )
+
         decision_label = "Healthy channel" if coverage["label"] == "Healthy" else coverage["label"]
+
         decision_text = (
             f"**{decision_label}**  \n"
             f"{coverage['message']}  \n\n"
-            f"Break-even incremental sales: "
-            f"{utils.format_rupee_short(economics['break_even_incremental_sales'] or 0)}  \n"
+            f"Break-even incremental sales needed: "
+            f"{utils.format_rupee_short(break_even_sales)} "
+            f"({break_even_pct:.1f}% of Zomato Pay sales)  \n"
             f"Sales needed for {target_coverage_ratio:.1f}x target: "
-            f"{utils.format_rupee_short(economics['target_incremental_sales'] or 0)}  \n"
-            f"Current estimate: {utils.format_rupee_short(economics['incremental_sales'] or 0)}"
+            f"{utils.format_rupee_short(target_sales)} "
+            f"({target_pct:.1f}% of Zomato Pay sales)  \n"
+            f"Current estimate: "
+            f"{utils.format_rupee_short(economics['incremental_sales'] or 0)} "
+            f"({incremental_sales_pct:.1f}% of Zomato Pay sales)"
         )
+
         if coverage["severity"] == "success":
             st.success(decision_text)
         elif coverage["severity"] == "warning":
@@ -3145,9 +3644,15 @@ def render_zomato_economics(zomato_pay_sales: float) -> None:
         else:
             st.info(decision_text)
 
+        sensitivity_pcts = sorted(
+            set([5.0, 10.0, 15.0, 25.0, 35.0, 50.0, round(incremental_sales_pct, 1)])
+        )
+
         sensitivity_rows = []
-        for pct in (5, 10, 15, 25):
+
+        for pct in sensitivity_pcts:
             assumed_sales = zomato_pay_sales * pct / 100
+
             assumed = build_zomato_economics(
                 zomato_pay_sales=zomato_pay_sales,
                 fee_pct=fee_pct,
@@ -3155,13 +3660,23 @@ def render_zomato_economics(zomato_pay_sales: float) -> None:
                 incremental_sales=assumed_sales,
                 target_coverage_ratio=target_coverage_ratio,
             )
+
             assumed_coverage = classify_platform_cost_coverage(assumed["coverage_ratio"])
+
             sensitivity_rows.append(
                 {
-                    "Incremental Assumption": f"{pct}% of Zomato Pay",
+                    "Incremental Assumption": f"{pct:g}% of Zomato Pay",
                     "Incremental Sales": utils.format_rupee_short(assumed_sales),
+                    f"Contribution @ {contribution_margin_pct:.0f}%": utils.format_rupee_short(
+                        assumed["incremental_contribution"] or 0
+                    ),
                     "Coverage Ratio": _format_ratio(assumed["coverage_ratio"]),
                     "Decision": assumed_coverage["label"],
                 }
             )
-        st.dataframe(pd.DataFrame(sensitivity_rows), width="stretch", hide_index=True)
+
+        st.dataframe(
+            pd.DataFrame(sensitivity_rows),
+            width="stretch",
+            hide_index=True,
+        )

@@ -21,6 +21,7 @@ from tabs.analytics_sections import (
     render_driver_analysis,
     render_forecast_command_center,
     render_mix_snapshot,
+    render_owner_readout_and_data_confidence,
     render_payment_reconciliation,
     render_target_snapshot,
 )
@@ -314,6 +315,23 @@ def render(ctx: TabContext) -> None:
                 unsafe_allow_html=True,
             )
 
+            monthly_target = scope.sum_location_monthly_targets(analytics_loc_ids)
+
+            render_owner_readout_and_data_confidence(
+                df=df,
+                df_raw=df_raw,
+                prior_df=prior_df,
+                analysis_period=analysis_period,
+                start_date=start_date,
+                end_date=end_date,
+                monthly_target=monthly_target,
+                total_sales=total_sales,
+                total_covers=total_covers,
+                prior_total=prior_total,
+                prior_covers=prior_covers,
+                analytics_loc_ids=analytics_loc_ids,
+            )
+
             render_forecast_command_center(
                 df,
                 prior_df,
@@ -322,7 +340,7 @@ def render(ctx: TabContext) -> None:
                 end_date,
                 prior_start,
                 prior_end,
-                scope.sum_location_monthly_targets(analytics_loc_ids),
+                monthly_target,
                 total_sales,
                 avg_daily,
                 total_covers,
