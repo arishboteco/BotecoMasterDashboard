@@ -204,11 +204,28 @@ def render_owner_readout_and_data_confidence(
     else:
         work_df["target"] = 0
 
+    # Fallback in case prior totals were not calculated before this function call.
+    if prior_total is None and not prior_df.empty and "net_total" in prior_df.columns:
+        prior_total = float(
+            pd.to_numeric(prior_df["net_total"], errors="coerce").fillna(0).sum()
+        )
+
+    if prior_covers is None and not prior_df.empty and "covers" in prior_df.columns:
+        prior_covers = int(
+            pd.to_numeric(prior_df["covers"], errors="coerce").fillna(0).sum()
+        )
+
     selected_target = float(work_df["target"].sum())
     achievement_pct = (
         total_sales / selected_target * 100
         if selected_target > 0
         else 0
+    )
+
+    selected_target_gap = (
+        selected_target - total_sales
+        if selected_target > 0
+        else None
     )
 
     current_apc = total_sales / total_covers if total_covers > 0 else 0.0
@@ -225,7 +242,6 @@ def render_owner_readout_and_data_confidence(
     covers_delta_pct = _safe_pct_change(total_covers, prior_covers)
     apc_delta_pct = _safe_pct_change(current_apc, prior_apc)
 
-    # Forecast close estimate using the existing forecast helper.
     selected_range_days = max(1, (end_date - start_date).days + 1)
     forecast_days = calculate_forecast_days(
         analysis_period,
@@ -245,18 +261,27 @@ def render_owner_readout_and_data_confidence(
         if forecast:
             forecast_total = total_sales + sum(float(item["value"]) for item in forecast)
 
-    # Owner readout decision rules.
-    severity = "info"
-    title = "Performance is stable"
-    diagnosis = "No major risk signal is visible from the current period, comparison period, target pace and APC movement."
-    primary_action = "Maintain current operating rhythm and keep monitoring outlet, weekday and category movement."
-    secondary_action = "Use the deep-dive layers only if a KPI starts moving materially."
-
     forecast_gap = None
     if monthly_target > 0 and forecast_total is not None:
         forecast_gap = monthly_target - forecast_total
 
-    selected_target_gap = selected_target - total_sales if selected_target > 0 else None
+    daily_recovery_required = None
+    if forecast_gap is not None and forecast_gap > 0 and forecast_days > 0:
+        daily_recovery_required = forecast_gap / forecast_days
+
+    # ── Owner readout decision rules ─────────────────────────────
+    severity = "info"
+    title = "Performance is stable"
+    diagnosis = (
+        "No major risk signal is visible from sales, covers, APC, target pace "
+        "and the selected comparison period."
+    )
+    primary_action = (
+        "Maintain current operating rhythm and continue monitoring outlet, weekday and category movement."
+    )
+    secondary_action = (
+        "Use the deep-dive layers only if a KPI starts moving materially."
+    )
 
     if (
         covers_delta_pct is not None
@@ -269,10 +294,14 @@ def render_owner_readout_and_data_confidence(
         diagnosis = (
             f"Covers are {_format_owner_delta(covers_delta_pct)} vs comparison, "
             f"but APC is {_format_owner_delta(apc_delta_pct)}. "
-            "This means demand exists, but guests are spending less per cover."
+            "Demand exists, but guests are spending less per cover."
         )
-        primary_action = "Push high-margin upsells, premium pairings, cocktails, desserts and sharing platters during peak hours."
-        secondary_action = "Check the Mix layer to see whether premium categories are losing contribution."
+        primary_action = (
+            "Push high-margin upsells, premium pairings, cocktails, desserts and sharing platters during peak hours."
+        )
+        secondary_action = (
+            "Check the Mix layer to see whether premium categories are losing contribution."
+        )
 
     elif sales_delta_pct is not None and sales_delta_pct <= -8:
         severity = "error"
@@ -281,18 +310,26 @@ def render_owner_readout_and_data_confidence(
             f"Net sales are {_format_owner_delta(sales_delta_pct)} vs comparison. "
             "This points to a demand, visibility, conversion or operating issue."
         )
-        primary_action = "Identify which outlet and weekdays created the drop, then run a tactical demand push."
-        secondary_action = "Use the Drivers layer to check whether the issue is covers, APC or both."
+        primary_action = (
+            "Identify which outlet and weekdays created the drop, then run a tactical demand push."
+        )
+        secondary_action = (
+            "Use the Drivers layer to check whether the issue is covers, APC or both."
+        )
 
     elif apc_delta_pct is not None and apc_delta_pct <= -8:
         severity = "warning"
         title = "APC is under pressure"
         diagnosis = (
             f"APC is {_format_owner_delta(apc_delta_pct)} vs comparison. "
-            "Guests are spending less per cover even if sales may look stable."
+            "Guests are spending less per cover even if sales look stable."
         )
-        primary_action = "Review menu mix, server upsell behaviour and premium item availability."
-        secondary_action = "Use the Category Pareto and Weekday Summary to identify where spend quality is weakening."
+        primary_action = (
+            "Review menu mix, server upsell behaviour and premium item availability."
+        )
+        secondary_action = (
+            "Use Category Pareto and Weekday Summary to identify where spend quality is weakening."
+        )
 
     elif covers_delta_pct is not None and covers_delta_pct <= -8:
         severity = "warning"
@@ -301,18 +338,26 @@ def render_owner_readout_and_data_confidence(
             f"Covers are {_format_owner_delta(covers_delta_pct)} vs comparison. "
             "The main issue appears to be traffic rather than ticket size."
         )
-        primary_action = "Check reservations, corporate bookings, aggregator visibility and local marketing for weak days."
-        secondary_action = "Use the Covers vs APC Matrix to separate low-traffic days from low-spend days."
+        primary_action = (
+            "Check reservations, corporate bookings, aggregator visibility and local marketing for weak days."
+        )
+        secondary_action = (
+            "Use the Covers vs APC Matrix to separate low-traffic days from low-spend days."
+        )
 
     elif selected_target > 0 and achievement_pct < 70:
         severity = "error"
         title = "Selected period is materially behind target"
         diagnosis = (
             f"Achievement is {achievement_pct:.1f}% against the selected-period target. "
-            "The business needs an immediate recovery plan for the remaining days."
+            "The business needs an immediate recovery plan."
         )
-        primary_action = "Calculate the required daily sales and push high-conversion offers on the strongest weekdays."
-        secondary_action = "Use Daily Target Variance to identify the exact days creating the gap."
+        primary_action = (
+            "Focus on the strongest weekdays, high-conversion offers and premium upsell opportunities."
+        )
+        secondary_action = (
+            "Use Daily Target Variance to identify the exact days creating the target gap."
+        )
 
     elif selected_target > 0 and achievement_pct >= 100:
         severity = "success"
@@ -321,9 +366,14 @@ def render_owner_readout_and_data_confidence(
             f"Achievement is {achievement_pct:.1f}% against the selected-period target. "
             "The priority is to protect the drivers that created this performance."
         )
-        primary_action = "Protect availability of top categories and keep staffing aligned to peak demand."
-        secondary_action = "Use Mix and Drivers to identify which behaviours should be repeated."
+        primary_action = (
+            "Protect availability of top categories and keep staffing aligned to peak demand."
+        )
+        secondary_action = (
+            "Use Mix and Drivers to identify which behaviours should be repeated."
+        )
 
+    # Forecast risk should override stable/positive readouts, but not erase stronger operational warnings.
     if forecast_gap is not None and forecast_gap > 0:
         if severity in {"info", "success"}:
             severity = "warning"
@@ -333,8 +383,20 @@ def render_owner_readout_and_data_confidence(
                 f"against a monthly target of {utils.format_rupee_short(monthly_target)}. "
                 f"Projected gap is {utils.format_rupee_short(forecast_gap)}."
             )
-            primary_action = "Focus the next operating cycle on days and categories with the highest conversion potential."
-            secondary_action = "Track required daily sales and review progress every 2–3 days."
+
+            if daily_recovery_required is not None:
+                primary_action = (
+                    f"Generate roughly {utils.format_rupee_short(daily_recovery_required)} "
+                    "extra sales per forecast day versus current pace."
+                )
+            else:
+                primary_action = (
+                    "Focus the next operating cycle on days and categories with the highest conversion potential."
+                )
+
+            secondary_action = (
+                "Track required daily sales and review progress every 2–3 days."
+            )
         else:
             diagnosis += (
                 f" Forecast close is {utils.format_rupee_short(forecast_total or 0)} "
@@ -352,14 +414,36 @@ def render_owner_readout_and_data_confidence(
             f"Selected Target Achievement: {achievement_pct:.1f}%"
         )
 
+    if selected_target_gap is not None:
+        if selected_target_gap > 0:
+            evidence_lines.append(
+                f"Selected Period Target Gap: {utils.format_rupee_short(selected_target_gap)}"
+            )
+        else:
+            evidence_lines.append(
+                f"Selected Period Target Surplus: {utils.format_rupee_short(abs(selected_target_gap))}"
+            )
+
     if forecast_total is not None:
         evidence_lines.append(
             f"Forecast Close: {utils.format_rupee_short(forecast_total)} · Reliability: {forecast_reliability}"
         )
 
-    # Data confidence checks.
-    expected_dates = set(pd.date_range(start_date, end_date).date)
+    if daily_recovery_required is not None:
+        evidence_lines.append(
+            f"Extra Sales Needed per Forecast Day: {utils.format_rupee_short(daily_recovery_required)}"
+        )
+
+    # ── Data confidence checks ───────────────────────────────────
+    effective_end_date = min(end_date, date.today())
+
+    if start_date <= effective_end_date:
+        expected_dates = set(pd.date_range(start_date, effective_end_date).date)
+    else:
+        expected_dates = set()
+
     observed_dates = set(work_df["date"].dt.date.dropna())
+
     missing_dates = sorted(expected_dates - observed_dates)
     missing_days_count = len(missing_dates)
 
@@ -382,7 +466,7 @@ def render_owner_readout_and_data_confidence(
             df_raw.duplicated(subset=["location_id", "date"]).sum()
         )
 
-    confidence_reasons = []
+    confidence_reasons: list[str] = []
 
     if missing_days_count > 0:
         confidence_reasons.append(
@@ -409,7 +493,11 @@ def render_owner_readout_and_data_confidence(
             f"{duplicate_raw_rows} duplicate outlet-date row(s) found in raw data."
         )
 
-    missing_ratio = missing_days_count / len(expected_dates) if expected_dates else 0
+    missing_ratio = (
+        missing_days_count / len(expected_dates)
+        if expected_dates
+        else 0
+    )
 
     if (
         duplicate_raw_rows > 0
