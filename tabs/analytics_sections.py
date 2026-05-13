@@ -999,6 +999,122 @@ def render_sales_movement_waterfall(
                     "Both covers and APC declined. This needs demand recovery and ticket-size improvement."
                 )
 
+def _render_forecast_anomaly_inputs(variance_table: pd.DataFrame) -> None:
+    """Render manual cause inputs for forecast anomaly days.
+
+    These labels are stored in session_state for now and can be exported as CSV.
+    Later, this can be persisted to the database and used as ML training labels.
+    """
+    if variance_table.empty:
+        return
+
+    cause_options = [
+        "Not labelled",
+        "Corporate booking / large party",
+        "Private event",
+        "Holiday / festival",
+        "Local event",
+        "Weather / rain",
+        "Staffing issue",
+        "Stockout",
+        "Menu availability issue",
+        "Service issue",
+        "Aggregator / Zomato activity",
+        "Marketing / promotion",
+        "Data issue",
+        "Unexpected walk-ins",
+        "Low reservations",
+        "Other",
+    ]
+
+    if "forecast_anomaly_labels" not in st.session_state:
+        st.session_state.forecast_anomaly_labels = {}
+
+    st.markdown("#### Manual Cause Labels")
+    st.caption(
+        "Label the likely cause of each forecast anomaly. These labels can later become training data for the ML model."
+    )
+
+    export_rows: list[dict[str, object]] = []
+
+    for _, row in variance_table.iterrows():
+        anomaly_date = pd.Timestamp(row["date"]).strftime("%Y-%m-%d")
+        default_key = f"{anomaly_date}_{str(row.get('weekday', ''))}"
+        saved = st.session_state.forecast_anomaly_labels.get(default_key, {})
+
+        with st.container(border=True):
+            st.markdown(
+                f"**{pd.Timestamp(row['date']).strftime('%d %b %Y')} · {row.get('weekday', '')}**"
+            )
+
+            st.caption(
+                "Actual: {} | Forecast: {} | Variance: {} ({})".format(
+                    utils.format_rupee_short(float(row.get("actual_sales", 0) or 0)),
+                    utils.format_rupee_short(float(row.get("forecast_sales", 0) or 0)),
+                    utils.format_rupee_short(float(row.get("variance", 0) or 0)),
+                    (
+                        "N/A"
+                        if pd.isna(row.get("variance_pct"))
+                        else f"{float(row.get('variance_pct')):+.1f}%"
+                    ),
+                )
+            )
+
+            st.caption(
+                f"System-detected factor: {row.get('likely_factors', 'No factor detected')}"
+            )
+
+            selected_cause = st.selectbox(
+                "Manual cause",
+                options=cause_options,
+                index=(
+                    cause_options.index(saved.get("cause"))
+                    if saved.get("cause") in cause_options
+                    else 0
+                ),
+                key=f"forecast_anomaly_cause_{default_key}",
+            )
+
+            note = st.text_area(
+                "Owner note",
+                value=str(saved.get("note", "")),
+                placeholder="Example: Large corporate table, rain affected lunch, stockout of key dish, Zomato campaign active, etc.",
+                key=f"forecast_anomaly_note_{default_key}",
+                height=80,
+            )
+
+            st.session_state.forecast_anomaly_labels[default_key] = {
+                "date": anomaly_date,
+                "weekday": str(row.get("weekday", "")),
+                "actual_sales": float(row.get("actual_sales", 0) or 0),
+                "forecast_sales": float(row.get("forecast_sales", 0) or 0),
+                "variance": float(row.get("variance", 0) or 0),
+                "variance_pct": (
+                    None
+                    if pd.isna(row.get("variance_pct"))
+                    else float(row.get("variance_pct"))
+                ),
+                "actual_covers": float(row.get("actual_covers", 0) or 0),
+                "actual_apc": float(row.get("actual_apc", 0) or 0),
+                "outcome": str(row.get("outcome", "")),
+                "system_detected_factors": str(row.get("likely_factors", "")),
+                "manual_cause": selected_cause,
+                "owner_note": note,
+            }
+
+            export_rows.append(st.session_state.forecast_anomaly_labels[default_key])
+
+    labelled_df = pd.DataFrame(export_rows)
+
+    if not labelled_df.empty:
+        st.download_button(
+            label="Download anomaly labels CSV",
+            data=labelled_df.to_csv(index=False).encode("utf-8"),
+            file_name="forecast_anomaly_labels.csv",
+            mime="text/csv",
+            key="download_forecast_anomaly_labels",
+        )
+
 def render_forecast_backtest(df: pd.DataFrame) -> None:
     """Render rolling forecast-vs-achieved backtest for historical confidence building."""
     required_columns = {"date", "net_total"}
@@ -1360,6 +1476,9 @@ def render_forecast_backtest(df: pd.DataFrame) -> None:
             "Variance factors are directional, not causal proof. "
             "They are inferred from sales, covers, APC, weekday pattern and forecast range."
         )
+
+        with st.expander("Add manual causes for anomaly days", expanded=False):
+            _render_forecast_anomaly_inputs(variance_table)
 
 def render_forecast_command_center(
     df: pd.DataFrame,
