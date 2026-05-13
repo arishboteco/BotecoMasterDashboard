@@ -999,6 +999,368 @@ def render_sales_movement_waterfall(
                     "Both covers and APC declined. This needs demand recovery and ticket-size improvement."
                 )
 
+def render_forecast_backtest(df: pd.DataFrame) -> None:
+    """Render rolling forecast-vs-achieved backtest for historical confidence building."""
+    required_columns = {"date", "net_total"}
+
+    if df.empty or not required_columns.issubset(set(df.columns)):
+        return
+
+    backtest_df = df.copy()
+
+    backtest_df["date"] = pd.to_datetime(backtest_df["date"], errors="coerce")
+    backtest_df = backtest_df[backtest_df["date"].notna()].copy()
+
+    if backtest_df.empty:
+        return
+
+    backtest_df["net_total"] = pd.to_numeric(
+        backtest_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
+    if "covers" in backtest_df.columns:
+        backtest_df["covers"] = pd.to_numeric(
+            backtest_df["covers"],
+            errors="coerce",
+        ).fillna(0)
+    else:
+        backtest_df["covers"] = 0
+
+    backtest_df = backtest_df.sort_values("date").reset_index(drop=True)
+    backtest_df["weekday"] = backtest_df["date"].dt.day_name()
+
+    if len(backtest_df) < 10:
+        return
+
+    min_train_days = 14 if len(backtest_df) >= 21 else 7
+    max_train_days = 35
+
+    rows: list[dict[str, object]] = []
+
+    for idx in range(min_train_days, len(backtest_df)):
+        actual_row = backtest_df.iloc[idx]
+        train_start_idx = max(0, idx - max_train_days)
+        train_df = backtest_df.iloc[train_start_idx:idx].copy()
+
+        if len(train_df) < 3:
+            continue
+
+        forecast = linear_forecast(
+            train_df["date"],
+            train_df["net_total"].tolist(),
+            forecast_days=1,
+        )
+
+        if not forecast:
+            continue
+
+        forecast_point = forecast[0]
+
+        actual_sales = float(actual_row["net_total"])
+        forecast_sales = float(forecast_point.get("value", 0) or 0)
+        lower_bound = float(forecast_point.get("lower", 0) or 0)
+        upper_bound = float(forecast_point.get("upper", 0) or 0)
+
+        variance = actual_sales - forecast_sales
+        variance_pct = (
+            variance / forecast_sales * 100
+            if forecast_sales > 0
+            else None
+        )
+
+        actual_covers = float(actual_row["covers"])
+        train_avg_covers = float(train_df["covers"].mean()) if "covers" in train_df.columns else 0.0
+
+        train_total_sales = float(train_df["net_total"].sum())
+        train_total_covers = float(train_df["covers"].sum()) if "covers" in train_df.columns else 0.0
+        train_apc = train_total_sales / train_total_covers if train_total_covers > 0 else 0.0
+        actual_apc = actual_sales / actual_covers if actual_covers > 0 else 0.0
+
+        weekday_name = str(actual_row["weekday"])
+        same_weekday_df = train_df[train_df["weekday"] == weekday_name]
+        same_weekday_avg = (
+            float(same_weekday_df["net_total"].mean())
+            if len(same_weekday_df) >= 2
+            else None
+        )
+
+        variance_factors: list[str] = []
+
+        if train_avg_covers > 0 and actual_covers > 0:
+            covers_delta_pct = ((actual_covers - train_avg_covers) / train_avg_covers) * 100
+
+            if covers_delta_pct >= 10:
+                variance_factors.append(
+                    f"Covers were {covers_delta_pct:+.1f}% above recent average."
+                )
+            elif covers_delta_pct <= -10:
+                variance_factors.append(
+                    f"Covers were {covers_delta_pct:+.1f}% below recent average."
+                )
+
+        if train_apc > 0 and actual_apc > 0:
+            apc_delta_pct = ((actual_apc - train_apc) / train_apc) * 100
+
+            if apc_delta_pct >= 8:
+                variance_factors.append(
+                    f"APC was {apc_delta_pct:+.1f}% above recent average."
+                )
+            elif apc_delta_pct <= -8:
+                variance_factors.append(
+                    f"APC was {apc_delta_pct:+.1f}% below recent average."
+                )
+
+        if same_weekday_avg is not None and same_weekday_avg > 0:
+            weekday_delta_pct = ((actual_sales - same_weekday_avg) / same_weekday_avg) * 100
+
+            if weekday_delta_pct >= 12:
+                variance_factors.append(
+                    f"{weekday_name} performed {weekday_delta_pct:+.1f}% above recent same-weekday average."
+                )
+            elif weekday_delta_pct <= -12:
+                variance_factors.append(
+                    f"{weekday_name} performed {weekday_delta_pct:+.1f}% below recent same-weekday average."
+                )
+
+        if forecast_sales > 0 and upper_bound > lower_bound:
+            band_width_pct = ((upper_bound - lower_bound) / forecast_sales) * 100
+
+            if band_width_pct >= 60:
+                variance_factors.append(
+                    "Forecast range was wide, indicating high sales volatility."
+                )
+
+        if not variance_factors:
+            variance_factors.append(
+                "Variance appears to be normal daily volatility or a factor not visible in sales/covers data."
+            )
+
+        if actual_sales > upper_bound:
+            outcome = "Over achieved"
+        elif actual_sales < lower_bound:
+            outcome = "Under achieved"
+        else:
+            outcome = "Within forecast range"
+
+        rows.append(
+            {
+                "date": actual_row["date"],
+                "weekday": weekday_name,
+                "actual_sales": actual_sales,
+                "forecast_sales": forecast_sales,
+                "lower_bound": lower_bound,
+                "upper_bound": upper_bound,
+                "variance": variance,
+                "variance_pct": variance_pct,
+                "actual_covers": actual_covers,
+                "actual_apc": actual_apc,
+                "outcome": outcome,
+                "likely_factors": " ".join(variance_factors),
+            }
+        )
+
+    if not rows:
+        return
+
+    result_df = pd.DataFrame(rows).sort_values("date").reset_index(drop=True)
+
+    actual_total = float(result_df["actual_sales"].sum())
+    forecast_total = float(result_df["forecast_sales"].sum())
+    total_variance = actual_total - forecast_total
+
+    valid_pct_rows = result_df[
+        (result_df["actual_sales"] > 0)
+        & (result_df["forecast_sales"] > 0)
+    ].copy()
+
+    if valid_pct_rows.empty:
+        mape = None
+    else:
+        mape = float(
+            (
+                (valid_pct_rows["actual_sales"] - valid_pct_rows["forecast_sales"]).abs()
+                / valid_pct_rows["actual_sales"]
+            ).mean()
+            * 100
+        )
+
+    accuracy = max(0.0, 100.0 - mape) if mape is not None else None
+
+    within_range_pct = float(
+        (result_df["outcome"] == "Within forecast range").mean() * 100
+    )
+
+    if actual_total > 0:
+        bias_pct = ((forecast_total - actual_total) / actual_total) * 100
+    else:
+        bias_pct = 0.0
+
+    with st.expander("Forecast backtest: forecast vs achieved", expanded=False):
+        st.caption(
+            "This tests the forecast method against days that already happened. "
+            "For each tested day, the model only uses earlier days in the selected period, "
+            "then compares the forecast against actual sales."
+        )
+
+        metric_col_1, metric_col_2, metric_col_3, metric_col_4 = st.columns(4)
+
+        with metric_col_1:
+            st.metric(
+                "Tested Days",
+                f"{len(result_df):,}",
+            )
+
+        with metric_col_2:
+            st.metric(
+                "Backtest Accuracy",
+                f"{accuracy:.1f}%" if accuracy is not None else "N/A",
+                help="Calculated as 100% minus mean absolute percentage error. Higher is better.",
+            )
+
+        with metric_col_3:
+            st.metric(
+                "Range Hit Rate",
+                f"{within_range_pct:.1f}%",
+                help="Percentage of tested days where actual sales fell inside the forecast range.",
+            )
+
+        with metric_col_4:
+            st.metric(
+                "Forecast Bias",
+                f"{bias_pct:+.1f}%",
+                help="Positive means the model over-forecasted overall. Negative means it under-forecasted.",
+            )
+
+        fig_backtest = go.Figure()
+
+        fig_backtest.add_trace(
+            go.Scatter(
+                x=result_df["date"],
+                y=result_df["upper_bound"],
+                mode="lines",
+                name="Upper Range",
+                line=dict(width=0),
+                showlegend=False,
+                hoverinfo="skip",
+            )
+        )
+
+        fig_backtest.add_trace(
+            go.Scatter(
+                x=result_df["date"],
+                y=result_df["lower_bound"],
+                mode="lines",
+                name="Forecast Range",
+                fill="tonexty",
+                line=dict(width=0),
+                fillcolor=_hex_to_rgba(ui_theme.BRAND_INFO, 0.18),
+                hoverinfo="skip",
+            )
+        )
+
+        fig_backtest.add_trace(
+            go.Scatter(
+                x=result_df["date"],
+                y=result_df["actual_sales"],
+                mode="lines+markers",
+                name="Actual Sales",
+                line=dict(color=ui_theme.BRAND_PRIMARY, width=3),
+                marker=dict(size=5),
+                hovertemplate="Actual: ₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
+            )
+        )
+
+        fig_backtest.add_trace(
+            go.Scatter(
+                x=result_df["date"],
+                y=result_df["forecast_sales"],
+                mode="lines+markers",
+                name="Forecast",
+                line=dict(color=ui_theme.BRAND_WARN, width=2, dash="dash"),
+                marker=dict(size=4),
+                hovertemplate="Forecast: ₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
+            )
+        )
+
+        fig_backtest.update_layout(
+            title="Rolling Forecast Backtest",
+            xaxis_title="Date",
+            yaxis_title="Sales ₹",
+            height=360,
+            hovermode="x unified",
+            margin=dict(l=0, r=0, t=50, b=40),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.25,
+                xanchor="center",
+                x=0.5,
+            ),
+        )
+
+        st.plotly_chart(fig_backtest, width="stretch")
+
+        st.markdown("#### Largest Variance Days")
+
+        variance_table = result_df.copy()
+        variance_table["abs_variance"] = variance_table["variance"].abs()
+        variance_table = variance_table.sort_values("abs_variance", ascending=False).head(7)
+
+        display_df = variance_table.copy()
+
+        display_df["Date"] = display_df["date"].dt.strftime("%d %b %Y")
+        display_df["Actual"] = display_df["actual_sales"].apply(
+            lambda value: utils.format_rupee_short(float(value))
+        )
+        display_df["Forecast"] = display_df["forecast_sales"].apply(
+            lambda value: utils.format_rupee_short(float(value))
+        )
+        display_df["Variance"] = display_df["variance"].apply(
+            lambda value: utils.format_rupee_short(float(value))
+        )
+        display_df["Variance %"] = display_df["variance_pct"].apply(
+            lambda value: "N/A" if pd.isna(value) else f"{float(value):+.1f}%"
+        )
+        display_df["Covers"] = display_df["actual_covers"].apply(
+            lambda value: f"{int(value):,}"
+        )
+        display_df["APC"] = display_df["actual_apc"].apply(
+            lambda value: utils.format_rupee_short(float(value))
+        )
+
+        display_df = display_df.rename(
+            columns={
+                "weekday": "Day",
+                "outcome": "Outcome",
+                "likely_factors": "Likely Variance Factors",
+            }
+        )
+
+        st.dataframe(
+            display_df[
+                [
+                    "Date",
+                    "Day",
+                    "Actual",
+                    "Forecast",
+                    "Variance",
+                    "Variance %",
+                    "Covers",
+                    "APC",
+                    "Outcome",
+                    "Likely Variance Factors",
+                ]
+            ],
+            width="stretch",
+            hide_index=True,
+        )
+
+        st.caption(
+            "Variance factors are directional, not causal proof. "
+            "They are inferred from sales, covers, APC, weekday pattern and forecast range."
+        )
+
 def render_forecast_command_center(
     df: pd.DataFrame,
     prior_df: pd.DataFrame,
@@ -1245,6 +1607,8 @@ def render_forecast_command_center(
                     for caution in forecast_explanation["cautions"]:
                         st.warning(caution)
                         
+        render_forecast_backtest(chart_df)
+
         if prior_start and prior_end:
             st.caption(
                 "Comparison period: {} to {}.".format(

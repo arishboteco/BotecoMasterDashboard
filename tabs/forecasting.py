@@ -402,19 +402,15 @@ def calculate_forecast_days(
 ) -> int:
     """Calculate forecast length based on selected analysis period.
 
-    Rules:
-    - Closed historical periods such as LM / Last Month should not forecast forward.
-    - Rolling 7D / 30D / Custom ranges get a short forward-looking forecast.
-    - MTD forecasts to month-end.
-    - QTD forecasts to quarter-end.
-    - YTD is capped to 30 days because full-year forecasting from daily sales is too uncertain.
+    Open/current periods should forecast forward.
+    Closed historical periods should not forecast forward; they should use backtesting instead.
     """
     if data_points < 3:
         return 0
 
     period_key = analysis_period.lower().replace(" ", "_")
 
-    # Closed historical periods should show actuals only, not a future forecast.
+    # Closed historical periods: no forward forecast.
     if period_key in {"lm", "last_month", "last_week"}:
         return 0
 
