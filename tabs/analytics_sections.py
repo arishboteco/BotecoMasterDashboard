@@ -22,6 +22,7 @@ from tabs.analytics_logic import (
 )
 from tabs.chart_builders import _hex_to_rgba, _period_supports_trend_analysis
 from tabs.forecasting import (
+    build_forecast_explanation,
     calculate_forecast_days,
     linear_forecast,
     moving_average,
@@ -1180,6 +1181,70 @@ def render_forecast_command_center(
 
         st.plotly_chart(fig, width="stretch")
 
+        forecast_explanation = build_forecast_explanation(values, forecast)
+
+        if forecast_explanation.get("available"):
+            with st.expander("Forecast explanation", expanded=False):
+                st.markdown(
+                    f"**Model:** {forecast_explanation['model_label']}"
+                )
+
+                explanation_col_1, explanation_col_2, explanation_col_3 = st.columns(3)
+
+                with explanation_col_1:
+                    st.metric(
+                        "Forecast Confidence",
+                        forecast_explanation["confidence"],
+                    )
+
+                with explanation_col_2:
+                    st.metric(
+                        "Forecast Days",
+                        f"{forecast_explanation['forecast_days']}",
+                    )
+
+                with explanation_col_3:
+                    st.metric(
+                        "Volatility",
+                        f"{forecast_explanation['volatility_pct'] * 100:.1f}%",
+                    )
+
+                st.caption(
+                    "This is a transparent statistical forecast, not a machine-learning model. "
+                    "It blends recent sales momentum, smoothing and weekday behaviour."
+                )
+
+                st.markdown("**What is driving the forecast**")
+                for driver in forecast_explanation["drivers"]:
+                    st.caption(f"- {driver}")
+
+                st.markdown("**Key forecast inputs**")
+                st.caption(
+                    f"- Overall average: {utils.format_rupee_short(forecast_explanation['overall_avg'])}"
+                )
+                st.caption(
+                    f"- Recent 7-day average: {utils.format_rupee_short(forecast_explanation['recent_7_avg'])}"
+                )
+                st.caption(
+                    f"- Recent 14-day average: {utils.format_rupee_short(forecast_explanation['recent_14_avg'])}"
+                )
+                st.caption(
+                    f"- Base forecast per day: {utils.format_rupee_short(forecast_explanation['base_forecast'])}"
+                )
+                st.caption(
+                    f"- Weekday coverage: {forecast_explanation['weekday_coverage']} day type(s)"
+                )
+
+                if forecast_explanation["reliability_reasons"]:
+                    st.markdown("**Confidence reasons**")
+                    for reason in forecast_explanation["reliability_reasons"]:
+                        st.caption(f"- {reason}")
+
+                if forecast_explanation["cautions"]:
+                    st.markdown("**Cautions**")
+                    for caution in forecast_explanation["cautions"]:
+                        st.warning(caution)
+                        
         if prior_start and prior_end:
             st.caption(
                 "Comparison period: {} to {}.".format(
