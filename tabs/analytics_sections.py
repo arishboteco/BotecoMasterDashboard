@@ -1115,6 +1115,265 @@ def _render_forecast_anomaly_inputs(variance_table: pd.DataFrame) -> None:
             key="download_forecast_anomaly_labels",
         )
 
+def _forecast_quality_grade(
+    accuracy: float | None,
+    within_range_pct: float,
+    bias_pct: float,
+    tested_days: int,
+) -> tuple[str, str, str]:
+    """Convert backtest metrics into an owner-friendly forecast quality grade."""
+    if accuracy is None or tested_days < 7:
+        return (
+            "Insufficient",
+            "warning",
+            "Not enough tested days to judge forecast quality confidently.",
+        )
+
+    abs_bias = abs(float(bias_pct))
+
+    if accuracy >= 85 and within_range_pct >= 70 and abs_bias <= 8:
+        return (
+            "Strong",
+            "success",
+            "Forecast performance is strong enough for directional planning.",
+        )
+
+    if accuracy >= 75 and within_range_pct >= 60 and abs_bias <= 15:
+        return (
+            "Usable",
+            "info",
+            "Forecast is usable for owner decisions, but should be checked against context.",
+        )
+
+    if accuracy >= 65 and within_range_pct >= 45:
+        return (
+            "Watch",
+            "warning",
+            "Forecast has moderate error. Use it as a warning signal, not a firm target.",
+        )
+
+    return (
+        "Weak",
+        "error",
+        "Forecast accuracy is weak for this period. Investigate variance drivers before relying on it.",
+    )
+
+
+def _render_forecast_quality_dashboard(
+    result_df: pd.DataFrame,
+    accuracy: float | None,
+    within_range_pct: float,
+    bias_pct: float,
+) -> None:
+    """Render a compact forecast quality dashboard from backtest results."""
+    if result_df.empty:
+        return
+
+    quality_label, quality_severity, quality_message = _forecast_quality_grade(
+        accuracy=accuracy,
+        within_range_pct=within_range_pct,
+        bias_pct=bias_pct,
+        tested_days=len(result_df),
+    )
+
+    work_df = result_df.copy()
+
+    work_df["abs_variance"] = pd.to_numeric(
+        work_df["variance"],
+        errors="coerce",
+    ).abs()
+
+    work_df["abs_pct_error"] = work_df.apply(
+        lambda row: (
+            abs(float(row["actual_sales"]) - float(row["forecast_sales"]))
+            / float(row["actual_sales"])
+            * 100
+        )
+        if float(row.get("actual_sales", 0) or 0) > 0
+        and float(row.get("forecast_sales", 0) or 0) > 0
+        else None,
+        axis=1,
+    )
+
+    valid_error_df = work_df[work_df["abs_pct_error"].notna()].copy()
+
+    hardest_weekday = "N/A"
+    hardest_weekday_error = None
+
+    if not valid_error_df.empty:
+        weekday_errors = (
+            valid_error_df.groupby("weekday", as_index=False)["abs_pct_error"]
+            .mean()
+            .sort_values("abs_pct_error", ascending=False)
+        )
+
+        if not weekday_errors.empty:
+            hardest_weekday = str(weekday_errors.iloc[0]["weekday"])
+            hardest_weekday_error = float(weekday_errors.iloc[0]["abs_pct_error"])
+
+    # Error trend compares recent tested days against earlier tested days.
+    error_trend_label = "N/A"
+    error_trend_detail = "Need more tested days to compare recent forecast error."
+
+    if len(valid_error_df) >= 10:
+        recent_n = min(7, len(valid_error_df) // 2)
+        recent_error = float(valid_error_df.tail(recent_n)["abs_pct_error"].mean())
+        prior_error = float(valid_error_df.iloc[:-recent_n]["abs_pct_error"].mean())
+
+        if prior_error > 0:
+            error_delta = recent_error - prior_error
+
+            if error_delta <= -3:
+                error_trend_label = "Improving"
+                error_trend_detail = (
+                    f"Recent absolute error is down {abs(error_delta):.1f} pts "
+                    "versus earlier tested days."
+                )
+            elif error_delta >= 3:
+                error_trend_label = "Worsening"
+                error_trend_detail = (
+                    f"Recent absolute error is up {error_delta:.1f} pts "
+                    "versus earlier tested days."
+                )
+            else:
+                error_trend_label = "Stable"
+                error_trend_detail = (
+                    "Recent forecast error is broadly stable versus earlier tested days."
+                )
+
+    if bias_pct >= 8:
+        bias_label = "Optimistic"
+        bias_detail = "The model is generally forecasting higher than actual sales."
+    elif bias_pct <= -8:
+        bias_label = "Conservative"
+        bias_detail = "The model is generally forecasting lower than actual sales."
+    else:
+        bias_label = "Balanced"
+        bias_detail = "Forecast bias is within a reasonable range."
+
+    with st.container(border=True):
+        st.markdown("#### Forecast Quality Dashboard")
+        st.caption(
+            "Use this to judge whether the forecast is reliable enough for owner decisions."
+        )
+
+        if quality_severity == "success":
+            st.success(f"**Forecast Quality: {quality_label}** — {quality_message}")
+        elif quality_severity == "info":
+            st.info(f"**Forecast Quality: {quality_label}** — {quality_message}")
+        elif quality_severity == "warning":
+            st.warning(f"**Forecast Quality: {quality_label}** — {quality_message}")
+        else:
+            st.error(f"**Forecast Quality: {quality_label}** — {quality_message}")
+
+        q_col_1, q_col_2, q_col_3, q_col_4 = st.columns(4)
+
+        with q_col_1:
+            st.metric(
+                "Hardest Day",
+                hardest_weekday,
+                (
+                    f"{hardest_weekday_error:.1f}% avg error"
+                    if hardest_weekday_error is not None
+                    else None
+                ),
+            )
+
+        with q_col_2:
+            st.metric(
+                "Bias Type",
+                bias_label,
+                f"{bias_pct:+.1f}%",
+                help=bias_detail,
+            )
+
+        with q_col_3:
+            st.metric(
+                "Error Trend",
+                error_trend_label,
+            )
+
+        with q_col_4:
+            st.metric(
+                "Range Reliability",
+                f"{within_range_pct:.1f}%",
+                help="Percentage of tested days where actual sales landed within the forecast range.",
+            )
+
+        st.caption(error_trend_detail)
+
+        with st.expander("Forecast quality details by weekday", expanded=False):
+            if valid_error_df.empty:
+                st.caption("No valid percentage-error rows available.")
+            else:
+                weekday_quality = (
+                    valid_error_df.groupby("weekday", as_index=False)
+                    .agg(
+                        tested_days=("date", "count"),
+                        avg_actual=("actual_sales", "mean"),
+                        avg_forecast=("forecast_sales", "mean"),
+                        avg_abs_error_pct=("abs_pct_error", "mean"),
+                    )
+                    .sort_values("avg_abs_error_pct", ascending=False)
+                )
+
+                weekday_quality["Avg Actual"] = weekday_quality["avg_actual"].apply(
+                    lambda value: utils.format_rupee_short(float(value))
+                )
+                weekday_quality["Avg Forecast"] = weekday_quality["avg_forecast"].apply(
+                    lambda value: utils.format_rupee_short(float(value))
+                )
+                weekday_quality["Avg Error %"] = weekday_quality["avg_abs_error_pct"].apply(
+                    lambda value: f"{float(value):.1f}%"
+                )
+
+                weekday_quality = weekday_quality.rename(
+                    columns={
+                        "weekday": "Weekday",
+                        "tested_days": "Tested Days",
+                    }
+                )
+
+                st.dataframe(
+                    weekday_quality[
+                        [
+                            "Weekday",
+                            "Tested Days",
+                            "Avg Actual",
+                            "Avg Forecast",
+                            "Avg Error %",
+                        ]
+                    ],
+                    width="stretch",
+                    hide_index=True,
+                )
+
+        with st.expander("Forecast outcome split", expanded=False):
+            outcome_df = (
+                work_df.groupby("outcome", as_index=False)
+                .agg(days=("date", "count"))
+                .sort_values("days", ascending=False)
+            )
+
+            outcome_df["Share"] = outcome_df["days"].apply(
+                lambda value: f"{value / len(work_df) * 100:.1f}%"
+                if len(work_df) > 0
+                else "0.0%"
+            )
+
+            outcome_df = outcome_df.rename(
+                columns={
+                    "outcome": "Outcome",
+                    "days": "Days",
+                }
+            )
+
+            st.dataframe(
+                outcome_df[["Outcome", "Days", "Share"]],
+                width="stretch",
+                hide_index=True,
+            )
+
 def render_forecast_backtest(df: pd.DataFrame) -> None:
     """Render rolling forecast-vs-achieved backtest for historical confidence building."""
     required_columns = {"date", "net_total"}
@@ -1347,6 +1606,13 @@ def render_forecast_backtest(df: pd.DataFrame) -> None:
                 f"{bias_pct:+.1f}%",
                 help="Positive means the model over-forecasted overall. Negative means it under-forecasted.",
             )
+
+        _render_forecast_quality_dashboard(
+            result_df=result_df,
+            accuracy=accuracy,
+            within_range_pct=within_range_pct,
+            bias_pct=bias_pct,
+        )
 
         fig_backtest = go.Figure()
 
