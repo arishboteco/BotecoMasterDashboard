@@ -23,6 +23,7 @@ from tabs.analytics_sections import (
     render_mix_snapshot,
     render_owner_readout_and_data_confidence,
     render_payment_reconciliation,
+    render_required_sales_plan,
     render_target_snapshot,
 )
 
@@ -330,6 +331,16 @@ def render(ctx: TabContext) -> None:
                 prior_total=prior_total,
                 prior_covers=prior_covers,
                 analytics_loc_ids=analytics_loc_ids,
+            )
+
+            render_required_sales_plan(
+                df=df,
+                analysis_period=analysis_period,
+                start_date=start_date,
+                end_date=end_date,
+                monthly_target=monthly_target,
+                total_sales=total_sales,
+                total_covers=total_covers,
             )
 
             render_forecast_command_center(

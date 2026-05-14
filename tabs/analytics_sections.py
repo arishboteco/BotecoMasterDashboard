@@ -563,6 +563,338 @@ def render_owner_readout_and_data_confidence(
                 f"{len(expected_dates)} calendar day(s)."
             )
 
+def _last_day_of_month(anchor_date: date) -> date:
+    """Return the last calendar day of the month for a date."""
+    if anchor_date.month == 12:
+        return date(anchor_date.year, 12, 31)
+
+    next_month = date(anchor_date.year, anchor_date.month + 1, 1)
+    return next_month - pd.Timedelta(days=1)
+
+
+def _quarter_end(anchor_date: date) -> date:
+    """Return the calendar quarter-end date for a date."""
+    quarter_start_month = ((anchor_date.month - 1) // 3) * 3 + 1
+    quarter_end_month = quarter_start_month + 2
+
+    if quarter_end_month == 12:
+        return date(anchor_date.year, 12, 31)
+
+    next_month = date(anchor_date.year, quarter_end_month + 1, 1)
+    return next_month - pd.Timedelta(days=1)
+
+
+def _remaining_day_split(
+    latest_data_date: date,
+    plan_end_date: date,
+) -> tuple[int, int, int]:
+    """Return total, weekday and weekend remaining days after latest uploaded data date."""
+    if latest_data_date >= plan_end_date:
+        return 0, 0, 0
+
+    remaining_dates = pd.date_range(
+        latest_data_date + pd.Timedelta(days=1),
+        plan_end_date,
+    )
+
+    total_days = len(remaining_dates)
+    weekend_days = int(
+        sum(day.day_name() in _WEEKEND_DAYS for day in remaining_dates)
+    )
+    weekday_days = total_days - weekend_days
+
+    return total_days, weekday_days, weekend_days
+
+
+def render_required_sales_plan(
+    df: pd.DataFrame,
+    analysis_period: str,
+    start_date: date,
+    end_date: date,
+    monthly_target: float,
+    total_sales: float,
+    total_covers: int,
+) -> None:
+    """Render target recovery plan using required sales, covers and APC."""
+    if df.empty:
+        return
+
+    work_df = df.copy()
+
+    work_df["date"] = pd.to_datetime(work_df["date"], errors="coerce")
+    work_df = work_df[work_df["date"].notna()].copy()
+
+    if work_df.empty:
+        return
+
+    work_df["net_total"] = pd.to_numeric(
+        work_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
+    work_df["covers"] = pd.to_numeric(
+        work_df["covers"],
+        errors="coerce",
+    ).fillna(0)
+
+    if "target" in work_df.columns:
+        work_df["target"] = pd.to_numeric(
+            work_df["target"],
+            errors="coerce",
+        ).fillna(0)
+    else:
+        work_df["target"] = 0
+
+    latest_data_date = work_df["date"].max().date()
+    period_key = analysis_period.lower().replace(" ", "_")
+
+    selected_target = float(work_df["target"].sum())
+    selected_target_gap = selected_target - total_sales if selected_target > 0 else 0.0
+
+    # Decide which target this plan should recover against.
+    # Current open periods use full period targets; rolling/historical periods use selected-window target only.
+    if period_key in {"mtd", "this_month"}:
+        plan_label = "Monthly recovery plan"
+        plan_target = float(monthly_target or 0)
+        plan_end_date = _last_day_of_month(latest_data_date)
+        plan_gap = plan_target - total_sales
+
+    elif period_key == "qtd":
+        plan_label = "Quarter recovery plan"
+        plan_target = float(monthly_target or 0) * 3
+        plan_end_date = _quarter_end(latest_data_date)
+        plan_gap = plan_target - total_sales
+
+    elif period_key == "ytd":
+        plan_label = "Year recovery plan"
+        plan_target = float(monthly_target or 0) * 12
+        plan_end_date = date(latest_data_date.year, 12, 31)
+        plan_gap = plan_target - total_sales
+
+    else:
+        plan_label = "Selected-period target check"
+        plan_target = selected_target
+        plan_end_date = end_date
+        plan_gap = selected_target_gap
+
+    days_with_sales = int(len(work_df[work_df["net_total"] > 0]))
+    avg_daily_sales = total_sales / days_with_sales if days_with_sales > 0 else 0.0
+    avg_daily_covers = total_covers / days_with_sales if days_with_sales > 0 else 0.0
+    current_apc = total_sales / total_covers if total_covers > 0 else 0.0
+
+    remaining_days, remaining_weekdays, remaining_weekends = _remaining_day_split(
+        latest_data_date,
+        plan_end_date,
+    )
+
+    with st.container(border=True):
+        st.markdown("### Required Sales Plan")
+        st.caption(
+            "Use this to translate the target gap into daily sales, covers and APC requirements."
+        )
+
+        if plan_target <= 0:
+            st.info(
+                "No target is available for this period, so a recovery plan cannot be calculated."
+            )
+            return
+
+        if plan_gap <= 0:
+            surplus = abs(plan_gap)
+
+            success_body = (
+                f"**{plan_label}: ahead of target**\n\n"
+                f"Current sales are {utils.format_rupee_short(total_sales)} "
+                f"against a target of {utils.format_rupee_short(plan_target)}. "
+                f"Surplus: {utils.format_rupee_short(surplus)}.\n\n"
+                "**Priority:** Protect the drivers that created the surplus — category availability, staffing and service consistency."
+            )
+
+            st.success(success_body)
+            return
+
+        if remaining_days <= 0:
+            st.warning(
+                f"**{plan_label}: gap exists but no remaining calendar days are available in this plan window.**\n\n"
+                f"Gap: {utils.format_rupee_short(plan_gap)} against target "
+                f"{utils.format_rupee_short(plan_target)}. Use this as a performance review, not a recovery plan."
+            )
+            return
+
+        required_daily_sales = plan_gap / remaining_days
+        required_covers_at_current_apc = (
+            required_daily_sales / current_apc
+            if current_apc > 0
+            else 0
+        )
+        required_apc_at_current_covers = (
+            required_daily_sales / avg_daily_covers
+            if avg_daily_covers > 0
+            else 0
+        )
+
+        required_sales_lift_pct = (
+            ((required_daily_sales - avg_daily_sales) / avg_daily_sales) * 100
+            if avg_daily_sales > 0
+            else None
+        )
+
+        metric_col_1, metric_col_2, metric_col_3, metric_col_4 = st.columns(4)
+
+        with metric_col_1:
+            st.metric(
+                "Target Gap",
+                utils.format_rupee_short(plan_gap),
+                help="Sales still needed to reach the selected plan target.",
+            )
+
+        with metric_col_2:
+            st.metric(
+                "Remaining Days",
+                f"{remaining_days}",
+                help="Calendar days remaining after the latest uploaded sales date.",
+            )
+
+        with metric_col_3:
+            st.metric(
+                "Required Daily Sales",
+                utils.format_rupee_short(required_daily_sales),
+                (
+                    f"{required_sales_lift_pct:+.1f}% vs current run-rate"
+                    if required_sales_lift_pct is not None
+                    else None
+                ),
+            )
+
+        with metric_col_4:
+            st.metric(
+                "Current APC",
+                utils.format_currency(current_apc),
+                help="Current selected-period net sales divided by covers.",
+            )
+
+        st.caption(
+            f"Latest uploaded date: {latest_data_date.strftime('%d %b %Y')} · "
+            f"Plan end date: {plan_end_date.strftime('%d %b %Y')} · "
+            f"Remaining weekdays: {remaining_weekdays} · Remaining weekends: {remaining_weekends}"
+        )
+
+        scenario_rows: list[dict[str, object]] = []
+
+        scenario_rows.append(
+            {
+                "Scenario": "Traffic-led recovery",
+                "Required Sales / Day": utils.format_rupee_short(required_daily_sales),
+                "Covers / Day": f"{required_covers_at_current_apc:,.0f}",
+                "APC Needed": utils.format_currency(current_apc),
+                "Interpretation": "Keep APC stable; recover mainly through more covers.",
+            }
+        )
+
+        scenario_rows.append(
+            {
+                "Scenario": "Ticket-size recovery",
+                "Required Sales / Day": utils.format_rupee_short(required_daily_sales),
+                "Covers / Day": f"{avg_daily_covers:,.0f}",
+                "APC Needed": utils.format_currency(required_apc_at_current_covers),
+                "Interpretation": "Keep covers stable; recover mainly through APC improvement.",
+            }
+        )
+
+        if avg_daily_sales > 0 and avg_daily_covers > 0 and current_apc > 0:
+            lift_factor = max(required_daily_sales / avg_daily_sales, 0)
+
+            if lift_factor > 0:
+                balanced_factor = lift_factor ** 0.5
+                balanced_covers = avg_daily_covers * balanced_factor
+                balanced_apc = current_apc * balanced_factor
+
+                scenario_rows.append(
+                    {
+                        "Scenario": "Balanced recovery",
+                        "Required Sales / Day": utils.format_rupee_short(required_daily_sales),
+                        "Covers / Day": f"{balanced_covers:,.0f}",
+                        "APC Needed": utils.format_currency(balanced_apc),
+                        "Interpretation": "Split recovery between traffic and ticket-size improvement.",
+                    }
+                )
+
+        if remaining_weekends > 0:
+            weekend_share = 0.60 if remaining_weekdays > 0 else 1.00
+            weekday_share = 1.00 - weekend_share
+
+            weekend_sales_per_day = (plan_gap * weekend_share) / remaining_weekends
+            weekday_sales_per_day = (
+                (plan_gap * weekday_share) / remaining_weekdays
+                if remaining_weekdays > 0
+                else 0
+            )
+
+            scenario_rows.append(
+                {
+                    "Scenario": "Weekend-weighted push",
+                    "Required Sales / Day": (
+                        f"Weekend {utils.format_rupee_short(weekend_sales_per_day)}"
+                        + (
+                            f" / Weekday {utils.format_rupee_short(weekday_sales_per_day)}"
+                            if remaining_weekdays > 0
+                            else ""
+                        )
+                    ),
+                    "Covers / Day": "Varies",
+                    "APC Needed": "Varies",
+                    "Interpretation": "Recover more of the gap on Friday–Sunday when demand potential is usually higher.",
+                }
+            )
+
+        st.markdown("#### Recovery Scenarios")
+        st.dataframe(
+            pd.DataFrame(scenario_rows),
+            width="stretch",
+            hide_index=True,
+        )
+
+        # Owner-facing recommendation.
+        if required_sales_lift_pct is None:
+            st.info(
+                "No current run-rate is available, so use the scenario table as a starting estimate."
+            )
+        elif required_sales_lift_pct <= 10:
+            st.success(
+                "Recovery looks realistic if current run-rate is maintained and small improvements are made in conversion, upsell or covers."
+            )
+        elif required_sales_lift_pct <= 25:
+            st.warning(
+                "Recovery requires a meaningful lift versus current run-rate. Focus on the strongest weekdays, weekend conversion and premium item upsell."
+            )
+        else:
+            st.error(
+                "Recovery requires a large lift versus current run-rate. Treat this as a high-risk target and review whether the target, demand plan or remaining days are realistic."
+            )
+
+        with st.expander("How this plan is calculated", expanded=False):
+            st.caption(
+                f"- Plan target: {utils.format_rupee_short(plan_target)}"
+            )
+            st.caption(
+                f"- Current sales: {utils.format_rupee_short(total_sales)}"
+            )
+            st.caption(
+                f"- Gap: {utils.format_rupee_short(plan_gap)}"
+            )
+            st.caption(
+                f"- Required daily sales: gap divided by remaining days = {utils.format_rupee_short(required_daily_sales)}"
+            )
+            st.caption(
+                "- Covers-led recovery assumes APC remains at the current selected-period APC."
+            )
+            st.caption(
+                "- APC-led recovery assumes average daily covers remain at the current selected-period run-rate."
+            )
+            st.caption(
+                "- Balanced recovery splits the required lift across covers and APC."
+            )
+
 def _style_achievement(val) -> str:
     """Pandas Styler.map function: color an Achievement % cell by band."""
     if pd.isna(val):
