@@ -26,6 +26,7 @@ from tabs.analytics_sections import (
     render_owner_readout_and_data_confidence,
     render_payment_reconciliation,
     render_required_sales_plan,
+    render_sales_quality_layer,
     render_target_snapshot,
 )
 
@@ -362,6 +363,13 @@ def render(ctx: TabContext) -> None:
                 total_covers=total_covers,
                 analysis_period=analysis_period,
                 selected_scope=selected_outlet,
+            )
+
+            render_sales_quality_layer(
+                df=df,
+                prior_df=prior_df,
+                total_sales=total_sales,
+                total_covers=total_covers,
             )
 
             render_forecast_command_center(

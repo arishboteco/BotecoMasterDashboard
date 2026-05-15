@@ -1671,6 +1671,396 @@ def render_action_tracker(
             "Database persistence can be added later."
         )
 
+def render_sales_quality_layer(
+    df: pd.DataFrame,
+    prior_df: pd.DataFrame,
+    total_sales: float,
+    total_covers: int,
+) -> None:
+    """Render owner-facing sales quality and estimated contribution layer."""
+    if df.empty:
+        return
+
+    work_df = df.copy()
+
+    numeric_columns = [
+        "gross_total",
+        "net_total",
+        "discount",
+        "complimentary",
+        "service_charge",
+        "zomato_sales",
+        "covers",
+    ]
+
+    for column in numeric_columns:
+        if column not in work_df.columns:
+            work_df[column] = 0
+
+        work_df[column] = pd.to_numeric(
+            work_df[column],
+            errors="coerce",
+        ).fillna(0)
+
+    gross_sales = float(work_df["gross_total"].sum())
+    net_sales = float(work_df["net_total"].sum())
+    discount_total = float(work_df["discount"].sum())
+    complimentary_total = float(work_df["complimentary"].sum())
+    service_charge_total = float(work_df["service_charge"].sum())
+    zomato_pay_sales = float(work_df["zomato_sales"].sum())
+    covers = float(work_df["covers"].sum())
+
+    sales_base = gross_sales if gross_sales > 0 else net_sales
+    current_apc = net_sales / covers if covers > 0 else 0.0
+
+    prior_work_df = prior_df.copy() if prior_df is not None else pd.DataFrame()
+
+    prior_net_sales = None
+    prior_covers = None
+    prior_apc = None
+    prior_discount_total = None
+    prior_complimentary_total = None
+    prior_zomato_sales = None
+    prior_sales_base = None
+
+    if not prior_work_df.empty:
+        for column in numeric_columns:
+            if column not in prior_work_df.columns:
+                prior_work_df[column] = 0
+
+            prior_work_df[column] = pd.to_numeric(
+                prior_work_df[column],
+                errors="coerce",
+            ).fillna(0)
+
+        prior_gross_sales = float(prior_work_df["gross_total"].sum())
+        prior_net_sales = float(prior_work_df["net_total"].sum())
+        prior_discount_total = float(prior_work_df["discount"].sum())
+        prior_complimentary_total = float(prior_work_df["complimentary"].sum())
+        prior_zomato_sales = float(prior_work_df["zomato_sales"].sum())
+        prior_covers = float(prior_work_df["covers"].sum())
+        prior_sales_base = prior_gross_sales if prior_gross_sales > 0 else prior_net_sales
+        prior_apc = prior_net_sales / prior_covers if prior_covers > 0 else None
+
+    sales_delta_pct = _safe_pct_change(net_sales, prior_net_sales)
+    apc_delta_pct = _safe_pct_change(current_apc, prior_apc)
+
+    discount_pct = discount_total / sales_base * 100 if sales_base > 0 else 0.0
+    complimentary_pct = complimentary_total / sales_base * 100 if sales_base > 0 else 0.0
+    service_charge_pct = service_charge_total / net_sales * 100 if net_sales > 0 else 0.0
+    zomato_exposure_pct = zomato_pay_sales / net_sales * 100 if net_sales > 0 else 0.0
+
+    prior_discount_pct = (
+        prior_discount_total / prior_sales_base * 100
+        if prior_discount_total is not None
+        and prior_sales_base is not None
+        and prior_sales_base > 0
+        else None
+    )
+
+    prior_complimentary_pct = (
+        prior_complimentary_total / prior_sales_base * 100
+        if prior_complimentary_total is not None
+        and prior_sales_base is not None
+        and prior_sales_base > 0
+        else None
+    )
+
+    prior_zomato_exposure_pct = (
+        prior_zomato_sales / prior_net_sales * 100
+        if prior_zomato_sales is not None
+        and prior_net_sales is not None
+        and prior_net_sales > 0
+        else None
+    )
+
+    discount_delta_pts = (
+        discount_pct - prior_discount_pct
+        if prior_discount_pct is not None
+        else None
+    )
+
+    complimentary_delta_pts = (
+        complimentary_pct - prior_complimentary_pct
+        if prior_complimentary_pct is not None
+        else None
+    )
+
+    zomato_exposure_delta_pts = (
+        zomato_exposure_pct - prior_zomato_exposure_pct
+        if prior_zomato_exposure_pct is not None
+        else None
+    )
+
+    with st.container(border=True):
+        st.markdown("### Sales Quality")
+        st.caption(
+            "Use this to check whether sales are healthy after leakage, platform exposure and APC movement."
+        )
+
+        assumption_col_1, assumption_col_2, assumption_col_3 = st.columns(3)
+
+        with assumption_col_1:
+            food_cost_pct = st.number_input(
+                "Food cost %",
+                min_value=0.0,
+                max_value=100.0,
+                value=33.0,
+                step=1.0,
+                key="sales_quality_food_cost_pct",
+                help="Used only for estimated contribution. Adjust this to your current food-cost assumption.",
+            )
+
+        with assumption_col_2:
+            other_variable_cost_pct = st.number_input(
+                "Other variable cost %",
+                min_value=0.0,
+                max_value=100.0,
+                value=5.0,
+                step=1.0,
+                key="sales_quality_other_variable_cost_pct",
+                help="Packaging, payment charges, direct variable costs or other cost assumptions.",
+            )
+
+        with assumption_col_3:
+            zomato_pay_fee_pct = st.number_input(
+                "Zomato Pay fee %",
+                min_value=0.0,
+                max_value=100.0,
+                value=5.9,
+                step=0.1,
+                key="sales_quality_zomato_fee_pct",
+                help="Estimated fee on Zomato Pay sales. Change if your commercial terms are different.",
+            )
+
+        platform_cost = zomato_pay_sales * (zomato_pay_fee_pct / 100)
+        food_cost_estimate = net_sales * (food_cost_pct / 100)
+        other_variable_cost_estimate = net_sales * (other_variable_cost_pct / 100)
+
+        estimated_contribution = (
+            net_sales
+            - food_cost_estimate
+            - other_variable_cost_estimate
+            - platform_cost
+        )
+
+        estimated_contribution_pct = (
+            estimated_contribution / net_sales * 100
+            if net_sales > 0
+            else 0.0
+        )
+
+        leakage_total = discount_total + complimentary_total + platform_cost
+        leakage_pct = leakage_total / sales_base * 100 if sales_base > 0 else 0.0
+
+        quality_score = 100.0
+
+        if discount_pct > 5:
+            quality_score -= min(20, (discount_pct - 5) * 2)
+
+        if complimentary_pct > 2:
+            quality_score -= min(15, (complimentary_pct - 2) * 3)
+
+        if zomato_exposure_pct > 20:
+            quality_score -= min(15, (zomato_exposure_pct - 20) * 0.5)
+
+        if apc_delta_pct is not None and apc_delta_pct < -5:
+            quality_score -= min(20, abs(apc_delta_pct))
+
+        if estimated_contribution_pct < 12:
+            quality_score -= 15
+        elif estimated_contribution_pct < 18:
+            quality_score -= 8
+
+        quality_score = max(0.0, min(100.0, quality_score))
+
+        if quality_score >= 80:
+            quality_label = "Strong"
+            quality_severity = "success"
+            quality_message = "Sales quality looks healthy from the available data."
+        elif quality_score >= 65:
+            quality_label = "Watch"
+            quality_severity = "warning"
+            quality_message = "Sales quality is acceptable, but at least one leakage or contribution risk is visible."
+        else:
+            quality_label = "Weak"
+            quality_severity = "error"
+            quality_message = "Sales quality is weak. Review leakage, APC and platform exposure before chasing more revenue."
+
+        metric_col_1, metric_col_2, metric_col_3, metric_col_4 = st.columns(4)
+
+        with metric_col_1:
+            st.metric(
+                "Net Sales",
+                utils.format_rupee_short(net_sales),
+                (
+                    f"{sales_delta_pct:+.1f}% vs comparison"
+                    if sales_delta_pct is not None
+                    else None
+                ),
+            )
+
+        with metric_col_2:
+            st.metric(
+                "Estimated Contribution",
+                utils.format_rupee_short(estimated_contribution),
+                f"{estimated_contribution_pct:.1f}% of net sales",
+                help="Net sales minus estimated food cost, other variable cost and Zomato Pay platform cost.",
+            )
+
+        with metric_col_3:
+            st.metric(
+                "Total Leakage",
+                utils.format_rupee_short(leakage_total),
+                f"{leakage_pct:.1f}% of sales base",
+                help="Discounts + complimentary + estimated Zomato Pay platform cost.",
+            )
+
+        with metric_col_4:
+            st.metric(
+                "Sales Quality Score",
+                f"{quality_score:.0f}/100",
+                quality_label,
+            )
+
+        if quality_severity == "success":
+            st.success(f"**{quality_label} sales quality** — {quality_message}")
+        elif quality_severity == "warning":
+            st.warning(f"**{quality_label} sales quality** — {quality_message}")
+        else:
+            st.error(f"**{quality_label} sales quality** — {quality_message}")
+
+        leakage_rows = [
+            {
+                "Metric": "Discount",
+                "Value": utils.format_rupee_short(discount_total),
+                "% of Sales": f"{discount_pct:.1f}%",
+                "Change vs Comparison": (
+                    "N/A"
+                    if discount_delta_pts is None
+                    else f"{discount_delta_pts:+.1f} pts"
+                ),
+                "Owner Interpretation": (
+                    "High discount leakage"
+                    if discount_pct > 5
+                    else "Controlled"
+                ),
+            },
+            {
+                "Metric": "Complimentary",
+                "Value": utils.format_rupee_short(complimentary_total),
+                "% of Sales": f"{complimentary_pct:.1f}%",
+                "Change vs Comparison": (
+                    "N/A"
+                    if complimentary_delta_pts is None
+                    else f"{complimentary_delta_pts:+.1f} pts"
+                ),
+                "Owner Interpretation": (
+                    "High complimentary leakage"
+                    if complimentary_pct > 2
+                    else "Controlled"
+                ),
+            },
+            {
+                "Metric": "Zomato Pay Exposure",
+                "Value": utils.format_rupee_short(zomato_pay_sales),
+                "% of Sales": f"{zomato_exposure_pct:.1f}%",
+                "Change vs Comparison": (
+                    "N/A"
+                    if zomato_exposure_delta_pts is None
+                    else f"{zomato_exposure_delta_pts:+.1f} pts"
+                ),
+                "Owner Interpretation": (
+                    "High platform exposure"
+                    if zomato_exposure_pct > 20
+                    else "Controlled"
+                ),
+            },
+            {
+                "Metric": "Estimated Zomato Pay Cost",
+                "Value": utils.format_rupee_short(platform_cost),
+                "% of Sales": f"{platform_cost / net_sales * 100:.1f}%" if net_sales > 0 else "0.0%",
+                "Change vs Comparison": "N/A",
+                "Owner Interpretation": "Estimated from Zomato Pay sales × fee assumption.",
+            },
+            {
+                "Metric": "Service Charge",
+                "Value": utils.format_rupee_short(service_charge_total),
+                "% of Sales": f"{service_charge_pct:.1f}%",
+                "Change vs Comparison": "N/A",
+                "Owner Interpretation": "Positive revenue line, not leakage.",
+            },
+            {
+                "Metric": "APC",
+                "Value": utils.format_currency(current_apc),
+                "% of Sales": "N/A",
+                "Change vs Comparison": (
+                    "N/A"
+                    if apc_delta_pct is None
+                    else f"{apc_delta_pct:+.1f}%"
+                ),
+                "Owner Interpretation": (
+                    "APC declining"
+                    if apc_delta_pct is not None and apc_delta_pct < -5
+                    else "Stable / acceptable"
+                ),
+            },
+        ]
+
+        st.markdown("#### Quality Drivers")
+        st.dataframe(
+            pd.DataFrame(leakage_rows),
+            width="stretch",
+            hide_index=True,
+        )
+
+        risk_messages: list[str] = []
+
+        if discount_pct > 5:
+            risk_messages.append(
+                f"Discount is {discount_pct:.1f}% of sales base. Check whether discounts are intentional and profitable."
+            )
+
+        if complimentary_pct > 2:
+            risk_messages.append(
+                f"Complimentary is {complimentary_pct:.1f}% of sales base. Review approval controls."
+            )
+
+        if zomato_exposure_pct > 20:
+            risk_messages.append(
+                f"Zomato Pay exposure is {zomato_exposure_pct:.1f}% of net sales. Check whether incremental sales justify platform cost."
+            )
+
+        if apc_delta_pct is not None and apc_delta_pct < -5:
+            risk_messages.append(
+                f"APC is {apc_delta_pct:+.1f}% vs comparison. Sales quality may be weakening even if sales look stable."
+            )
+
+        if estimated_contribution_pct < 15:
+            risk_messages.append(
+                f"Estimated contribution is {estimated_contribution_pct:.1f}% of net sales. Check assumptions and margin leakage."
+            )
+
+        with st.expander("Sales quality risks and assumptions", expanded=False):
+            if risk_messages:
+                for message in risk_messages:
+                    st.warning(message)
+            else:
+                st.success("No major sales quality risk detected from the available data.")
+
+            st.caption(
+                "- Estimated contribution is not accounting profit. It is a directional contribution estimate based on your assumptions."
+            )
+            st.caption(
+                "- Zomato Pay cost is estimated only from the Zomato Pay sales field and the fee percentage entered above."
+            )
+            st.caption(
+                "- Discount and complimentary percentages use gross sales when available; otherwise they use net sales."
+            )
+            st.caption(
+                "- Sales Quality Score is a decision signal, not an accounting metric."
+            )
+
 def _style_achievement(val) -> str:
     """Pandas Styler.map function: color an Achievement % cell by band."""
     if pd.isna(val):
