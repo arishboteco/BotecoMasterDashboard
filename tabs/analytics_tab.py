@@ -18,6 +18,7 @@ from components.navigation import date_range_nav
 from tabs import TabContext
 from tabs.analytics_logic import resolve_period_window
 from tabs.analytics_sections import (
+    render_action_tracker,
     render_driver_analysis,
     render_forecast_command_center,
     render_mix_snapshot,
@@ -351,6 +352,16 @@ def render(ctx: TabContext) -> None:
                 start_date=start_date,
                 end_date=end_date,
                 all_locs=ctx.all_locs,
+            )
+
+            render_action_tracker(
+                df=df,
+                prior_df=prior_df,
+                monthly_target=monthly_target,
+                total_sales=total_sales,
+                total_covers=total_covers,
+                analysis_period=analysis_period,
+                selected_scope=selected_outlet,
             )
 
             render_forecast_command_center(

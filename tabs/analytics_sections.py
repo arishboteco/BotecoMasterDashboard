@@ -1223,6 +1223,454 @@ def render_outlet_performance_scorecard(
             st.caption("- Trends are calculated versus the selected comparison period.")
             st.caption("- Forecast Close appears only for open/forward-looking periods where forecast days are available.")
 
+def _build_action_tracker_suggestions(
+    df: pd.DataFrame,
+    prior_df: pd.DataFrame,
+    monthly_target: float,
+    total_sales: float,
+    total_covers: int,
+    analysis_period: str,
+    selected_scope: str,
+) -> list[dict[str, str]]:
+    """Build actionable owner tasks from current dashboard signals."""
+    suggestions: list[dict[str, str]] = []
+
+    if df.empty:
+        return suggestions
+
+    work_df = df.copy()
+
+    work_df["net_total"] = pd.to_numeric(
+        work_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
+    work_df["covers"] = pd.to_numeric(
+        work_df["covers"],
+        errors="coerce",
+    ).fillna(0)
+
+    if "target" in work_df.columns:
+        work_df["target"] = pd.to_numeric(
+            work_df["target"],
+            errors="coerce",
+        ).fillna(0)
+    else:
+        work_df["target"] = 0
+
+    selected_target = float(work_df["target"].sum())
+    selected_gap = selected_target - total_sales if selected_target > 0 else 0.0
+    current_apc = total_sales / total_covers if total_covers > 0 else 0.0
+
+    prior_total = None
+    prior_covers = None
+    prior_apc = None
+
+    if prior_df is not None and not prior_df.empty:
+        prior_total = float(
+            pd.to_numeric(prior_df["net_total"], errors="coerce").fillna(0).sum()
+        )
+        prior_covers = float(
+            pd.to_numeric(prior_df["covers"], errors="coerce").fillna(0).sum()
+        )
+        prior_apc = prior_total / prior_covers if prior_covers > 0 else None
+
+    sales_delta_pct = _safe_pct_change(total_sales, prior_total)
+    covers_delta_pct = _safe_pct_change(total_covers, prior_covers)
+    apc_delta_pct = _safe_pct_change(current_apc, prior_apc)
+
+    if monthly_target > 0 and total_sales < monthly_target and analysis_period in {"MTD", "QTD", "YTD"}:
+        suggestions.append(
+            {
+                "priority": "High",
+                "action": "Review target recovery plan",
+                "reason": (
+                    f"Sales are below the active target plan. Current sales: "
+                    f"{utils.format_rupee_short(total_sales)}."
+                ),
+                "owner": "Operations",
+                "due": "Today",
+                "success_metric": "Daily sales run-rate improves versus required sales plan.",
+            }
+        )
+
+    if selected_target > 0 and selected_gap > 0:
+        suggestions.append(
+            {
+                "priority": "High",
+                "action": "Close selected-period target gap",
+                "reason": f"Selected-period target gap is {utils.format_rupee_short(selected_gap)}.",
+                "owner": "Outlet Manager",
+                "due": "Next 3 days",
+                "success_metric": "Target gap reduces versus current selected-period pace.",
+            }
+        )
+
+    if covers_delta_pct is not None and covers_delta_pct <= -8:
+        suggestions.append(
+            {
+                "priority": "High",
+                "action": "Recover covers on weak days",
+                "reason": f"Covers are {_format_owner_delta(covers_delta_pct)} versus comparison.",
+                "owner": "Marketing / Reservations",
+                "due": "This week",
+                "success_metric": "Covers improve versus comparison period.",
+            }
+        )
+
+    if apc_delta_pct is not None and apc_delta_pct <= -8:
+        suggestions.append(
+            {
+                "priority": "High",
+                "action": "Run APC improvement push",
+                "reason": f"APC is {_format_owner_delta(apc_delta_pct)} versus comparison.",
+                "owner": "Restaurant Manager",
+                "due": "This week",
+                "success_metric": "APC improves through premium items, drinks, desserts and sharing platters.",
+            }
+        )
+
+    if (
+        covers_delta_pct is not None
+        and apc_delta_pct is not None
+        and covers_delta_pct >= 8
+        and apc_delta_pct <= -8
+    ):
+        suggestions.append(
+            {
+                "priority": "High",
+                "action": "Convert traffic into higher spend",
+                "reason": (
+                    f"Covers are {_format_owner_delta(covers_delta_pct)}, "
+                    f"but APC is {_format_owner_delta(apc_delta_pct)}."
+                ),
+                "owner": "Restaurant Manager",
+                "due": "Next peak weekend",
+                "success_metric": "APC improves without reducing covers.",
+            }
+        )
+
+    if sales_delta_pct is not None and sales_delta_pct <= -8:
+        suggestions.append(
+            {
+                "priority": "High",
+                "action": "Diagnose sales decline",
+                "reason": f"Sales are {_format_owner_delta(sales_delta_pct)} versus comparison.",
+                "owner": "Operations",
+                "due": "Today",
+                "success_metric": "Primary decline driver is identified: traffic, APC, outlet, weekday, or category mix.",
+            }
+        )
+
+    if not suggestions:
+        suggestions.append(
+            {
+                "priority": "Medium",
+                "action": "Protect current momentum",
+                "reason": "No major negative signal is visible from sales, covers, APC or selected-period target gap.",
+                "owner": "Operations",
+                "due": "This week",
+                "success_metric": "Top categories remain available and staffing matches peak demand.",
+            }
+        )
+
+    # Remove duplicate action titles while keeping order.
+    seen_actions: set[str] = set()
+    unique_suggestions: list[dict[str, str]] = []
+
+    for suggestion in suggestions:
+        action_title = suggestion["action"]
+        if action_title not in seen_actions:
+            seen_actions.add(action_title)
+            unique_suggestions.append(suggestion)
+
+    priority_rank = {"High": 0, "Medium": 1, "Low": 2}
+    unique_suggestions = sorted(
+        unique_suggestions,
+        key=lambda item: priority_rank.get(item["priority"], 3),
+    )
+
+    return unique_suggestions[:5]
+
+
+def _ensure_action_tracker_state() -> None:
+    """Initialise session state for the analytics action tracker."""
+    if "analytics_action_tracker" not in st.session_state:
+        st.session_state.analytics_action_tracker = []
+
+
+def _action_exists(action_key: str) -> bool:
+    """Check whether an action is already present in session state."""
+    _ensure_action_tracker_state()
+    return any(
+        action.get("action_key") == action_key
+        for action in st.session_state.analytics_action_tracker
+    )
+
+
+def render_action_tracker(
+    df: pd.DataFrame,
+    prior_df: pd.DataFrame,
+    monthly_target: float,
+    total_sales: float,
+    total_covers: int,
+    analysis_period: str,
+    selected_scope: str,
+) -> None:
+    """Render owner action tracker from dashboard recommendations."""
+    if df.empty:
+        return
+
+    _ensure_action_tracker_state()
+
+    suggestions = _build_action_tracker_suggestions(
+        df=df,
+        prior_df=prior_df,
+        monthly_target=monthly_target,
+        total_sales=total_sales,
+        total_covers=total_covers,
+        analysis_period=analysis_period,
+        selected_scope=selected_scope,
+    )
+
+    with st.container(border=True):
+        st.markdown("### Action Tracker")
+        st.caption(
+            "Convert dashboard signals into trackable operating actions. "
+            "This version stores actions in the current app session and allows CSV export."
+        )
+
+        active_actions = [
+            action
+            for action in st.session_state.analytics_action_tracker
+            if action.get("status") not in {"Done", "Cancelled"}
+        ]
+
+        done_actions = [
+            action
+            for action in st.session_state.analytics_action_tracker
+            if action.get("status") == "Done"
+        ]
+
+        tracker_col_1, tracker_col_2, tracker_col_3 = st.columns(3)
+
+        with tracker_col_1:
+            st.metric("Open Actions", f"{len(active_actions)}")
+
+        with tracker_col_2:
+            high_priority_open = len(
+                [
+                    action
+                    for action in active_actions
+                    if action.get("priority") == "High"
+                ]
+            )
+            st.metric("High Priority", f"{high_priority_open}")
+
+        with tracker_col_3:
+            st.metric("Completed", f"{len(done_actions)}")
+
+        st.markdown("#### Suggested Actions")
+
+        for index, suggestion in enumerate(suggestions):
+            action_key = (
+                f"{selected_scope}_{analysis_period}_{index}_{suggestion['action']}"
+                .lower()
+                .replace(" ", "_")
+                .replace("/", "_")
+            )
+
+            with st.container(border=True):
+                s_col_1, s_col_2 = st.columns([4, 1])
+
+                with s_col_1:
+                    st.markdown(f"**{suggestion['action']}**")
+                    st.caption(
+                        f"Priority: {suggestion['priority']} · "
+                        f"Suggested owner: {suggestion['owner']} · "
+                        f"Due: {suggestion['due']}"
+                    )
+                    st.caption(f"Reason: {suggestion['reason']}")
+                    st.caption(f"Success metric: {suggestion['success_metric']}")
+
+                with s_col_2:
+                    if _action_exists(action_key):
+                        st.success("Added")
+                    else:
+                        if st.button(
+                            "Add",
+                            key=f"add_action_{action_key}",
+                            width="stretch",
+                        ):
+                            st.session_state.analytics_action_tracker.append(
+                                {
+                                    "action_key": action_key,
+                                    "scope": selected_scope,
+                                    "period": analysis_period,
+                                    "priority": suggestion["priority"],
+                                    "action": suggestion["action"],
+                                    "reason": suggestion["reason"],
+                                    "owner": suggestion["owner"],
+                                    "due": suggestion["due"],
+                                    "status": "Open",
+                                    "success_metric": suggestion["success_metric"],
+                                    "owner_note": "",
+                                }
+                            )
+                            st.rerun()
+
+        with st.expander("Add custom action", expanded=False):
+            with st.form("custom_analytics_action_form", clear_on_submit=True):
+                custom_action = st.text_input(
+                    "Action",
+                    placeholder="Example: Push cocktail upsell script this weekend",
+                )
+                custom_owner = st.text_input(
+                    "Owner",
+                    placeholder="Example: Outlet Manager",
+                )
+                custom_priority = st.selectbox(
+                    "Priority",
+                    options=["High", "Medium", "Low"],
+                    index=1,
+                )
+                custom_due = st.text_input(
+                    "Due",
+                    placeholder="Example: Friday / This week / 2026-05-20",
+                )
+                custom_success_metric = st.text_input(
+                    "Success metric",
+                    placeholder="Example: APC improves by 8%",
+                )
+                custom_note = st.text_area(
+                    "Note",
+                    placeholder="Add operating context or instructions.",
+                    height=80,
+                )
+
+                submitted = st.form_submit_button("Add custom action")
+
+                if submitted and custom_action.strip():
+                    custom_key = (
+                        f"custom_{selected_scope}_{analysis_period}_{custom_action}"
+                        .lower()
+                        .replace(" ", "_")
+                        .replace("/", "_")
+                    )
+
+                    if not _action_exists(custom_key):
+                        st.session_state.analytics_action_tracker.append(
+                            {
+                                "action_key": custom_key,
+                                "scope": selected_scope,
+                                "period": analysis_period,
+                                "priority": custom_priority,
+                                "action": custom_action.strip(),
+                                "reason": "Custom owner-entered action.",
+                                "owner": custom_owner.strip() or "Unassigned",
+                                "due": custom_due.strip() or "Not set",
+                                "status": "Open",
+                                "success_metric": custom_success_metric.strip(),
+                                "owner_note": custom_note.strip(),
+                            }
+                        )
+                        st.success("Custom action added.")
+                        st.rerun()
+                    else:
+                        st.warning("This custom action is already in the tracker.")
+
+        if not st.session_state.analytics_action_tracker:
+            st.info("No tracked actions yet. Add one of the suggested actions above.")
+            return
+
+        st.markdown("#### Tracked Actions")
+
+        updated_actions: list[dict[str, object]] = []
+
+        for index, action in enumerate(st.session_state.analytics_action_tracker):
+            with st.container(border=True):
+                header_col, remove_col = st.columns([5, 1])
+
+                with header_col:
+                    st.markdown(f"**{action.get('action', 'Untitled action')}**")
+                    st.caption(
+                        f"Scope: {action.get('scope', selected_scope)} · "
+                        f"Period: {action.get('period', analysis_period)} · "
+                        f"Reason: {action.get('reason', '')}"
+                    )
+
+                with remove_col:
+                    remove_clicked = st.button(
+                        "Remove",
+                        key=f"remove_action_{index}_{action.get('action_key', index)}",
+                    )
+
+                if remove_clicked:
+                    continue
+
+                edit_col_1, edit_col_2, edit_col_3 = st.columns(3)
+
+                with edit_col_1:
+                    action["status"] = st.selectbox(
+                        "Status",
+                        options=["Open", "In Progress", "Blocked", "Done", "Cancelled"],
+                        index=(
+                            ["Open", "In Progress", "Blocked", "Done", "Cancelled"].index(
+                                action.get("status", "Open")
+                            )
+                            if action.get("status", "Open")
+                            in ["Open", "In Progress", "Blocked", "Done", "Cancelled"]
+                            else 0
+                        ),
+                        key=f"action_status_{index}_{action.get('action_key', index)}",
+                    )
+
+                with edit_col_2:
+                    action["owner"] = st.text_input(
+                        "Owner",
+                        value=str(action.get("owner", "")),
+                        key=f"action_owner_{index}_{action.get('action_key', index)}",
+                    )
+
+                with edit_col_3:
+                    action["due"] = st.text_input(
+                        "Due",
+                        value=str(action.get("due", "")),
+                        key=f"action_due_{index}_{action.get('action_key', index)}",
+                    )
+
+                action["owner_note"] = st.text_area(
+                    "Owner note / impact check",
+                    value=str(action.get("owner_note", "")),
+                    key=f"action_note_{index}_{action.get('action_key', index)}",
+                    height=80,
+                )
+
+                st.caption(
+                    f"Success metric: {action.get('success_metric', 'Not set')}"
+                )
+
+                updated_actions.append(action)
+
+        st.session_state.analytics_action_tracker = updated_actions
+
+        export_df = pd.DataFrame(st.session_state.analytics_action_tracker)
+
+        if not export_df.empty:
+            st.download_button(
+                label="Download action tracker CSV",
+                data=export_df.to_csv(index=False).encode("utf-8"),
+                file_name="analytics_action_tracker.csv",
+                mime="text/csv",
+                key="download_analytics_action_tracker",
+            )
+
+        st.caption(
+            "Current limitation: actions are stored in the app session. "
+            "Download the CSV before refreshing if you need to preserve them. "
+            "Database persistence can be added later."
+        )
+
 def _style_achievement(val) -> str:
     """Pandas Styler.map function: color an Achievement % cell by band."""
     if pd.isna(val):
