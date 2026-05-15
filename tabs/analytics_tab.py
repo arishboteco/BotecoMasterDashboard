@@ -21,6 +21,7 @@ from tabs.analytics_sections import (
     render_driver_analysis,
     render_forecast_command_center,
     render_mix_snapshot,
+    render_outlet_performance_scorecard,
     render_owner_readout_and_data_confidence,
     render_payment_reconciliation,
     render_required_sales_plan,
@@ -341,6 +342,15 @@ def render(ctx: TabContext) -> None:
                 monthly_target=monthly_target,
                 total_sales=total_sales,
                 total_covers=total_covers,
+            )
+
+            render_outlet_performance_scorecard(
+                df_raw=df_raw,
+                prior_df=prior_df,
+                analysis_period=analysis_period,
+                start_date=start_date,
+                end_date=end_date,
+                all_locs=ctx.all_locs,
             )
 
             render_forecast_command_center(

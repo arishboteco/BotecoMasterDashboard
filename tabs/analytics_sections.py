@@ -895,6 +895,334 @@ def render_required_sales_plan(
                 "- Balanced recovery splits the required lift across covers and APC."
             )
 
+def render_outlet_performance_scorecard(
+    df_raw: pd.DataFrame,
+    prior_df: pd.DataFrame,
+    analysis_period: str,
+    start_date: date,
+    end_date: date,
+    all_locs: list,
+) -> None:
+    """Render outlet-level owner scorecard for multi-outlet decision-making."""
+    required_columns = {"location_id", "date", "net_total", "covers"}
+
+    if df_raw.empty or not required_columns.issubset(set(df_raw.columns)):
+        return
+
+    work_df = df_raw.copy()
+
+    work_df["date"] = pd.to_datetime(work_df["date"], errors="coerce")
+    work_df = work_df[work_df["date"].notna()].copy()
+
+    if work_df.empty:
+        return
+
+    work_df["net_total"] = pd.to_numeric(
+        work_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
+    work_df["covers"] = pd.to_numeric(
+        work_df["covers"],
+        errors="coerce",
+    ).fillna(0)
+
+    if "target" in work_df.columns:
+        work_df["target"] = pd.to_numeric(
+            work_df["target"],
+            errors="coerce",
+        ).fillna(0)
+    else:
+        work_df["target"] = 0
+
+    loc_lookup = {
+        int(loc["id"]): str(loc.get("name", loc["id"]))
+        for loc in all_locs
+        if "id" in loc
+    }
+
+    work_df["Outlet"] = work_df["location_id"].apply(
+        lambda loc_id: loc_lookup.get(int(loc_id), str(loc_id))
+    )
+
+    unique_outlets = sorted(work_df["Outlet"].dropna().unique().tolist())
+
+    if len(unique_outlets) < 2:
+        return
+
+    prior_work_df = prior_df.copy() if prior_df is not None else pd.DataFrame()
+
+    if not prior_work_df.empty and required_columns.issubset(set(prior_work_df.columns)):
+        prior_work_df["date"] = pd.to_datetime(prior_work_df["date"], errors="coerce")
+        prior_work_df = prior_work_df[prior_work_df["date"].notna()].copy()
+
+        prior_work_df["net_total"] = pd.to_numeric(
+            prior_work_df["net_total"],
+            errors="coerce",
+        ).fillna(0)
+
+        prior_work_df["covers"] = pd.to_numeric(
+            prior_work_df["covers"],
+            errors="coerce",
+        ).fillna(0)
+
+        prior_work_df["Outlet"] = prior_work_df["location_id"].apply(
+            lambda loc_id: loc_lookup.get(int(loc_id), str(loc_id))
+        )
+    else:
+        prior_work_df = pd.DataFrame()
+
+    selected_range_days = max(1, (end_date - start_date).days + 1)
+
+    rows: list[dict[str, object]] = []
+
+    for outlet_name, outlet_df in work_df.groupby("Outlet"):
+        outlet_df = outlet_df.sort_values("date").copy()
+
+        net_sales = float(outlet_df["net_total"].sum())
+        covers = float(outlet_df["covers"].sum())
+        target = float(outlet_df["target"].sum())
+        apc = net_sales / covers if covers > 0 else 0.0
+        achievement_pct = net_sales / target * 100 if target > 0 else 0.0
+        target_gap = target - net_sales if target > 0 else 0.0
+
+        days_with_sales = int(len(outlet_df[outlet_df["net_total"] > 0]))
+
+        outlet_prior_df = (
+            prior_work_df[prior_work_df["Outlet"] == outlet_name].copy()
+            if not prior_work_df.empty
+            else pd.DataFrame()
+        )
+
+        prior_sales = (
+            float(outlet_prior_df["net_total"].sum())
+            if not outlet_prior_df.empty
+            else None
+        )
+        prior_covers = (
+            float(outlet_prior_df["covers"].sum())
+            if not outlet_prior_df.empty
+            else None
+        )
+        prior_apc = (
+            prior_sales / prior_covers
+            if prior_sales is not None and prior_covers is not None and prior_covers > 0
+            else None
+        )
+
+        sales_delta_pct = _safe_pct_change(net_sales, prior_sales)
+        covers_delta_pct = _safe_pct_change(covers, prior_covers)
+        apc_delta_pct = _safe_pct_change(apc, prior_apc)
+
+        forecast_days = calculate_forecast_days(
+            analysis_period,
+            data_points=len(outlet_df),
+            selected_range_days=selected_range_days,
+        )
+
+        forecast_close = None
+
+        if forecast_days > 0:
+            forecast = linear_forecast(
+                outlet_df["date"],
+                outlet_df["net_total"].tolist(),
+                forecast_days=forecast_days,
+            )
+
+            if forecast:
+                forecast_close = net_sales + sum(
+                    float(item.get("value", 0) or 0)
+                    for item in forecast
+                )
+
+        data_flags: list[str] = []
+
+        if days_with_sales < len(outlet_df):
+            data_flags.append("Missing / zero-sales day")
+
+        if len(outlet_df[(outlet_df["net_total"] > 0) & (outlet_df["covers"] <= 0)]) > 0:
+            data_flags.append("Sales with zero covers")
+
+        if target <= 0:
+            data_flags.append("Missing target")
+
+        priority_issue = "No major issue visible"
+
+        if target > 0 and achievement_pct < 70:
+            priority_issue = "Materially behind target"
+        elif sales_delta_pct is not None and sales_delta_pct <= -8:
+            priority_issue = "Sales declining vs comparison"
+        elif covers_delta_pct is not None and covers_delta_pct <= -8:
+            priority_issue = "Covers declining"
+        elif apc_delta_pct is not None and apc_delta_pct <= -8:
+            priority_issue = "APC declining"
+        elif target > 0 and target_gap > 0:
+            priority_issue = "Target gap still open"
+
+        if target <= 0 or data_flags:
+            status = "Watch"
+        elif achievement_pct >= 100 and (
+            sales_delta_pct is None or sales_delta_pct >= -5
+        ):
+            status = "Strong"
+        elif achievement_pct < 70 or (
+            sales_delta_pct is not None and sales_delta_pct <= -12
+        ):
+            status = "At Risk"
+        else:
+            status = "Watch"
+
+        rows.append(
+            {
+                "Outlet": outlet_name,
+                "Status": status,
+                "Net Sales": net_sales,
+                "Target": target,
+                "Achievement %": achievement_pct,
+                "Target Gap": target_gap,
+                "Covers": covers,
+                "APC": apc,
+                "Sales Trend %": sales_delta_pct,
+                "Covers Trend %": covers_delta_pct,
+                "APC Trend %": apc_delta_pct,
+                "Forecast Close": forecast_close,
+                "Priority Issue": priority_issue,
+                "Data Flags": ", ".join(data_flags) if data_flags else "OK",
+            }
+        )
+
+    if not rows:
+        return
+
+    scorecard_df = pd.DataFrame(rows)
+
+    status_rank = {
+        "At Risk": 0,
+        "Watch": 1,
+        "Strong": 2,
+    }
+
+    scorecard_df["status_rank"] = scorecard_df["Status"].map(status_rank).fillna(3)
+    scorecard_df = scorecard_df.sort_values(
+        ["status_rank", "Achievement %", "Net Sales"],
+        ascending=[True, True, False],
+    ).reset_index(drop=True)
+
+    at_risk_count = int((scorecard_df["Status"] == "At Risk").sum())
+    watch_count = int((scorecard_df["Status"] == "Watch").sum())
+    strong_count = int((scorecard_df["Status"] == "Strong").sum())
+
+    with st.container(border=True):
+        st.markdown("### Outlet Performance Scorecard")
+        st.caption(
+            "Use this to identify which outlet needs attention first and why."
+        )
+
+        metric_col_1, metric_col_2, metric_col_3, metric_col_4 = st.columns(4)
+
+        with metric_col_1:
+            st.metric("At Risk", f"{at_risk_count}")
+
+        with metric_col_2:
+            st.metric("Watch", f"{watch_count}")
+
+        with metric_col_3:
+            st.metric("Strong", f"{strong_count}")
+
+        with metric_col_4:
+            weakest_row = scorecard_df.iloc[0]
+            st.metric(
+                "Needs Attention",
+                str(weakest_row["Outlet"]),
+                str(weakest_row["Priority Issue"]),
+            )
+
+        display_df = scorecard_df.copy()
+
+        display_df["Net Sales"] = display_df["Net Sales"].apply(
+            lambda value: utils.format_rupee_short(float(value))
+        )
+        display_df["Target"] = display_df["Target"].apply(
+            lambda value: utils.format_rupee_short(float(value))
+        )
+        display_df["Target Gap"] = display_df["Target Gap"].apply(
+            lambda value: (
+                "Ahead"
+                if float(value) <= 0
+                else utils.format_rupee_short(float(value))
+            )
+        )
+        display_df["Achievement %"] = display_df["Achievement %"].apply(
+            lambda value: f"{float(value):.1f}%"
+        )
+        display_df["Covers"] = display_df["Covers"].apply(
+            lambda value: f"{int(value):,}"
+        )
+        display_df["APC"] = display_df["APC"].apply(
+            lambda value: utils.format_currency(float(value))
+        )
+
+        for col in ["Sales Trend %", "Covers Trend %", "APC Trend %"]:
+            display_df[col] = display_df[col].apply(
+                lambda value: "N/A" if pd.isna(value) else f"{float(value):+.1f}%"
+            )
+
+        display_df["Forecast Close"] = display_df["Forecast Close"].apply(
+            lambda value: (
+                "N/A"
+                if pd.isna(value)
+                else utils.format_rupee_short(float(value))
+            )
+        )
+
+        st.dataframe(
+            display_df[
+                [
+                    "Outlet",
+                    "Status",
+                    "Net Sales",
+                    "Achievement %",
+                    "Target Gap",
+                    "Covers",
+                    "APC",
+                    "Sales Trend %",
+                    "Covers Trend %",
+                    "APC Trend %",
+                    "Forecast Close",
+                    "Priority Issue",
+                    "Data Flags",
+                ]
+            ],
+            width="stretch",
+            hide_index=True,
+        )
+
+        if at_risk_count > 0:
+            at_risk_names = ", ".join(
+                scorecard_df[scorecard_df["Status"] == "At Risk"]["Outlet"].tolist()
+            )
+            st.error(
+                f"Priority focus: {at_risk_names}. Review target gap, traffic and APC before pushing broad promotions."
+            )
+        elif watch_count > 0:
+            watch_names = ", ".join(
+                scorecard_df[scorecard_df["Status"] == "Watch"]["Outlet"].tolist()
+            )
+            st.warning(
+                f"Watch list: {watch_names}. Track these outlets closely before the gap widens."
+            )
+        else:
+            st.success(
+                "All visible outlets are currently in a strong position against the selected scorecard rules."
+            )
+
+        with st.expander("How outlet status is calculated", expanded=False):
+            st.caption("- Strong: outlet is at or above target and not materially declining versus comparison.")
+            st.caption("- Watch: outlet has a target gap, data flags, or moderate performance risk.")
+            st.caption("- At Risk: outlet is materially behind target or sales are sharply declining.")
+            st.caption("- Trends are calculated versus the selected comparison period.")
+            st.caption("- Forecast Close appears only for open/forward-looking periods where forecast days are available.")
+
 def _style_achievement(val) -> str:
     """Pandas Styler.map function: color an Achievement % cell by band."""
     if pd.isna(val):
