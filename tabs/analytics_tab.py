@@ -19,6 +19,7 @@ from tabs import TabContext
 from tabs.analytics_logic import resolve_period_window
 from tabs.analytics_sections import (
     render_action_tracker,
+    render_category_quality_layer,
     render_driver_analysis,
     render_forecast_command_center,
     render_mix_snapshot,
@@ -370,6 +371,16 @@ def render(ctx: TabContext) -> None:
                 prior_df=prior_df,
                 total_sales=total_sales,
                 total_covers=total_covers,
+            )
+
+            render_category_quality_layer(
+                report_loc_ids=analytics_loc_ids,
+                start_str=start_str,
+                end_str=end_str,
+                prior_start=prior_start,
+                prior_end=prior_end,
+                total_sales=total_sales,
+                prior_total=prior_total,
             )
 
             render_forecast_command_center(

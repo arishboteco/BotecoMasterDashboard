@@ -2061,6 +2061,444 @@ def render_sales_quality_layer(
                 "- Sales Quality Score is a decision signal, not an accounting metric."
             )
 
+def render_category_quality_layer(
+    report_loc_ids: list[int],
+    start_str: str,
+    end_str: str,
+    prior_start: date | None,
+    prior_end: date | None,
+    total_sales: float,
+    prior_total: float | None,
+) -> None:
+    """Render owner-facing actual category quality and menu mix layer."""
+    import database_analytics
+
+    if not report_loc_ids:
+        return
+
+    current_rows = database_analytics.get_category_sales_for_date_range(
+        report_loc_ids,
+        start_str,
+        end_str,
+    )
+
+    if not current_rows:
+        return
+
+    current_df = pd.DataFrame(current_rows)
+
+    if (
+        current_df.empty
+        or "category" not in current_df.columns
+        or "amount" not in current_df.columns
+    ):
+        return
+
+    current_df["category"] = current_df["category"].astype(str).str.strip()
+    current_df["category"] = current_df["category"].replace("", "Uncategorized")
+
+    current_df["amount"] = pd.to_numeric(
+        current_df["amount"],
+        errors="coerce",
+    ).fillna(0)
+
+    if "qty" in current_df.columns:
+        current_df["qty"] = pd.to_numeric(
+            current_df["qty"],
+            errors="coerce",
+        ).fillna(0)
+    else:
+        current_df["qty"] = 0
+
+    current_df = current_df[current_df["amount"] > 0].copy()
+
+    if current_df.empty:
+        return
+
+    category_total = float(current_df["amount"].sum())
+
+    if category_total <= 0:
+        return
+
+    current_df["share_pct"] = current_df["amount"] / category_total * 100
+
+    prior_df = pd.DataFrame()
+
+    if prior_start and prior_end:
+        prior_rows = database_analytics.get_category_sales_for_date_range(
+            report_loc_ids,
+            prior_start.strftime("%Y-%m-%d"),
+            prior_end.strftime("%Y-%m-%d"),
+        )
+
+        if prior_rows:
+            prior_df = pd.DataFrame(prior_rows)
+
+            if (
+                not prior_df.empty
+                and "category" in prior_df.columns
+                and "amount" in prior_df.columns
+            ):
+                prior_df["category"] = prior_df["category"].astype(str).str.strip()
+                prior_df["category"] = prior_df["category"].replace("", "Uncategorized")
+
+                prior_df["amount"] = pd.to_numeric(
+                    prior_df["amount"],
+                    errors="coerce",
+                ).fillna(0)
+
+                if "qty" in prior_df.columns:
+                    prior_df["qty"] = pd.to_numeric(
+                        prior_df["qty"],
+                        errors="coerce",
+                    ).fillna(0)
+                else:
+                    prior_df["qty"] = 0
+
+                prior_total_amount = float(prior_df["amount"].sum())
+                prior_df["share_pct"] = (
+                    prior_df["amount"] / prior_total_amount * 100
+                    if prior_total_amount > 0
+                    else 0
+                )
+            else:
+                prior_df = pd.DataFrame()
+
+    merged_df = current_df.merge(
+        prior_df[["category", "amount", "share_pct"]].rename(
+            columns={
+                "amount": "prior_amount",
+                "share_pct": "prior_share_pct",
+            }
+        )
+        if not prior_df.empty
+        else pd.DataFrame(columns=["category", "prior_amount", "prior_share_pct"]),
+        on="category",
+        how="left",
+    )
+
+    merged_df["prior_amount"] = pd.to_numeric(
+        merged_df["prior_amount"],
+        errors="coerce",
+    ).fillna(0)
+
+    merged_df["prior_share_pct"] = pd.to_numeric(
+        merged_df["prior_share_pct"],
+        errors="coerce",
+    ).fillna(0)
+
+    merged_df["growth_pct"] = merged_df.apply(
+        lambda row: (
+            (
+                (float(row["amount"]) - float(row["prior_amount"]))
+                / float(row["prior_amount"])
+                * 100
+            )
+            if float(row["prior_amount"]) > 0
+            else None
+        ),
+        axis=1,
+    )
+
+    merged_df["share_change_pts"] = merged_df["share_pct"] - merged_df["prior_share_pct"]
+
+    merged_df = merged_df.sort_values("amount", ascending=False).reset_index(drop=True)
+
+    def _is_beverage_category(category_name: str) -> bool:
+        text = str(category_name or "").lower()
+        beverage_terms = [
+            "liquor",
+            "beer",
+            "wine",
+            "spirit",
+            "cocktail",
+            "mocktail",
+            "beverage",
+            "drink",
+            "coffee",
+            "tea",
+            "juice",
+            "soft",
+            "water",
+        ]
+        return any(term in text for term in beverage_terms)
+
+    def _is_premium_category(category_name: str) -> bool:
+        text = str(category_name or "").lower()
+        premium_terms = [
+            "meat",
+            "beef",
+            "pork",
+            "seafood",
+            "grill",
+            "steak",
+            "platter",
+            "special",
+            "chef",
+            "wine",
+            "cocktail",
+            "liquor",
+        ]
+        return any(term in text for term in premium_terms)
+
+    merged_df["is_beverage"] = merged_df["category"].apply(_is_beverage_category)
+    merged_df["is_premium_signal"] = merged_df["category"].apply(_is_premium_category)
+
+    beverage_sales = float(merged_df[merged_df["is_beverage"]]["amount"].sum())
+    beverage_share = beverage_sales / category_total * 100 if category_total > 0 else 0.0
+
+    prior_beverage_share = None
+
+    if not prior_df.empty:
+        prior_df["is_beverage"] = prior_df["category"].apply(_is_beverage_category)
+        prior_category_total = float(prior_df["amount"].sum())
+        prior_beverage_sales = float(prior_df[prior_df["is_beverage"]]["amount"].sum())
+
+        prior_beverage_share = (
+            prior_beverage_sales / prior_category_total * 100
+            if prior_category_total > 0
+            else None
+        )
+
+    beverage_share_delta = (
+        beverage_share - prior_beverage_share
+        if prior_beverage_share is not None
+        else None
+    )
+
+    premium_sales = float(merged_df[merged_df["is_premium_signal"]]["amount"].sum())
+    premium_share = premium_sales / category_total * 100 if category_total > 0 else 0.0
+
+    top_category = str(merged_df.iloc[0]["category"])
+    top_category_share = float(merged_df.iloc[0]["share_pct"])
+
+    top_5_share = float(merged_df.head(5)["amount"].sum() / category_total * 100)
+
+    category_coverage_pct = (
+        category_total / total_sales * 100
+        if total_sales > 0
+        else 0.0
+    )
+
+    quality_score = 100.0
+
+    if top_category_share >= 35:
+        quality_score -= 18
+    elif top_category_share >= 25:
+        quality_score -= 10
+
+    if top_5_share >= 80:
+        quality_score -= 15
+    elif top_5_share >= 65:
+        quality_score -= 8
+
+    if beverage_share < 12:
+        quality_score -= 15
+    elif beverage_share < 18:
+        quality_score -= 8
+
+    if beverage_share_delta is not None and beverage_share_delta <= -3:
+        quality_score -= 10
+
+    declining_major_categories = merged_df[
+        (merged_df["share_pct"] >= 5)
+        & (merged_df["growth_pct"].notna())
+        & (merged_df["growth_pct"] <= -8)
+    ]
+
+    if not declining_major_categories.empty:
+        quality_score -= 12
+
+    if category_coverage_pct < 70:
+        quality_score -= 10
+
+    quality_score = max(0.0, min(100.0, quality_score))
+
+    if quality_score >= 80:
+        quality_label = "Strong"
+        quality_severity = "success"
+        quality_message = "Actual category mix looks healthy from the available data."
+    elif quality_score >= 65:
+        quality_label = "Watch"
+        quality_severity = "warning"
+        quality_message = "Actual category mix is usable, but at least one mix risk needs review."
+    else:
+        quality_label = "Weak"
+        quality_severity = "error"
+        quality_message = "Actual category mix quality is weak. Review concentration, beverage share and declining categories."
+
+    with st.container(border=True):
+        st.markdown("### Category Quality & Menu Mix")
+        st.caption(
+            "Uses actual POS category names. Beverage and premium signals are derived from category-name keywords."
+        )
+
+        metric_col_1, metric_col_2, metric_col_3, metric_col_4 = st.columns(4)
+
+        with metric_col_1:
+            st.metric(
+                "Top Actual Category",
+                top_category,
+                f"{top_category_share:.1f}% of category sales",
+            )
+
+        with metric_col_2:
+            st.metric(
+                "Beverage Share",
+                f"{beverage_share:.1f}%",
+                (
+                    "N/A"
+                    if beverage_share_delta is None
+                    else f"{beverage_share_delta:+.1f} pts vs comparison"
+                ),
+            )
+
+        with metric_col_3:
+            st.metric(
+                "Top 5 Share",
+                f"{top_5_share:.1f}%",
+                help="High concentration means the business depends on a small number of actual POS categories.",
+            )
+
+        with metric_col_4:
+            st.metric(
+                "Mix Quality Score",
+                f"{quality_score:.0f}/100",
+                quality_label,
+            )
+
+        if quality_severity == "success":
+            st.success(f"**{quality_label} mix quality** — {quality_message}")
+        elif quality_severity == "warning":
+            st.warning(f"**{quality_label} mix quality** — {quality_message}")
+        else:
+            st.error(f"**{quality_label} mix quality** — {quality_message}")
+
+        insight_messages: list[str] = []
+
+        if top_category_share >= 25:
+            insight_messages.append(
+                f"{top_category} contributes {top_category_share:.1f}% of actual category sales. Protect availability, consistency and margin for this category."
+            )
+
+        if top_5_share >= 65:
+            insight_messages.append(
+                f"Top 5 actual categories contribute {top_5_share:.1f}% of category sales. This is a concentration risk if one category underperforms."
+            )
+
+        if beverage_share_delta is not None and beverage_share_delta <= -3:
+            insight_messages.append(
+                f"Beverage share is down {abs(beverage_share_delta):.1f} pts versus comparison. This may be hurting APC and contribution."
+            )
+
+        if beverage_share < 15:
+            insight_messages.append(
+                f"Beverage share is only {beverage_share:.1f}%. Review drinks attachment, upsell scripts and menu visibility."
+            )
+
+        if premium_share < 35:
+            insight_messages.append(
+                f"Premium signal categories are only {premium_share:.1f}% of actual category sales. Check whether high-value items are contributing enough."
+            )
+
+        if not declining_major_categories.empty:
+            weak_names = ", ".join(
+                declining_major_categories["category"].head(5).astype(str).tolist()
+            )
+            insight_messages.append(
+                f"Declining important actual categories detected: {weak_names}. Check availability, pricing, guest preference shift or service execution."
+            )
+
+        if category_coverage_pct < 70:
+            insight_messages.append(
+                f"Category data covers only {category_coverage_pct:.1f}% of net sales. Use mix conclusions carefully."
+            )
+
+        if not insight_messages:
+            insight_messages.append(
+                "No major category quality issue detected from concentration, beverage share or comparison movement."
+            )
+
+        st.markdown("#### Owner Insights")
+        for message in insight_messages[:5]:
+            st.caption(f"- {message}")
+
+        display_df = merged_df.copy()
+
+        display_df["Sales"] = display_df["amount"].apply(
+            lambda value: utils.format_rupee_short(float(value))
+        )
+
+        display_df["Share"] = display_df["share_pct"].apply(
+            lambda value: f"{float(value):.1f}%"
+        )
+
+        display_df["Growth vs Comparison"] = display_df["growth_pct"].apply(
+            lambda value: "N/A" if pd.isna(value) else f"{float(value):+.1f}%"
+        )
+
+        display_df["Share Change"] = display_df["share_change_pts"].apply(
+            lambda value: f"{float(value):+.1f} pts"
+        )
+
+        display_df["Qty"] = display_df["qty"].apply(
+            lambda value: f"{int(value):,}"
+        )
+
+        display_df["Category Type"] = display_df.apply(
+            lambda row: (
+                "Beverage"
+                if bool(row["is_beverage"])
+                else "Premium signal"
+                if bool(row["is_premium_signal"])
+                else "Food / Other"
+            ),
+            axis=1,
+        )
+
+        display_df = display_df.rename(
+            columns={
+                "category": "Actual Category",
+            }
+        )
+
+        st.markdown("#### Actual Category Movement")
+        st.dataframe(
+            display_df[
+                [
+                    "Actual Category",
+                    "Category Type",
+                    "Sales",
+                    "Share",
+                    "Growth vs Comparison",
+                    "Share Change",
+                    "Qty",
+                ]
+            ],
+            width="stretch",
+            hide_index=True,
+        )
+
+        with st.expander("How category quality is calculated", expanded=False):
+            st.caption(
+                "- This section uses actual POS category names from `get_category_sales_for_date_range()`."
+            )
+            st.caption(
+                "- Beverage Share is derived from actual category names containing terms such as liquor, beer, wine, cocktail, mocktail, coffee, tea, juice, soft, drink, beverage or water."
+            )
+            st.caption(
+                "- Premium signal categories are derived from actual category names containing terms such as meat, beef, pork, seafood, grill, steak, platter, special, chef, wine, cocktail or liquor."
+            )
+            st.caption(
+                "- Top 5 Share checks whether sales are too dependent on a small number of actual POS categories."
+            )
+            st.caption(
+                "- Growth vs Comparison compares actual category sales against the selected comparison period."
+            )
+            st.caption(
+                "- Category totals may not perfectly match net sales because taxes, service charge, discounts, mapping and report-source differences can affect totals."
+            )
+            
 def _style_achievement(val) -> str:
     """Pandas Styler.map function: color an Achievement % cell by band."""
     if pd.isna(val):
