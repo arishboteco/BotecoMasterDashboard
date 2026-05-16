@@ -25,7 +25,7 @@ from components.layout import (
     workflow_progress,
     workflow_steps,
 )
-from components.navigation import date_nav, date_range_nav
+from components.navigation import date_nav, date_range_nav, sidebar_app_nav
 from components.tables import data_table
 
 __all__ = [
@@ -34,6 +34,7 @@ __all__ = [
     "data_table",
     "date_nav",
     "date_range_nav",
+    "sidebar_app_nav",
     "confirm_dialog",
     "toast",
     "empty_state",
