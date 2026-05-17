@@ -388,35 +388,23 @@ def render(ctx: TabContext) -> None:
 
             st.markdown("")
 
-            # ── Row 1: Owner decision + action tracker ───────────────
-            decision_col, action_col = st.columns([2.2, 1])
-
-            with decision_col:
-                render_owner_readout_and_data_confidence(
-                    df=df,
-                    df_raw=df_raw,
-                    prior_df=prior_df,
-                    analysis_period=analysis_period,
-                    start_date=start_date,
-                    end_date=end_date,
-                    monthly_target=monthly_target,
-                    total_sales=total_sales,
-                    total_covers=total_covers,
-                    prior_total=prior_total,
-                    prior_covers=prior_covers,
-                    analytics_loc_ids=analytics_loc_ids,
-                )
-
-            with action_col:
-                render_action_tracker(
-                    df=df,
-                    prior_df=prior_df,
-                    monthly_target=monthly_target,
-                    total_sales=total_sales,
-                    total_covers=total_covers,
-                    analysis_period=analysis_period,
-                    selected_scope=selected_outlet,
-                )
+            # ── Row 1: Owner decision row ────────────────────────────
+            # Full width avoids the large empty space caused by pairing
+            # a short Owner Readout with a much taller Action Tracker.
+            render_owner_readout_and_data_confidence(
+                df=df,
+                df_raw=df_raw,
+                prior_df=prior_df,
+                analysis_period=analysis_period,
+                start_date=start_date,
+                end_date=end_date,
+                monthly_target=monthly_target,
+                total_sales=total_sales,
+                total_covers=total_covers,
+                prior_total=prior_total,
+                prior_covers=prior_covers,
+                analytics_loc_ids=analytics_loc_ids,
+            )
 
             st.markdown("")
 
@@ -455,17 +443,33 @@ def render(ctx: TabContext) -> None:
 
             st.markdown("")
 
-            # ── Row 3: Diagnostic tabs ───────────────────────────────
+            # ── Row 3: Diagnostics and deep-dive layers ──────────────
+            # Deep-dive layers are now promoted to top-level diagnostic tabs.
             diagnostic_tabs = st.tabs(
                 [
+                    "Action Tracker",
                     "Outlet Scorecard",
                     "Sales Quality",
                     "Category Mix",
-                    "Deep Dive",
+                    "Drivers",
+                    "Mix",
+                    "Targets & Daily",
+                    "Payments",
                 ]
             )
 
             with diagnostic_tabs[0]:
+                render_action_tracker(
+                    df=df,
+                    prior_df=prior_df,
+                    monthly_target=monthly_target,
+                    total_sales=total_sales,
+                    total_covers=total_covers,
+                    analysis_period=analysis_period,
+                    selected_scope=selected_outlet,
+                )
+
+            with diagnostic_tabs[1]:
                 render_outlet_performance_scorecard(
                     df_raw=df_raw,
                     prior_df=prior_df,
@@ -475,7 +479,7 @@ def render(ctx: TabContext) -> None:
                     all_locs=ctx.all_locs,
                 )
 
-            with diagnostic_tabs[1]:
+            with diagnostic_tabs[2]:
                 render_sales_quality_layer(
                     df=df,
                     prior_df=prior_df,
@@ -483,7 +487,7 @@ def render(ctx: TabContext) -> None:
                     total_covers=total_covers,
                 )
 
-            with diagnostic_tabs[2]:
+            with diagnostic_tabs[3]:
                 render_category_quality_layer(
                     report_loc_ids=analytics_loc_ids,
                     start_str=start_str,
@@ -494,58 +498,35 @@ def render(ctx: TabContext) -> None:
                     prior_total=prior_total,
                 )
 
-            with diagnostic_tabs[3]:
-                with classed_container(
-                    "tab-analytics-mobile-sections",
-                    "mobile-layout-stack",
-                ):
-                    st.markdown("### Deep-Dive Analysis")
-                    st.caption(
-                        "Open one focused layer at a time when you need to diagnose the numbers."
-                    )
+            with diagnostic_tabs[4]:
+                render_driver_analysis(
+                    df,
+                    df_raw,
+                    multi_analytics,
+                )
 
-                    selected_layer = st.segmented_control(
-                        "Analysis Layer",
-                        options=[
-                            "Drivers",
-                            "Mix",
-                            "Targets & Daily",
-                            "Payments",
-                        ],
-                        default="Drivers",
-                        key="analytics_layer_selector",
-                        label_visibility="collapsed",
-                    )
+            with diagnostic_tabs[5]:
+                render_mix_snapshot(
+                    analytics_loc_ids,
+                    start_str,
+                    end_str,
+                    df,
+                    start_date,
+                )
 
-                    if selected_layer == "Drivers":
-                        render_driver_analysis(
-                            df,
-                            df_raw,
-                            multi_analytics,
-                        )
+            with diagnostic_tabs[6]:
+                render_target_snapshot(
+                    analytics_loc_ids,
+                    start_date,
+                    df,
+                )
 
-                    elif selected_layer == "Mix":
-                        render_mix_snapshot(
-                            analytics_loc_ids,
-                            start_str,
-                            end_str,
-                            df,
-                            start_date,
-                        )
-
-                    elif selected_layer == "Targets & Daily":
-                        render_target_snapshot(
-                            analytics_loc_ids,
-                            start_date,
-                            df,
-                        )
-
-                    elif selected_layer == "Payments":
-                        render_payment_reconciliation(
-                            analytics_loc_ids,
-                            start_str,
-                            end_str,
-                        )
+            with diagnostic_tabs[7]:
+                render_payment_reconciliation(
+                    analytics_loc_ids,
+                    start_str,
+                    end_str,
+                )
 
         else:
             empty_state(
