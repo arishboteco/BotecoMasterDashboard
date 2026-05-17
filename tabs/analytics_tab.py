@@ -462,9 +462,8 @@ def render(ctx: TabContext) -> None:
                 [
                     "Outlet Scorecard",
                     "Sales Quality",
-                    "Category Mix",
+                    "Menu Mix & Timing",
                     "Drivers",
-                    "Mix",
                     "Targets & Daily",
                     "Payments",
                 ]
@@ -499,14 +498,8 @@ def render(ctx: TabContext) -> None:
                     prior_total=prior_total,
                 )
 
-            with diagnostic_tabs[3]:
-                render_driver_analysis(
-                    df,
-                    df_raw,
-                    multi_analytics,
-                )
+                st.markdown("")
 
-            with diagnostic_tabs[4]:
                 render_mix_snapshot(
                     analytics_loc_ids,
                     start_str,
@@ -515,14 +508,21 @@ def render(ctx: TabContext) -> None:
                     start_date,
                 )
 
-            with diagnostic_tabs[5]:
+            with diagnostic_tabs[3]:
+                render_driver_analysis(
+                    df,
+                    df_raw,
+                    multi_analytics,
+                )
+
+            with diagnostic_tabs[4]:
                 render_target_snapshot(
                     analytics_loc_ids,
                     start_date,
                     df,
                 )
 
-            with diagnostic_tabs[6]:
+            with diagnostic_tabs[5]:
                 render_payment_reconciliation(
                     analytics_loc_ids,
                     start_str,
