@@ -228,6 +228,18 @@ def _render_metric_tile_grid(tiles: list[tuple[str, str, str | None]]) -> None:
         unsafe_allow_html=True,
     )
 
+def _render_dashboard_status(message: str, tone: str = "info") -> None:
+    """Render a compact dashboard status message without Streamlit alert styling."""
+    safe_tone = tone if tone in {"success", "warning", "error", "info"} else "info"
+
+    st.markdown(
+        f"""
+        <div class="analytics-status analytics-status--{safe_tone}">
+            {_html(message)}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 def _action_card_html(card: dict[str, str]) -> str:
     """Build a compact recommendation card for forecast actions."""
@@ -235,27 +247,26 @@ def _action_card_html(card: dict[str, str]) -> str:
     badge_label = {
         "error": "HIGH",
         "warning": "WATCH",
-        "info": "STEADY",
+        "info": "INFO",
         "success": "OK",
     }.get(severity_class, "INFO")
 
+    title = card.get("title", "Recommendation")
+    reason = card.get("reason", "")
+    action = card.get("action", "")
+    metric = card.get("metric", "")
+
     return (
         f'<div class="analytics-action-card analytics-action-card--{severity_class}">'
-        '<div class="analytics-card-header">'
-        '<div>'
-        '<div class="analytics-eyebrow">Forecast recommendation</div>'
-        '<div class="analytics-action-title">'
-        f'{_html(card.get("title", "Recommendation"))}</div>'
-        '</div>'
+        '<div class="analytics-action-card-top">'
         f'<span class="analytics-badge analytics-badge--{severity_class}">{badge_label}</span>'
+        f'<div class="analytics-action-title">{_html(title)}</div>'
         '</div>'
-        f'<div class="analytics-action-body">{_html(card.get("reason", ""))}</div>'
-        '<div class="analytics-action-body"><strong>Action:</strong> '
-        f'{_html(card.get("action", ""))}</div>'
-        f'<div class="analytics-action-metric">{_html(card.get("metric", ""))}</div>'
+        f'<div class="analytics-action-metric">{_html(metric)}</div>'
+        f'<div class="analytics-action-body">{_html(reason)}</div>'
+        f'<div class="analytics-action-body"><strong>Action:</strong> {_html(action)}</div>'
         '</div>'
     )
-
 
 def render_owner_readout_and_data_confidence(
     df: pd.DataFrame,
@@ -923,11 +934,12 @@ def render_required_sales_plan(
                     help="Current selected-period net sales divided by covers.",
                 )
 
-        st.caption(
-            f"Latest uploaded date: {latest_data_date.strftime('%d %b %Y')} · "
-            f"Plan end date: {plan_end_date.strftime('%d %b %Y')} · "
-            f"Remaining weekdays: {remaining_weekdays} · Remaining weekends: {remaining_weekends}"
-        )
+        with st.expander("Plan timing details", expanded=False):
+            st.caption(
+                f"Latest uploaded date: {latest_data_date.strftime('%d %b %Y')} · "
+                f"Plan end date: {plan_end_date.strftime('%d %b %Y')} · "
+                f"Remaining weekdays: {remaining_weekdays} · Remaining weekends: {remaining_weekends}"
+            )
 
         scenario_rows: list[dict[str, object]] = []
 
@@ -1030,20 +1042,24 @@ def render_required_sales_plan(
 
         # Owner-facing recommendation.
         if required_sales_lift_pct is None:
-            st.info(
-                "No current run-rate is available, so use the scenario table as a starting estimate."
+            _render_dashboard_status(
+                "No current run-rate is available, so use the scenario table as a starting estimate.",
+                "info",
             )
         elif required_sales_lift_pct <= 10:
-            st.success(
-                "Recovery looks realistic if current run-rate is maintained and small improvements are made in conversion, upsell or covers."
+            _render_dashboard_status(
+                "Recovery looks realistic if current run-rate is maintained and small improvements are made in conversion, upsell or covers.",
+                "success",
             )
         elif required_sales_lift_pct <= 25:
-            st.warning(
-                "Recovery requires a meaningful lift versus current run-rate. Focus on the strongest weekdays, weekend conversion and premium item upsell."
+            _render_dashboard_status(
+                "Recovery requires a meaningful lift versus current run-rate. Focus on the strongest weekdays, weekend conversion and premium item upsell.",
+                "warning",
             )
         else:
-            st.error(
-                "Recovery requires a large lift versus current run-rate. Treat this as a high-risk target and review whether the target, demand plan or remaining days are realistic."
+            _render_dashboard_status(
+                "Recovery requires a large lift versus current run-rate. Treat this as a high-risk target and review whether the target, demand plan or remaining days are realistic.",
+                "error",
             )
 
         with st.expander("How this plan is calculated", expanded=False):
@@ -1654,24 +1670,47 @@ def render_action_tracker(
                     action_key = _action_key(index, suggestion)
 
                     with card_cols[offset]:
-                        with st.container(border=True):
-                            st.markdown(f"**{suggestion['action']}**")
-                            st.caption(
-                                f"{suggestion['priority']} priority · "
-                                f"{suggestion['owner']} · "
-                                f"Due: {suggestion['due']}"
-                            )
-                            st.caption(f"Reason: {suggestion['reason']}")
-                            st.caption(f"Success: {suggestion['success_metric']}")
+                        priority_class = (
+                            "error"
+                            if suggestion["priority"] == "High"
+                            else "warning"
+                            if suggestion["priority"] == "Medium"
+                            else "info"
+                        )
 
-                            if _action_exists(action_key):
-                                st.success("Added")
-                            else:
-                                if st.button(
-                                    "Add",
-                                    key=f"add_action_{action_key}",
-                                    width="stretch",
-                                ):
+                        st.markdown(
+                            f"""
+                            <div class="analytics-action-card analytics-action-card--{priority_class}">
+                                <div class="analytics-action-card-top">
+                                    <span class="analytics-badge analytics-badge--{priority_class}">
+                                        {_html(suggestion["priority"])}
+                                    </span>
+                                    <div class="analytics-action-title">
+                                        {_html(suggestion["action"])}
+                                    </div>
+                                </div>
+                                <div class="analytics-action-body">
+                                    {_html(suggestion["owner"])} · Due: {_html(suggestion["due"])}
+                                </div>
+                                <div class="analytics-action-body">
+                                    {_html(suggestion["reason"])}
+                                </div>
+                                <div class="analytics-action-metric">
+                                    Success: {_html(suggestion["success_metric"])}
+                                </div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+
+                        if _action_exists(action_key):
+                            st.success("Added")
+                        else:
+                            if st.button(
+                                "Add",
+                                key=f"add_action_{action_key}",
+                                width="stretch",
+                            ):
                                     st.session_state.analytics_action_tracker.append(
                                         {
                                             "action_key": action_key,

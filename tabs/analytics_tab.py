@@ -274,7 +274,7 @@ def _render_executive_kpi_summary(
                     ),
                     ("APC", utils.format_currency(current_apc), None, "neutral"),
                 ],
-                grid_columns=3,
+                grid_columns=2,
             ),
             _kpi_card_html(
                 "Target Progress",
@@ -589,8 +589,6 @@ def render(ctx: TabContext) -> None:
                     show_movement_breakdown=False,
                 )
 
-            render_sales_movement_waterfall(df, prior_df)
-
             # ── Row 3: Diagnostics and deep-dive layers ──────────────
             st.markdown(
                 """
@@ -656,6 +654,10 @@ def render(ctx: TabContext) -> None:
                     )
 
                 with diagnostic_tabs[3]:
+                    render_sales_movement_waterfall(df, prior_df)
+
+                    st.markdown("")
+
                     render_driver_analysis(
                         df,
                         df_raw,

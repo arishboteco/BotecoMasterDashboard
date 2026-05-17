@@ -700,6 +700,242 @@ ANALYTICS_DASHBOARD_COMPONENTS = r"""    /* ── Analytics executive dashboard
         font-weight: 750;
         margin-top: 0.6rem;
     }
+        .analytics-status {
+        border: 1px solid var(--border-subtle, #E2E8F0);
+        border-radius: 14px;
+        padding: 0.75rem 0.85rem;
+        font-size: 0.88rem;
+        line-height: 1.45;
+        margin: 0.8rem 0 0.7rem 0;
+    }
+
+    .analytics-status--success {
+        background: var(--success-bg, #ECFDF5);
+        border-color: var(--success-border, #BBF7D0);
+        color: var(--success-text, #166534);
+    }
+
+    .analytics-status--warning {
+        background: var(--warning-bg, #FFF7ED);
+        border-color: var(--warning-border, #FED7AA);
+        color: var(--warning-text, #92400E);
+    }
+
+    .analytics-status--error {
+        background: var(--error-bg, #FEF2F2);
+        border-color: var(--error-border, #FECACA);
+        color: var(--error-text, #991B1B);
+    }
+
+    .analytics-status--info {
+        background: var(--info-bg, #EFF6FF);
+        border-color: var(--info-border, #BFDBFE);
+        color: var(--info-text, #1D4ED8);
+    }
+    .analytics-action-card-top {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        margin-bottom: 0.45rem;
+    }
+
+    .analytics-action-card-top .analytics-badge {
+        flex: 0 0 auto;
+    }
+
+    .analytics-action-card-top .analytics-action-title {
+        margin: 0;
+    }
+    
+        /* ── Executive dashboard polish overrides ─────────────────── */
+
+    .analytics-kpi-group {
+        align-items: stretch;
+        gap: 1rem;
+        margin: 0.35rem 0 1.45rem 0;
+    }
+
+    .analytics-kpi-card {
+        padding: 1.05rem 1.15rem;
+        min-height: 9.5rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+    }
+
+    .analytics-kpi-card .analytics-eyebrow {
+        margin-bottom: 0.65rem;
+    }
+
+    .analytics-kpi-grid {
+        gap: 0.82rem 1rem;
+    }
+
+    .analytics-kpi-label,
+    .analytics-metric-label {
+        font-size: 0.68rem;
+        letter-spacing: 0.075em;
+        color: var(--text-muted, #64748B);
+    }
+
+    .analytics-kpi-value,
+    .analytics-metric-value {
+        font-size: clamp(1.35rem, 1.75vw, 1.9rem);
+        letter-spacing: -0.035em;
+        line-height: 1.05;
+        max-width: 100%;
+        overflow: visible;
+        white-space: nowrap;
+    }
+
+    .analytics-kpi-delta,
+    .analytics-metric-delta {
+        border-radius: 999px;
+        padding: 0.18rem 0.45rem;
+        background: var(--surface-muted, #F8FAFC);
+        width: fit-content;
+    }
+
+    .analytics-kpi-delta--positive,
+    .analytics-metric-delta--positive {
+        background: var(--success-bg, #ECFDF5);
+        color: var(--success-text, #166534);
+    }
+
+    .analytics-kpi-delta--negative,
+    .analytics-metric-delta--negative {
+        background: var(--error-bg, #FEF2F2);
+        color: var(--error-text, #991B1B);
+    }
+
+    .analytics-readout-grid {
+        align-items: stretch;
+        margin-top: 0.5rem;
+    }
+
+    .analytics-readout-card {
+        padding: 1.15rem 1.25rem;
+        border-radius: 18px;
+        background:
+            linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,255,255,0.94)),
+            var(--surface, #FFFFFF);
+    }
+
+    .analytics-readout-card .analytics-card-title {
+        font-size: clamp(1.1rem, 1.4vw, 1.35rem);
+        letter-spacing: -0.025em;
+        max-width: 56ch;
+    }
+
+    .analytics-readout-card .analytics-card-caption {
+        font-size: 0.94rem;
+        line-height: 1.48;
+        color: var(--text-secondary, #475569);
+        max-width: 82ch;
+        margin-bottom: 1rem;
+    }
+
+    .analytics-readout-points {
+        border-top: 1px solid var(--border-subtle, #E2E8F0);
+        padding-top: 0.85rem;
+    }
+
+    .analytics-readout-point {
+        background: var(--surface-muted, #F8FAFC);
+        border: 1px solid var(--border-subtle, #E2E8F0);
+        border-radius: 12px;
+        padding: 0.65rem 0.75rem;
+    }
+
+    .analytics-readout-point strong {
+        display: inline-block;
+        margin-bottom: 0.1rem;
+    }
+
+    .analytics-readout-marker {
+        background: var(--brand-soft, #EFF6FF);
+        color: var(--brand, #005AAB);
+        width: 1.35rem;
+        height: 1.35rem;
+    }
+
+    .analytics-confidence-card {
+        padding: 1.05rem 1.1rem;
+        border-radius: 18px;
+        min-height: 100%;
+    }
+
+    .analytics-confidence-list {
+        gap: 0.5rem;
+        margin-top: 0.65rem;
+    }
+
+    .analytics-confidence-item {
+        background: var(--surface-muted, #F8FAFC);
+        border: 1px solid var(--border-subtle, #E2E8F0);
+        border-radius: 10px;
+        padding: 0.55rem 0.65rem;
+    }
+
+    .analytics-confidence-scope {
+        font-size: 0.78rem;
+    }
+
+    .analytics-metric-grid {
+        gap: 0.72rem;
+    }
+
+    .analytics-metric-tile {
+        padding: 0.85rem 0.9rem;
+        min-height: 5.3rem;
+    }
+
+    .analytics-action-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .analytics-action-card {
+        padding: 0.82rem 0.9rem;
+    }
+
+    .analytics-action-card .analytics-card-header {
+        margin-bottom: 0.45rem;
+    }
+
+    .analytics-action-title {
+        font-size: 0.94rem;
+    }
+
+    .analytics-action-body {
+        font-size: 0.8rem;
+        line-height: 1.35;
+        margin-top: 0.35rem;
+    }
+
+    .analytics-action-metric {
+        font-size: 0.78rem;
+        margin-top: 0.45rem;
+    }
+
+    .analytics-action-tracker-card {
+        padding: 1.05rem 1.15rem;
+    }
+
+    .analytics-action-tracker-card .analytics-metric-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        margin-bottom: 0.85rem;
+    }
+
+    .analytics-action-tracker-card .analytics-metric-tile {
+        min-height: 4.4rem;
+        background: var(--surface-muted, #F8FAFC);
+    }
+
+    .analytics-section-divider {
+        margin: 1.9rem 0 0.9rem 0;
+        padding-top: 0.2rem;
+    }
+
     @media (max-width: 1100px) {
         .analytics-kpi-group,
         .analytics-readout-grid {
