@@ -1416,12 +1416,15 @@ def render_action_tracker(
     total_covers: int,
     analysis_period: str,
     selected_scope: str,
+    layout: str = "vertical",
 ) -> None:
     """Render owner action tracker from dashboard recommendations."""
     if df.empty:
         return
 
     _ensure_action_tracker_state()
+
+    is_horizontal = layout == "horizontal"
 
     suggestions = _build_action_tracker_suggestions(
         df=df,
@@ -1433,52 +1436,88 @@ def render_action_tracker(
         selected_scope=selected_scope,
     )
 
-    with st.container(border=True):
-        st.markdown("### Action Tracker")
-        st.caption(
-            "Convert dashboard signals into trackable operating actions. "
-            "This version stores actions in the current app session and allows CSV export."
+    active_actions = [
+        action
+        for action in st.session_state.analytics_action_tracker
+        if action.get("status") not in {"Done", "Cancelled"}
+    ]
+
+    done_actions = [
+        action
+        for action in st.session_state.analytics_action_tracker
+        if action.get("status") == "Done"
+    ]
+
+    high_priority_open = len(
+        [
+            action
+            for action in active_actions
+            if action.get("priority") == "High"
+        ]
+    )
+
+    def _action_key(index: int, suggestion: dict[str, str]) -> str:
+        return (
+            f"{selected_scope}_{analysis_period}_{index}_{suggestion['action']}"
+            .lower()
+            .replace(" ", "_")
+            .replace("/", "_")
         )
 
-        active_actions = [
-            action
-            for action in st.session_state.analytics_action_tracker
-            if action.get("status") not in {"Done", "Cancelled"}
-        ]
-
-        done_actions = [
-            action
-            for action in st.session_state.analytics_action_tracker
-            if action.get("status") == "Done"
-        ]
-
-        tracker_col_1, tracker_col_2, tracker_col_3 = st.columns(3)
-
-        with tracker_col_1:
-            st.metric("Open Actions", f"{len(active_actions)}")
-
-        with tracker_col_2:
-            high_priority_open = len(
-                [
-                    action
-                    for action in active_actions
-                    if action.get("priority") == "High"
-                ]
-            )
-            st.metric("High Priority", f"{high_priority_open}")
-
-        with tracker_col_3:
-            st.metric("Completed", f"{len(done_actions)}")
-
+    def _render_suggested_actions() -> None:
         st.markdown("#### Suggested Actions")
 
+        if is_horizontal:
+            cards_per_row = 3
+
+            for row_start in range(0, len(suggestions), cards_per_row):
+                row_suggestions = suggestions[row_start: row_start + cards_per_row]
+                card_cols = st.columns(cards_per_row)
+
+                for offset, suggestion in enumerate(row_suggestions):
+                    index = row_start + offset
+                    action_key = _action_key(index, suggestion)
+
+                    with card_cols[offset]:
+                        with st.container(border=True):
+                            st.markdown(f"**{suggestion['action']}**")
+                            st.caption(
+                                f"{suggestion['priority']} priority · "
+                                f"{suggestion['owner']} · "
+                                f"Due: {suggestion['due']}"
+                            )
+                            st.caption(f"Reason: {suggestion['reason']}")
+                            st.caption(f"Success: {suggestion['success_metric']}")
+
+                            if _action_exists(action_key):
+                                st.success("Added")
+                            else:
+                                if st.button(
+                                    "Add",
+                                    key=f"add_action_{action_key}",
+                                    width="stretch",
+                                ):
+                                    st.session_state.analytics_action_tracker.append(
+                                        {
+                                            "action_key": action_key,
+                                            "scope": selected_scope,
+                                            "period": analysis_period,
+                                            "priority": suggestion["priority"],
+                                            "action": suggestion["action"],
+                                            "reason": suggestion["reason"],
+                                            "owner": suggestion["owner"],
+                                            "due": suggestion["due"],
+                                            "status": "Open",
+                                            "success_metric": suggestion["success_metric"],
+                                            "owner_note": "",
+                                        }
+                                    )
+                                    st.rerun()
+
+            return
+
         for index, suggestion in enumerate(suggestions):
-            action_key = (
-                f"{selected_scope}_{analysis_period}_{index}_{suggestion['action']}"
-                .lower()
-                .replace(" ", "_")
-                .replace("/", "_")
-            )
+            action_key = _action_key(index, suggestion)
 
             with st.container(border=True):
                 s_col_1, s_col_2 = st.columns([4, 1])
@@ -1519,6 +1558,7 @@ def render_action_tracker(
                             )
                             st.rerun()
 
+    def _render_action_management() -> None:
         with st.expander("Add custom action", expanded=False):
             with st.form("custom_analytics_action_form", clear_on_submit=True):
                 custom_action = st.text_input(
@@ -1670,6 +1710,51 @@ def render_action_tracker(
             "Download the CSV before refreshing if you need to preserve them. "
             "Database persistence can be added later."
         )
+
+    with st.container(border=True):
+        if is_horizontal:
+            title_col, metric_col_1, metric_col_2, metric_col_3 = st.columns([3, 1, 1, 1])
+
+            with title_col:
+                st.markdown("### Action Tracker")
+                st.caption(
+                    "Convert dashboard signals into trackable operating actions."
+                )
+
+            with metric_col_1:
+                st.metric("Open", f"{len(active_actions)}")
+
+            with metric_col_2:
+                st.metric("High Priority", f"{high_priority_open}")
+
+            with metric_col_3:
+                st.metric("Completed", f"{len(done_actions)}")
+
+            _render_suggested_actions()
+
+            with st.expander("Manage tracked actions", expanded=False):
+                _render_action_management()
+
+        else:
+            st.markdown("### Action Tracker")
+            st.caption(
+                "Convert dashboard signals into trackable operating actions. "
+                "This version stores actions in the current app session and allows CSV export."
+            )
+
+            tracker_col_1, tracker_col_2, tracker_col_3 = st.columns(3)
+
+            with tracker_col_1:
+                st.metric("Open Actions", f"{len(active_actions)}")
+
+            with tracker_col_2:
+                st.metric("High Priority", f"{high_priority_open}")
+
+            with tracker_col_3:
+                st.metric("Completed", f"{len(done_actions)}")
+
+            _render_suggested_actions()
+            _render_action_management()
 
 def render_sales_quality_layer(
     df: pd.DataFrame,
