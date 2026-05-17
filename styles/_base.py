@@ -204,9 +204,9 @@ TAB_BAR_REFINEMENT = r"""    /* ── Tab bar refinement ───────�
     }
     button[data-baseweb="tab"] {
         font-family: var(--font-body) !important;
-        font-size: 0.95rem !important;
-        font-weight: 500 !important;
-        letter-spacing: 0.01em !important;
+        font-size: 0.86rem !important;
+        font-weight: 650 !important;
+        letter-spacing: 0.015em !important;
         min-height: 44px !important;
         padding: var(--tab-padding-y) var(--tab-padding-x) !important;
         color: var(--tab-inactive-fg) !important;

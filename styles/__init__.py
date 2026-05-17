@@ -36,6 +36,7 @@ def get_css() -> str:
         _components.KPI_METRIC_VALUES,
         _components.COMPACT_KPIS_FOR_REPORT_TAB,
         _components.METRIC_CARDS_CONTAINERS,
+        _components.ANALYTICS_DASHBOARD_COMPONENTS,
         _components.ALERT_STATUS_BOXES,
         _components.UPLOAD_ZONE,
         _components.DATA_TABLES,

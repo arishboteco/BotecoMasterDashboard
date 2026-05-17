@@ -392,6 +392,356 @@ METRIC_CARDS_CONTAINERS = r"""    /* ── Metric cards & containers ───�
 
 """
 
+
+ANALYTICS_DASHBOARD_COMPONENTS = r"""    /* ── Analytics executive dashboard components ───────────── */
+    .analytics-section-divider {
+        margin: 1.55rem 0 0.85rem 0;
+    }
+    .analytics-section-divider .analytics-card-title {
+        margin-top: 0.12rem;
+    }
+    .analytics-card,
+    .analytics-kpi-card,
+    .analytics-readout-card,
+    .analytics-confidence-card,
+    .analytics-action-card,
+    .analytics-chart-card,
+    .analytics-action-tracker-card {
+        background: var(--surface, #FFFFFF);
+        border: 1px solid var(--border-subtle, #E2E8F0);
+        border-radius: 16px;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.04);
+    }
+    .analytics-card,
+    .analytics-kpi-card,
+    .analytics-readout-card,
+    .analytics-confidence-card,
+    .analytics-action-card,
+    .analytics-action-tracker-card {
+        padding: 1rem 1.1rem;
+    }
+    .analytics-chart-card {
+        padding: 0.8rem 0.9rem 0.35rem 0.9rem;
+        margin-bottom: 0.75rem;
+    }
+    .analytics-card-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.9rem;
+        margin-bottom: 0.7rem;
+    }
+    .analytics-eyebrow {
+        color: var(--text-muted, #64748B);
+        font-family: var(--font-body) !important;
+        font-size: 0.69rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        line-height: 1.2;
+        text-transform: uppercase;
+    }
+    .analytics-card-title {
+        color: var(--text, #0F172A);
+        font-family: var(--font-display) !important;
+        font-size: 1.08rem;
+        font-weight: 750;
+        line-height: 1.22;
+    }
+    .analytics-card-caption {
+        color: var(--text-secondary, #64748B);
+        font-size: 0.92rem;
+        line-height: 1.45;
+        margin: 0.45rem 0 0.85rem 0;
+        max-width: 72ch;
+    }
+    .analytics-kpi-group {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(260px, 1fr));
+        gap: 0.85rem;
+        margin: 0.15rem 0 1.25rem 0;
+    }
+    .analytics-kpi-grid {
+        display: grid;
+        gap: 0.65rem 0.75rem;
+        margin-top: 0.72rem;
+    }
+    .analytics-kpi-grid--2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .analytics-kpi-grid--3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .analytics-kpi-item,
+    .analytics-metric-tile {
+        min-width: 0;
+    }
+    .analytics-kpi-label,
+    .analytics-metric-label {
+        color: var(--text-secondary, #64748B);
+        font-family: var(--font-body) !important;
+        font-size: 0.74rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        line-height: 1.25;
+        text-transform: uppercase;
+    }
+    .analytics-kpi-value,
+    .analytics-metric-value {
+        color: var(--text, #0F172A);
+        font-family: var(--font-display) !important;
+        font-size: 1.48rem;
+        font-weight: 800;
+        line-height: 1.12;
+        margin-top: 0.18rem;
+        overflow: visible;
+        text-overflow: initial;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+    }
+    .analytics-kpi-delta,
+    .analytics-metric-delta {
+        color: var(--text-muted, #64748B);
+        display: inline-flex;
+        font-size: 0.74rem;
+        font-weight: 700;
+        line-height: 1.2;
+        margin-top: 0.28rem;
+    }
+    .analytics-kpi-delta--positive,
+    .analytics-metric-delta--positive {
+        color: var(--success-text, #166534);
+    }
+    .analytics-kpi-delta--negative,
+    .analytics-metric-delta--negative {
+        color: var(--error-text, #991B1B);
+    }
+    .analytics-kpi-delta--neutral,
+    .analytics-metric-delta--neutral {
+        color: var(--text-muted, #64748B);
+    }
+    .analytics-diagnostic-scope div[data-testid="stMetricValue"] {
+        font-family: var(--font-display) !important;
+        font-size: 1.48rem !important;
+        font-weight: 800 !important;
+        line-height: 1.12 !important;
+        margin-top: 0.18rem !important;
+    }
+    .analytics-diagnostic-scope div[data-testid="stMetricLabel"] {
+        font-family: var(--font-body) !important;
+        font-size: 0.74rem !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.04em !important;
+        line-height: 1.25 !important;
+    }
+    .analytics-diagnostic-scope div[data-testid="stMetricDelta"] {
+        font-size: 0.74rem !important;
+        font-weight: 700 !important;
+        line-height: 1.2 !important;
+        margin-top: 0.28rem !important;
+    }
+    .analytics-readout-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 2.2fr) minmax(260px, 1fr);
+        gap: 1rem;
+        margin: 0.25rem 0 1.35rem 0;
+    }
+    .analytics-readout-card,
+    .analytics-confidence-card {
+        border-left: 5px solid var(--brand, #005AAB);
+    }
+    .analytics-readout-alert--success {
+        border-left-color: var(--success-text, #166534);
+    }
+    .analytics-readout-alert--warning {
+        border-left-color: var(--warning-text, #92400E);
+    }
+    .analytics-readout-alert--error {
+        border-left-color: var(--error-text, #991B1B);
+    }
+    .analytics-readout-alert--info {
+        border-left-color: var(--info-text, #1D4ED8);
+    }
+    .analytics-readout-points {
+        display: grid;
+        gap: 0.65rem;
+        margin-top: 0.85rem;
+    }
+    .analytics-readout-point {
+        align-items: flex-start;
+        color: var(--text-secondary, #64748B);
+        display: grid;
+        font-size: 0.9rem;
+        gap: 0.55rem;
+        grid-template-columns: 1.2rem minmax(0, 1fr);
+        line-height: 1.42;
+    }
+    .analytics-readout-point strong {
+        color: var(--text, #0F172A);
+        font-size: 0.84rem;
+    }
+    .analytics-readout-marker {
+        align-items: center;
+        border-radius: 999px;
+        color: var(--brand, #005AAB);
+        display: inline-flex;
+        font-size: 0.9rem;
+        font-weight: 800;
+        justify-content: center;
+        line-height: 1;
+        margin-top: 0.1rem;
+    }
+    .analytics-badge {
+        align-items: center;
+        border: 1px solid transparent;
+        border-radius: 999px;
+        display: inline-flex;
+        font-size: 0.7rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        line-height: 1;
+        padding: 0.42rem 0.58rem;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+    .analytics-badge--success {
+        background: var(--success-bg, #ECFDF5);
+        border-color: var(--success-border, #BBF7D0);
+        color: var(--success-text, #166534);
+    }
+    .analytics-badge--warning {
+        background: var(--warning-bg, #FFF7ED);
+        border-color: var(--warning-border, #FED7AA);
+        color: var(--warning-text, #92400E);
+    }
+    .analytics-badge--error {
+        background: var(--error-bg, #FEF2F2);
+        border-color: var(--error-border, #FECACA);
+        color: var(--error-text, #991B1B);
+    }
+    .analytics-badge--info {
+        background: var(--info-bg, #EFF6FF);
+        border-color: var(--info-border, #BFDBFE);
+        color: var(--info-text, #1D4ED8);
+    }
+    .analytics-confidence-list,
+    .analytics-confidence-meta {
+        display: grid;
+        gap: 0.45rem;
+        margin-top: 0.75rem;
+    }
+    .analytics-confidence-item,
+    .analytics-confidence-scope {
+        color: var(--text-secondary, #64748B);
+        font-size: 0.86rem;
+        line-height: 1.35;
+    }
+    .analytics-confidence-scope {
+        border-top: 1px solid var(--border-subtle, #E2E8F0);
+        padding-top: 0.65rem;
+    }
+    .analytics-metric-grid {
+        display: grid;
+        gap: 0.8rem;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin: 0.85rem 0 0.75rem 0;
+    }
+    .analytics-metric-tile {
+        background: var(--surface-muted, #F8FAFC);
+        border: 1px solid var(--border-subtle, #E2E8F0);
+        border-radius: 14px;
+        padding: 0.78rem 0.85rem;
+    }
+    .analytics-action-tracker-card .analytics-metric-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        margin-top: 0;
+    }
+    .analytics-action-tracker-card h4,
+    .analytics-action-tracker-card h3 {
+        margin-top: 0.4rem !important;
+    }
+    .analytics-action-grid {
+        display: grid;
+        gap: 0.85rem;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin: 0.75rem 0 0.75rem 0;
+    }
+    .analytics-action-grid--stacked {
+        grid-template-columns: 1fr;
+    }
+    .analytics-action-card {
+        border-left: 4px solid var(--brand, #005AAB);
+        min-height: 100%;
+    }
+    .analytics-action-card--error {
+        border-left-color: var(--error-text, #991B1B);
+    }
+    .analytics-action-card--warning {
+        border-left-color: var(--warning-text, #92400E);
+    }
+    .analytics-action-card--info {
+        border-left-color: var(--info-text, #1D4ED8);
+    }
+    .analytics-action-title {
+        color: var(--text, #0F172A);
+        font-size: 0.98rem;
+        font-weight: 750;
+        line-height: 1.25;
+        margin-top: 0.28rem;
+    }
+    .analytics-action-body {
+        color: var(--text-secondary, #64748B);
+        font-size: 0.86rem;
+        line-height: 1.42;
+        margin-top: 0.5rem;
+    }
+    .analytics-action-metric {
+        color: var(--text, #0F172A);
+        font-size: 0.82rem;
+        font-weight: 750;
+        margin-top: 0.6rem;
+    }
+    @media (max-width: 1100px) {
+        .analytics-kpi-group,
+        .analytics-readout-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+    @media (max-width: 760px) {
+        .analytics-card,
+        .analytics-kpi-card,
+        .analytics-readout-card,
+        .analytics-confidence-card,
+        .analytics-action-card,
+        .analytics-action-tracker-card {
+            padding: 0.95rem;
+        }
+        .analytics-kpi-grid,
+        .analytics-kpi-grid--2,
+        .analytics-kpi-grid--3,
+        .analytics-metric-grid,
+        .analytics-action-grid {
+            grid-template-columns: 1fr;
+        }
+        .analytics-kpi-value,
+        .analytics-metric-value {
+            font-size: 1.42rem;
+            white-space: normal;
+        }
+        .analytics-diagnostic-scope div[data-testid="stMetricValue"] {
+            font-size: 1.42rem !important;
+            white-space: normal !important;
+        }
+        .analytics-action-tracker-card .analytics-metric-grid {
+            grid-template-columns: 1fr;
+        }
+        .analytics-card-header {
+            align-items: flex-start;
+            flex-direction: column;
+        }
+    }
+
+"""
+
 ALERT_STATUS_BOXES = r"""    /* ── Alert / status boxes ───────────────────────────────── */
     .success-box {
         background: var(--alert-success-bg);
@@ -721,7 +1071,7 @@ WORKFLOW_AND_SURFACES = r"""    /* ── Workflow and surface polish ───�
         align-items: center;
         justify-content: space-between;
         margin-bottom: 0.35rem;
-        font-size: 0.76rem;
+        font-size: 0.74rem;
         color: var(--text-secondary);
         font-weight: 600;
     }
@@ -885,7 +1235,7 @@ WORKFLOW_AND_SURFACES = r"""    /* ── Workflow and surface polish ───�
         letter-spacing: 0.03em;
     }
     .filter-strip-subtitle {
-        font-size: 0.76rem;
+        font-size: 0.74rem;
         color: var(--text-muted);
     }
 

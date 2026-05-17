@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from html import escape
 
 import pandas as pd
 import plotly.express as px
@@ -14,7 +15,7 @@ import database
 import scope
 import ui_theme
 import utils
-from components import KpiMetric, kpi_row
+from components import KpiMetric, classed_container, kpi_row
 from tabs.analytics_logic import (
     build_daily_view_table,
     build_zomato_economics,
@@ -159,6 +160,101 @@ def _format_owner_delta(value: float | None) -> str:
     if value is None:
         return "N/A"
     return f"{value:+.1f}%"
+
+
+def _html(value: object) -> str:
+    """Escape dynamic text for custom Analytics HTML."""
+    return escape(str(value), quote=True)
+
+
+def _dashboard_severity_class(severity: str) -> str:
+    """Normalize severity names to Analytics dashboard CSS suffixes."""
+    if severity in {"success", "warning", "error", "info"}:
+        return severity
+    if severity == "high":
+        return "error"
+    if severity == "medium":
+        return "warning"
+    return "info"
+
+
+def _owner_badge_label(severity: str) -> str:
+    """Return a compact executive badge label for owner readout severity."""
+    return {
+        "success": "ON TRACK",
+        "warning": "WATCH",
+        "error": "HIGH RISK",
+        "info": "INFO",
+    }.get(severity, "INFO")
+
+
+def _metric_delta_class(delta: str | None) -> str:
+    """Infer a display tone for compact dashboard metric delta text."""
+    if not delta:
+        return "neutral"
+    if delta.startswith("+"):
+        return "positive"
+    if delta.startswith("-"):
+        return "negative"
+    return "neutral"
+
+
+def _metric_tile_html(label: str, value: str, delta: str | None = None) -> str:
+    """Build a compact dashboard metric tile."""
+    delta_html = ""
+    if delta:
+        tone = _metric_delta_class(delta)
+        delta_html = (
+            f'<div class="analytics-metric-delta analytics-metric-delta--{tone}">'
+            f"{_html(delta)}</div>"
+        )
+
+    return (
+        '<div class="analytics-metric-tile">'
+        f'<div class="analytics-metric-label">{_html(label)}</div>'
+        f'<div class="analytics-metric-value">{_html(value)}</div>'
+        f"{delta_html}"
+        "</div>"
+    )
+
+
+def _render_metric_tile_grid(tiles: list[tuple[str, str, str | None]]) -> None:
+    """Render compact 2x2 dashboard metric tiles."""
+    tiles_html = "".join(
+        _metric_tile_html(label, value, delta) for label, value, delta in tiles
+    )
+    st.markdown(
+        f'<div class="analytics-metric-grid">{tiles_html}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _action_card_html(card: dict[str, str]) -> str:
+    """Build a compact recommendation card for forecast actions."""
+    severity_class = _dashboard_severity_class(card.get("severity", "info"))
+    badge_label = {
+        "error": "HIGH",
+        "warning": "WATCH",
+        "info": "STEADY",
+        "success": "OK",
+    }.get(severity_class, "INFO")
+
+    return (
+        f'<div class="analytics-action-card analytics-action-card--{severity_class}">'
+        '<div class="analytics-card-header">'
+        '<div>'
+        '<div class="analytics-eyebrow">Forecast recommendation</div>'
+        '<div class="analytics-action-title">'
+        f'{_html(card.get("title", "Recommendation"))}</div>'
+        '</div>'
+        f'<span class="analytics-badge analytics-badge--{severity_class}">{badge_label}</span>'
+        '</div>'
+        f'<div class="analytics-action-body">{_html(card.get("reason", ""))}</div>'
+        '<div class="analytics-action-body"><strong>Action:</strong> '
+        f'{_html(card.get("action", ""))}</div>'
+        f'<div class="analytics-action-metric">{_html(card.get("metric", ""))}</div>'
+        '</div>'
+    )
 
 
 def render_owner_readout_and_data_confidence(
@@ -517,51 +613,86 @@ def render_owner_readout_and_data_confidence(
             "Sales, covers, targets and selected dates look usable for decision-making."
         )
 
-    with st.container(border=True):
-        owner_col, confidence_col = st.columns([2, 1])
+    owner_col, confidence_col = st.columns([2.2, 1])
+    severity_class = _dashboard_severity_class(severity)
+    confidence_class = _dashboard_severity_class(confidence_severity)
+    confidence_preview = confidence_reasons[:3]
+    confidence_extra_count = max(0, len(confidence_reasons) - len(confidence_preview))
+    confidence_items_html = "".join(
+        f'<div class="analytics-confidence-item">{_html(reason)}</div>'
+        for reason in confidence_preview
+    )
+    if confidence_extra_count:
+        confidence_items_html += (
+            '<div class="analytics-confidence-item">'
+            f'+ {confidence_extra_count} more check(s) in the data review.'
+            '</div>'
+        )
 
-        with owner_col:
-            st.markdown("### Owner Readout")
+    with owner_col:
+        st.markdown(
+            f"""
+            <div class="analytics-readout-card analytics-readout-alert--{severity_class}">
+                <div class="analytics-card-header">
+                    <div>
+                        <div class="analytics-eyebrow">Owner Readout</div>
+                        <div class="analytics-card-title">{_html(title)}</div>
+                    </div>
+                    <span class="analytics-badge analytics-badge--{severity_class}">
+                        {_owner_badge_label(severity)}
+                    </span>
+                </div>
+                <p class="analytics-card-caption">{_html(diagnosis)}</p>
+                <div class="analytics-readout-points">
+                    <div class="analytics-readout-point">
+                        <span class="analytics-readout-marker">&bull;</span>
+                        <div>
+                            <strong>Priority action</strong><br>{_html(primary_action)}
+                        </div>
+                    </div>
+                    <div class="analytics-readout-point">
+                        <span class="analytics-readout-marker">&rarr;</span>
+                        <div>
+                            <strong>Next check</strong><br>{_html(secondary_action)}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-            body = (
-                f"**{title}**\n\n"
-                f"{diagnosis}\n\n"
-                f"**Priority action:** {primary_action}\n\n"
-                f"**Next check:** {secondary_action}"
-            )
+        with st.expander("Why this readout was generated", expanded=False):
+            for line in evidence_lines:
+                st.caption(line)
 
-            if severity == "success":
-                st.success(body)
-            elif severity == "warning":
-                st.warning(body)
-            elif severity == "error":
-                st.error(body)
-            else:
-                st.info(body)
+    with confidence_col:
+        st.markdown(
+            f"""
+            <div class="analytics-confidence-card analytics-readout-alert--{confidence_class}">
+                <div class="analytics-card-header">
+                    <div>
+                        <div class="analytics-eyebrow">Data Confidence</div>
+                        <div class="analytics-card-title">
+                            {_html(confidence_label)} confidence
+                        </div>
+                    </div>
+                    <span class="analytics-badge analytics-badge--{confidence_class}">
+                        {_html(confidence_label.upper())}
+                    </span>
+                </div>
+                <div class="analytics-confidence-list">
+                    {confidence_items_html}
+                </div>
+                <div class="analytics-confidence-scope">
+                    Scope checked: {_html(len(analytics_loc_ids))} outlet(s),
+                    {_html(len(expected_dates))} calendar day(s).
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-            with st.expander("Why this readout was generated", expanded=False):
-                for line in evidence_lines:
-                    st.caption(line)
-
-        with confidence_col:
-            st.markdown("### Data Confidence")
-
-            confidence_body = (
-                f"**{confidence_label} confidence**\n\n"
-                + "\n\n".join(f"- {reason}" for reason in confidence_reasons[:5])
-            )
-
-            if confidence_severity == "success":
-                st.success(confidence_body)
-            elif confidence_severity == "warning":
-                st.warning(confidence_body)
-            else:
-                st.error(confidence_body)
-
-            st.caption(
-                f"Scope checked: {len(analytics_loc_ids)} outlet(s), "
-                f"{len(expected_dates)} calendar day(s)."
-            )
 
 def _last_day_of_month(anchor_date: date) -> date:
     """Return the last calendar day of the month for a date."""
@@ -614,6 +745,7 @@ def render_required_sales_plan(
     monthly_target: float,
     total_sales: float,
     total_covers: int,
+    compact: bool = False,
 ) -> None:
     """Render target recovery plan using required sales, covers and APC."""
     if df.empty:
@@ -739,39 +871,57 @@ def render_required_sales_plan(
             else None
         )
 
-        metric_col_1, metric_col_2, metric_col_3, metric_col_4 = st.columns(4)
-
-        with metric_col_1:
-            st.metric(
-                "Target Gap",
-                utils.format_rupee_short(plan_gap),
-                help="Sales still needed to reach the selected plan target.",
+        if compact:
+            _render_metric_tile_grid(
+                [
+                    ("Target Gap", utils.format_rupee_short(plan_gap), None),
+                    (
+                        "Required Daily Sales",
+                        utils.format_rupee_short(required_daily_sales),
+                        (
+                            f"{required_sales_lift_pct:+.1f}% vs current run-rate"
+                            if required_sales_lift_pct is not None
+                            else None
+                        ),
+                    ),
+                    ("Remaining Days", f"{remaining_days}", None),
+                    ("Current APC", utils.format_currency(current_apc), None),
+                ]
             )
+        else:
+            metric_col_1, metric_col_2, metric_col_3, metric_col_4 = st.columns(4)
 
-        with metric_col_2:
-            st.metric(
-                "Remaining Days",
-                f"{remaining_days}",
-                help="Calendar days remaining after the latest uploaded sales date.",
-            )
+            with metric_col_1:
+                st.metric(
+                    "Target Gap",
+                    utils.format_rupee_short(plan_gap),
+                    help="Sales still needed to reach the selected plan target.",
+                )
 
-        with metric_col_3:
-            st.metric(
-                "Required Daily Sales",
-                utils.format_rupee_short(required_daily_sales),
-                (
-                    f"{required_sales_lift_pct:+.1f}% vs current run-rate"
-                    if required_sales_lift_pct is not None
-                    else None
-                ),
-            )
+            with metric_col_2:
+                st.metric(
+                    "Remaining Days",
+                    f"{remaining_days}",
+                    help="Calendar days remaining after the latest uploaded sales date.",
+                )
 
-        with metric_col_4:
-            st.metric(
-                "Current APC",
-                utils.format_currency(current_apc),
-                help="Current selected-period net sales divided by covers.",
-            )
+            with metric_col_3:
+                st.metric(
+                    "Required Daily Sales",
+                    utils.format_rupee_short(required_daily_sales),
+                    (
+                        f"{required_sales_lift_pct:+.1f}% vs current run-rate"
+                        if required_sales_lift_pct is not None
+                        else None
+                    ),
+                )
+
+            with metric_col_4:
+                st.metric(
+                    "Current APC",
+                    utils.format_currency(current_apc),
+                    help="Current selected-period net sales divided by covers.",
+                )
 
         st.caption(
             f"Latest uploaded date: {latest_data_date.strftime('%d %b %Y')} · "
@@ -847,12 +997,36 @@ def render_required_sales_plan(
                 }
             )
 
-        st.markdown("#### Recovery Scenarios")
-        st.dataframe(
-            pd.DataFrame(scenario_rows),
-            width="stretch",
-            hide_index=True,
-        )
+        scenario_df = pd.DataFrame(scenario_rows)
+        if compact:
+            scenario_df = scenario_df.rename(
+                columns={
+                    "Required Sales / Day": "Sales / Day",
+                    "Interpretation": "Note",
+                }
+            )
+            compact_notes = {
+                "Traffic-led recovery": "More covers; keep APC stable.",
+                "Ticket-size recovery": "Hold covers; improve APC.",
+                "Balanced recovery": "Split the lift across covers and APC.",
+                "Weekend-weighted push": "Push harder on Friday-Sunday demand.",
+            }
+            scenario_df["Note"] = scenario_df["Scenario"].map(compact_notes).fillna(
+                scenario_df["Note"]
+            )
+            with st.expander("Recovery Scenarios", expanded=False):
+                st.dataframe(
+                    scenario_df,
+                    width="stretch",
+                    hide_index=True,
+                )
+        else:
+            st.markdown("#### Recovery Scenarios")
+            st.dataframe(
+                scenario_df,
+                width="stretch",
+                hide_index=True,
+            )
 
         # Owner-facing recommendation.
         if required_sales_lift_pct is None:
@@ -1417,6 +1591,7 @@ def render_action_tracker(
     analysis_period: str,
     selected_scope: str,
     layout: str = "vertical",
+    show_heading: bool = True,
 ) -> None:
     """Render owner action tracker from dashboard recommendations."""
     if df.empty:
@@ -1711,24 +1886,21 @@ def render_action_tracker(
             "Database persistence can be added later."
         )
 
-    with st.container(border=True):
+    with classed_container("analytics-action-tracker-card"):
         if is_horizontal:
-            title_col, metric_col_1, metric_col_2, metric_col_3 = st.columns([3, 1, 1, 1])
-
-            with title_col:
+            if show_heading:
                 st.markdown("### Action Tracker")
                 st.caption(
                     "Convert dashboard signals into trackable operating actions."
                 )
 
-            with metric_col_1:
-                st.metric("Open", f"{len(active_actions)}")
-
-            with metric_col_2:
-                st.metric("High Priority", f"{high_priority_open}")
-
-            with metric_col_3:
-                st.metric("Completed", f"{len(done_actions)}")
+            _render_metric_tile_grid(
+                [
+                    ("Open", f"{len(active_actions)}", None),
+                    ("High Priority", f"{high_priority_open}", None),
+                    ("Completed", f"{len(done_actions)}", None),
+                ]
+            )
 
             _render_suggested_actions()
 
@@ -1742,16 +1914,13 @@ def render_action_tracker(
                 "This version stores actions in the current app session and allows CSV export."
             )
 
-            tracker_col_1, tracker_col_2, tracker_col_3 = st.columns(3)
-
-            with tracker_col_1:
-                st.metric("Open Actions", f"{len(active_actions)}")
-
-            with tracker_col_2:
-                st.metric("High Priority", f"{high_priority_open}")
-
-            with tracker_col_3:
-                st.metric("Completed", f"{len(done_actions)}")
+            _render_metric_tile_grid(
+                [
+                    ("Open Actions", f"{len(active_actions)}", None),
+                    ("High Priority", f"{high_priority_open}", None),
+                    ("Completed", f"{len(done_actions)}", None),
+                ]
+            )
 
             _render_suggested_actions()
             _render_action_management()
@@ -2929,7 +3098,7 @@ def render_sales_movement_waterfall(
     explained_movement = cover_effect + apc_effect
     residual_effect = total_movement - explained_movement
 
-    with st.container(border=True):
+    with classed_container("analytics-card"):
         st.markdown("#### Sales Movement Breakdown")
         st.caption(
             "Explains whether sales changed because of guest count movement or APC movement."
@@ -3783,6 +3952,8 @@ def render_forecast_command_center(
     prior_total: float | None,
     prior_covers: int | None,
     prior_avg: float | None,
+    show_kpis: bool = True,
+    show_movement_breakdown: bool = True,
 ) -> None:
     """Render forecast-first executive block with actionable cards."""
     if df.empty:
@@ -3861,9 +4032,14 @@ def render_forecast_command_center(
             delta=f"{apc_delta or 'N/A'} vs prior",
         ),
     ]
-    kpi_row(metrics, columns=5)
+    if show_kpis:
+        kpi_row(metrics, columns=5)
 
-    left_col, right_col = st.columns([2, 1])
+    if show_kpis:
+        left_col, right_col = st.columns([2, 1])
+    else:
+        left_col = st.container()
+        right_col = None
     with left_col:
         chart_df = df.copy()
         chart_df["date"] = pd.to_datetime(chart_df["date"], errors="coerce")
@@ -3947,7 +4123,8 @@ def render_forecast_command_center(
             ),
         )
 
-        st.plotly_chart(fig, width="stretch")
+        with classed_container("analytics-chart-card"):
+            st.plotly_chart(fig, width="stretch")
 
         forecast_explanation = build_forecast_explanation(values, forecast)
 
@@ -4023,47 +4200,40 @@ def render_forecast_command_center(
                 )
             )
 
-    with right_col:
+    def _render_recommendations(compact: bool) -> None:
         st.markdown("### Recommended Actions")
 
         visible_cards = action_cards[:2]
         hidden_cards = action_cards[2:]
+        grid_class = "analytics-action-grid"
+        if not compact:
+            grid_class += " analytics-action-grid--stacked"
 
-        for card in visible_cards:
-            body = (
-                f"**{card['title']}**\n\n"
-                f"{card['reason']}\n\n"
-                f"**Action:** {card['action']}\n\n"
-                f"{card['metric']}"
+        if visible_cards:
+            cards_html = "".join(_action_card_html(card) for card in visible_cards)
+            st.markdown(
+                f'<div class="{grid_class}">{cards_html}</div>',
+                unsafe_allow_html=True,
             )
-
-            tone = card["severity"]
-            if tone == "high":
-                st.error(body)
-            elif tone == "medium":
-                st.warning(body)
-            else:
-                st.info(body)
 
         if hidden_cards:
             with st.expander("More actions", expanded=False):
-                for card in hidden_cards:
-                    body = (
-                        f"**{card['title']}**\n\n"
-                        f"{card['reason']}\n\n"
-                        f"**Action:** {card['action']}\n\n"
-                        f"{card['metric']}"
-                    )
+                cards_html = "".join(_action_card_html(card) for card in hidden_cards)
+                st.markdown(
+                    '<div class="analytics-action-grid analytics-action-grid--stacked">'
+                    f'{cards_html}</div>',
+                    unsafe_allow_html=True,
+                )
 
-                    tone = card["severity"]
-                    if tone == "high":
-                        st.error(body)
-                    elif tone == "medium":
-                        st.warning(body)
-                    else:
-                        st.info(body)
+    if right_col is None:
+        _render_recommendations(compact=True)
+    else:
+        with right_col:
+            _render_recommendations(compact=False)
 
-    render_sales_movement_waterfall(df, prior_df)
+    if show_movement_breakdown:
+        render_sales_movement_waterfall(df, prior_df)
+
 
 def render_category_pareto(
     report_loc_ids: list[int],
