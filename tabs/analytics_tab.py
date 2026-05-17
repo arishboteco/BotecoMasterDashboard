@@ -125,6 +125,61 @@ def _load_raw_summaries_cached(
     _RAW_SUMMARY_CACHE[key] = raw
     return raw
 
+def _render_analytics_kpi_strip(
+    total_sales: float,
+    total_covers: int,
+    prior_total: float | None,
+    prior_covers: int | None,
+    monthly_target: float,
+    avg_daily: float,
+) -> None:
+    """Render top-level owner KPIs for the Analytics tab."""
+    current_apc = total_sales / total_covers if total_covers > 0 else 0.0
+
+    target_gap = monthly_target - total_sales if monthly_target > 0 else 0.0
+
+    sales_delta = None
+    if prior_total and prior_total > 0:
+        sales_delta = ((total_sales - prior_total) / prior_total) * 100
+
+    covers_delta = None
+    if prior_covers and prior_covers > 0:
+        covers_delta = ((total_covers - prior_covers) / prior_covers) * 100
+
+    kpi_col_1, kpi_col_2, kpi_col_3, kpi_col_4, kpi_col_5 = st.columns(5)
+
+    with kpi_col_1:
+        st.metric(
+            "Net Sales",
+            utils.format_rupee_short(total_sales),
+            None if sales_delta is None else f"{sales_delta:+.1f}% vs comparison",
+        )
+
+    with kpi_col_2:
+        st.metric(
+            "Target Gap",
+            utils.format_rupee_short(target_gap),
+            "Ahead" if target_gap <= 0 else "Behind target",
+        )
+
+    with kpi_col_3:
+        st.metric(
+            "Covers",
+            f"{total_covers:,}",
+            None if covers_delta is None else f"{covers_delta:+.1f}% vs comparison",
+        )
+
+    with kpi_col_4:
+        st.metric(
+            "APC",
+            utils.format_currency(current_apc),
+        )
+
+    with kpi_col_5:
+        st.metric(
+            "Avg Daily Sales",
+            utils.format_rupee_short(avg_daily),
+        )
 
 def render(ctx: TabContext) -> None:
     """Render the Analytics tab UI with charts and period analysis."""
@@ -322,144 +377,175 @@ def render(ctx: TabContext) -> None:
 
             monthly_target = scope.sum_location_monthly_targets(analytics_loc_ids)
 
-            render_owner_readout_and_data_confidence(
-                df=df,
-                df_raw=df_raw,
-                prior_df=prior_df,
-                analysis_period=analysis_period,
-                start_date=start_date,
-                end_date=end_date,
-                monthly_target=monthly_target,
+            _render_analytics_kpi_strip(
                 total_sales=total_sales,
                 total_covers=total_covers,
                 prior_total=prior_total,
                 prior_covers=prior_covers,
-                analytics_loc_ids=analytics_loc_ids,
-            )
-
-            render_required_sales_plan(
-                df=df,
-                analysis_period=analysis_period,
-                start_date=start_date,
-                end_date=end_date,
                 monthly_target=monthly_target,
-                total_sales=total_sales,
-                total_covers=total_covers,
+                avg_daily=avg_daily,
             )
 
-            render_outlet_performance_scorecard(
-                df_raw=df_raw,
-                prior_df=prior_df,
-                analysis_period=analysis_period,
-                start_date=start_date,
-                end_date=end_date,
-                all_locs=ctx.all_locs,
+            st.markdown("")
+
+            # ── Row 1: Owner decision + action tracker ───────────────
+            decision_col, action_col = st.columns([2.2, 1])
+
+            with decision_col:
+                render_owner_readout_and_data_confidence(
+                    df=df,
+                    df_raw=df_raw,
+                    prior_df=prior_df,
+                    analysis_period=analysis_period,
+                    start_date=start_date,
+                    end_date=end_date,
+                    monthly_target=monthly_target,
+                    total_sales=total_sales,
+                    total_covers=total_covers,
+                    prior_total=prior_total,
+                    prior_covers=prior_covers,
+                    analytics_loc_ids=analytics_loc_ids,
+                )
+
+            with action_col:
+                render_action_tracker(
+                    df=df,
+                    prior_df=prior_df,
+                    monthly_target=monthly_target,
+                    total_sales=total_sales,
+                    total_covers=total_covers,
+                    analysis_period=analysis_period,
+                    selected_scope=selected_outlet,
+                )
+
+            st.markdown("")
+
+            # ── Row 2: Required plan + forecast command center ───────
+            plan_col, forecast_col = st.columns([1, 1.35])
+
+            with plan_col:
+                render_required_sales_plan(
+                    df=df,
+                    analysis_period=analysis_period,
+                    start_date=start_date,
+                    end_date=end_date,
+                    monthly_target=monthly_target,
+                    total_sales=total_sales,
+                    total_covers=total_covers,
+                )
+
+            with forecast_col:
+                render_forecast_command_center(
+                    df,
+                    prior_df,
+                    analysis_period,
+                    start_date,
+                    end_date,
+                    prior_start,
+                    prior_end,
+                    monthly_target,
+                    total_sales,
+                    avg_daily,
+                    total_covers,
+                    days_with_data,
+                    prior_total,
+                    prior_covers,
+                    prior_avg,
+                )
+
+            st.markdown("")
+
+            # ── Row 3: Diagnostic tabs ───────────────────────────────
+            diagnostic_tabs = st.tabs(
+                [
+                    "Outlet Scorecard",
+                    "Sales Quality",
+                    "Category Mix",
+                    "Deep Dive",
+                ]
             )
 
-            render_action_tracker(
-                df=df,
-                prior_df=prior_df,
-                monthly_target=monthly_target,
-                total_sales=total_sales,
-                total_covers=total_covers,
-                analysis_period=analysis_period,
-                selected_scope=selected_outlet,
-            )
+            with diagnostic_tabs[0]:
+                render_outlet_performance_scorecard(
+                    df_raw=df_raw,
+                    prior_df=prior_df,
+                    analysis_period=analysis_period,
+                    start_date=start_date,
+                    end_date=end_date,
+                    all_locs=ctx.all_locs,
+                )
 
-            render_sales_quality_layer(
-                df=df,
-                prior_df=prior_df,
-                total_sales=total_sales,
-                total_covers=total_covers,
-            )
+            with diagnostic_tabs[1]:
+                render_sales_quality_layer(
+                    df=df,
+                    prior_df=prior_df,
+                    total_sales=total_sales,
+                    total_covers=total_covers,
+                )
 
-            render_category_quality_layer(
-                report_loc_ids=analytics_loc_ids,
-                start_str=start_str,
-                end_str=end_str,
-                prior_start=prior_start,
-                prior_end=prior_end,
-                total_sales=total_sales,
-                prior_total=prior_total,
-            )
+            with diagnostic_tabs[2]:
+                render_category_quality_layer(
+                    report_loc_ids=analytics_loc_ids,
+                    start_str=start_str,
+                    end_str=end_str,
+                    prior_start=prior_start,
+                    prior_end=prior_end,
+                    total_sales=total_sales,
+                    prior_total=prior_total,
+                )
 
-            render_forecast_command_center(
-                df,
-                prior_df,
-                analysis_period,
-                start_date,
-                end_date,
-                prior_start,
-                prior_end,
-                monthly_target,
-                total_sales,
-                avg_daily,
-                total_covers,
-                days_with_data,
-                prior_total,
-                prior_covers,
-                prior_avg,
-            )
-
-            with st.expander("Deep-dive analysis layers", expanded=False):
+            with diagnostic_tabs[3]:
                 with classed_container(
                     "tab-analytics-mobile-sections",
                     "mobile-layout-stack",
                 ):
-                    st.markdown('<div class="section-stack">', unsafe_allow_html=True)
                     st.markdown("### Deep-Dive Analysis")
                     st.caption(
                         "Open one focused layer at a time when you need to diagnose the numbers."
                     )
 
-                    with classed_container(
-                        "tab-analytics-mobile-secondary",
-                        "mobile-layout-secondary",
-                    ):
-                        selected_layer = st.segmented_control(
-                            "Analysis Layer",
-                            options=[
-                                "Drivers",
-                                "Mix",
-                                "Targets & Daily",
-                                "Payments",
-                            ],
-                            default="Drivers",
-                            key="analytics_layer_selector",
-                            label_visibility="collapsed",
+                    selected_layer = st.segmented_control(
+                        "Analysis Layer",
+                        options=[
+                            "Drivers",
+                            "Mix",
+                            "Targets & Daily",
+                            "Payments",
+                        ],
+                        default="Drivers",
+                        key="analytics_layer_selector",
+                        label_visibility="collapsed",
+                    )
+
+                    if selected_layer == "Drivers":
+                        render_driver_analysis(
+                            df,
+                            df_raw,
+                            multi_analytics,
                         )
 
-                        if selected_layer == "Drivers":
-                            render_driver_analysis(
-                                df,
-                                df_raw,
-                                multi_analytics,
-                            )
+                    elif selected_layer == "Mix":
+                        render_mix_snapshot(
+                            analytics_loc_ids,
+                            start_str,
+                            end_str,
+                            df,
+                            start_date,
+                        )
 
-                        elif selected_layer == "Mix":
-                            render_mix_snapshot(
-                                analytics_loc_ids,
-                                start_str,
-                                end_str,
-                                df,
-                                start_date,
-                            )
+                    elif selected_layer == "Targets & Daily":
+                        render_target_snapshot(
+                            analytics_loc_ids,
+                            start_date,
+                            df,
+                        )
 
-                        elif selected_layer == "Targets & Daily":
-                            render_target_snapshot(
-                                analytics_loc_ids,
-                                start_date,
-                                df,
-                            )
-
-                        elif selected_layer == "Payments":
-                            render_payment_reconciliation(
-                                analytics_loc_ids,
-                                start_str,
-                                end_str,
-                            )
-
-                    st.markdown("</div>", unsafe_allow_html=True)
+                    elif selected_layer == "Payments":
+                        render_payment_reconciliation(
+                            analytics_loc_ids,
+                            start_str,
+                            end_str,
+                        )
 
         else:
             empty_state(
