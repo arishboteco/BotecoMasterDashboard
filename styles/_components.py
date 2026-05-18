@@ -456,7 +456,7 @@ ANALYTICS_DASHBOARD_COMPONENTS = r"""    /* ── Analytics executive dashboard
     }
     .analytics-kpi-group {
         display: grid;
-        grid-template-columns: repeat(3, minmax(260px, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 0.85rem;
         margin: 0.15rem 0 1.25rem 0;
     }
@@ -538,6 +538,15 @@ ANALYTICS_DASHBOARD_COMPONENTS = r"""    /* ── Analytics executive dashboard
         font-weight: 700 !important;
         line-height: 1.2 !important;
         margin-top: 0.28rem !important;
+    }
+        @media (max-width: 900px) {
+        .analytics-diagnostic-scope [data-testid="stHorizontalBlock"] {
+            gap: 0.65rem !important;
+        }
+
+        .analytics-diagnostic-scope [data-testid="column"] {
+            min-width: 0 !important;
+        }
     }
     .analytics-readout-grid {
         display: grid;
@@ -747,6 +756,83 @@ ANALYTICS_DASHBOARD_COMPONENTS = r"""    /* ── Analytics executive dashboard
         margin: 0;
     }
     
+        /* ── Analytics clipping prevention ─────────────────────── */
+
+    .analytics-card,
+    .analytics-kpi-card,
+    .analytics-readout-card,
+    .analytics-confidence-card,
+    .analytics-action-card,
+    .analytics-chart-card,
+    .analytics-action-tracker-card,
+    .analytics-metric-tile,
+    .analytics-kpi-item {
+        min-width: 0;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+    }
+
+    .analytics-kpi-group,
+    .analytics-kpi-grid,
+    .analytics-metric-grid,
+    .analytics-readout-grid,
+    .analytics-action-grid {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .analytics-card-title,
+    .analytics-action-title,
+    .analytics-card-caption,
+    .analytics-action-body,
+    .analytics-action-metric,
+    .analytics-status,
+    .analytics-confidence-item,
+    .analytics-confidence-scope {
+        overflow-wrap: anywhere;
+        word-break: normal;
+    }
+
+    .analytics-kpi-value,
+    .analytics-metric-value {
+        max-width: 100%;
+        overflow: visible;
+        text-overflow: initial;
+        white-space: nowrap;
+    }
+
+    .analytics-kpi-delta,
+    .analytics-metric-delta {
+        max-width: 100%;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .analytics-badge {
+        flex: 0 0 auto;
+    }
+
+    .analytics-action-card-top {
+        min-width: 0;
+    }
+
+    .analytics-action-card-top .analytics-action-title {
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .analytics-chart-card [data-testid="stPlotlyChart"],
+    .analytics-diagnostic-scope [data-testid="stPlotlyChart"] {
+        width: 100% !important;
+        min-width: 0 !important;
+        overflow: hidden !important;
+    }
+
+    .analytics-diagnostic-scope [data-testid="stDataFrame"] {
+        max-width: 100% !important;
+        overflow-x: auto !important;
+    }
+
         /* ── Executive dashboard polish overrides ─────────────────── */
 
     .analytics-kpi-group {
@@ -1159,6 +1245,28 @@ ANALYTICS_DASHBOARD_COMPONENTS = r"""    /* ── Analytics executive dashboard
         .analytics-readout-grid {
             grid-template-columns: 1fr;
         }
+            .analytics-kpi-group {
+            grid-template-columns: 1fr;
+        }
+
+        .analytics-readout-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .analytics-action-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .analytics-action-tracker-card .analytics-metric-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .analytics-diagnostic-scope [data-testid="stTabs"] [role="tablist"] {
+            width: 100%;
+            max-width: 100%;
+            overflow-x: auto;
+            justify-content: flex-start;
+        }
     }
     @media (max-width: 760px) {
         .analytics-card,
@@ -1204,8 +1312,134 @@ ANALYTICS_DASHBOARD_COMPONENTS = r"""    /* ── Analytics executive dashboard
         .analytics-diagnostic-scope div[data-testid="stMetricValue"] {
             white-space: normal !important;
         }
+            .analytics-section-divider {
+            margin: 1.25rem 0 0.7rem 0;
+        }
+
+        .analytics-card,
+        .analytics-kpi-card,
+        .analytics-readout-card,
+        .analytics-confidence-card,
+        .analytics-action-card,
+        .analytics-chart-card,
+        .analytics-action-tracker-card {
+            border-radius: 14px;
+            padding: 0.85rem 0.9rem;
+        }
+
+        .analytics-kpi-group,
+        .analytics-kpi-grid,
+        .analytics-metric-grid,
+        .analytics-readout-grid,
+        .analytics-action-grid,
+        .analytics-action-tracker-card .analytics-metric-grid {
+            grid-template-columns: 1fr;
+            gap: 0.65rem;
+        }
+
+        .analytics-kpi-card {
+            min-height: 0;
+        }
+
+        .analytics-kpi-value,
+        .analytics-metric-value {
+            font-size: clamp(1.18rem, 7vw, 1.65rem);
+            white-space: normal;
+            line-height: 1.12;
+        }
+
+        .analytics-kpi-label,
+        .analytics-metric-label {
+            font-size: 0.64rem;
+            line-height: 1.25;
+        }
+
+        .analytics-kpi-delta,
+        .analytics-metric-delta {
+            font-size: 0.68rem;
+        }
+
+        .analytics-card-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.55rem;
+        }
+
+        .analytics-card-title {
+            font-size: 1rem;
+        }
+
+        .analytics-card-caption {
+            font-size: 0.84rem;
+            line-height: 1.42;
+        }
+
+        .analytics-readout-point {
+            grid-template-columns: 1rem minmax(0, 1fr);
+            font-size: 0.82rem;
+        }
+
+        .analytics-badge {
+            font-size: 0.62rem;
+            padding: 0.34rem 0.48rem;
+        }
+
+        .analytics-diagnostic-scope [data-testid="stTabs"] [role="tablist"] {
+            border-radius: 14px;
+            padding: 0.32rem;
+            gap: 0.3rem;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .analytics-diagnostic-scope [data-testid="stTabs"] [role="tab"] {
+            flex: 0 0 auto;
+            padding: 0.46rem 0.7rem !important;
+            font-size: 0.72rem !important;
+        }
+
+        .analytics-diagnostic-scope div[data-testid="stMetricValue"] {
+            white-space: normal !important;
+            font-size: clamp(1.18rem, 7vw, 1.65rem) !important;
+        }
+
+        .analytics-diagnostic-scope [data-testid="stDataFrame"] {
+            overflow-x: auto !important;
+        }    
     }
 
+        @media (max-width: 520px) {
+        .analytics-kpi-value,
+        .analytics-metric-value {
+            font-size: 1.28rem;
+        }
+
+        .analytics-action-card-top {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .analytics-action-card {
+            padding: 0.78rem 0.82rem;
+        }
+
+        .analytics-status {
+            font-size: 0.8rem;
+            padding: 0.65rem 0.72rem;
+        }
+
+        .analytics-diagnostic-scope h2 {
+            font-size: 1.05rem !important;
+        }
+
+        .analytics-diagnostic-scope h3 {
+            font-size: 0.96rem !important;
+        }
+
+        .analytics-diagnostic-scope [data-testid="stTabs"] [role="tab"] {
+            font-size: 0.68rem !important;
+        }
+    }
 """
 
 ALERT_STATUS_BOXES = r"""    /* ── Alert / status boxes ───────────────────────────────── */
