@@ -241,6 +241,23 @@ def _render_dashboard_status(message: str, tone: str = "info") -> None:
         unsafe_allow_html=True,
     )
 
+def _render_diagnostic_intro(
+    eyebrow: str,
+    title: str,
+    caption: str,
+) -> None:
+    """Render a consistent compact intro for diagnostic tabs."""
+    st.markdown(
+        f"""
+        <div class="analytics-diagnostic-intro">
+            <div class="analytics-eyebrow">{_html(eyebrow)}</div>
+            <div class="analytics-card-title">{_html(title)}</div>
+            <p class="analytics-card-caption">{_html(caption)}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 def _apply_analytics_chart_layout(
     fig: go.Figure,
     title: str | None = None,
@@ -249,21 +266,20 @@ def _apply_analytics_chart_layout(
     legend_y: float = -0.22,
 ) -> go.Figure:
     """Apply consistent Analytics dashboard styling to Plotly charts."""
-    fig.update_layout(
-        template="plotly_white+boteco",
-        title=title,
-        height=height,
-        margin=dict(l=24, r=18, t=48 if title else 24, b=42),
-        showlegend=showlegend,
-        plot_bgcolor=ui_theme.CHART_BG,
-        paper_bgcolor=ui_theme.CHART_PAPER_BG,
-        font=dict(
+    layout_kwargs = {
+        "template": "plotly_white+boteco",
+        "height": height,
+        "margin": dict(l=24, r=18, t=48 if title else 24, b=42),
+        "showlegend": showlegend,
+        "plot_bgcolor": ui_theme.CHART_BG,
+        "paper_bgcolor": ui_theme.CHART_PAPER_BG,
+        "font": dict(
             family="Inter, sans-serif",
             size=12,
             color=ui_theme.TEXT_PRIMARY,
         ),
-        hovermode="closest",
-        hoverlabel=dict(
+        "hovermode": "closest",
+        "hoverlabel": dict(
             bgcolor=ui_theme.SURFACE_RAISED,
             bordercolor=ui_theme.BORDER_SUBTLE,
             font_size=12,
@@ -271,7 +287,7 @@ def _apply_analytics_chart_layout(
             font_color=ui_theme.TEXT_PRIMARY,
             align="left",
         ),
-        legend=dict(
+        "legend": dict(
             orientation="h",
             yanchor="bottom",
             y=legend_y,
@@ -281,7 +297,17 @@ def _apply_analytics_chart_layout(
             bordercolor="rgba(0,0,0,0)",
             font=dict(size=11),
         ),
-    )
+    }
+
+    if title:
+        layout_kwargs["title"] = title
+    else:
+        layout_kwargs["title"] = None
+
+    fig.update_layout(**layout_kwargs)
+
+    if not title:
+        fig.update_layout(title_text="")
 
     fig.update_xaxes(
         showgrid=True,
@@ -303,11 +329,28 @@ def _apply_analytics_chart_layout(
 
     return fig
 
-
 def _analytics_chart_card(
     title: str,
     caption: str | None = None,
 ) -> None:
+
+    def _render_diagnostic_intro(
+        eyebrow: str,
+        title: str,
+        caption: str,
+    ) -> None:
+        """Render a consistent compact intro for diagnostic tabs."""
+        st.markdown(
+            f"""
+            <div class="analytics-diagnostic-intro">
+                <div class="analytics-eyebrow">{_html(eyebrow)}</div>
+                <div class="analytics-card-title">{_html(title)}</div>
+                <p class="analytics-card-caption">{_html(caption)}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        
     """Render a consistent chart heading."""
     st.markdown(f"#### {title}")
     if caption:
@@ -1375,9 +1418,10 @@ def render_outlet_performance_scorecard(
     strong_count = int((scorecard_df["Status"] == "Strong").sum())
 
     with classed_container("analytics-card"):
-        st.markdown("### Outlet Performance Scorecard")
-        st.caption(
-            "Use this to identify which outlet needs attention first and why."
+        _render_diagnostic_intro(
+            "Outlet view",
+            "Which outlet needs attention first?",
+            "Compare outlets by target achievement, sales trend, covers, APC, forecast close, and data flags.",
         )
 
         weakest_row = scorecard_df.iloc[0]
@@ -2291,9 +2335,10 @@ def render_sales_quality_layer(
     )
 
     with st.container(border=True):
-        st.markdown("### Sales Quality")
-        st.caption(
-            "Use this to check whether sales are healthy after leakage, platform exposure and APC movement."
+        _render_diagnostic_intro(
+            "Quality view",
+            "Is revenue translating into contribution?",
+            "Review leakage, contribution assumptions, platform exposure, and APC movement before chasing more sales.",
         )
 
         with st.expander("Cost assumptions", expanded=False):
@@ -2885,9 +2930,10 @@ def render_category_quality_layer(
         quality_message = "Actual category mix quality is weak. Review concentration, beverage share and declining categories."
 
     with st.container(border=True):
-        st.markdown("### Category Quality & Menu Mix")
-        st.caption(
-            "Uses actual POS category names. Beverage and premium signals are derived from category-name keywords."
+        _render_diagnostic_intro(
+            "Menu view",
+            "Is the menu mix supporting APC and contribution?",
+            "Review category concentration, beverage share, premium signals, and important category movement.",
         )
 
         _render_metric_tile_grid(
@@ -4688,7 +4734,7 @@ def render_category_pareto(
 
         _apply_analytics_chart_layout(
             fig_pareto,
-            title="Category Pareto",
+            title=None,
             height=360,
             showlegend=True,
             legend_y=-0.32,
@@ -4870,8 +4916,11 @@ def render_driver_analysis(
         st.caption("No driver data for this period.")
         return
 
-    st.markdown("### Traffic & Ticket Drivers")
-    st.caption("Use this layer to separate guest-count movement from ticket-size movement.")
+    _render_diagnostic_intro(
+        "Driver view",
+        "Are sales moving because of covers, APC, or both?",
+        "Separate guest-count movement from ticket-size movement and identify which operating lever needs attention.",
+    )
 
     # 1. Visible by default: outlet leaderboard
 
@@ -5394,7 +5443,7 @@ def render_weekday_heatmap(df: pd.DataFrame) -> None:
 
         _apply_analytics_chart_layout(
             fig_heatmap,
-            title=f"Weekday Heatmap - {selected_heatmap_metric}",
+            title=None,
             height=340,
             showlegend=False,
         )
@@ -5554,9 +5603,9 @@ def render_mix_snapshot(
         st.caption("No mix or timing data for this period.")
         return
 
-    st.markdown("### Mix & Timing")
+    st.markdown("#### Timing drill-down")
     st.caption(
-        "Use this layer to understand category concentration and weekday demand patterns."
+        "Open these details when you need category Pareto, weekday heatmap, or weekday-level performance."
     )
 
     with st.expander("View category Pareto", expanded=False):
@@ -5738,7 +5787,7 @@ def render_daily_target_variance(df: pd.DataFrame) -> None:
 
         _apply_analytics_chart_layout(
             fig_variance,
-            title="Daily Variance vs Target",
+            title=None,
             height=340,
             showlegend=False,
         )
@@ -5870,9 +5919,10 @@ def render_target_snapshot(
         st.caption("No target data for this period.")
         return
 
-    st.markdown("### Targets & Daily")
-    st.caption(
-        "Use this layer to understand target achievement and identify which days created the gap."
+    _render_diagnostic_intro(
+        "Target view",
+        "Which days created the target gap?",
+        "Review selected-period target pace, daily variance, and the specific days that helped or hurt performance.",
     )
 
     render_target_pace_snapshot(df)
@@ -6928,9 +6978,10 @@ def render_payment_reconciliation(
 
     import database_analytics
 
-    st.markdown("### Payment Reconciliation")
-    st.caption(
-        "Use this layer to reconcile payment settlements, identify provider concentration, and review Zomato Pay economics."
+    _render_diagnostic_intro(
+        "Payment view",
+        "Are payment channels and platform economics clean?",
+        "Review payment provider concentration, settlement checks, and Zomato Pay economics assumptions.",
     )
 
     data = database_analytics.get_payment_provider_breakdown(
@@ -7190,7 +7241,7 @@ def render_payment_reconciliation(
 
 def render_zomato_economics(zomato_pay_sales: float) -> None:
     """Render manual Zomato Pay incrementality economics for the selected period."""
-    st.markdown("### Zomato Economics")
+    st.markdown("#### Zomato Pay what-if analysis")
 
     if zomato_pay_sales <= 0:
         st.caption("No Zomato Pay sales in this period.")

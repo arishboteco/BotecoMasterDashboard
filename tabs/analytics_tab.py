@@ -594,9 +594,9 @@ def render(ctx: TabContext) -> None:
                 """
                 <div class="analytics-section-divider">
                     <div class="analytics-eyebrow">Diagnostic Layers</div>
-                    <div class="analytics-card-title">Diagnostic Layers</div>
+                    <div class="analytics-card-title">Drill-down diagnostics</div>
                     <p class="analytics-card-caption">
-                        Use these only when you need to understand why the top KPIs moved.
+                        Use these layers when you need to understand why the top KPIs moved.
                     </p>
                 </div>
                 """,
@@ -643,8 +643,6 @@ def render(ctx: TabContext) -> None:
                         prior_total=prior_total,
                     )
 
-                    st.markdown("")
-
                     render_mix_snapshot(
                         analytics_loc_ids,
                         start_str,
@@ -655,8 +653,6 @@ def render(ctx: TabContext) -> None:
 
                 with diagnostic_tabs[3]:
                     render_sales_movement_waterfall(df, prior_df)
-
-                    st.markdown("")
 
                     render_driver_analysis(
                         df,

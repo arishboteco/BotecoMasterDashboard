@@ -447,6 +447,20 @@ ANALYTICS_DASHBOARD_COMPONENTS = r"""    /* ── Analytics executive dashboard
         font-weight: 750;
         line-height: 1.22;
     }
+        .analytics-diagnostic-intro {
+        margin: 0.15rem 0 1rem 0;
+        padding-bottom: 0.55rem;
+        border-bottom: 1px solid var(--border-subtle, #E2E8F0);
+    }
+
+    .analytics-diagnostic-intro .analytics-card-title {
+        margin-top: 0.12rem;
+    }
+
+    .analytics-diagnostic-intro .analytics-card-caption {
+        margin-bottom: 0;
+        max-width: 76ch;
+    }
     .analytics-card-caption {
         color: var(--text-secondary, #64748B);
         font-size: 0.92rem;
