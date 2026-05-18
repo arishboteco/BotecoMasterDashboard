@@ -4544,7 +4544,6 @@ def render_driver_analysis(
     st.caption("Use this layer to separate guest-count movement from ticket-size movement.")
 
     # 1. Visible by default: outlet leaderboard
-    render_outlet_leaderboard(df_raw, multi_analytics)
 
     # 2. Build daily driver dataset
     if multi_analytics and not df_raw.empty:
@@ -4579,8 +4578,69 @@ def render_driver_analysis(
         st.info("No valid driver rows available.")
         return
 
+    total_covers = float(driver_df["covers"].sum())
+    total_sales = float(driver_df["net_total"].sum())
+    avg_apc = total_sales / total_covers if total_covers > 0 else 0.0
+    avg_daily_covers = float(driver_df["covers"].mean()) if not driver_df.empty else 0.0
+
+    best_day_row = driver_df.sort_values("net_total", ascending=False).iloc[0]
+    weakest_day_row = driver_df.sort_values("net_total", ascending=True).iloc[0]
+
+    best_day_label = pd.Timestamp(best_day_row["date"]).strftime("%d %b")
+    weakest_day_label = pd.Timestamp(weakest_day_row["date"]).strftime("%d %b")
+
+    weekpart_insight = _build_weekpart_insight(driver_df)
+
+    weekend_lift_label = "N/A"
+    if weekpart_insight.get("status") == "ok":
+        delta_pct = weekpart_insight.get("delta_pct")
+        weekend_lift_label = (
+            "N/A"
+            if delta_pct is None
+            else f"{float(delta_pct):+.1f}%"
+        )
+
+    _render_metric_tile_grid(
+        [
+            (
+                "Total Covers",
+                f"{int(total_covers):,}",
+                f"Avg {avg_daily_covers:,.1f} per day",
+            ),
+            (
+                "Average APC",
+                utils.format_currency(avg_apc),
+                "Ticket-size signal",
+            ),
+            (
+                "Best Sales Day",
+                best_day_label,
+                utils.format_rupee_short(float(best_day_row["net_total"])),
+            ),
+            (
+                "Weekend Lift",
+                weekend_lift_label,
+                "Fri-Sun vs Mon-Thu",
+            ),
+        ]
+    )
+
+    if weekpart_insight.get("status") == "ok":
+        _render_dashboard_status(
+            str(weekpart_insight.get("commentary", "")),
+            "info",
+        )
+    else:
+        _render_dashboard_status(
+            "Insufficient weekday/weekend data to judge weekpart pattern confidently.",
+            "warning",
+        )
+
+    with st.expander("View outlet leaderboard", expanded=False):
+        render_outlet_leaderboard(df_raw, multi_analytics)
+
     # 3. Visible by default: Covers vs APC Matrix
-    with st.container(border=True):
+    with st.container(border=True): 
         st.markdown("#### Covers vs APC Matrix")
         st.caption(
             "Each point is a day. This shows whether sales are driven by footfall, ticket size, or both."
@@ -5178,35 +5238,58 @@ def render_target_pace_snapshot(df: pd.DataFrame) -> None:
             "Quick summary of sales performance against the selected period target."
         )
 
-        metrics = [
-            KpiMetric(
-                label="Selected Period Sales",
-                value=utils.format_rupee_short(total_sales),
-                delta=status_delta,
-            ),
-            KpiMetric(
-                label="Selected Period Target",
-                value=utils.format_rupee_short(total_target),
-                delta=f"{days_count} days in view",
-            ),
-            KpiMetric(
-                label="Achievement",
-                value=f"{achievement_pct:.1f}%",
-                delta="Target progress",
-            ),
-            KpiMetric(
-                label="Avg Daily Sales",
-                value=utils.format_rupee_short(avg_daily_sales),
-                delta=f"{days_with_sales} sales days",
-            ),
-            KpiMetric(
-                label="Required Daily Sales",
-                value=utils.format_rupee_short(required_daily_sales),
-                delta="To match target pace",
-            ),
-        ]
+        _render_metric_tile_grid(
+            [
+                (
+                    "Selected Period Sales",
+                    utils.format_rupee_short(total_sales),
+                    status_delta,
+                ),
+                (
+                    "Selected Period Target",
+                    utils.format_rupee_short(total_target),
+                    f"{days_count} days in view",
+                ),
+                (
+                    "Achievement",
+                    f"{achievement_pct:.1f}%",
+                    "Target progress",
+                ),
+                (
+                    "Avg Daily Sales",
+                    utils.format_rupee_short(avg_daily_sales),
+                    f"{days_with_sales} sales days",
+                ),
+            ]
+        )
 
-        kpi_row(metrics, columns=5)
+        _render_metric_tile_grid(
+            [
+                (
+                    "Required Daily Sales",
+                    utils.format_rupee_short(required_daily_sales),
+                    "To match target pace",
+                ),
+                (
+                    "Variance",
+                    (
+                        "Ahead"
+                        if variance >= 0
+                        else utils.format_rupee_short(abs(variance))
+                    ),
+                    "Selected period gap",
+                ),
+            ]
+        )
+
+        _render_dashboard_status(
+            (
+                "Sales are ahead of the selected-period target pace."
+                if variance >= 0
+                else f"Sales are behind the selected-period target by {utils.format_rupee_short(abs(variance))}."
+            ),
+            "success" if variance >= 0 else "error",
+        )
 
 def render_daily_target_variance(df: pd.DataFrame) -> None:
     """Render daily sales variance against target."""
@@ -5375,15 +5458,14 @@ def render_top_bottom_target_days(df: pd.DataFrame) -> None:
             ]
         ]
 
-    with st.container(border=True):
-        st.markdown("#### Best & Worst Target Days")
-        st.caption(
-            "Quickly identify which days contributed most positively or negatively to target achievement."
-        )
+    st.markdown("#### Best & Worst Target Days")
+    st.caption(
+        "Quickly identify which days contributed most positively or negatively to target achievement."
+    )
 
-        top_col, bottom_col = st.columns(2)
+    top_col, bottom_col = st.columns(2)
 
-        with top_col:
+    with top_col:
             st.markdown("##### Top 5 Days")
             st.dataframe(
                 _format_target_days_table(top_days),
@@ -5391,7 +5473,7 @@ def render_top_bottom_target_days(df: pd.DataFrame) -> None:
                 hide_index=True,
             )
 
-        with bottom_col:
+    with bottom_col:
             st.markdown("##### Bottom 5 Days")
             st.dataframe(
                 _format_target_days_table(bottom_days),
@@ -6478,31 +6560,34 @@ def render_payment_reconciliation(
             top_provider = str(provider_summary.iloc[0]["provider"])
             top_provider_share = float(provider_summary.iloc[0]["gross_amount"] / total_gross * 100)
 
-    summary_metrics = [
-        KpiMetric(
-            label="Total Gross",
-            value=utils.format_currency(total_gross),
+    payment_tiles = [
+        (
+            "Total Gross",
+            utils.format_rupee_short(total_gross),
+            "Payment gross in selected period",
         ),
-        KpiMetric(
-            label="Payment Providers",
-            value=f"{provider_count:,}",
+        (
+            "Payment Providers",
+            f"{provider_count:,}",
+            "Distinct providers",
         ),
-        KpiMetric(
-            label="Top Provider",
-            value=top_provider,
-            delta=f"{top_provider_share:.1f}% of gross" if top_provider_share > 0 else None,
+        (
+            "Top Provider",
+            top_provider,
+            f"{top_provider_share:.1f}% of gross" if top_provider_share > 0 else None,
         ),
     ]
 
     if has_txn_count:
-        summary_metrics.append(
-            KpiMetric(
-                label="Total Bills",
-                value=f"{int(recon_df['txn_count'].sum()):,}",
+        payment_tiles.append(
+            (
+                "Total Bills",
+                f"{int(recon_df['txn_count'].sum()):,}",
+                "Visible payment bill count",
             )
         )
 
-    kpi_row(summary_metrics, columns=min(len(summary_metrics), 4))
+    _render_metric_tile_grid(payment_tiles)
 
     display_df = recon_df.copy()
     display_df = display_df.rename(columns={"provider": "Provider"})
@@ -6517,8 +6602,7 @@ def render_payment_reconciliation(
         display_df["Bills"] = display_df["txn_count"].apply(lambda value: f"{int(value):,}")
         cols_to_show = ["Provider", "Bills", "Gross Amount ₹", "% of Total"]
 
-    with st.container(border=True):
-        st.markdown("#### Payment Summary")
+    with st.expander("View provider payment summary", expanded=False):
         st.caption(
             "Provider-level payment view for checking settlement concentration and reconciling against payment statements."
         )
@@ -6634,62 +6718,63 @@ def render_zomato_economics(zomato_pay_sales: float) -> None:
         "then check whether the contribution after food/direct variable costs covers the Zomato Pay fee."
     )
 
-    with st.container(border=True):
-        input_cols = st.columns(4)
+    with classed_container("analytics-card"):
+        with st.expander("Zomato economics assumptions", expanded=False):
+            input_cols = st.columns(4)
 
-        with input_cols[0]:
-            fee_pct = st.number_input(
-                "Zomato fee %",
-                min_value=0.0,
-                max_value=100.0,
-                value=5.9,
-                step=0.1,
-                key="zomato_fee_pct",
-                help="The commission or fee charged on Zomato Pay sales for this period.",
-            )
+            with input_cols[0]:
+                fee_pct = st.number_input(
+                    "Zomato fee %",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=5.9,
+                    step=0.1,
+                    key="zomato_fee_pct",
+                    help="The commission or fee charged on Zomato Pay sales for this period.",
+                )
 
-        with input_cols[1]:
-            contribution_margin_pct = st.number_input(
-                "Incremental contribution margin %",
-                min_value=0.0,
-                max_value=100.0,
-                value=60.0,
-                step=1.0,
-                key="zomato_contribution_margin_pct",
-                help=(
-                    "Money retained from estimated extra Zomato-driven sales after food and direct "
-                    "variable costs, before rent, fixed salaries, and other existing fixed costs. "
-                    "Example: if food cost is 33%, a conservative contribution margin may be around 55–60%."
-                ),
-            )
+            with input_cols[1]:
+                contribution_margin_pct = st.number_input(
+                    "Incremental contribution margin %",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=60.0,
+                    step=1.0,
+                    key="zomato_contribution_margin_pct",
+                    help=(
+                        "Money retained from estimated extra Zomato-driven sales after food and direct "
+                        "variable costs, before rent, fixed salaries, and other existing fixed costs. "
+                        "Example: if food cost is 33%, a conservative contribution margin may be around 55–60%."
+                    ),
+                )
 
-        with input_cols[2]:
-            incremental_sales_pct = st.number_input(
-                "Assumed incremental sales %",
-                min_value=0.0,
-                max_value=100.0,
-                value=15.0,
-                step=1.0,
-                key="zomato_incremental_sales_pct",
-                help=(
-                    "The percentage of Zomato Pay sales that you believe were truly extra sales "
-                    "because of Zomato. Example: 15% means you assume 15% of Zomato Pay sales "
-                    "would not have happened without Zomato."
-                ),
-            )
+            with input_cols[2]:
+                incremental_sales_pct = st.number_input(
+                    "Assumed incremental sales %",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=15.0,
+                    step=1.0,
+                    key="zomato_incremental_sales_pct",
+                    help=(
+                        "The percentage of Zomato Pay sales that you believe were truly extra sales "
+                        "because of Zomato. Example: 15% means you assume 15% of Zomato Pay sales "
+                        "would not have happened without Zomato."
+                    ),
+                )
 
-        with input_cols[3]:
-            target_coverage_ratio = st.number_input(
-                "Target coverage ratio",
-                min_value=0.0,
-                value=1.5,
-                step=0.1,
-                key="zomato_target_coverage_ratio",
-                help=(
-                    "1.0x means break-even. 1.5x means the incremental contribution should be "
-                    "50% higher than the Zomato Pay fee."
-                ),
-            )
+            with input_cols[3]:
+                target_coverage_ratio = st.number_input(
+                    "Target coverage ratio",
+                    min_value=0.0,
+                    value=1.5,
+                    step=0.1,
+                    key="zomato_target_coverage_ratio",
+                    help=(
+                        "1.0x means break-even. 1.5x means the incremental contribution should be "
+                        "50% higher than the Zomato Pay fee."
+                    ),
+                )
 
         incremental_sales = zomato_pay_sales * incremental_sales_pct / 100
 
@@ -6765,14 +6850,10 @@ def render_zomato_economics(zomato_pay_sales: float) -> None:
             f"({incremental_sales_pct:.1f}% of Zomato Pay sales)"
         )
 
-        if coverage["severity"] == "success":
-            st.success(decision_text)
-        elif coverage["severity"] == "warning":
-            st.warning(decision_text)
-        elif coverage["severity"] == "error":
-            st.error(decision_text)
-        else:
-            st.info(decision_text)
+        _render_dashboard_status(
+            decision_text.replace("**", "").replace("  \n", " "),
+            coverage["severity"],
+        )
 
         sensitivity_pcts = sorted(
             set([5.0, 10.0, 15.0, 25.0, 35.0, 50.0, round(incremental_sales_pct, 1)])
