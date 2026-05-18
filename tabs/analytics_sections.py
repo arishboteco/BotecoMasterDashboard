@@ -1302,29 +1302,47 @@ def render_outlet_performance_scorecard(
     watch_count = int((scorecard_df["Status"] == "Watch").sum())
     strong_count = int((scorecard_df["Status"] == "Strong").sum())
 
-    with st.container(border=True):
+    with classed_container("analytics-card"):
         st.markdown("### Outlet Performance Scorecard")
         st.caption(
             "Use this to identify which outlet needs attention first and why."
         )
 
-        metric_col_1, metric_col_2, metric_col_3, metric_col_4 = st.columns(4)
+        weakest_row = scorecard_df.iloc[0]
 
-        with metric_col_1:
-            st.metric("At Risk", f"{at_risk_count}")
+        _render_metric_tile_grid(
+            [
+                ("At Risk", f"{at_risk_count}", None),
+                ("Watch", f"{watch_count}", None),
+                ("Strong", f"{strong_count}", None),
+                (
+                    "Needs Attention",
+                    str(weakest_row["Status"]),
+                    f"{weakest_row['Outlet']} · {weakest_row['Priority Issue']}",
+                ),
+            ]
+        )
 
-        with metric_col_2:
-            st.metric("Watch", f"{watch_count}")
-
-        with metric_col_3:
-            st.metric("Strong", f"{strong_count}")
-
-        with metric_col_4:
-            weakest_row = scorecard_df.iloc[0]
-            st.metric(
-                "Needs Attention",
-                str(weakest_row["Outlet"]),
-                str(weakest_row["Priority Issue"]),
+        if at_risk_count > 0:
+            at_risk_names = ", ".join(
+                scorecard_df[scorecard_df["Status"] == "At Risk"]["Outlet"].tolist()
+            )
+            _render_dashboard_status(
+                f"Priority focus: {at_risk_names}. Review target gap, traffic and APC before pushing broad promotions.",
+                "error",
+            )
+        elif watch_count > 0:
+            watch_names = ", ".join(
+                scorecard_df[scorecard_df["Status"] == "Watch"]["Outlet"].tolist()
+            )
+            _render_dashboard_status(
+                f"Watch list: {watch_names}. Track these outlets closely before the gap widens.",
+                "warning",
+            )
+        else:
+            _render_dashboard_status(
+                "All visible outlets are currently in a strong position against the selected scorecard rules.",
+                "success",
             )
 
         display_df = scorecard_df.copy()
@@ -1365,45 +1383,27 @@ def render_outlet_performance_scorecard(
             )
         )
 
-        st.dataframe(
-            display_df[
-                [
-                    "Outlet",
-                    "Status",
-                    "Net Sales",
-                    "Achievement %",
-                    "Target Gap",
-                    "Covers",
-                    "APC",
-                    "Sales Trend %",
-                    "Covers Trend %",
-                    "APC Trend %",
-                    "Forecast Close",
-                    "Priority Issue",
-                    "Data Flags",
-                ]
-            ],
-            width="stretch",
-            hide_index=True,
-        )
-
-        if at_risk_count > 0:
-            at_risk_names = ", ".join(
-                scorecard_df[scorecard_df["Status"] == "At Risk"]["Outlet"].tolist()
-            )
-            st.error(
-                f"Priority focus: {at_risk_names}. Review target gap, traffic and APC before pushing broad promotions."
-            )
-        elif watch_count > 0:
-            watch_names = ", ".join(
-                scorecard_df[scorecard_df["Status"] == "Watch"]["Outlet"].tolist()
-            )
-            st.warning(
-                f"Watch list: {watch_names}. Track these outlets closely before the gap widens."
-            )
-        else:
-            st.success(
-                "All visible outlets are currently in a strong position against the selected scorecard rules."
+        with st.expander("View outlet scorecard table", expanded=False):
+            st.dataframe(
+                display_df[
+                    [
+                        "Outlet",
+                        "Status",
+                        "Net Sales",
+                        "Achievement %",
+                        "Target Gap",
+                        "Covers",
+                        "APC",
+                        "Sales Trend %",
+                        "Covers Trend %",
+                        "APC Trend %",
+                        "Forecast Close",
+                        "Priority Issue",
+                        "Data Flags",
+                    ]
+                ],
+                width="stretch",
+                hide_index=True,
             )
 
         with st.expander("How outlet status is calculated", expanded=False):
@@ -2091,40 +2091,41 @@ def render_sales_quality_layer(
             "Use this to check whether sales are healthy after leakage, platform exposure and APC movement."
         )
 
-        assumption_col_1, assumption_col_2, assumption_col_3 = st.columns(3)
+        with st.expander("Cost assumptions", expanded=False):
+            assumption_col_1, assumption_col_2, assumption_col_3 = st.columns(3)
 
-        with assumption_col_1:
-            food_cost_pct = st.number_input(
-                "Food cost %",
-                min_value=0.0,
-                max_value=100.0,
-                value=33.0,
-                step=1.0,
-                key="sales_quality_food_cost_pct",
-                help="Used only for estimated contribution. Adjust this to your current food-cost assumption.",
-            )
+            with assumption_col_1:
+                food_cost_pct = st.number_input(
+                    "Food cost %",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=33.0,
+                    step=1.0,
+                    key="sales_quality_food_cost_pct",
+                    help="Used only for estimated contribution. Adjust this to your current food-cost assumption.",
+                )
 
-        with assumption_col_2:
-            other_variable_cost_pct = st.number_input(
-                "Other variable cost %",
-                min_value=0.0,
-                max_value=100.0,
-                value=5.0,
-                step=1.0,
-                key="sales_quality_other_variable_cost_pct",
-                help="Packaging, payment charges, direct variable costs or other cost assumptions.",
-            )
+            with assumption_col_2:
+                other_variable_cost_pct = st.number_input(
+                    "Other variable cost %",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=5.0,
+                    step=1.0,
+                    key="sales_quality_other_variable_cost_pct",
+                    help="Packaging, payment charges, direct variable costs or other cost assumptions.",
+                )
 
-        with assumption_col_3:
-            zomato_pay_fee_pct = st.number_input(
-                "Zomato Pay fee %",
-                min_value=0.0,
-                max_value=100.0,
-                value=5.9,
-                step=0.1,
-                key="sales_quality_zomato_fee_pct",
-                help="Estimated fee on Zomato Pay sales. Change if your commercial terms are different.",
-            )
+            with assumption_col_3:
+                zomato_pay_fee_pct = st.number_input(
+                    "Zomato Pay fee %",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=5.9,
+                    step=0.1,
+                    key="sales_quality_zomato_fee_pct",
+                    help="Estimated fee on Zomato Pay sales. Change if your commercial terms are different.",
+                )
 
         platform_cost = zomato_pay_sales * (zomato_pay_fee_pct / 100)
         food_cost_estimate = net_sales * (food_cost_pct / 100)
@@ -2180,48 +2181,39 @@ def render_sales_quality_layer(
             quality_severity = "error"
             quality_message = "Sales quality is weak. Review leakage, APC and platform exposure before chasing more revenue."
 
-        metric_col_1, metric_col_2, metric_col_3, metric_col_4 = st.columns(4)
-
-        with metric_col_1:
-            st.metric(
-                "Net Sales",
-                utils.format_rupee_short(net_sales),
+        _render_metric_tile_grid(
+            [
                 (
-                    f"{sales_delta_pct:+.1f}% vs comparison"
-                    if sales_delta_pct is not None
-                    else None
+                    "Net Sales",
+                    utils.format_rupee_short(net_sales),
+                    (
+                        f"{sales_delta_pct:+.1f}% vs comparison"
+                        if sales_delta_pct is not None
+                        else None
+                    ),
                 ),
-            )
+                (
+                    "Estimated Contribution",
+                    utils.format_rupee_short(estimated_contribution),
+                    f"{estimated_contribution_pct:.1f}% of net sales",
+                ),
+                (
+                    "Total Leakage",
+                    utils.format_rupee_short(leakage_total),
+                    f"{leakage_pct:.1f}% of sales base",
+                ),
+                (
+                    "Sales Quality Score",
+                    f"{quality_score:.0f}/100",
+                    quality_label,
+                ),
+            ]
+        )
 
-        with metric_col_2:
-            st.metric(
-                "Estimated Contribution",
-                utils.format_rupee_short(estimated_contribution),
-                f"{estimated_contribution_pct:.1f}% of net sales",
-                help="Net sales minus estimated food cost, other variable cost and Zomato Pay platform cost.",
-            )
-
-        with metric_col_3:
-            st.metric(
-                "Total Leakage",
-                utils.format_rupee_short(leakage_total),
-                f"{leakage_pct:.1f}% of sales base",
-                help="Discounts + complimentary + estimated Zomato Pay platform cost.",
-            )
-
-        with metric_col_4:
-            st.metric(
-                "Sales Quality Score",
-                f"{quality_score:.0f}/100",
-                quality_label,
-            )
-
-        if quality_severity == "success":
-            st.success(f"**{quality_label} sales quality** — {quality_message}")
-        elif quality_severity == "warning":
-            st.warning(f"**{quality_label} sales quality** — {quality_message}")
-        else:
-            st.error(f"**{quality_label} sales quality** — {quality_message}")
+        _render_dashboard_status(
+            f"{quality_label} sales quality — {quality_message}",
+            quality_severity,
+        )
 
         leakage_rows = [
             {
@@ -2300,12 +2292,12 @@ def render_sales_quality_layer(
             },
         ]
 
-        st.markdown("#### Quality Drivers")
-        st.dataframe(
-            pd.DataFrame(leakage_rows),
-            width="stretch",
-            hide_index=True,
-        )
+        with st.expander("View quality drivers", expanded=False):
+            st.dataframe(
+                pd.DataFrame(leakage_rows),
+                width="stretch",
+                hide_index=True,
+            )
 
         risk_messages: list[str] = []
 
@@ -2626,46 +2618,39 @@ def render_category_quality_layer(
             "Uses actual POS category names. Beverage and premium signals are derived from category-name keywords."
         )
 
-        metric_col_1, metric_col_2, metric_col_3, metric_col_4 = st.columns(4)
-
-        with metric_col_1:
-            st.metric(
-                "Top Actual Category",
-                top_category,
-                f"{top_category_share:.1f}% of category sales",
-            )
-
-        with metric_col_2:
-            st.metric(
-                "Beverage Share",
-                f"{beverage_share:.1f}%",
+        _render_metric_tile_grid(
+            [
                 (
-                    "N/A"
-                    if beverage_share_delta is None
-                    else f"{beverage_share_delta:+.1f} pts vs comparison"
+                    "Top Actual Category",
+                    top_category,
+                    f"{top_category_share:.1f}% of category sales",
                 ),
-            )
+                (
+                    "Beverage Share",
+                    f"{beverage_share:.1f}%",
+                    (
+                        "N/A"
+                        if beverage_share_delta is None
+                        else f"{beverage_share_delta:+.1f} pts vs comparison"
+                    ),
+                ),
+                (
+                    "Top 5 Share",
+                    f"{top_5_share:.1f}%",
+                    "Concentration signal",
+                ),
+                (
+                    "Mix Quality Score",
+                    f"{quality_score:.0f}/100",
+                    quality_label,
+                ),
+            ]
+        )
 
-        with metric_col_3:
-            st.metric(
-                "Top 5 Share",
-                f"{top_5_share:.1f}%",
-                help="High concentration means the business depends on a small number of actual POS categories.",
-            )
-
-        with metric_col_4:
-            st.metric(
-                "Mix Quality Score",
-                f"{quality_score:.0f}/100",
-                quality_label,
-            )
-
-        if quality_severity == "success":
-            st.success(f"**{quality_label} mix quality** — {quality_message}")
-        elif quality_severity == "warning":
-            st.warning(f"**{quality_label} mix quality** — {quality_message}")
-        else:
-            st.error(f"**{quality_label} mix quality** — {quality_message}")
+        _render_dashboard_status(
+            f"{quality_label} mix quality — {quality_message}",
+            quality_severity,
+        )
 
         insight_messages: list[str] = []
 
@@ -2713,8 +2698,21 @@ def render_category_quality_layer(
             )
 
         st.markdown("#### Owner Insights")
-        for message in insight_messages[:5]:
-            st.caption(f"- {message}")
+
+        insight_html = "".join(
+            (
+                '<div class="analytics-readout-point">'
+                '<span class="analytics-readout-marker">→</span>'
+                f'<div>{_html(message)}</div>'
+                '</div>'
+            )
+            for message in insight_messages[:5]
+        )
+
+        st.markdown(
+            f'<div class="analytics-readout-points">{insight_html}</div>',
+            unsafe_allow_html=True,
+        )
 
         display_df = merged_df.copy()
 
@@ -2755,22 +2753,22 @@ def render_category_quality_layer(
             }
         )
 
-        st.markdown("#### Actual Category Movement")
-        st.dataframe(
-            display_df[
-                [
-                    "Actual Category",
-                    "Category Type",
-                    "Sales",
-                    "Share",
-                    "Growth vs Comparison",
-                    "Share Change",
-                    "Qty",
-                ]
-            ],
-            width="stretch",
-            hide_index=True,
-        )
+        with st.expander("View actual category movement", expanded=False):
+            st.dataframe(
+                display_df[
+                    [
+                        "Actual Category",
+                        "Category Type",
+                        "Sales",
+                        "Share",
+                        "Growth vs Comparison",
+                        "Share Change",
+                        "Qty",
+                    ]
+                ],
+                width="stretch",
+                hide_index=True,
+            )
 
         with st.expander("How category quality is calculated", expanded=False):
             st.caption(
