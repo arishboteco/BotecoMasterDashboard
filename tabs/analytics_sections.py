@@ -3210,20 +3210,24 @@ def render_sales_movement_waterfall(
             st.dataframe(movement_summary, width="stretch", hide_index=True)
 
             if cover_effect > 0 and apc_effect > 0:
-                st.success(
-                    "Sales improved because both covers and APC moved positively."
+                _render_dashboard_status(
+                    "Sales improved because both covers and APC moved positively.",
+                    "success",
                 )
             elif cover_effect > 0 and apc_effect < 0:
-                st.warning(
-                    "Covers improved, but APC declined. This points to an upselling or menu-mix issue."
+                _render_dashboard_status(
+                    "Covers improved, but APC declined. This points to an upselling or menu-mix issue.",
+                    "warning",
                 )
             elif cover_effect < 0 and apc_effect > 0:
-                st.warning(
-                    "APC improved, but covers declined. This points to a traffic or demand issue."
+                _render_dashboard_status(
+                    "APC improved, but covers declined. This points to a traffic or demand issue.",
+                    "warning",
                 )
             elif cover_effect < 0 and apc_effect < 0:
-                st.error(
-                    "Both covers and APC declined. This needs demand recovery and ticket-size improvement."
+                _render_dashboard_status(
+                    "Both covers and APC declined. This needs demand recovery and ticket-size improvement.",
+                    "error",
                 )
 
 def _render_forecast_anomaly_inputs(variance_table: pd.DataFrame) -> None:
@@ -4227,7 +4231,8 @@ def render_forecast_command_center(
                     for caution in forecast_explanation["cautions"]:
                         st.warning(caution)
                         
-        render_forecast_backtest(chart_df)
+        with st.expander("Forecast backtest", expanded=False):
+            render_forecast_backtest(chart_df)
 
         if prior_start and prior_end:
             st.caption(
@@ -4768,91 +4773,89 @@ def render_driver_analysis(
         covers_col, apc_col = st.columns(2)
 
         with covers_col:
-            with st.container(border=True):
-                st.markdown("#### Covers Trend")
+            st.markdown("#### Covers Trend")
 
-                fig_covers = go.Figure(
-                    go.Scatter(
-                        x=driver_df["date"],
-                        y=driver_df["covers"],
-                        mode="lines+markers",
-                        name="Covers",
-                        line=dict(color=ui_theme.BRAND_SUCCESS, width=2),
-                        marker=dict(size=4),
-                        hovertemplate="%{y:,.0f} covers<br>%{x|%a, %d %b}<extra></extra>",
-                    )
+            fig_covers = go.Figure(
+                go.Scatter(
+                    x=driver_df["date"],
+                    y=driver_df["covers"],
+                    mode="lines+markers",
+                    name="Covers",
+                    line=dict(color=ui_theme.BRAND_SUCCESS, width=2),
+                    marker=dict(size=4),
+                    hovertemplate="%{y:,.0f} covers<br>%{x|%a, %d %b}<extra></extra>",
                 )
+            )
 
-                covers_values = driver_df["covers"].tolist()
-                if len(covers_values) >= 7:
-                    ma_values = moving_average(covers_values, window=7)
-                    ma_series = pd.Series(ma_values)
-                    ma_valid = ma_series[pd.notna(ma_series)]
+            covers_values = driver_df["covers"].tolist()
+            if len(covers_values) >= 7:
+                ma_values = moving_average(covers_values, window=7)
+                ma_series = pd.Series(ma_values)
+                ma_valid = ma_series[pd.notna(ma_series)]
 
-                    if not ma_valid.empty:
-                        fig_covers.add_trace(
-                            go.Scatter(
-                                x=driver_df["date"][pd.notna(ma_series)],
-                                y=ma_valid.tolist(),
-                                mode="lines",
-                                name="7-day Avg",
-                                line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
-                                hovertemplate=(
-                                    "%{y:,.0f} covers (7-day avg)<br>"
-                                    "%{x|%a, %d %b}<extra></extra>"
-                                ),
-                            )
+                if not ma_valid.empty:
+                    fig_covers.add_trace(
+                        go.Scatter(
+                            x=driver_df["date"][pd.notna(ma_series)],
+                            y=ma_valid.tolist(),
+                            mode="lines",
+                            name="7-day Avg",
+                            line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
+                            hovertemplate=(
+                                "%{y:,.0f} covers (7-day avg)<br>"
+                                "%{x|%a, %d %b}<extra></extra>"
+                            ),
                         )
+                    )
 
-                fig_covers.update_layout(
-                    xaxis_title="Date",
-                    yaxis_title="Covers",
-                    height=320,
-                    hovermode="x unified",
-                    xaxis=dict(tickformat="%a %d %b"),
-                )
+            fig_covers.update_layout(
+                xaxis_title="Date",
+                yaxis_title="Covers",
+                height=320,
+                hovermode="x unified",
+                xaxis=dict(tickformat="%a %d %b"),
+            )
 
-                st.plotly_chart(fig_covers, width="stretch")
+            st.plotly_chart(fig_covers, width="stretch")
 
-                weekly_df = _build_weekly_covers_trend(driver_df[["date", "covers"]])
-                if weekly_df.empty:
-                    st.caption("Need valid date/cover rows to compute weekly trend.")
-                else:
-                    st.caption(_weekly_covers_commentary(weekly_df))
+            weekly_df = _build_weekly_covers_trend(driver_df[["date", "covers"]])
+            if weekly_df.empty:
+                st.caption("Need valid date/cover rows to compute weekly trend.")
+            else:
+                st.caption(_weekly_covers_commentary(weekly_df))
 
         with apc_col:
-            with st.container(border=True):
-                st.markdown("#### APC Trend")
+            st.markdown("#### APC Trend")
 
-                fig_apc = go.Figure(
-                    go.Scatter(
-                        x=driver_df["date"],
-                        y=driver_df["apc"],
-                        mode="lines+markers",
-                        name="APC",
-                        line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
-                        marker=dict(size=4),
-                        hovertemplate="₹%{y:,.0f} APC<br>%{x|%d %b}<extra></extra>",
-                    )
+            fig_apc = go.Figure(
+                go.Scatter(
+                    x=driver_df["date"],
+                    y=driver_df["apc"],
+                    mode="lines+markers",
+                    name="APC",
+                    line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
+                    marker=dict(size=4),
+                    hovertemplate="₹%{y:,.0f} APC<br>%{x|%d %b}<extra></extra>",
+                )
+            )
+
+            avg_apc = float(driver_df["apc"].mean()) if not driver_df.empty else 0.0
+            if avg_apc > 0:
+                fig_apc.add_hline(
+                    y=avg_apc,
+                    line_dash="dash",
+                    line_color=ui_theme.CHART_BAR_MUTED,
+                    annotation_text=f"Avg {utils.format_currency(avg_apc)}",
                 )
 
-                avg_apc = float(driver_df["apc"].mean()) if not driver_df.empty else 0.0
-                if avg_apc > 0:
-                    fig_apc.add_hline(
-                        y=avg_apc,
-                        line_dash="dash",
-                        line_color=ui_theme.CHART_BAR_MUTED,
-                        annotation_text=f"Avg {utils.format_currency(avg_apc)}",
-                    )
+            fig_apc.update_layout(
+                xaxis_title="Date",
+                yaxis_title="APC ₹",
+                height=320,
+                hovermode="x unified",
+            )
 
-                fig_apc.update_layout(
-                    xaxis_title="Date",
-                    yaxis_title="APC ₹",
-                    height=320,
-                    hovermode="x unified",
-                )
-
-                st.plotly_chart(fig_apc, width="stretch")
+            st.plotly_chart(fig_apc, width="stretch")
 
     # 5. Collapsed: daily driver table
     with st.expander("Daily driver data table", expanded=False):
@@ -5153,17 +5156,16 @@ def render_weekday_summary_table(df: pd.DataFrame) -> None:
         ]
     ]
 
-    with st.container(border=True):
-        st.markdown("#### Weekday Summary")
-        st.caption(
-            "Use this table to compare weekday performance and identify whether weak days are driven by covers, APC, or both."
-        )
+    st.markdown("#### Weekday Summary")
+    st.caption(
+        "Use this table to compare weekday performance and identify whether weak days are driven by covers, APC, or both."
+    )
 
-        st.dataframe(
-            display_df,
-            width="stretch",
-            hide_index=True,
-        )
+    st.dataframe(
+        display_df,
+        width="stretch",
+        hide_index=True,
+    )
 
 def render_mix_snapshot(
     report_loc_ids: list[int],
@@ -5182,12 +5184,14 @@ def render_mix_snapshot(
         "Use this layer to understand category concentration and weekday demand patterns."
     )
 
-    render_category_pareto(report_loc_ids, start_str, end_str)
+    with st.expander("View category Pareto", expanded=False):
+        render_category_pareto(report_loc_ids, start_str, end_str)
 
-    render_weekday_heatmap(df)
+    with st.expander("View weekday heatmap", expanded=False):
+        render_weekday_heatmap(df)
 
-    render_weekday_summary_table(df)
-    
+    with st.expander("View weekday summary table", expanded=False):
+        render_weekday_summary_table(df)
 
 def render_target_pace_snapshot(df: pd.DataFrame) -> None:
     """Render selected-period target pace snapshot."""
@@ -5232,7 +5236,7 @@ def render_target_pace_snapshot(df: pd.DataFrame) -> None:
         else f"Behind by {utils.format_rupee_short(abs(variance))}"
     )
 
-    with st.container(border=True):
+    with classed_container("analytics-card"):
         st.markdown("#### Target Pace Snapshot")
         st.caption(
             "Quick summary of sales performance against the selected period target."
@@ -6651,10 +6655,13 @@ def render_payment_reconciliation(
             )
 
         if not risk_messages:
-            st.success("No major payment reconciliation risk detected from the available payment summary.")
+            _render_dashboard_status(
+                "No major payment reconciliation risk detected from the available payment summary.",
+                "success",
+            )
 
         for message in risk_messages:
-            st.warning(message)
+            _render_dashboard_status(message, "warning")
 
     with st.expander("Full payment table and downloads", expanded=False):
         export_df = recon_df[["provider", "txn_count", "gross_amount", "% of Total"]].copy()
@@ -6886,8 +6893,9 @@ def render_zomato_economics(zomato_pay_sales: float) -> None:
                 }
             )
 
-        st.dataframe(
-            pd.DataFrame(sensitivity_rows),
-            width="stretch",
-            hide_index=True,
-        )
+        with st.expander("View Zomato sensitivity table", expanded=False):
+            st.dataframe(
+                pd.DataFrame(sensitivity_rows),
+                width="stretch",
+                hide_index=True,
+            )
