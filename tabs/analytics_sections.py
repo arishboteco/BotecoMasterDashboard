@@ -266,20 +266,23 @@ def _apply_analytics_chart_layout(
     legend_y: float = -0.22,
 ) -> go.Figure:
     """Apply consistent Analytics dashboard styling to Plotly charts."""
-    layout_kwargs = {
-        "template": "plotly_white+boteco",
-        "height": height,
-        "margin": dict(l=24, r=18, t=48 if title else 24, b=42),
-        "showlegend": showlegend,
-        "plot_bgcolor": ui_theme.CHART_BG,
-        "paper_bgcolor": ui_theme.CHART_PAPER_BG,
-        "font": dict(
+    clean_title = title or ""
+
+    fig.update_layout(
+        template="plotly_white+boteco",
+        title_text=clean_title,
+        height=height,
+        margin=dict(l=24, r=18, t=48 if clean_title else 24, b=42),
+        showlegend=showlegend,
+        plot_bgcolor=ui_theme.CHART_BG,
+        paper_bgcolor=ui_theme.CHART_PAPER_BG,
+        font=dict(
             family="Inter, sans-serif",
             size=12,
             color=ui_theme.TEXT_PRIMARY,
         ),
-        "hovermode": "closest",
-        "hoverlabel": dict(
+        hovermode="closest",
+        hoverlabel=dict(
             bgcolor=ui_theme.SURFACE_RAISED,
             bordercolor=ui_theme.BORDER_SUBTLE,
             font_size=12,
@@ -287,7 +290,7 @@ def _apply_analytics_chart_layout(
             font_color=ui_theme.TEXT_PRIMARY,
             align="left",
         ),
-        "legend": dict(
+        legend=dict(
             orientation="h",
             yanchor="bottom",
             y=legend_y,
@@ -297,17 +300,7 @@ def _apply_analytics_chart_layout(
             bordercolor="rgba(0,0,0,0)",
             font=dict(size=11),
         ),
-    }
-
-    if title:
-        layout_kwargs["title"] = title
-    else:
-        layout_kwargs["title"] = None
-
-    fig.update_layout(**layout_kwargs)
-
-    if not title:
-        fig.update_layout(title_text="")
+    )
 
     fig.update_xaxes(
         showgrid=True,
@@ -1953,7 +1946,7 @@ def render_action_tracker(
                         )
 
                         if _action_exists(action_key):
-                            st.success("Added")
+                            _render_dashboard_status("Added to Action Tracker.", "success")
                         else:
                             if st.button(
                                 "Add",
@@ -1997,7 +1990,7 @@ def render_action_tracker(
 
                 with s_col_2:
                     if _action_exists(action_key):
-                        st.success("Added")
+                        _render_dashboard_status("Added to Action Tracker.", "success")
                     else:
                         if st.button(
                             "Add",
@@ -2077,13 +2070,19 @@ def render_action_tracker(
                                 "owner_note": custom_note.strip(),
                             }
                         )
-                        st.success("Custom action added.")
+                        _render_dashboard_status("Custom action added.", "success")
                         st.rerun()
                     else:
-                        st.warning("This custom action is already in the tracker.")
+                        _render_dashboard_status(
+                            "This custom action is already in the tracker.",
+                            "warning",
+                        )
 
         if not st.session_state.analytics_action_tracker:
-            st.info("No tracked actions yet. Add one of the suggested actions above.")
+            _render_dashboard_status(
+                "No tracked actions yet. Add one of the suggested actions above.",
+                "info",
+            )
             return
 
         st.markdown("#### Tracked Actions")
@@ -4918,7 +4917,7 @@ def render_driver_analysis(
 
     _render_diagnostic_intro(
         "Driver view",
-        "Are sales moving because of covers, APC, or both?",
+        "What is moving sales: covers, APC, or both?",
         "Separate guest-count movement from ticket-size movement and identify which operating lever needs attention.",
     )
 
@@ -5603,7 +5602,7 @@ def render_mix_snapshot(
         st.caption("No mix or timing data for this period.")
         return
 
-    st.markdown("#### Timing drill-down")
+    st.markdown("#### Additional menu and timing diagnostics")
     st.caption(
         "Open these details when you need category Pareto, weekday heatmap, or weekday-level performance."
     )

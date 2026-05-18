@@ -534,8 +534,6 @@ def render(ctx: TabContext) -> None:
                 end_date=end_date,
             )
 
-            st.markdown("")
-
             # ── Row 1: Owner decision row ────────────────────────────
             # Full width keeps the executive readout prominent before diagnostics.
             render_owner_readout_and_data_confidence(
@@ -680,7 +678,7 @@ def render(ctx: TabContext) -> None:
                     <div class="analytics-eyebrow">Operating follow-up</div>
                     <div class="analytics-card-title">Action Tracker</div>
                     <p class="analytics-card-caption">
-                        Convert the dashboard insights above into trackable operating actions.
+                        Assign ownership to the most important follow-ups from this dashboard.
                     </p>
                 </div>
                 """,
