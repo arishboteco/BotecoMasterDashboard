@@ -936,6 +936,224 @@ ANALYTICS_DASHBOARD_COMPONENTS = r"""    /* ── Analytics executive dashboard
         padding-top: 0.2rem;
     }
 
+    /* ── Diagnostic layer polish ───────────────────────────── */
+
+    .analytics-diagnostic-scope {
+        margin-top: 0.15rem;
+    }
+
+    .analytics-diagnostic-scope [data-testid="stTabs"] {
+        width: 100%;
+    }
+
+    .analytics-diagnostic-scope [data-testid="stTabs"] [role="tablist"] {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        width: fit-content;
+        max-width: 100%;
+        padding: 0.38rem;
+        margin: 0.35rem 0 1.15rem 0;
+        border: 1px solid var(--border-subtle, #E2E8F0);
+        border-radius: 999px;
+        background: var(--surface, #FFFFFF);
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04),
+                    0 8px 24px rgba(15, 23, 42, 0.04);
+        overflow-x: auto;
+    }
+
+    .analytics-diagnostic-scope [data-testid="stTabs"] [role="tab"] {
+        border-radius: 999px !important;
+        padding: 0.52rem 0.85rem !important;
+        min-height: 2.25rem !important;
+        color: var(--text-secondary, #64748B) !important;
+        font-family: var(--font-body) !important;
+        font-size: 0.78rem !important;
+        font-weight: 750 !important;
+        line-height: 1.15 !important;
+        white-space: nowrap !important;
+        border: 1px solid transparent !important;
+        background: transparent !important;
+    }
+
+    .analytics-diagnostic-scope [data-testid="stTabs"] [role="tab"]:hover {
+        color: var(--brand, #005AAB) !important;
+        background: var(--brand-soft, #EFF6FF) !important;
+    }
+
+    .analytics-diagnostic-scope [data-testid="stTabs"] [role="tab"][aria-selected="true"] {
+        color: #FFFFFF !important;
+        background: var(--brand, #005AAB) !important;
+        border-color: var(--brand, #005AAB) !important;
+        box-shadow: 0 6px 14px rgba(0, 90, 171, 0.18) !important;
+    }
+
+    .analytics-diagnostic-scope [data-testid="stTabs"] [role="tab"][aria-selected="true"] p {
+        color: #FFFFFF !important;
+    }
+
+    .analytics-diagnostic-scope [data-testid="stTabs"] [role="tabpanel"] {
+        padding-top: 0.2rem;
+    }
+
+    .analytics-diagnostic-scope h1,
+    .analytics-diagnostic-scope h2,
+    .analytics-diagnostic-scope h3 {
+        color: var(--text, #0F172A) !important;
+        font-family: var(--font-display) !important;
+        letter-spacing: -0.025em !important;
+    }
+
+    .analytics-diagnostic-scope h2 {
+        font-size: 1.28rem !important;
+        line-height: 1.18 !important;
+        margin: 0.4rem 0 0.25rem 0 !important;
+    }
+
+    .analytics-diagnostic-scope h3 {
+        font-size: 1.05rem !important;
+        line-height: 1.22 !important;
+        margin: 0.3rem 0 0.35rem 0 !important;
+    }
+
+    .analytics-diagnostic-scope p,
+    .analytics-diagnostic-scope .stCaptionContainer,
+    .analytics-diagnostic-scope [data-testid="stCaptionContainer"] {
+        color: var(--text-secondary, #64748B) !important;
+        font-size: 0.84rem !important;
+        line-height: 1.45 !important;
+    }
+
+    .analytics-diagnostic-scope [data-testid="stVerticalBlockBorderWrapper"] {
+        background: var(--surface, #FFFFFF) !important;
+        border: 1px solid var(--border-subtle, #E2E8F0) !important;
+        border-radius: 16px !important;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04),
+                    0 8px 24px rgba(15, 23, 42, 0.035) !important;
+    }
+
+    .analytics-diagnostic-scope [data-testid="stVerticalBlockBorderWrapper"]:hover {
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04),
+                    0 10px 28px rgba(15, 23, 42, 0.05) !important;
+    }
+
+    .analytics-diagnostic-scope [data-testid="stMetric"] {
+        background: var(--surface-muted, #F8FAFC) !important;
+        border: 1px solid var(--border-subtle, #E2E8F0) !important;
+        border-radius: 14px !important;
+        padding: 0.78rem 0.85rem !important;
+        min-height: 5.1rem !important;
+    }
+
+    .analytics-diagnostic-scope div[data-testid="stMetricLabel"] {
+        color: var(--text-secondary, #64748B) !important;
+        font-family: var(--font-body) !important;
+        font-size: 0.68rem !important;
+        font-weight: 800 !important;
+        letter-spacing: 0.075em !important;
+        line-height: 1.25 !important;
+        text-transform: uppercase !important;
+    }
+
+    .analytics-diagnostic-scope div[data-testid="stMetricValue"] {
+        color: var(--text, #0F172A) !important;
+        font-family: var(--font-display) !important;
+        font-size: clamp(1.35rem, 1.75vw, 1.9rem) !important;
+        font-weight: 800 !important;
+        letter-spacing: -0.035em !important;
+        line-height: 1.05 !important;
+        overflow: visible !important;
+        text-overflow: initial !important;
+        white-space: nowrap !important;
+        font-variant-numeric: tabular-nums !important;
+    }
+
+    .analytics-diagnostic-scope div[data-testid="stMetricDelta"] {
+        display: inline-flex !important;
+        width: fit-content !important;
+        margin-top: 0.28rem !important;
+        padding: 0.18rem 0.45rem !important;
+        border-radius: 999px !important;
+        background: var(--surface-muted, #F8FAFC) !important;
+        font-size: 0.72rem !important;
+        font-weight: 800 !important;
+        line-height: 1.2 !important;
+    }
+
+    .analytics-diagnostic-scope [data-testid="stDataFrame"] {
+        border: 1px solid var(--border-subtle, #E2E8F0) !important;
+        border-radius: 14px !important;
+        overflow: hidden !important;
+        box-shadow: none !important;
+    }
+
+    .analytics-diagnostic-scope [data-testid="stDataFrame"] th {
+        background: var(--surface-muted, #F8FAFC) !important;
+        color: var(--text-secondary, #64748B) !important;
+        font-size: 0.68rem !important;
+        font-weight: 800 !important;
+        letter-spacing: 0.06em !important;
+        text-transform: uppercase !important;
+    }
+
+    .analytics-diagnostic-scope [data-testid="stDataFrame"] td {
+        color: var(--text, #0F172A) !important;
+        font-size: 0.78rem !important;
+    }
+
+    .analytics-diagnostic-scope [data-testid="stExpander"] {
+        border: 1px solid var(--border-subtle, #E2E8F0) !important;
+        border-radius: 14px !important;
+        background: var(--surface, #FFFFFF) !important;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.035) !important;
+        overflow: hidden !important;
+    }
+
+    .analytics-diagnostic-scope [data-testid="stExpander"] summary {
+        min-height: 2.55rem !important;
+        padding: 0.55rem 0.8rem !important;
+        background: var(--surface, #FFFFFF) !important;
+    }
+
+    .analytics-diagnostic-scope [data-testid="stExpander"] summary:hover {
+        background: var(--brand-soft, #EFF6FF) !important;
+    }
+
+    .analytics-diagnostic-scope [data-testid="stExpander"] summary p {
+        color: var(--text, #0F172A) !important;
+        font-size: 0.88rem !important;
+        font-weight: 650 !important;
+    }
+
+    .analytics-diagnostic-scope [data-testid="stPlotlyChart"] {
+        border-radius: 14px !important;
+        overflow: hidden !important;
+    }
+
+    .analytics-diagnostic-scope hr {
+        margin: 1rem 0 !important;
+        border-color: var(--border-subtle, #E2E8F0) !important;
+    }
+
+    .analytics-diagnostic-scope .element-container {
+        margin-bottom: 0.45rem;
+    }
+
+    .analytics-diagnostic-scope .stNumberInput input,
+    .analytics-diagnostic-scope .stTextInput input {
+        border-radius: 12px !important;
+        border-color: var(--border-subtle, #E2E8F0) !important;
+        background: var(--surface, #FFFFFF) !important;
+        font-size: 0.86rem !important;
+    }
+
+    .analytics-diagnostic-scope .stNumberInput label,
+    .analytics-diagnostic-scope .stTextInput label {
+        color: var(--text-secondary, #64748B) !important;
+        font-size: 0.74rem !important;
+        font-weight: 750 !important;
+    }
+    
     @media (max-width: 1100px) {
         .analytics-kpi-group,
         .analytics-readout-grid {
@@ -973,6 +1191,18 @@ ANALYTICS_DASHBOARD_COMPONENTS = r"""    /* ── Analytics executive dashboard
         .analytics-card-header {
             align-items: flex-start;
             flex-direction: column;
+        }
+            .analytics-diagnostic-scope [data-testid="stTabs"] [role="tablist"] {
+            width: 100%;
+            border-radius: 16px;
+        }
+
+        .analytics-diagnostic-scope [data-testid="stTabs"] [role="tab"] {
+            flex: 0 0 auto;
+        }
+
+        .analytics-diagnostic-scope div[data-testid="stMetricValue"] {
+            white-space: normal !important;
         }
     }
 
