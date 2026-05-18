@@ -241,6 +241,78 @@ def _render_dashboard_status(message: str, tone: str = "info") -> None:
         unsafe_allow_html=True,
     )
 
+def _apply_analytics_chart_layout(
+    fig: go.Figure,
+    title: str | None = None,
+    height: int = 340,
+    showlegend: bool = False,
+    legend_y: float = -0.22,
+) -> go.Figure:
+    """Apply consistent Analytics dashboard styling to Plotly charts."""
+    fig.update_layout(
+        template="plotly_white+boteco",
+        title=title,
+        height=height,
+        margin=dict(l=24, r=18, t=48 if title else 24, b=42),
+        showlegend=showlegend,
+        plot_bgcolor=ui_theme.CHART_BG,
+        paper_bgcolor=ui_theme.CHART_PAPER_BG,
+        font=dict(
+            family="Inter, sans-serif",
+            size=12,
+            color=ui_theme.TEXT_PRIMARY,
+        ),
+        hovermode="closest",
+        hoverlabel=dict(
+            bgcolor=ui_theme.SURFACE_RAISED,
+            bordercolor=ui_theme.BORDER_SUBTLE,
+            font_size=12,
+            font_family="Inter, sans-serif",
+            font_color=ui_theme.TEXT_PRIMARY,
+            align="left",
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=legend_y,
+            xanchor="center",
+            x=0.5,
+            bgcolor="rgba(0,0,0,0)",
+            bordercolor="rgba(0,0,0,0)",
+            font=dict(size=11),
+        ),
+    )
+
+    fig.update_xaxes(
+        showgrid=True,
+        gridcolor=ui_theme.CHART_GRID_COLOR,
+        zeroline=False,
+        linecolor=ui_theme.CHART_AXIS_COLOR,
+        tickfont=dict(size=11, color=ui_theme.CHART_TICK_COLOR),
+        title_font=dict(size=11, color=ui_theme.TEXT_SECONDARY),
+    )
+
+    fig.update_yaxes(
+        showgrid=True,
+        gridcolor=ui_theme.CHART_GRID_COLOR,
+        zeroline=False,
+        linecolor=ui_theme.CHART_AXIS_COLOR,
+        tickfont=dict(size=11, color=ui_theme.CHART_TICK_COLOR),
+        title_font=dict(size=11, color=ui_theme.TEXT_SECONDARY),
+    )
+
+    return fig
+
+
+def _analytics_chart_card(
+    title: str,
+    caption: str | None = None,
+) -> None:
+    """Render a consistent chart heading."""
+    st.markdown(f"#### {title}")
+    if caption:
+        st.caption(caption)
+
 def _action_card_html(card: dict[str, str]) -> str:
     """Build a compact recommendation card for forecast actions."""
     severity_class = _dashboard_severity_class(card.get("severity", "info"))
@@ -3429,13 +3501,13 @@ def render_sales_movement_waterfall(
             )
         )
 
-        fig_waterfall.update_layout(
+        _apply_analytics_chart_layout(
+            fig_waterfall,
             title="Prior Period to Current Period Sales Movement",
-            yaxis_title="Sales ₹",
-            height=360,
-            margin=dict(l=0, r=0, t=50, b=40),
+            height=340,
             showlegend=False,
         )
+        fig_waterfall.update_yaxes(title_text="Sales ₹")
 
         st.plotly_chart(fig_waterfall, width="stretch")
 
@@ -4614,19 +4686,14 @@ def render_category_pareto(
             secondary_y=True,
         )
 
-        fig_pareto.update_layout(
+        _apply_analytics_chart_layout(
+            fig_pareto,
             title="Category Pareto",
-            height=380,
-            margin=dict(l=0, r=0, t=50, b=90),
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=-0.35,
-                xanchor="center",
-                x=0.5,
-            ),
-            xaxis=dict(tickangle=-35),
+            height=360,
+            showlegend=True,
+            legend_y=-0.32,
         )
+        fig_pareto.update_xaxes(tickangle=-30)
 
         fig_pareto.update_yaxes(title_text="Sales ₹", secondary_y=False)
         fig_pareto.update_yaxes(
@@ -4745,14 +4812,14 @@ def render_outlet_leaderboard(
             )
         )
 
-        fig_outlet.update_layout(
+        _apply_analytics_chart_layout(
+            fig_outlet,
             title="Outlet Sales Ranking",
-            xaxis_title="Outlet",
-            yaxis_title="Net Sales ₹",
             height=320,
-            margin=dict(l=0, r=0, t=50, b=60),
             showlegend=False,
         )
+        fig_outlet.update_xaxes(title_text="Outlet")
+        fig_outlet.update_yaxes(title_text="Net Sales ₹")
 
         st.plotly_chart(fig_outlet, width="stretch")
 
@@ -5012,17 +5079,15 @@ def render_driver_analysis(
                 font=dict(size=11),
             )
 
-        fig_scatter.update_layout(
+        _apply_analytics_chart_layout(
+            fig_scatter,
+            title="Covers vs APC",
             height=360,
-            margin=dict(l=0, r=0, t=50, b=0),
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=-0.35,
-                xanchor="center",
-                x=0.5,
-            ),
+            showlegend=True,
+            legend_y=-0.32,
         )
+        fig_scatter.update_xaxes(title_text="Covers")
+        fig_scatter.update_yaxes(title_text="APC ₹")
 
         st.plotly_chart(fig_scatter, width="stretch")
 
@@ -5066,13 +5131,15 @@ def render_driver_analysis(
                         )
                     )
 
-            fig_covers.update_layout(
-                xaxis_title="Date",
-                yaxis_title="Covers",
-                height=320,
-                hovermode="x unified",
-                xaxis=dict(tickformat="%a %d %b"),
-            )
+                _apply_analytics_chart_layout(
+                    fig_covers,
+                    title="Covers Trend",
+                    height=300,
+                    showlegend=True,
+                )
+                fig_covers.update_layout(hovermode="x unified")
+                fig_covers.update_xaxes(title_text="Date", tickformat="%a %d %b")
+                fig_covers.update_yaxes(title_text="Covers")
 
             st.plotly_chart(fig_covers, width="stretch")
 
@@ -5106,12 +5173,15 @@ def render_driver_analysis(
                     annotation_text=f"Avg {utils.format_currency(avg_apc)}",
                 )
 
-            fig_apc.update_layout(
-                xaxis_title="Date",
-                yaxis_title="APC ₹",
-                height=320,
-                hovermode="x unified",
-            )
+                _apply_analytics_chart_layout(
+                    fig_apc,
+                    title="APC Trend",
+                    height=300,
+                    showlegend=False,
+                )
+                fig_apc.update_layout(hovermode="x unified")
+                fig_apc.update_xaxes(title_text="Date")
+                fig_apc.update_yaxes(title_text="APC ₹")
 
             st.plotly_chart(fig_apc, width="stretch")
 
@@ -5322,13 +5392,14 @@ def render_weekday_heatmap(df: pd.DataFrame) -> None:
             )
         )
 
-        fig_heatmap.update_layout(
+        _apply_analytics_chart_layout(
+            fig_heatmap,
             title=f"Weekday Heatmap - {selected_heatmap_metric}",
-            height=360,
-            margin=dict(l=0, r=0, t=50, b=40),
-            xaxis_title="Day of Week",
-            yaxis_title="Week",
+            height=340,
+            showlegend=False,
         )
+        fig_heatmap.update_xaxes(title_text="Day of Week")
+        fig_heatmap.update_yaxes(title_text="Week")
 
         st.plotly_chart(fig_heatmap, width="stretch")
 
@@ -5665,14 +5736,14 @@ def render_daily_target_variance(df: pd.DataFrame) -> None:
             line_color=ui_theme.CHART_BAR_MUTED,
         )
 
-        fig_variance.update_layout(
+        _apply_analytics_chart_layout(
+            fig_variance,
             title="Daily Variance vs Target",
-            xaxis_title="Date",
-            yaxis_title="Variance ₹",
             height=340,
-            margin=dict(l=0, r=0, t=50, b=40),
             showlegend=False,
         )
+        fig_variance.update_xaxes(title_text="Date")
+        fig_variance.update_yaxes(title_text="Variance ₹")
 
         st.plotly_chart(fig_variance, width="stretch")
 
