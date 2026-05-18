@@ -1413,6 +1413,43 @@ def render_outlet_performance_scorecard(
             st.caption("- Trends are calculated versus the selected comparison period.")
             st.caption("- Forecast Close appears only for open/forward-looking periods where forecast days are available.")
 
+        outlet_actions = []
+
+        if at_risk_count > 0:
+            at_risk_names = ", ".join(
+                scorecard_df[scorecard_df["Status"] == "At Risk"]["Outlet"].tolist()
+            )
+            outlet_actions.append(
+                {
+                    "priority": "High",
+                    "action": "Run outlet recovery review",
+                    "reason": f"At-risk outlets detected: {at_risk_names}.",
+                    "owner": "Operations",
+                    "due": "Today",
+                    "success_metric": "Each at-risk outlet has one owner, one recovery lever, and one daily target.",
+                }
+            )
+
+        if watch_count > 0:
+            watch_names = ", ".join(
+                scorecard_df[scorecard_df["Status"] == "Watch"]["Outlet"].tolist()
+            )
+            outlet_actions.append(
+                {
+                    "priority": "Medium",
+                    "action": "Monitor watch-list outlets",
+                    "reason": f"Watch-list outlets detected: {watch_names}.",
+                    "owner": "Outlet Manager",
+                    "due": "Next 3 days",
+                    "success_metric": "Watch-list outlets improve target pace, covers, or APC.",
+                }
+            )
+
+        _render_diagnostic_action_cards(
+            "Outlet Scorecard",
+            outlet_actions,
+        )
+
 def _build_action_tracker_suggestions(
     df: pd.DataFrame,
     prior_df: pd.DataFrame,
@@ -1597,6 +1634,102 @@ def _action_exists(action_key: str) -> bool:
         for action in st.session_state.analytics_action_tracker
     )
 
+def _render_diagnostic_action_cards(
+    section: str,
+    suggestions: list[dict[str, str]],
+) -> None:
+    """Render diagnostic-specific action cards that can be added to the Action Tracker."""
+    if not suggestions:
+        return
+
+    _ensure_action_tracker_state()
+
+    st.markdown("#### Recommended Follow-up")
+    st.caption(
+        "Add the most relevant follow-up to the Action Tracker if this diagnostic needs ownership."
+    )
+
+    cards_per_row = 2
+
+    for row_start in range(0, len(suggestions), cards_per_row):
+        row_suggestions = suggestions[row_start: row_start + cards_per_row]
+        cols = st.columns(cards_per_row)
+
+        for offset, suggestion in enumerate(row_suggestions):
+            index = row_start + offset
+            action_title = suggestion.get("action", "Review diagnostic signal")
+            priority = suggestion.get("priority", "Medium")
+
+            priority_class = (
+                "error"
+                if priority == "High"
+                else "warning"
+                if priority == "Medium"
+                else "info"
+            )
+
+            action_key = (
+                f"diagnostic_{section}_{index}_{action_title}"
+                .lower()
+                .replace(" ", "_")
+                .replace("/", "_")
+                .replace("&", "and")
+            )
+
+            with cols[offset]:
+                st.markdown(
+                    f"""
+                    <div class="analytics-action-card analytics-action-card--{priority_class}">
+                        <div class="analytics-action-card-top">
+                            <span class="analytics-badge analytics-badge--{priority_class}">
+                                {_html(priority)}
+                            </span>
+                            <div class="analytics-action-title">
+                                {_html(action_title)}
+                            </div>
+                        </div>
+                        <div class="analytics-action-body">
+                            {_html(suggestion.get("reason", ""))}
+                        </div>
+                        <div class="analytics-action-body">
+                            <strong>Owner:</strong> {_html(suggestion.get("owner", "Operations"))}
+                            · <strong>Due:</strong> {_html(suggestion.get("due", "This week"))}
+                        </div>
+                        <div class="analytics-action-metric">
+                            Success: {_html(suggestion.get("success_metric", "Impact reviewed in next dashboard check."))}
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                if _action_exists(action_key):
+                    _render_dashboard_status("Already added to Action Tracker.", "success")
+                else:
+                    if st.button(
+                        "Add to Action Tracker",
+                        key=f"add_diagnostic_action_{action_key}",
+                        width="stretch",
+                    ):
+                        st.session_state.analytics_action_tracker.append(
+                            {
+                                "action_key": action_key,
+                                "scope": section,
+                                "period": "Current dashboard selection",
+                                "priority": priority,
+                                "action": action_title,
+                                "reason": suggestion.get("reason", ""),
+                                "owner": suggestion.get("owner", "Operations"),
+                                "due": suggestion.get("due", "This week"),
+                                "status": "Open",
+                                "success_metric": suggestion.get(
+                                    "success_metric",
+                                    "Impact reviewed in next dashboard check.",
+                                ),
+                                "owner_note": "",
+                            }
+                        )
+                        st.rerun()
 
 def render_action_tracker(
     df: pd.DataFrame,
@@ -2346,6 +2479,73 @@ def render_sales_quality_layer(
                 "- Sales Quality Score is a decision signal, not an accounting metric."
             )
 
+        sales_quality_actions = []
+
+        if discount_pct > 5:
+            sales_quality_actions.append(
+                {
+                    "priority": "High",
+                    "action": "Audit discount leakage",
+                    "reason": f"Discounts are {discount_pct:.1f}% of sales base.",
+                    "owner": "Finance / Operations",
+                    "due": "This week",
+                    "success_metric": "Discount percentage reduces or all discounts are mapped to approved reasons.",
+                }
+            )
+
+        if complimentary_pct > 2:
+            sales_quality_actions.append(
+                {
+                    "priority": "Medium",
+                    "action": "Review complimentary approval control",
+                    "reason": f"Complimentary is {complimentary_pct:.1f}% of sales base.",
+                    "owner": "Restaurant Manager",
+                    "due": "This week",
+                    "success_metric": "Complimentary usage is approved, reason-coded, and reduced where unnecessary.",
+                }
+            )
+
+        if zomato_exposure_pct > 20:
+            sales_quality_actions.append(
+                {
+                    "priority": "Medium",
+                    "action": "Check Zomato Pay incrementality",
+                    "reason": f"Zomato Pay exposure is {zomato_exposure_pct:.1f}% of net sales.",
+                    "owner": "Operations / Marketing",
+                    "due": "Before next platform activation",
+                    "success_metric": "Incremental sales estimate covers platform cost at target coverage ratio.",
+                }
+            )
+
+        if apc_delta_pct is not None and apc_delta_pct < -5:
+            sales_quality_actions.append(
+                {
+                    "priority": "High",
+                    "action": "Run APC improvement push",
+                    "reason": f"APC is {apc_delta_pct:+.1f}% versus comparison.",
+                    "owner": "Restaurant Manager",
+                    "due": "Next peak weekend",
+                    "success_metric": "APC improves through drinks, desserts, sharing platters, or premium item attachment.",
+                }
+            )
+
+        if not sales_quality_actions and quality_score < 80:
+            sales_quality_actions.append(
+                {
+                    "priority": "Medium",
+                    "action": "Review sales quality assumptions",
+                    "reason": f"Sales Quality Score is {quality_score:.0f}/100.",
+                    "owner": "Finance / Operations",
+                    "due": "This week",
+                    "success_metric": "Food cost, variable cost, and platform fee assumptions are validated.",
+                }
+            )
+
+        _render_diagnostic_action_cards(
+            "Sales Quality",
+            sales_quality_actions,
+        )
+
 def render_category_quality_layer(
     report_loc_ids: list[int],
     start_str: str,
@@ -2790,6 +2990,64 @@ def render_category_quality_layer(
                 "- Category totals may not perfectly match net sales because taxes, service charge, discounts, mapping and report-source differences can affect totals."
             )
             
+        menu_mix_actions = []
+
+        if beverage_share < 15:
+            menu_mix_actions.append(
+                {
+                    "priority": "High",
+                    "action": "Improve beverage attachment",
+                    "reason": f"Beverage share is only {beverage_share:.1f}%.",
+                    "owner": "Restaurant Manager",
+                    "due": "This week",
+                    "success_metric": "Beverage share improves and APC moves upward.",
+                }
+            )
+
+        if beverage_share_delta is not None and beverage_share_delta <= -3:
+            menu_mix_actions.append(
+                {
+                    "priority": "Medium",
+                    "action": "Recover beverage share decline",
+                    "reason": f"Beverage share is down {abs(beverage_share_delta):.1f} pts versus comparison.",
+                    "owner": "Bar / Service Lead",
+                    "due": "Next 7 days",
+                    "success_metric": "Beverage share stabilises versus comparison.",
+                }
+            )
+
+        if top_5_share >= 65:
+            menu_mix_actions.append(
+                {
+                    "priority": "Medium",
+                    "action": "Protect top category availability",
+                    "reason": f"Top 5 categories contribute {top_5_share:.1f}% of category sales.",
+                    "owner": "Kitchen / Purchase",
+                    "due": "This week",
+                    "success_metric": "Top categories remain available with no stockout-driven sales loss.",
+                }
+            )
+
+        if not declining_major_categories.empty:
+            weak_names = ", ".join(
+                declining_major_categories["category"].head(3).astype(str).tolist()
+            )
+            menu_mix_actions.append(
+                {
+                    "priority": "High",
+                    "action": "Investigate declining key categories",
+                    "reason": f"Important categories are declining: {weak_names}.",
+                    "owner": "Chef / Operations",
+                    "due": "This week",
+                    "success_metric": "Cause is identified: availability, pricing, demand shift, or execution.",
+                }
+            )
+
+        _render_diagnostic_action_cards(
+            "Menu Mix & Timing",
+            menu_mix_actions,
+        )         
+
 def _style_achievement(val) -> str:
     """Pandas Styler.map function: color an Achievement % cell by band."""
     if pd.isna(val):
@@ -4879,6 +5137,52 @@ def render_driver_analysis(
 
         st.dataframe(table, width="stretch", hide_index=True)
 
+    driver_actions = []
+
+    if weekpart_insight.get("status") == "ok":
+        delta_pct = weekpart_insight.get("delta_pct")
+
+        if isinstance(delta_pct, (float, int)) and delta_pct <= -3:
+            driver_actions.append(
+                {
+                    "priority": "Medium",
+                    "action": "Improve weekend conversion",
+                    "reason": f"Weekend covers are {abs(float(delta_pct)):.1f}% below weekdays.",
+                    "owner": "Marketing / Reservations",
+                    "due": "Next weekend",
+                    "success_metric": "Weekend covers improve versus weekday baseline.",
+                }
+            )
+
+        elif isinstance(delta_pct, (float, int)) and delta_pct >= 8:
+            driver_actions.append(
+                {
+                    "priority": "Medium",
+                    "action": "Protect weekend execution",
+                    "reason": f"Weekend covers are {float(delta_pct):+.1f}% above weekdays.",
+                    "owner": "Operations",
+                    "due": "Before next weekend",
+                    "success_metric": "Staffing, prep, and inventory match weekend demand.",
+                }
+            )
+
+    if avg_apc > 0:
+        driver_actions.append(
+            {
+                "priority": "Medium",
+                "action": "Review low APC high-cover days",
+                "reason": "Covers vs APC matrix can reveal busy days where spend per guest is weak.",
+                "owner": "Restaurant Manager",
+                "due": "This week",
+                "success_metric": "Low APC high-cover days get one upsell or menu-mix intervention.",
+            }
+        )
+
+    _render_diagnostic_action_cards(
+        "Drivers",
+        driver_actions,
+    )
+
 def render_weekday_heatmap(df: pd.DataFrame) -> None:
     """Render week-by-week weekday heatmap for Mix layer."""
     if df.empty:
@@ -5523,7 +5827,53 @@ def render_target_snapshot(
                 width="stretch",
                 hide_index=True,
             )
+    target_actions = []
 
+    if "target" in df.columns and "net_total" in df.columns:
+        target_df = df.copy()
+        target_df["target"] = pd.to_numeric(
+            target_df["target"],
+            errors="coerce",
+        ).fillna(0)
+        target_df["net_total"] = pd.to_numeric(
+            target_df["net_total"],
+            errors="coerce",
+        ).fillna(0)
+
+        selected_target = float(target_df["target"].sum())
+        selected_sales = float(target_df["net_total"].sum())
+        selected_gap = selected_target - selected_sales
+
+        if selected_target > 0 and selected_gap > 0:
+            target_actions.append(
+                {
+                    "priority": "High",
+                    "action": "Close selected-period target gap",
+                    "reason": f"Selected-period target gap is {utils.format_rupee_short(selected_gap)}.",
+                    "owner": "Operations",
+                    "due": "Today",
+                    "success_metric": "Daily recovery plan is set for the remaining days.",
+                }
+            )
+
+        missed_days = int((target_df["net_total"] < target_df["target"]).sum())
+
+        if missed_days > 0:
+            target_actions.append(
+                {
+                    "priority": "Medium",
+                    "action": "Review missed target days",
+                    "reason": f"{missed_days} day(s) missed target in the selected period.",
+                    "owner": "Outlet Manager",
+                    "due": "This week",
+                    "success_metric": "Largest missed days have clear causes and prevention steps.",
+                }
+            )
+
+    _render_diagnostic_action_cards(
+        "Targets & Daily",
+        target_actions,
+    )
 
 def render_overview(
     analysis_period: str,
@@ -6712,6 +7062,61 @@ def render_payment_reconciliation(
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="recon_excel_btn",
             )
+    payment_actions = []
+
+    if top_provider_share >= 80:
+        payment_actions.append(
+            {
+                "priority": "Medium",
+                "action": "Verify payment provider concentration",
+                "reason": f"{top_provider} contributes {top_provider_share:.1f}% of payment gross.",
+                "owner": "Finance",
+                "due": "This week",
+                "success_metric": "Provider concentration matches settlement reports and payment labels.",
+            }
+        )
+
+    if provider_count <= 1:
+        payment_actions.append(
+            {
+                "priority": "Medium",
+                "action": "Check payment provider mapping",
+                "reason": "Only one payment provider is visible in the selected period.",
+                "owner": "Finance / Data",
+                "due": "This week",
+                "success_metric": "Payment provider labels are correctly mapped and not over-grouped.",
+            }
+        )
+
+    if has_txn_count and (recon_df["txn_count"] <= 0).any():
+        payment_actions.append(
+            {
+                "priority": "High",
+                "action": "Fix missing bill counts in payment data",
+                "reason": "One or more payment providers have zero bill count.",
+                "owner": "Finance / Data",
+                "due": "Today",
+                "success_metric": "Payment providers show valid bill counts where expected.",
+            }
+        )
+
+    if zomato_pay_sales > 0:
+        payment_actions.append(
+            {
+                "priority": "Medium",
+                "action": "Validate Zomato Pay economics",
+                "reason": f"Zomato Pay sales are {utils.format_rupee_short(zomato_pay_sales)} in this period.",
+                "owner": "Operations / Finance",
+                "due": "Before next activation",
+                "success_metric": "Coverage ratio and incrementality assumption are agreed.",
+            }
+        )
+
+    _render_diagnostic_action_cards(
+        "Payments",
+        payment_actions,
+    )
+
 def render_zomato_economics(zomato_pay_sales: float) -> None:
     """Render manual Zomato Pay incrementality economics for the selected period."""
     st.markdown("### Zomato Economics")
