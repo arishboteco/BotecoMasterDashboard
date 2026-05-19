@@ -208,17 +208,38 @@ def _render_executive_kpi_summary(
 ) -> None:
     """Render grouped executive KPIs for the Analytics tab."""
     current_apc = total_sales / total_covers if total_covers > 0 else 0.0
-    target_gap = monthly_target - total_sales if monthly_target > 0 else None
+
+    # Target Progress should match the selected analytics window.
+    # Do not use full monthly target here, because filters can be 7D, 30D, LM, QTD, YTD, or Custom.
+    if "target" in df.columns:
+        target_series = pd.to_numeric(df["target"], errors="coerce").fillna(0.0)
+        selected_period_target = float(target_series.sum())
+    else:
+        selected_period_target = 0.0
+
+    # Fallback only if target column is unavailable.
+    if selected_period_target <= 0 and monthly_target > 0:
+        selected_period_target = monthly_target
+
+    target_gap = (
+        selected_period_target - total_sales
+        if selected_period_target > 0
+        else None
+    )
     achievement_pct = (
-        (total_sales / monthly_target) * 100 if monthly_target > 0 else None
+        (total_sales / selected_period_target) * 100
+        if selected_period_target > 0
+        else None
     )
 
-    remaining_days = "N/A"
+    days_in_view = "N/A"
+    data_days = "N/A"
+
     if not df.empty and "date" in df.columns:
         parsed_dates = pd.to_datetime(df["date"], errors="coerce").dropna()
         if not parsed_dates.empty:
-            latest_data_date = parsed_dates.max().date()
-            remaining_days = str(max(0, (end_date - latest_data_date).days))
+            days_in_view = str((end_date - start_date).days + 1)
+            data_days = str(parsed_dates.dt.date.nunique())
 
     sales_delta = None
     if prior_total is not None and prior_total > 0:
@@ -237,7 +258,9 @@ def _render_executive_kpi_summary(
         apc_delta = ((current_apc - prior_apc) / prior_apc) * 100
 
     target_value = (
-        utils.format_rupee_short(monthly_target) if monthly_target > 0 else "N/A"
+        utils.format_rupee_short(selected_period_target)
+        if selected_period_target > 0
+        else "N/A"
     )
     achievement_value = (
         f"{achievement_pct:.1f}%" if achievement_pct is not None else "N/A"
@@ -282,7 +305,7 @@ def _render_executive_kpi_summary(
                     ("Target", target_value, None, "neutral"),
                     ("Achievement %", achievement_value, None, "neutral"),
                     ("Target Gap", target_gap_value, target_gap_delta, target_gap_tone),
-                    ("Remaining Days", remaining_days, None, "neutral"),
+                    ("Days in View", days_in_view, f"{data_days} data days", "neutral"),
                 ],
                 grid_columns=2,
             ),
