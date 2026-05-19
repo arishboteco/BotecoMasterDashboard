@@ -15,7 +15,7 @@ import database
 import scope
 import ui_theme
 import utils
-from components import KpiMetric, classed_container, kpi_row
+from components import KpiMetric, kpi_row
 from tabs.analytics_logic import (
     build_daily_view_table,
     build_zomato_economics,
@@ -1431,7 +1431,7 @@ def render_outlet_performance_scorecard(
     watch_count = int((scorecard_df["Status"] == "Watch").sum())
     strong_count = int((scorecard_df["Status"] == "Strong").sum())
 
-    with classed_container("analytics-card"):
+    with st.container(border=True):
         _render_diagnostic_intro(
             "Outlet view",
             "Which outlet needs attention first?",
@@ -2194,7 +2194,7 @@ def render_action_tracker(
             "Database persistence can be added later."
         )
 
-    with classed_container("analytics-action-tracker-card"):
+    with st.container(border=True):
         if is_horizontal:
             if show_heading:
                 st.markdown("### Action Tracker")
@@ -3531,7 +3531,7 @@ def render_sales_movement_waterfall(
     explained_movement = cover_effect + apc_effect
     residual_effect = total_movement - explained_movement
 
-    with classed_container("analytics-card"):
+    with st.container(border=True):
         st.markdown("#### Sales Movement Breakdown")
         st.caption(
             "Explains whether sales changed because of guest count movement or APC movement."
@@ -4560,7 +4560,7 @@ def render_forecast_command_center(
             ),
         )
 
-        with classed_container("analytics-chart-card"):
+        with st.container(border=True):
             st.plotly_chart(fig, width="stretch")
 
         forecast_explanation = build_forecast_explanation(values, forecast)
@@ -5680,7 +5680,7 @@ def render_target_pace_snapshot(df: pd.DataFrame) -> None:
         else f"Behind by {utils.format_rupee_short(abs(variance))}"
     )
 
-    with classed_container("analytics-card"):
+    with st.container(border=True):
         st.markdown("#### Target Pace Snapshot")
         st.caption(
             "Quick summary of sales performance against the selected period target."
@@ -7268,7 +7268,7 @@ def render_zomato_economics(zomato_pay_sales: float) -> None:
         "then check whether the contribution after food/direct variable costs covers the Zomato Pay fee."
     )
 
-    with classed_container("analytics-card"):
+    with st.container(border=True):
         with st.expander("Zomato economics assumptions", expanded=False):
             input_cols = st.columns(4)
 

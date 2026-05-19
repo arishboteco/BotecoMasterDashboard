@@ -1358,6 +1358,25 @@ ANALYTICS_DASHBOARD_COMPONENTS = r"""    /* ── Analytics executive dashboard
             min-width: 0 !important;
         }
     }
+
+    /* Hide empty Streamlit HTML wrapper artifacts */
+    .analytics-card:empty,
+    .analytics-chart-card:empty,
+    .analytics-kpi-card:empty,
+    .analytics-readout-card:empty,
+    .analytics-confidence-card:empty,
+    .analytics-action-card:empty,
+    .analytics-action-tracker-card:empty,
+    .analytics-diagnostic-intro:empty {
+        display: none !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: 0 !important;
+        box-shadow: none !important;
+        background: transparent !important;
+    }
 """
 
 ALERT_STATUS_BOXES = r"""    /* ── Alert / status boxes ───────────────────────────────── */
