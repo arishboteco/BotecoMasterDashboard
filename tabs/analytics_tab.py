@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import calendar
+import logging
 from datetime import date
 from html import escape
 from typing import Dict, List
@@ -36,6 +38,7 @@ from tabs.analytics_sections import (
 
 # In-process cache registered with cache_manager for coordinated invalidation
 _RAW_SUMMARY_CACHE: dict = cache_manager.register("analytics_raw")
+logger = logging.getLogger(__name__)
 
 
 def clear_analytics_cache() -> None:
@@ -48,67 +51,114 @@ def _add_target_columns(
     all_locs: list,
     location_ids: list,
 ) -> pd.DataFrame:
-    """Add target and pct_target columns to a summaries DataFrame.
+    """Add selected-date daily target and pct_target columns.
 
-    Args:
-        df: DataFrame with 'location_id', 'date', 'net_total' columns
-        all_locs: List of all location dicts from database
-        location_ids: List of location IDs being analyzed
-
-    Returns:
-        DataFrame with added 'target' and 'pct_target' columns
+    Targets are calculated per location, per month, and per weekday.
+    This avoids using a fixed 30-day month for every date.
     """
     if df.empty:
         return df
 
     df = df.copy()
 
-    loc_settings = {loc["id"]: loc for loc in all_locs}
+    if "location_id" not in df.columns or "date" not in df.columns:
+        df["target"] = 0.0
+        df["pct_target"] = 0.0
+        return df
 
-    loc_monthly_target: dict = {}
-    loc_weekday_mix: dict = {}
-    loc_day_targets: dict = {}
+    loc_settings = {int(loc["id"]): loc for loc in all_locs if loc.get("id") is not None}
+
+    loc_monthly_target: dict[int, float] = {}
+    loc_weekday_mix: dict[int, dict] = {}
 
     for lid in location_ids:
-        settings = loc_settings.get(lid, {})
+        safe_lid = int(lid)
+        settings = loc_settings.get(safe_lid, {})
         monthly_target = float(settings.get("target_monthly_sales", 0) or 0)
+
         if monthly_target <= 0:
             monthly_target = float(config.MONTHLY_TARGET)
-        loc_monthly_target[lid] = monthly_target
 
-        recent = database.get_recent_summaries(lid, weeks=8)
-        weekday_mix = utils.compute_weekday_mix(recent)
-        loc_weekday_mix[lid] = weekday_mix
+        loc_monthly_target[safe_lid] = monthly_target
 
-        day_targets = utils.compute_day_targets(monthly_target, weekday_mix)
-        loc_day_targets[lid] = day_targets
+        recent = database.get_recent_summaries(safe_lid, weeks=8)
+        loc_weekday_mix[safe_lid] = utils.compute_weekday_mix(recent)
 
-    # Vectorized target lookup. Per-row .apply is slow on large date ranges;
-    # parse the date column once and join via a (location_id, weekday) key.
-    parsed = pd.to_datetime(df["date"].astype(str).str[:10], errors="coerce")
-    weekday_names = parsed.dt.weekday.map(
-        lambda i: utils.WEEKDAY_NAMES[int(i)] if pd.notna(i) else None
+    parsed_dates = pd.to_datetime(
+        df["date"].astype(str).str[:10],
+        errors="coerce",
     )
-    target_lookup: Dict[tuple, float] = {
-        (lid, wd): float(val)
-        for lid, day_targets in loc_day_targets.items()
-        for wd, val in (day_targets or {}).items()
-    }
-    keys = list(
-        zip(
-            df["location_id"].tolist(),
-            weekday_names.tolist(),
-            strict=False,
+
+    df_location_ids = pd.to_numeric(
+        df["location_id"],
+        errors="coerce",
+    )
+
+    target_lookup: dict[tuple[int, int, int, str], float] = {}
+
+    observed_months: set[tuple[int, int, int]] = set()
+
+    for lid_value, parsed_date in zip(df_location_ids, parsed_dates, strict=False):
+        if pd.isna(lid_value) or pd.isna(parsed_date):
+            continue
+
+        safe_lid = int(lid_value)
+        observed_months.add(
+            (
+                safe_lid,
+                int(parsed_date.year),
+                int(parsed_date.month),
+            )
         )
-    )
-    df["target"] = pd.Series(
-        [target_lookup.get(k, 0.0) for k in keys], index=df.index
-    )
+
+    for safe_lid, year, month in observed_months:
+        monthly_target = loc_monthly_target.get(safe_lid, float(config.MONTHLY_TARGET))
+        weekday_mix = loc_weekday_mix.get(
+            safe_lid,
+            {day: 0.0 for day in utils.WEEKDAY_NAMES},
+        )
+
+        days_in_month = calendar.monthrange(year, month)[1]
+
+        day_targets = utils.compute_day_targets(
+            monthly_target,
+            weekday_mix,
+            days_in_month=days_in_month,
+        )
+
+        for weekday_name, target_value in day_targets.items():
+            target_lookup[(safe_lid, year, month, weekday_name)] = float(target_value or 0)
+
+    targets: list[float] = []
+
+    for lid_value, parsed_date in zip(df_location_ids, parsed_dates, strict=False):
+        if pd.isna(lid_value) or pd.isna(parsed_date):
+            targets.append(0.0)
+            continue
+
+        safe_lid = int(lid_value)
+        weekday_name = utils.WEEKDAY_NAMES[int(parsed_date.weekday())]
+
+        targets.append(
+            target_lookup.get(
+                (
+                    safe_lid,
+                    int(parsed_date.year),
+                    int(parsed_date.month),
+                    weekday_name,
+                ),
+                0.0,
+            )
+        )
+
+    df["target"] = pd.Series(targets, index=df.index)
 
     target = pd.to_numeric(df["target"], errors="coerce").fillna(0.0)
     net = pd.to_numeric(df["net_total"], errors="coerce").fillna(0.0)
-    pct = (net.divide(target.where(target > 0)) * 100).fillna(0.0).round(2)
-    df["pct_target"] = pct
+
+    df["pct_target"] = (
+        net.divide(target.where(target > 0)) * 100
+    ).fillna(0.0).round(2)
 
     return df
 
@@ -482,6 +532,24 @@ def render(ctx: TabContext) -> None:
     )
 
     summaries = scope.merge_summaries_by_date(raw_summaries_with_targets)
+
+    if summaries and raw_summaries_with_targets:
+        raw_target_total = sum(
+            float(row.get("target") or 0)
+            for row in raw_summaries_with_targets
+        )
+        merged_target_total = sum(
+            float(row.get("target") or 0)
+            for row in summaries
+        )
+
+        if abs(raw_target_total - merged_target_total) > 1:
+            logger.warning(
+                "Analytics target aggregation mismatch: raw_target_total=%s merged_target_total=%s",
+                raw_target_total,
+                merged_target_total,
+            )
+
     df_raw = pd.DataFrame(raw_summaries) if raw_summaries else pd.DataFrame()
     if multi_analytics and not df_raw.empty:
         loc_names = {loc["id"]: str(loc["name"]) for loc in ctx.all_locs}
@@ -501,20 +569,58 @@ def render(ctx: TabContext) -> None:
                     prior_start.strftime("%Y-%m-%d"),
                     prior_end.strftime("%Y-%m-%d"),
                 )
+            prior_raw_df = (
+                _add_target_columns(
+                    pd.DataFrame(prior_summaries),
+                    ctx.all_locs,
+                    analytics_loc_ids,
+                )
+                if prior_summaries
+                else pd.DataFrame()
+            )
+
             prior_df = (
-                pd.DataFrame(prior_summaries) if prior_summaries else pd.DataFrame()
+                pd.DataFrame(scope.merge_summaries_by_date(prior_raw_df.to_dict("records")))
+                if not prior_raw_df.empty
+                else pd.DataFrame()
             )
 
-            total_sales = float(df["net_total"].sum())
-            avg_daily = float(df["net_total"].mean())
-            total_covers = int(df["covers"].sum())
-            days_with_data = int(len(df[df["net_total"] > 0]))
+            net_series = pd.to_numeric(df["net_total"], errors="coerce").fillna(0.0)
+            covers_series = pd.to_numeric(df["covers"], errors="coerce").fillna(0.0)
+            sales_day_mask = net_series > 0
 
-            prior_total = (
-                float(prior_df["net_total"].sum()) if not prior_df.empty else None
+            total_sales = float(net_series.sum())
+            total_covers = int(covers_series.sum())
+            days_with_data = int(sales_day_mask.sum())
+
+            avg_daily = (
+                float(net_series[sales_day_mask].mean())
+                if days_with_data > 0
+                else 0.0
             )
-            prior_covers = int(prior_df["covers"].sum()) if not prior_df.empty else None
-            prior_avg = float(prior_df["net_total"].mean()) if not prior_df.empty else None
+
+            if not prior_df.empty:
+                prior_net_series = pd.to_numeric(
+                    prior_df["net_total"],
+                    errors="coerce",
+                ).fillna(0.0)
+                prior_covers_series = pd.to_numeric(
+                    prior_df["covers"],
+                    errors="coerce",
+                ).fillna(0.0)
+                prior_sales_day_mask = prior_net_series > 0
+
+                prior_total = float(prior_net_series.sum())
+                prior_covers = int(prior_covers_series.sum())
+                prior_avg = (
+                    float(prior_net_series[prior_sales_day_mask].mean())
+                    if int(prior_sales_day_mask.sum()) > 0
+                    else 0.0
+                )
+            else:
+                prior_total = None
+                prior_covers = None
+                prior_avg = None
 
             scope_label = (
                 "All outlets"
@@ -639,7 +745,7 @@ def render(ctx: TabContext) -> None:
                 with diagnostic_tabs[0]:
                     render_outlet_performance_scorecard(
                         df_raw=df_raw,
-                        prior_df=prior_df,
+                        prior_df=prior_raw_df,
                         analysis_period=analysis_period,
                         start_date=start_date,
                         end_date=end_date,
