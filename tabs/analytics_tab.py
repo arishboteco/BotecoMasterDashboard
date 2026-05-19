@@ -609,6 +609,7 @@ def render(ctx: TabContext) -> None:
                         "Drivers",
                         "Targets & Daily",
                         "Payments",
+                        "Action Tracker",
                     ]
                 )
 
@@ -672,29 +673,31 @@ def render(ctx: TabContext) -> None:
                         end_str,
                     )
 
-            st.markdown(
-                """
-                <div class="analytics-section-divider">
-                    <div class="analytics-eyebrow">Operating follow-up</div>
-                    <div class="analytics-card-title">Action Tracker</div>
-                    <p class="analytics-card-caption">
-                        Assign ownership to the most important follow-ups from this dashboard.
-                    </p>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            render_action_tracker(
-                df=df,
-                prior_df=prior_df,
-                monthly_target=monthly_target,
-                total_sales=total_sales,
-                total_covers=total_covers,
-                analysis_period=analysis_period,
-                selected_scope=selected_outlet,
-                layout="horizontal",
-                show_heading=False,
-            )
+                with diagnostic_tabs[6]:
+                    st.markdown(
+                        """
+                        <div class="analytics-diagnostic-intro">
+                            <div class="analytics-eyebrow">Operating follow-up</div>
+                            <div class="analytics-card-title">Which actions need ownership?</div>
+                            <p class="analytics-card-caption">
+                                Convert the dashboard signals and diagnostic follow-ups into tracked operating actions.
+                            </p>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                    render_action_tracker(
+                        df=df,
+                        prior_df=prior_df,
+                        monthly_target=monthly_target,
+                        total_sales=total_sales,
+                        total_covers=total_covers,
+                        analysis_period=analysis_period,
+                        selected_scope=selected_outlet,
+                        layout="horizontal",
+                        show_heading=False,
+                    )
 
         else:
             empty_state(

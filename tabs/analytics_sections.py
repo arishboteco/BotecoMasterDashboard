@@ -218,13 +218,34 @@ def _metric_tile_html(label: str, value: str, delta: str | None = None) -> str:
     )
 
 
-def _render_metric_tile_grid(tiles: list[tuple[str, str, str | None]]) -> None:
-    """Render compact 2x2 dashboard metric tiles."""
+def _render_metric_tile_grid(
+    tiles: list[tuple[str, str, str | None]],
+    max_columns: int = 6,
+) -> None:
+    """Render compact dashboard metric tiles with a predictable desktop layout."""
+    if not tiles:
+        return
+
+    column_count = min(len(tiles), max_columns)
+
     tiles_html = "".join(
         _metric_tile_html(label, value, delta) for label, value, delta in tiles
     )
+
     st.markdown(
-        f'<div class="analytics-metric-grid">{tiles_html}</div>',
+        f"""
+        <div
+            class="analytics-metric-grid"
+            style="
+                display: grid;
+                grid-template-columns: repeat({column_count}, minmax(0, 1fr));
+                gap: 0.5rem;
+                margin: 0.5rem 0 0.55rem 0;
+            "
+        >
+            {tiles_html}
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
@@ -5687,11 +5708,6 @@ def render_target_pace_snapshot(df: pd.DataFrame) -> None:
                     utils.format_rupee_short(avg_daily_sales),
                     f"{days_with_sales} sales days",
                 ),
-            ]
-        )
-
-        _render_metric_tile_grid(
-            [
                 (
                     "Required Daily Sales",
                     utils.format_rupee_short(required_daily_sales),
@@ -5706,7 +5722,8 @@ def render_target_pace_snapshot(df: pd.DataFrame) -> None:
                     ),
                     "Selected period gap",
                 ),
-            ]
+            ],
+            max_columns=6,
         )
 
         _render_dashboard_status(
