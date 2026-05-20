@@ -164,9 +164,21 @@ def render(ctx: TabContext) -> None:
                     for lid, name, _ in outlets_bundle
                 ]
                 foot_rows = report_service.get_foot_rows_cached(ctx.report_loc_ids, y_m[0], y_m[1])
-                per_outlet_footfall = None
+                per_outlet_footfall = [
+                    (
+                        name,
+                        report_service.get_foot_rows_cached([lid], y_m[0], y_m[1]),
+                    )
+                    for lid, name, _ in outlets_bundle
+                ]
                 per_outlet_cat = None
-                per_outlet_svc = None
+                per_outlet_svc = [
+                    (
+                        name,
+                        report_service.build_mtd_maps_cached([lid], y_m[0], y_m[1], date_str)[1],
+                    )
+                    for lid, name, _ in outlets_bundle
+                ]
             else:
                 mtd_cat, mtd_svc = report_service.build_mtd_maps_cached(
                     [ctx.report_loc_ids[0]], y_m[0], y_m[1], date_str
@@ -238,6 +250,7 @@ def render(ctx: TabContext) -> None:
                     _single_outlet_sheet = [(_selected_outlet, _outlet_data)]
                     _single_outlet_cat = None
                     _single_outlet_svc = None
+                    _single_outlet_footfall = None
                     _single_outlet_footfall_metrics = None
 
                     if len(ctx.report_loc_ids) > 1:
@@ -257,6 +270,14 @@ def render(ctx: TabContext) -> None:
                                 report_service.build_mtd_maps_cached(
                                     [lid], y_m[0], y_m[1], date_str
                                 )[1],
+                            )
+                            for lid, name, _ in outlets_bundle
+                            if lid == _selected_lid
+                        ]
+                        _single_outlet_footfall = [
+                            (
+                                name,
+                                report_service.get_foot_rows_cached([lid], y_m[0], y_m[1]),
                             )
                             for lid, name, _ in outlets_bundle
                             if lid == _selected_lid
@@ -298,7 +319,7 @@ def render(ctx: TabContext) -> None:
                         per_outlet_summaries=_single_outlet_sheet,
                         per_outlet_category=_single_outlet_cat,
                         per_outlet_service=_single_outlet_svc,
-                        per_outlet_footfall=None,
+                        per_outlet_footfall=_single_outlet_footfall,
                         per_outlet_footfall_metrics=_single_outlet_footfall_metrics,
                         daily_sales_history=foot_rows,
                     )

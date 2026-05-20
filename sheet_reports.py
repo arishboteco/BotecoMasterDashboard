@@ -1220,15 +1220,7 @@ def _build_sales_summary(
         mri += 1
 
     add_mtd_row("MTD Total Covers", "mtd_total_covers", fmt="int", bold=True)
-
-    def _apc_day_with_mtd(d):
-        day_apc = float(d.get("apc") or 0)
-        mtd_net = float(d.get("mtd_net_sales") or 0)
-        mtd_cov = int(d.get("mtd_total_covers") or 0)
-        mtd_apc = (mtd_net / mtd_cov) if mtd_cov > 0 else 0.0
-        return f"{_r(day_apc)} (MTD {_r(mtd_apc)})"
-
-    add_mtd_row("APC (Day)", _apc_day_with_mtd, fmt="str", right_color=statuses["apc"]["color"])
+    add_mtd_row("APC (Day)", "apc", fmt="currency", right_color=statuses["apc"]["color"])
 
     def _apc_month(d):
         mtd_net = float(d.get("mtd_net_sales") or 0)
@@ -1758,12 +1750,28 @@ def _format_apc_cell(amount: float, covers: int) -> str:
     return f"{_r(apc)} / {covers:,} covers"
 
 
+def _mtd_service_covers(footfall_rows: Optional[List[Dict[str, Any]]], service_name: str) -> int:
+    """Return MTD covers for lunch/dinner using month footfall rows."""
+    service_key = str(service_name or "").strip().lower()
+    if service_key not in {"lunch", "dinner"}:
+        return 0
+    field = "lunch_covers" if service_key == "lunch" else "dinner_covers"
+    total = 0
+    for row in footfall_rows or []:
+        total += int((row or {}).get(field) or 0)
+    return total
+
+
 def _build_apc_service_split(
     r: Dict[str, Any],
     location_name: str,
     day_lbl: str,
+    mtd_service: Optional[Dict[str, float]] = None,
+    month_footfall_rows: Optional[List[Dict[str, Any]]] = None,
     n_outlets: int = 1,
     per_outlet: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
+    per_outlet_service: Optional[List[Tuple[str, Dict[str, float]]]] = None,
+    per_outlet_footfall: Optional[List[Tuple[str, List[Dict[str, Any]]]]] = None,
 ) -> list:
     """Build APC split by service with outlets as columns.
 
@@ -1810,6 +1818,9 @@ def _build_apc_service_split(
             "amount": total_amount,
             "covers": total_covers,
         }
+    mtd_service = dict(mtd_service or {})
+    outlet_mtd_service_maps = [svc_map for _, svc_map in (per_outlet_service or [])]
+    outlet_mtd_footfall_rows = [ff_rows for _, ff_rows in (per_outlet_footfall or [])]
 
     headers = [""] + [name for name, _ in outlet_items]
     if len(outlet_items) >= 2:
@@ -1853,14 +1864,31 @@ def _build_apc_service_split(
         apc_row_index = len(rows)
         combined_value_rows.append(apc_row_index)
         apc_row = ["APC"]
-        for _, outlet_data in outlet_items:
+        for outlet_idx, (_, outlet_data) in enumerate(outlet_items):
             amount = _service_amount(outlet_data, service_name)
             covers = _service_covers(outlet_data, service_name)
-            apc_row.append(_r(amount / covers) if covers > 0 else "—")
+            day_apc_text = _r(amount / covers) if covers > 0 else "—"
+            mtd_amount = 0.0
+            if outlet_idx < len(outlet_mtd_service_maps):
+                mtd_amount = float(
+                    (outlet_mtd_service_maps[outlet_idx] or {}).get(service_name, 0) or 0
+                )
+            mtd_covers = 0
+            if outlet_idx < len(outlet_mtd_footfall_rows):
+                mtd_covers = _mtd_service_covers(
+                    outlet_mtd_footfall_rows[outlet_idx],
+                    service_name,
+                )
+            mtd_apc_text = _r(mtd_amount / mtd_covers) if mtd_covers > 0 else "—"
+            apc_row.append(f"{day_apc_text} (MTD {mtd_apc_text})")
         if len(outlet_items) >= 2:
             total_amount = combined_data[service_name]["amount"]
             total_covers = combined_data[service_name]["covers"]
-            apc_row.append(_r(total_amount / total_covers) if total_covers > 0 else "—")
+            day_apc_text = _r(total_amount / total_covers) if total_covers > 0 else "—"
+            mtd_amount = float(mtd_service.get(service_name, 0) or 0)
+            mtd_covers = _mtd_service_covers(month_footfall_rows, service_name)
+            mtd_apc_text = _r(mtd_amount / mtd_covers) if mtd_covers > 0 else "—"
+            apc_row.append(f"{day_apc_text} (MTD {mtd_apc_text})")
         rows.append(apc_row)
 
     col_count = len(headers)
@@ -2478,8 +2506,12 @@ def generate_sheet_style_report_sections(
         r,
         location_name,
         _sheet_date_label(str(r.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]),
+        mtd_service=ms,
+        month_footfall_rows=mf,
         n_outlets=n_outlets,
         per_outlet=per_outlet,
+        per_outlet_service=per_outlet_svc,
+        per_outlet_footfall=per_outlet_ff,
     )
     out["apc_service"] = _render_elements_to_png(elements, width)
 
