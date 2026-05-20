@@ -1220,7 +1220,15 @@ def _build_sales_summary(
         mri += 1
 
     add_mtd_row("MTD Total Covers", "mtd_total_covers", fmt="int", bold=True)
-    add_mtd_row("APC (Day)", "apc", fmt="currency", right_color=statuses["apc"]["color"])
+
+    def _apc_day_with_mtd(d):
+        day_apc = float(d.get("apc") or 0)
+        mtd_net = float(d.get("mtd_net_sales") or 0)
+        mtd_cov = int(d.get("mtd_total_covers") or 0)
+        mtd_apc = (mtd_net / mtd_cov) if mtd_cov > 0 else 0.0
+        return f"{_r(day_apc)} (MTD {_r(mtd_apc)})"
+
+    add_mtd_row("APC (Day)", _apc_day_with_mtd, fmt="str", right_color=statuses["apc"]["color"])
 
     def _apc_month(d):
         mtd_net = float(d.get("mtd_net_sales") or 0)
