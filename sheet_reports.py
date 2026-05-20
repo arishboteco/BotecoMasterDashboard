@@ -1860,14 +1860,24 @@ def _build_apc_service_split(
             )
         rows.append(covers_row)
 
-        # APC row
-        apc_row_index = len(rows)
-        combined_value_rows.append(apc_row_index)
-        apc_row = ["APC"]
-        for outlet_idx, (_, outlet_data) in enumerate(outlet_items):
+        # APC rows (separate day and MTD rows for readability)
+        day_apc_row_index = len(rows)
+        combined_value_rows.append(day_apc_row_index)
+        day_apc_row = ["Day APC"]
+        for _, outlet_data in outlet_items:
             amount = _service_amount(outlet_data, service_name)
             covers = _service_covers(outlet_data, service_name)
-            day_apc_text = _r(amount / covers) if covers > 0 else "—"
+            day_apc_row.append(_r(amount / covers) if covers > 0 else "—")
+        if len(outlet_items) >= 2:
+            total_amount = combined_data[service_name]["amount"]
+            total_covers = combined_data[service_name]["covers"]
+            day_apc_row.append(_r(total_amount / total_covers) if total_covers > 0 else "—")
+        rows.append(day_apc_row)
+
+        mtd_apc_row_index = len(rows)
+        combined_value_rows.append(mtd_apc_row_index)
+        mtd_apc_row = ["MTD APC"]
+        for outlet_idx, _ in enumerate(outlet_items):
             mtd_amount = 0.0
             if outlet_idx < len(outlet_mtd_service_maps):
                 mtd_amount = float(
@@ -1875,21 +1885,13 @@ def _build_apc_service_split(
                 )
             mtd_covers = 0
             if outlet_idx < len(outlet_mtd_footfall_rows):
-                mtd_covers = _mtd_service_covers(
-                    outlet_mtd_footfall_rows[outlet_idx],
-                    service_name,
-                )
-            mtd_apc_text = _r(mtd_amount / mtd_covers) if mtd_covers > 0 else "—"
-            apc_row.append(f"{day_apc_text} (MTD {mtd_apc_text})")
+                mtd_covers = _mtd_service_covers(outlet_mtd_footfall_rows[outlet_idx], service_name)
+            mtd_apc_row.append(_r(mtd_amount / mtd_covers) if mtd_covers > 0 else "—")
         if len(outlet_items) >= 2:
-            total_amount = combined_data[service_name]["amount"]
-            total_covers = combined_data[service_name]["covers"]
-            day_apc_text = _r(total_amount / total_covers) if total_covers > 0 else "—"
             mtd_amount = float(mtd_service.get(service_name, 0) or 0)
             mtd_covers = _mtd_service_covers(month_footfall_rows, service_name)
-            mtd_apc_text = _r(mtd_amount / mtd_covers) if mtd_covers > 0 else "—"
-            apc_row.append(f"{day_apc_text} (MTD {mtd_apc_text})")
-        rows.append(apc_row)
+            mtd_apc_row.append(_r(mtd_amount / mtd_covers) if mtd_covers > 0 else "—")
+        rows.append(mtd_apc_row)
 
     col_count = len(headers)
 
