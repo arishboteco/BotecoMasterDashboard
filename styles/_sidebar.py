@@ -159,6 +159,34 @@ SIDEBAR_IMPROVEMENTS = r"""    /* ── Sidebar improvements ──────
     [data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] * {
         color: var(--sidebar-text) !important;
     }
+        /* Logout button danger styling */
+    .sidebar-logout-marker {
+        display: none;
+    }
+
+    [data-testid="stSidebar"] div[data-testid="stMarkdown"]:has(.sidebar-logout-marker)
+    + div[data-testid="stButton"] button {
+        background: #FEE2E2 !important;
+        color: #991B1B !important;
+        border-color: #FCA5A5 !important;
+    }
+
+    [data-testid="stSidebar"] div[data-testid="stMarkdown"]:has(.sidebar-logout-marker)
+    + div[data-testid="stButton"] button * {
+        color: #991B1B !important;
+    }
+
+    [data-testid="stSidebar"] div[data-testid="stMarkdown"]:has(.sidebar-logout-marker)
+    + div[data-testid="stButton"] button:hover {
+        background: #FECACA !important;
+        color: #7F1D1D !important;
+        border-color: #F87171 !important;
+    }
+
+    [data-testid="stSidebar"] div[data-testid="stMarkdown"]:has(.sidebar-logout-marker)
+    + div[data-testid="stButton"] button:hover * {
+        color: #7F1D1D !important;
+    }
 """
 
 SIDEBAR_GRADIENT_REFINEMENT = ""

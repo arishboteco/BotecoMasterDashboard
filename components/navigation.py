@@ -112,3 +112,34 @@ def date_range_nav(
         )
 
     return start_date, end_date
+
+def sidebar_app_nav(
+    items: list[str],
+    default: str = "Analytics",
+    key: str = "active_app_section",
+) -> str:
+    """Render global application navigation in the sidebar."""
+    if not items:
+        return default
+
+    safe_default = default if default in items else items[0]
+
+    if key not in st.session_state or st.session_state[key] not in items:
+        st.session_state[key] = safe_default
+
+    for item in items:
+        is_active = st.session_state[key] == item
+        label = f"▸ {item}" if is_active else item
+
+        clicked = st.sidebar.button(
+            label,
+            key=f"{key}_{item.lower().replace(' ', '_')}",
+            width="stretch",
+            type="primary" if is_active else "secondary",
+        )
+
+        if clicked and not is_active:
+            st.session_state[key] = item
+            st.rerun()
+
+    return st.session_state[key]

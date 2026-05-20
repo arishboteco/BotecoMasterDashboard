@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import calendar
+import logging
+from datetime import date
+from html import escape
 from typing import Dict, List
 
 import pandas as pd
@@ -18,15 +22,23 @@ from components.navigation import date_range_nav
 from tabs import TabContext
 from tabs.analytics_logic import resolve_period_window
 from tabs.analytics_sections import (
+    render_action_tracker,
+    render_category_quality_layer,
     render_driver_analysis,
     render_forecast_command_center,
     render_mix_snapshot,
+    render_outlet_performance_scorecard,
+    render_owner_readout_and_data_confidence,
     render_payment_reconciliation,
+    render_required_sales_plan,
+    render_sales_movement_waterfall,
+    render_sales_quality_layer,
     render_target_snapshot,
 )
 
 # In-process cache registered with cache_manager for coordinated invalidation
 _RAW_SUMMARY_CACHE: dict = cache_manager.register("analytics_raw")
+logger = logging.getLogger(__name__)
 
 
 def clear_analytics_cache() -> None:
@@ -39,67 +51,114 @@ def _add_target_columns(
     all_locs: list,
     location_ids: list,
 ) -> pd.DataFrame:
-    """Add target and pct_target columns to a summaries DataFrame.
+    """Add selected-date daily target and pct_target columns.
 
-    Args:
-        df: DataFrame with 'location_id', 'date', 'net_total' columns
-        all_locs: List of all location dicts from database
-        location_ids: List of location IDs being analyzed
-
-    Returns:
-        DataFrame with added 'target' and 'pct_target' columns
+    Targets are calculated per location, per month, and per weekday.
+    This avoids using a fixed 30-day month for every date.
     """
     if df.empty:
         return df
 
     df = df.copy()
 
-    loc_settings = {loc["id"]: loc for loc in all_locs}
+    if "location_id" not in df.columns or "date" not in df.columns:
+        df["target"] = 0.0
+        df["pct_target"] = 0.0
+        return df
 
-    loc_monthly_target: dict = {}
-    loc_weekday_mix: dict = {}
-    loc_day_targets: dict = {}
+    loc_settings = {int(loc["id"]): loc for loc in all_locs if loc.get("id") is not None}
+
+    loc_monthly_target: dict[int, float] = {}
+    loc_weekday_mix: dict[int, dict] = {}
 
     for lid in location_ids:
-        settings = loc_settings.get(lid, {})
+        safe_lid = int(lid)
+        settings = loc_settings.get(safe_lid, {})
         monthly_target = float(settings.get("target_monthly_sales", 0) or 0)
+
         if monthly_target <= 0:
             monthly_target = float(config.MONTHLY_TARGET)
-        loc_monthly_target[lid] = monthly_target
 
-        recent = database.get_recent_summaries(lid, weeks=8)
-        weekday_mix = utils.compute_weekday_mix(recent)
-        loc_weekday_mix[lid] = weekday_mix
+        loc_monthly_target[safe_lid] = monthly_target
 
-        day_targets = utils.compute_day_targets(monthly_target, weekday_mix)
-        loc_day_targets[lid] = day_targets
+        recent = database.get_recent_summaries(safe_lid, weeks=8)
+        loc_weekday_mix[safe_lid] = utils.compute_weekday_mix(recent)
 
-    # Vectorized target lookup. Per-row .apply is slow on large date ranges;
-    # parse the date column once and join via a (location_id, weekday) key.
-    parsed = pd.to_datetime(df["date"].astype(str).str[:10], errors="coerce")
-    weekday_names = parsed.dt.weekday.map(
-        lambda i: utils.WEEKDAY_NAMES[int(i)] if pd.notna(i) else None
+    parsed_dates = pd.to_datetime(
+        df["date"].astype(str).str[:10],
+        errors="coerce",
     )
-    target_lookup: Dict[tuple, float] = {
-        (lid, wd): float(val)
-        for lid, day_targets in loc_day_targets.items()
-        for wd, val in (day_targets or {}).items()
-    }
-    keys = list(
-        zip(
-            df["location_id"].tolist(),
-            weekday_names.tolist(),
-            strict=False,
+
+    df_location_ids = pd.to_numeric(
+        df["location_id"],
+        errors="coerce",
+    )
+
+    target_lookup: dict[tuple[int, int, int, str], float] = {}
+
+    observed_months: set[tuple[int, int, int]] = set()
+
+    for lid_value, parsed_date in zip(df_location_ids, parsed_dates, strict=False):
+        if pd.isna(lid_value) or pd.isna(parsed_date):
+            continue
+
+        safe_lid = int(lid_value)
+        observed_months.add(
+            (
+                safe_lid,
+                int(parsed_date.year),
+                int(parsed_date.month),
+            )
         )
-    )
-    df["target"] = pd.Series(
-        [target_lookup.get(k, 0.0) for k in keys], index=df.index
-    )
+
+    for safe_lid, year, month in observed_months:
+        monthly_target = loc_monthly_target.get(safe_lid, float(config.MONTHLY_TARGET))
+        weekday_mix = loc_weekday_mix.get(
+            safe_lid,
+            {day: 0.0 for day in utils.WEEKDAY_NAMES},
+        )
+
+        days_in_month = calendar.monthrange(year, month)[1]
+
+        day_targets = utils.compute_day_targets(
+            monthly_target,
+            weekday_mix,
+            days_in_month=days_in_month,
+        )
+
+        for weekday_name, target_value in day_targets.items():
+            target_lookup[(safe_lid, year, month, weekday_name)] = float(target_value or 0)
+
+    targets: list[float] = []
+
+    for lid_value, parsed_date in zip(df_location_ids, parsed_dates, strict=False):
+        if pd.isna(lid_value) or pd.isna(parsed_date):
+            targets.append(0.0)
+            continue
+
+        safe_lid = int(lid_value)
+        weekday_name = utils.WEEKDAY_NAMES[int(parsed_date.weekday())]
+
+        targets.append(
+            target_lookup.get(
+                (
+                    safe_lid,
+                    int(parsed_date.year),
+                    int(parsed_date.month),
+                    weekday_name,
+                ),
+                0.0,
+            )
+        )
+
+    df["target"] = pd.Series(targets, index=df.index)
 
     target = pd.to_numeric(df["target"], errors="coerce").fillna(0.0)
     net = pd.to_numeric(df["net_total"], errors="coerce").fillna(0.0)
-    pct = (net.divide(target.where(target > 0)) * 100).fillna(0.0).round(2)
-    df["pct_target"] = pct
+
+    df["pct_target"] = (
+        net.divide(target.where(target > 0)) * 100
+    ).fillna(0.0).round(2)
 
     return df
 
@@ -120,6 +179,225 @@ def _load_raw_summaries_cached(
     return raw
 
 
+def _format_comparison_delta(value: float | None) -> str:
+    """Format a comparison delta for compact KPI cards."""
+    return "N/A" if value is None else f"{value:+.1f}%"
+
+
+def _html(value: object) -> str:
+    """Escape dynamic text for custom Analytics HTML."""
+    return escape(str(value), quote=True)
+
+
+def _delta_tone(value: float | None) -> str:
+    """Return a CSS tone suffix for numeric KPI movement."""
+    if value is None:
+        return "neutral"
+    if value > 0:
+        return "positive"
+    if value < 0:
+        return "negative"
+    return "neutral"
+
+
+def _kpi_item_html(
+    label: str,
+    value: str,
+    delta: str | None = None,
+    tone: str = "neutral",
+) -> str:
+    """Build a single KPI tile for the executive KPI summary."""
+    delta_html = ""
+    if delta:
+        delta_html = (
+            f'<div class="analytics-kpi-delta analytics-kpi-delta--{_html(tone)}">'
+            f"{_html(delta)}</div>"
+        )
+
+    return (
+        '<div class="analytics-kpi-item">'
+        f'<div class="analytics-kpi-label">{_html(label)}</div>'
+        f'<div class="analytics-kpi-value">{_html(value)}</div>'
+        f"{delta_html}"
+        "</div>"
+    )
+
+
+def _kpi_card_html(
+    title: str,
+    items: list[tuple[str, str, str | None, str]],
+    grid_columns: int,
+) -> str:
+    """Build a grouped KPI dashboard card."""
+    items_html = "".join(
+        _kpi_item_html(label, value, delta, tone)
+        for label, value, delta, tone in items
+    )
+    safe_grid = 3 if grid_columns == 3 else 2
+    return (
+        '<div class="analytics-kpi-card">'
+        f'<div class="analytics-eyebrow">{_html(title)}</div>'
+        f'<div class="analytics-kpi-grid analytics-kpi-grid--{safe_grid}">'
+        f"{items_html}"
+        "</div>"
+        "</div>"
+    )
+
+
+def _render_executive_kpi_summary(
+    total_sales: float,
+    total_covers: int,
+    prior_total: float | None,
+    prior_covers: int | None,
+    monthly_target: float,
+    avg_daily: float,
+    df: pd.DataFrame,
+    prior_df: pd.DataFrame,
+    start_date: date,
+    end_date: date,
+) -> None:
+    """Render grouped executive KPIs for the Analytics tab."""
+    current_apc = total_sales / total_covers if total_covers > 0 else 0.0
+
+    # Target Progress should match the selected analytics window.
+    # Do not use full monthly target here, because filters can be 7D, 30D, LM, QTD, YTD, or Custom.
+    if "target" in df.columns:
+        target_series = pd.to_numeric(df["target"], errors="coerce").fillna(0.0)
+        selected_period_target = float(target_series.sum())
+    else:
+        selected_period_target = 0.0
+
+    # Fallback only if target column is unavailable.
+    if selected_period_target <= 0 and monthly_target > 0:
+        selected_period_target = monthly_target
+
+    target_gap = (
+        selected_period_target - total_sales
+        if selected_period_target > 0
+        else None
+    )
+    achievement_pct = (
+        (total_sales / selected_period_target) * 100
+        if selected_period_target > 0
+        else None
+    )
+
+    days_in_view = "N/A"
+    data_days = "N/A"
+
+    if not df.empty and "date" in df.columns:
+        parsed_dates = pd.to_datetime(df["date"], errors="coerce").dropna()
+        if not parsed_dates.empty:
+            days_in_view = str((end_date - start_date).days + 1)
+            data_days = str(parsed_dates.dt.date.nunique())
+
+    sales_delta = None
+    if prior_total is not None and prior_total > 0:
+        sales_delta = ((total_sales - prior_total) / prior_total) * 100
+
+    covers_delta = None
+    if prior_covers is not None and prior_covers > 0:
+        covers_delta = ((total_covers - prior_covers) / prior_covers) * 100
+
+    prior_apc = None
+    if prior_total is not None and prior_covers is not None and prior_covers > 0:
+        prior_apc = prior_total / prior_covers
+
+    apc_delta = None
+    if prior_apc is not None and prior_apc > 0:
+        apc_delta = ((current_apc - prior_apc) / prior_apc) * 100
+
+    target_value = (
+        utils.format_rupee_short(selected_period_target)
+        if selected_period_target > 0
+        else "N/A"
+    )
+    achievement_value = (
+        f"{achievement_pct:.1f}%" if achievement_pct is not None else "N/A"
+    )
+    target_gap_value = (
+        utils.format_rupee_short(target_gap) if target_gap is not None else "N/A"
+    )
+    target_gap_delta = None
+    target_gap_tone = "neutral"
+    if target_gap is not None:
+        target_gap_delta = "Ahead" if target_gap <= 0 else "Behind target"
+        target_gap_tone = "positive" if target_gap <= 0 else "negative"
+
+    cards_html = "".join(
+        [
+            _kpi_card_html(
+                "Performance Summary",
+                [
+                    (
+                        "Net Sales",
+                        utils.format_rupee_short(total_sales),
+                        None
+                        if sales_delta is None
+                        else f"{sales_delta:+.1f}% vs comparison",
+                        _delta_tone(sales_delta),
+                    ),
+                    (
+                        "Covers",
+                        f"{total_covers:,}",
+                        None
+                        if covers_delta is None
+                        else f"{covers_delta:+.1f}% vs comparison",
+                        _delta_tone(covers_delta),
+                    ),
+                    ("APC", utils.format_currency(current_apc), None, "neutral"),
+                ],
+                grid_columns=2,
+            ),
+            _kpi_card_html(
+                "Target Progress",
+                [
+                    ("Target", target_value, None, "neutral"),
+                    ("Achievement %", achievement_value, None, "neutral"),
+                    ("Target Gap", target_gap_value, target_gap_delta, target_gap_tone),
+                    ("Days in View", days_in_view, f"{data_days} data days", "neutral"),
+                ],
+                grid_columns=2,
+            ),
+            _kpi_card_html(
+                "Sales Quality Snapshot",
+                [
+                    (
+                        "Avg Daily Sales",
+                        utils.format_rupee_short(avg_daily),
+                        None,
+                        "neutral",
+                    ),
+                    (
+                        "Sales vs comparison",
+                        _format_comparison_delta(sales_delta),
+                        None,
+                        _delta_tone(sales_delta),
+                    ),
+                    (
+                        "Covers vs comparison",
+                        _format_comparison_delta(covers_delta),
+                        None,
+                        _delta_tone(covers_delta),
+                    ),
+                    (
+                        "APC vs comparison",
+                        _format_comparison_delta(apc_delta),
+                        None,
+                        _delta_tone(apc_delta),
+                    ),
+                ],
+                grid_columns=2,
+            ),
+        ]
+    )
+
+    st.markdown(
+        f'<div class="analytics-kpi-group">{cards_html}</div>',
+        unsafe_allow_html=True,
+    )
+
+
 def render(ctx: TabContext) -> None:
     """Render the Analytics tab UI with charts and period analysis."""
     shell = page_shell()
@@ -131,31 +409,54 @@ def render(ctx: TabContext) -> None:
             "mobile-layout-stack",
             "mobile-layout-filters",
         ):
-            period_col, outlet_col = st.columns([1, 2])
-            if "analysis_period" not in st.session_state:
-                st.session_state.analysis_period = "30D"
-            period_options = ["7D", "30D", "MTD", "QTD", "Custom"]
+            period_col, outlet_col, comparison_col = st.columns([1.2, 2, 2])
+
+            period_options = [
+                "7D",
+                "30D",
+                "MTD",
+                "LM",
+                "QTD",
+                "YTD",
+                "Custom",
+            ]
+
             current_period = st.session_state.get("analysis_period", "30D")
+            if current_period == "Last Month":
+                current_period = "LM"
             if current_period not in period_options:
                 current_period = "30D"
+
             with period_col:
                 analysis_period = st.segmented_control(
                     "Time Period",
                     options=period_options,
                     default=current_period,
-                    key="analysis_period",
+                    key="analysis_period_selector",
                     label_visibility="collapsed",
                 ) or current_period
+
+            st.session_state.analysis_period = analysis_period
 
             selected_outlet = "All outlets"
             if len(ctx.report_loc_ids) > 1 and ctx.all_locs:
                 _loc_options = ["All outlets"] + [
                     loc["name"] for loc in sorted(ctx.all_locs, key=lambda x: x["name"])
                 ]
+
                 if "analytics_outlet_scope" not in st.session_state:
                     st.session_state.analytics_outlet_scope = "All outlets"
-                _current = st.session_state.get("analytics_outlet_scope", "All outlets")
-                _default_idx = _loc_options.index(_current) if _current in _loc_options else 0
+
+                _current = st.session_state.get(
+                    "analytics_outlet_scope",
+                    "All outlets",
+                )
+                _default_idx = (
+                    _loc_options.index(_current)
+                    if _current in _loc_options
+                    else 0
+                )
+
                 with outlet_col:
                     selected_outlet = st.segmented_control(
                         "Select outlet",
@@ -164,7 +465,31 @@ def render(ctx: TabContext) -> None:
                         key="analytics_outlet_radio",
                         label_visibility="collapsed",
                     ) or _loc_options[_default_idx]
+
                 st.session_state.analytics_outlet_scope = selected_outlet
+
+            comparison_options = [
+                "Previous Period",
+                "Same Period Last Month",
+                "Same Period Last Year",
+            ]
+
+            current_comparison = st.session_state.get(
+                "analytics_comparison_mode",
+                "Previous Period",
+            )
+
+            if current_comparison not in comparison_options:
+                current_comparison = "Previous Period"
+
+            with comparison_col:
+                comparison_mode = st.segmented_control(
+                    "Compare",
+                    options=comparison_options,
+                    default=current_comparison,
+                    key="analytics_comparison_mode",
+                    label_visibility="collapsed",
+                ) or current_comparison
 
             custom_start = None
             custom_end = None
@@ -179,6 +504,7 @@ def render(ctx: TabContext) -> None:
         analysis_period,
         custom_start=custom_start,
         custom_end=custom_end,
+        comparison_mode=comparison_mode,
     )
 
     start_str = start_date.strftime("%Y-%m-%d")
@@ -206,6 +532,24 @@ def render(ctx: TabContext) -> None:
     )
 
     summaries = scope.merge_summaries_by_date(raw_summaries_with_targets)
+
+    if summaries and raw_summaries_with_targets:
+        raw_target_total = sum(
+            float(row.get("target") or 0)
+            for row in raw_summaries_with_targets
+        )
+        merged_target_total = sum(
+            float(row.get("target") or 0)
+            for row in summaries
+        )
+
+        if abs(raw_target_total - merged_target_total) > 1:
+            logger.warning(
+                "Analytics target aggregation mismatch: raw_target_total=%s merged_target_total=%s",
+                raw_target_total,
+                merged_target_total,
+            )
+
     df_raw = pd.DataFrame(raw_summaries) if raw_summaries else pd.DataFrame()
     if multi_analytics and not df_raw.empty:
         loc_names = {loc["id"]: str(loc["name"]) for loc in ctx.all_locs}
@@ -225,20 +569,58 @@ def render(ctx: TabContext) -> None:
                     prior_start.strftime("%Y-%m-%d"),
                     prior_end.strftime("%Y-%m-%d"),
                 )
+            prior_raw_df = (
+                _add_target_columns(
+                    pd.DataFrame(prior_summaries),
+                    ctx.all_locs,
+                    analytics_loc_ids,
+                )
+                if prior_summaries
+                else pd.DataFrame()
+            )
+
             prior_df = (
-                pd.DataFrame(prior_summaries) if prior_summaries else pd.DataFrame()
+                pd.DataFrame(scope.merge_summaries_by_date(prior_raw_df.to_dict("records")))
+                if not prior_raw_df.empty
+                else pd.DataFrame()
             )
 
-            total_sales = float(df["net_total"].sum())
-            avg_daily = float(df["net_total"].mean())
-            total_covers = int(df["covers"].sum())
-            days_with_data = int(len(df[df["net_total"] > 0]))
+            net_series = pd.to_numeric(df["net_total"], errors="coerce").fillna(0.0)
+            covers_series = pd.to_numeric(df["covers"], errors="coerce").fillna(0.0)
+            sales_day_mask = net_series > 0
 
-            prior_total = (
-                float(prior_df["net_total"].sum()) if not prior_df.empty else None
+            total_sales = float(net_series.sum())
+            total_covers = int(covers_series.sum())
+            days_with_data = int(sales_day_mask.sum())
+
+            avg_daily = (
+                float(net_series[sales_day_mask].mean())
+                if days_with_data > 0
+                else 0.0
             )
-            prior_covers = int(prior_df["covers"].sum()) if not prior_df.empty else None
-            prior_avg = float(prior_df["net_total"].mean()) if not prior_df.empty else None
+
+            if not prior_df.empty:
+                prior_net_series = pd.to_numeric(
+                    prior_df["net_total"],
+                    errors="coerce",
+                ).fillna(0.0)
+                prior_covers_series = pd.to_numeric(
+                    prior_df["covers"],
+                    errors="coerce",
+                ).fillna(0.0)
+                prior_sales_day_mask = prior_net_series > 0
+
+                prior_total = float(prior_net_series.sum())
+                prior_covers = int(prior_covers_series.sum())
+                prior_avg = (
+                    float(prior_net_series[prior_sales_day_mask].mean())
+                    if int(prior_sales_day_mask.sum()) > 0
+                    else 0.0
+                )
+            else:
+                prior_total = None
+                prior_covers = None
+                prior_avg = None
 
             scope_label = (
                 "All outlets"
@@ -258,6 +640,7 @@ def render(ctx: TabContext) -> None:
             if prior_start and prior_end:
                 context_items.append(
                     f'<span class="context-band-item"><strong>Comparison:</strong> '
+                    f"{comparison_mode} · "
                     f"{prior_start.strftime('%d %b')} to {prior_end.strftime('%d %b %Y')}</span>"
                 )
             st.markdown(
@@ -265,66 +648,185 @@ def render(ctx: TabContext) -> None:
                 unsafe_allow_html=True,
             )
 
-            render_forecast_command_center(
-                df,
-                prior_df,
-                analysis_period,
-                start_date,
-                end_date,
-                prior_start,
-                prior_end,
-                scope.sum_location_monthly_targets(analytics_loc_ids),
-                total_sales,
-                avg_daily,
-                total_covers,
-                days_with_data,
-                prior_total,
-                prior_covers,
-                prior_avg,
+            monthly_target = scope.sum_location_monthly_targets(analytics_loc_ids)
+
+            _render_executive_kpi_summary(
+                total_sales=total_sales,
+                total_covers=total_covers,
+                prior_total=prior_total,
+                prior_covers=prior_covers,
+                monthly_target=monthly_target,
+                avg_daily=avg_daily,
+                df=df,
+                prior_df=prior_df,
+                start_date=start_date,
+                end_date=end_date,
             )
 
-            with classed_container("tab-analytics-mobile-sections", "mobile-layout-stack"):
-                st.markdown('<div class="section-stack">', unsafe_allow_html=True)
-                st.markdown("### Analysis Layers")
-                st.caption(
-                    "Use these focused layers to explain the forecast without "
-                    "scrolling through every chart."
+            # ── Row 1: Owner decision row ────────────────────────────
+            # Full width keeps the executive readout prominent before diagnostics.
+            render_owner_readout_and_data_confidence(
+                df=df,
+                df_raw=df_raw,
+                prior_df=prior_df,
+                analysis_period=analysis_period,
+                start_date=start_date,
+                end_date=end_date,
+                monthly_target=monthly_target,
+                total_sales=total_sales,
+                total_covers=total_covers,
+                prior_total=prior_total,
+                prior_covers=prior_covers,
+                analytics_loc_ids=analytics_loc_ids,
+            )
+
+            # ── Row 2: Required plan + forecast command center ───────
+            plan_col, forecast_col = st.columns([1, 1])
+
+            with plan_col:
+                render_required_sales_plan(
+                    df=df,
+                    analysis_period=analysis_period,
+                    start_date=start_date,
+                    end_date=end_date,
+                    monthly_target=monthly_target,
+                    total_sales=total_sales,
+                    total_covers=total_covers,
+                    compact=True,
                 )
-                with classed_container(
-                    "tab-analytics-mobile-secondary",
-                    "mobile-layout-secondary",
-                ):
-                    trend_tab, mix_tab, target_tab, recon_tab = st.tabs(
-                        [
-                            "Drivers",
-                            "Mix",
-                            "Targets & Daily",
-                            "Payments",
-                        ]
+
+            with forecast_col:
+                render_forecast_command_center(
+                    df,
+                    prior_df,
+                    analysis_period,
+                    start_date,
+                    end_date,
+                    prior_start,
+                    prior_end,
+                    monthly_target,
+                    total_sales,
+                    avg_daily,
+                    total_covers,
+                    days_with_data,
+                    prior_total,
+                    prior_covers,
+                    prior_avg,
+                    show_kpis=False,
+                    show_movement_breakdown=False,
+                )
+
+            # ── Row 3: Diagnostics and deep-dive layers ──────────────
+            st.markdown(
+                """
+                <div class="analytics-section-divider">
+                    <div class="analytics-eyebrow">Diagnostic Layers</div>
+                    <div class="analytics-card-title">Drill-down diagnostics</div>
+                    <p class="analytics-card-caption">
+                        Use these layers when you need to understand why the top KPIs moved.
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            with classed_container("analytics-diagnostic-scope"):
+                diagnostic_tabs = st.tabs(
+                    [
+                        "Outlet Scorecard",
+                        "Sales Quality",
+                        "Menu Mix & Timing",
+                        "Drivers",
+                        "Targets & Daily",
+                        "Payments",
+                        "Action Tracker",
+                    ]
+                )
+
+                with diagnostic_tabs[0]:
+                    render_outlet_performance_scorecard(
+                        df_raw=df_raw,
+                        prior_df=prior_raw_df,
+                        analysis_period=analysis_period,
+                        start_date=start_date,
+                        end_date=end_date,
+                        all_locs=ctx.all_locs,
                     )
-                    with trend_tab:
-                        render_driver_analysis(
-                            df,
-                            df_raw,
-                            multi_analytics,
-                        )
-                    with mix_tab:
-                        render_mix_snapshot(
-                            analytics_loc_ids,
-                            start_str,
-                            end_str,
-                            df,
-                            start_date,
-                        )
-                    with target_tab:
-                        render_target_snapshot(
-                            analytics_loc_ids,
-                            start_date,
-                            df,
-                        )
-                    with recon_tab:
-                        render_payment_reconciliation(analytics_loc_ids, start_str, end_str)
-                st.markdown("</div>", unsafe_allow_html=True)
+
+                with diagnostic_tabs[1]:
+                    render_sales_quality_layer(
+                        df=df,
+                        prior_df=prior_df,
+                        total_sales=total_sales,
+                        total_covers=total_covers,
+                    )
+
+                with diagnostic_tabs[2]:
+                    render_category_quality_layer(
+                        report_loc_ids=analytics_loc_ids,
+                        start_str=start_str,
+                        end_str=end_str,
+                        prior_start=prior_start,
+                        prior_end=prior_end,
+                        total_sales=total_sales,
+                        prior_total=prior_total,
+                    )
+
+                    render_mix_snapshot(
+                        analytics_loc_ids,
+                        start_str,
+                        end_str,
+                        df,
+                        start_date,
+                    )
+
+                with diagnostic_tabs[3]:
+                    render_sales_movement_waterfall(df, prior_df)
+
+                    render_driver_analysis(
+                        df,
+                        df_raw,
+                        multi_analytics,
+                    )
+
+                with diagnostic_tabs[4]:
+                    render_target_snapshot(
+                        analytics_loc_ids,
+                        start_date,
+                        df,
+                    )
+
+                with diagnostic_tabs[5]:
+                    render_payment_reconciliation(
+                        analytics_loc_ids,
+                        start_str,
+                        end_str,
+                    )
+
+                with diagnostic_tabs[6]:
+                    st.markdown(
+                        """
+                        <div class="analytics-diagnostic-intro">
+                            <div class="analytics-eyebrow">Operating follow-up</div>
+                            <div class="analytics-card-title">Which actions need ownership?</div>
+                            <p class="analytics-card-caption">
+                                Convert the dashboard signals and diagnostic follow-ups into tracked operating actions.
+                            </p>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                    render_action_tracker(
+                        df=df,
+                        prior_df=prior_df,
+                        monthly_target=monthly_target,
+                        total_sales=total_sales,
+                        total_covers=total_covers,
+                        analysis_period=analysis_period,
+                        selected_scope=selected_outlet,
+                        layout="horizontal",
+                        show_heading=False,
+                    )
 
         else:
             empty_state(

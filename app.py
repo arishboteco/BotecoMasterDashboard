@@ -10,12 +10,21 @@ import config
 import database
 import styles
 import ui_theme
+from components.navigation import sidebar_app_nav
 from tabs import TabContext
 from tabs.analytics_tab import render as render_analytics
 from tabs.footfall_tab import render as render_footfall
 from tabs.report_tab import render as render_report
 from tabs.settings_tab import render as render_settings
 from tabs.upload_tab import render as render_upload
+
+APP_NAV_ITEMS = {
+    "Upload": render_upload,
+    "Report": render_report,
+    "Analytics": render_analytics,
+    "Footfall": render_footfall,
+    "Settings": render_settings,
+}
 
 boteco_logger.setup_logging()
 logger = boteco_logger.get_logger(__name__)
@@ -91,25 +100,6 @@ if not auth.check_authentication():
 else:
     st.sidebar.image("logo.png", width=180)
 
-    st.sidebar.divider()
-
-    # Account section with user badge
-    username = st.session_state.username or "User"
-    initials = username[:2].upper() if username else "U"
-    role = st.session_state.user_role or "user"
-    location_name = st.session_state.location_name or "Default"
-    st.sidebar.markdown(
-        f'<div class="sidebar-account-section">'
-        f'<div class="sidebar-account-row">'
-        f'<span class="sidebar-user-initials">{initials}</span>'
-        f'<div><div class="user-name">{username}</div>'
-        f'<div class="role-label">{role}</div></div>'
-        f"</div>"
-        f'<div class="location-row">'
-        f'<span class="location-pin">📍</span>{location_name}</div>'
-        f"</div>",
-        unsafe_allow_html=True,
-    )
     report_loc_ids = auth.get_report_location_ids()
     report_display_name = auth.get_report_display_name()
     all_locs = database.get_all_locations()
@@ -117,6 +107,17 @@ else:
     location_id = st.session_state.location_id
 
     st.sidebar.divider()
+    selected_section = sidebar_app_nav(
+        items=list(APP_NAV_ITEMS.keys()),
+        default="Analytics",
+    )
+
+    st.sidebar.divider()
+    st.sidebar.markdown(
+        '<div class="sidebar-logout-marker"></div>',
+        unsafe_allow_html=True,
+    )
+
     if st.sidebar.button("Logout", key="sidebar_logout_btn", width="stretch"):
         auth.logout()
 
@@ -147,18 +148,5 @@ else:
         import_location_settings=import_location_settings,
     )
 
-    # Tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(
-        ["Upload", "Report", "Analytics", "Footfall", "Settings"]
-    )
-
-    with tab1:
-        render_upload(ctx)
-    with tab2:
-        render_report(ctx)
-    with tab3:
-        render_analytics(ctx)
-    with tab4:
-        render_footfall(ctx)
-    with tab5:
-        render_settings(ctx)
+    # Sidebar-routed application section
+    APP_NAV_ITEMS[selected_section](ctx)

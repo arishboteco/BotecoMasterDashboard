@@ -344,29 +344,39 @@ def render(ctx: TabContext) -> None:
                                 ("category", "Category sales"),
                                 ("service", "Service sales"),
                             ]
+
+                            if "apc_service" in _single_section_bufs:
+                                _sec_meta.append(("apc_service", "APC by service"))
+
                             _sec_meta.extend(_single_footfall_sections())
 
-                            _first_five = _sec_meta[:5]
-                            if _first_five:
+                            _share_all = [
+                                (key, title)
+                                for key, title in _sec_meta
+                                if key in _single_section_bufs
+                            ]
+
+                            if _share_all:
                                 _share_files = [
                                     (
                                         f"boteco_{key}_{date_str}.png",
                                         _single_section_bufs[key].getvalue(),
                                     )
-                                    for key, _ in _first_five
+                                    for key, _ in _share_all
                                 ]
                                 with classed_container(
                                     "tab-report-mobile-primary-action",
                                     "mobile-layout-primary-action",
                                 ):
                                     clipboard_ui.render_share_images_button(
-                                        _share_files,
-                                        "WhatsApp",
-                                        f"share_5_pngs_{date_str}",
-                                        height=48,
-                                        primary=True,
-                                    )
-
+                                    _share_files,
+                                    "WhatsApp - Share all reports",
+                                    f"share_all_pngs_single_{date_str}",
+                                    height=48,
+                                    primary=True,
+                                    share_text=f"Boteco {_selected_outlet} EOD Report – {date_str}",
+                                    fallback_url=f"https://wa.me/?text={quote_plus(f'Boteco {_selected_outlet} EOD Report – {date_str}')}",
+                                )
                             rows = max(1, (len(_sec_meta) + 1) // 2)
                             _cells = [st.columns(2) for _ in range(rows)]
                             for idx, (key, title) in enumerate(_sec_meta):
@@ -394,27 +404,37 @@ def render(ctx: TabContext) -> None:
                         ("category", "Category sales"),
                         ("service", "Service sales"),
                     ]
+
+                    if "apc_service" in section_bufs:
+                        _sec_meta.append(("apc_service", "APC by service"))
+
                     _sec_meta.extend(_footfall_sections())
 
-                    # Combined share button for first 5 PNG sections
-                    _first_five = _sec_meta[:5]
-                    if _first_five:
+                    # Combined share button for all PNG sections
+                    _share_all = [
+                        (key, title)
+                        for key, title in _sec_meta
+                        if key in section_bufs
+                    ]
+
+                    if _share_all:
                         _share_files = [
                             (f"boteco_{key}_{date_str}.png", section_bufs[key].getvalue())
-                            for key, _ in _first_five
+                            for key, _ in _share_all
                         ]
                         with classed_container(
                             "tab-report-mobile-primary-action",
                             "mobile-layout-primary-action",
                         ):
                             clipboard_ui.render_share_images_button(
-                                _share_files,
-                                "WhatsApp",
-                                f"share_5_pngs_{date_str}",
-                                height=48,
-                                primary=True,
-                            )
-
+                            _share_files,
+                            "WhatsApp - Share all reports",
+                            f"share_all_pngs_all_{date_str}",
+                            height=48,
+                            primary=True,
+                            share_text=f"Boteco Bangalore EOD Report – {date_str}",
+                            fallback_url=f"https://wa.me/?text={quote_plus(f'Boteco Bangalore EOD Report – {date_str}')}",
+                        )
                     rows = max(1, (len(_sec_meta) + 1) // 2)
                     _cells = [st.columns(2) for _ in range(rows)]
                     for idx, (key, title) in enumerate(_sec_meta):

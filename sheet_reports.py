@@ -1718,6 +1718,235 @@ def _build_service(
     elements.append(tbl)
     return elements
 
+def _service_amount(report_data: Dict[str, Any], service_name: str) -> float:
+    """Return sales amount for a service such as Lunch or Dinner."""
+    target = str(service_name or "").strip().lower()
+
+    for row in report_data.get("services") or []:
+        row_service = str(
+            row.get("service_type")
+            or row.get("type")
+            or row.get("service")
+            or ""
+        ).strip().lower()
+
+        if row_service == target:
+            return _safe_float(row.get("amount"))
+
+    return 0.0
+
+
+def _service_covers(report_data: Dict[str, Any], service_name: str) -> int:
+    """Return covers for Lunch/Dinner service."""
+    service_key = str(service_name or "").strip().lower()
+
+    if service_key == "lunch":
+        return int(report_data.get("lunch_covers") or 0)
+
+    if service_key == "dinner":
+        return int(report_data.get("dinner_covers") or 0)
+
+    return 0
+
+
+def _format_apc_cell(amount: float, covers: int) -> str:
+    """Format APC with covers for compact report-table display."""
+    if covers <= 0:
+        return "—"
+
+    apc = amount / covers
+    return f"{_r(apc)} / {covers:,} covers"
+
+
+def _build_apc_service_split(
+    r: Dict[str, Any],
+    location_name: str,
+    day_lbl: str,
+    n_outlets: int = 1,
+    per_outlet: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
+) -> list:
+    """Build APC split by service with outlets as columns.
+
+    Layout:
+                    Bagmane   Indiqube   Combined
+    Lunch
+    Sales           ...
+    Covers          ...
+    APC             ...
+    Dinner
+    Sales           ...
+    Covers          ...
+    APC             ...
+    """
+    multi = per_outlet and len(per_outlet) >= 2
+
+    elements = []
+    avail_w = _content_width(1)
+    title = f"APC by Service — {location_name[:28]}"
+
+    HEADER_ROW = 2
+    FIRST_BODY_ROW = 3
+
+    service_names = ["Lunch", "Dinner"]
+
+    # Build outlet list
+    if multi and per_outlet:
+        outlet_items = [
+            (_short_outlet_name(outlet_name, 12), outlet_data)
+            for outlet_name, outlet_data in per_outlet
+        ]
+    else:
+        outlet_items = [(_short_outlet_name(location_name, 12), r)]
+
+    # Build combined totals
+    combined_data = {}
+    for service_name in service_names:
+        total_amount = 0.0
+        total_covers = 0
+        for _, outlet_data in outlet_items:
+            total_amount += _service_amount(outlet_data, service_name)
+            total_covers += _service_covers(outlet_data, service_name)
+        combined_data[service_name] = {
+            "amount": total_amount,
+            "covers": total_covers,
+        }
+
+    headers = [""] + [name for name, _ in outlet_items]
+    if len(outlet_items) >= 2:
+        headers.append("Combined")
+
+    rows = [headers]
+
+    service_header_rows = []
+    combined_value_rows = []
+
+    for service_name in service_names:
+        # Section label row: Lunch / Dinner
+        service_header_rows.append(len(rows))
+        rows.append([service_name] + [""] * (len(headers) - 1))
+
+        # Sales row
+        sales_row = ["Sales"]
+        for _, outlet_data in outlet_items:
+            sales_row.append(_r(_service_amount(outlet_data, service_name)))
+        if len(outlet_items) >= 2:
+            sales_row.append(_r(combined_data[service_name]["amount"]))
+        rows.append(sales_row)
+
+        # Covers row
+        covers_row = ["Covers"]
+        for _, outlet_data in outlet_items:
+            covers_row.append(
+                f"{_service_covers(outlet_data, service_name):,}"
+                if _service_covers(outlet_data, service_name) > 0
+                else "—"
+            )
+        if len(outlet_items) >= 2:
+            covers_row.append(
+                f"{combined_data[service_name]['covers']:,}"
+                if combined_data[service_name]["covers"] > 0
+                else "—"
+            )
+        rows.append(covers_row)
+
+        # APC row
+        apc_row_index = len(rows)
+        combined_value_rows.append(apc_row_index)
+        apc_row = ["APC"]
+        for _, outlet_data in outlet_items:
+            amount = _service_amount(outlet_data, service_name)
+            covers = _service_covers(outlet_data, service_name)
+            apc_row.append(_r(amount / covers) if covers > 0 else "—")
+        if len(outlet_items) >= 2:
+            total_amount = combined_data[service_name]["amount"]
+            total_covers = combined_data[service_name]["covers"]
+            apc_row.append(_r(total_amount / total_covers) if total_covers > 0 else "—")
+        rows.append(apc_row)
+
+    col_count = len(headers)
+
+    if col_count == 2:
+        col_w = [avail_w * 0.28, avail_w * 0.72]
+    elif col_count == 3:
+        col_w = [avail_w * 0.24, avail_w * 0.38, avail_w * 0.38]
+    elif col_count == 4:
+        col_w = [avail_w * 0.22, avail_w * 0.26, avail_w * 0.26, avail_w * 0.26]
+    else:
+        remaining = avail_w * 0.78
+        each = remaining / (col_count - 1)
+        col_w = [avail_w * 0.22] + [each] * (col_count - 1)
+
+    prefix = _section_table_prefix_rows(
+        col_w,
+        title,
+        day_lbl,
+        style_tag="ApcSvc",
+    )
+
+    all_rows = prefix + rows
+    last_col_idx = len(col_w) - 1
+    prefix_offset = len(prefix)
+
+    tbl = Table(all_rows, colWidths=col_w)
+
+    style_cmds = [
+        ("GRID", (0, 0), (-1, -1), 0.25, _hex(C_BORDER)),
+        ("SPAN", (0, 0), (-1, 0)),
+        ("SPAN", (0, 1), (-1, 1)),
+        ("LINEABOVE", (0, 0), (-1, 0), 2.5, _hex(C_BRAND)),
+    ]
+
+    style_cmds.extend(
+        _meta_header_table_style_cmds(
+            header_row=HEADER_ROW,
+            first_body_row=FIRST_BODY_ROW,
+        )
+    )
+
+    # Style Lunch / Dinner section header rows
+    for row_idx in service_header_rows:
+        actual_idx = prefix_offset + row_idx
+        style_cmds.extend(
+            [
+                ("BACKGROUND", (0, actual_idx), (last_col_idx, actual_idx), _hex(C_HEADER)),
+                ("FONTNAME", (0, actual_idx), (last_col_idx, actual_idx), FONT_BOLD),
+                ("TEXTCOLOR", (0, actual_idx), (last_col_idx, actual_idx), _hex(C_BRAND)),
+                ("ALIGN", (0, actual_idx), (last_col_idx, actual_idx), "LEFT"),
+            ]
+        )
+
+    # Band the Sales/Covers/APC body rows lightly
+    for i in range(FIRST_BODY_ROW, len(all_rows)):
+        raw_idx = i - prefix_offset
+        if raw_idx >= 0:
+            row = rows[raw_idx]
+            first_cell = str(row[0]) if row else ""
+            if first_cell in ("Sales", "APC"):
+                style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(C_BAND)))
+
+    # Make APC rows bold
+    for row_idx in combined_value_rows:
+        actual_idx = prefix_offset + row_idx
+        style_cmds.extend(
+            [
+                ("FONTNAME", (0, actual_idx), (last_col_idx, actual_idx), FONT_BOLD),
+            ]
+        )
+
+    # Alignment
+    style_cmds.extend(
+        [
+            ("ALIGN", (0, FIRST_BODY_ROW), (0, -1), "LEFT"),
+            ("ALIGN", (1, FIRST_BODY_ROW), (-1, -1), "RIGHT"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("FONTSIZE", (0, FIRST_BODY_ROW), (-1, -1), FONT_SIZE_ROW),
+        ]
+    )
+
+    tbl.setStyle(TableStyle(style_cmds))
+    elements.append(tbl)
+
+    return elements
 
 def _build_footfall(
     month_footfall_rows: List[Dict], location_name: str, n_outlets: int = 1
@@ -2244,6 +2473,16 @@ def generate_sheet_style_report_sections(
     )
     out["service"] = _render_elements_to_png(elements, width)
 
+    # APC by Service
+    elements = _build_apc_service_split(
+        r,
+        location_name,
+        _sheet_date_label(str(r.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]),
+        n_outlets=n_outlets,
+        per_outlet=per_outlet,
+    )
+    out["apc_service"] = _render_elements_to_png(elements, width)
+
     # Footfall
     if per_outlet_ff_metrics and len(per_outlet_ff_metrics) > 1:
         for idx, (outlet_name, mo_rows, wk_rows) in enumerate(per_outlet_ff_metrics):
@@ -2298,7 +2537,7 @@ def generate_sheet_style_report_image(
     )
 
     imgs = []
-    for key in ("sales_summary", "category", "service"):
+    for key in ("sales_summary", "category", "service", "apc_service"):
         if key in sections:
             buf = sections[key]
             buf.seek(0)

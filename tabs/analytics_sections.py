@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from html import escape
 
 import pandas as pd
 import plotly.express as px
@@ -22,6 +23,7 @@ from tabs.analytics_logic import (
 )
 from tabs.chart_builders import _hex_to_rgba, _period_supports_trend_analysis
 from tabs.forecasting import (
+    build_forecast_explanation,
     calculate_forecast_days,
     linear_forecast,
     moving_average,
@@ -139,6 +141,3050 @@ def _build_action_cards(
     cards = sorted(cards, key=lambda c: severity_rank.get(c["severity"], 3))
     return cards[:3]
 
+def _safe_pct_change(current: float | None, prior: float | None) -> float | None:
+    """Return percentage change, safely handling empty or zero prior values."""
+    if current is None or prior is None:
+        return None
+
+    current_value = float(current or 0)
+    prior_value = float(prior or 0)
+
+    if prior_value <= 0:
+        return None
+
+    return ((current_value - prior_value) / prior_value) * 100
+
+
+def _format_owner_delta(value: float | None) -> str:
+    """Format percentage deltas for owner-facing readout text."""
+    if value is None:
+        return "N/A"
+    return f"{value:+.1f}%"
+
+
+def _html(value: object) -> str:
+    """Escape dynamic text for custom Analytics HTML."""
+    return escape(str(value), quote=True)
+
+
+def _dashboard_severity_class(severity: str) -> str:
+    """Normalize severity names to Analytics dashboard CSS suffixes."""
+    if severity in {"success", "warning", "error", "info"}:
+        return severity
+    if severity == "high":
+        return "error"
+    if severity == "medium":
+        return "warning"
+    return "info"
+
+
+def _owner_badge_label(severity: str) -> str:
+    """Return a compact executive badge label for owner readout severity."""
+    return {
+        "success": "ON TRACK",
+        "warning": "WATCH",
+        "error": "HIGH RISK",
+        "info": "INFO",
+    }.get(severity, "INFO")
+
+
+def _metric_delta_class(delta: str | None) -> str:
+    """Infer a display tone for compact dashboard metric delta text."""
+    if not delta:
+        return "neutral"
+    if delta.startswith("+"):
+        return "positive"
+    if delta.startswith("-"):
+        return "negative"
+    return "neutral"
+
+
+def _metric_tile_html(label: str, value: str, delta: str | None = None) -> str:
+    """Build a compact dashboard metric tile."""
+    delta_html = ""
+    if delta:
+        tone = _metric_delta_class(delta)
+        delta_html = (
+            f'<div class="analytics-metric-delta analytics-metric-delta--{tone}">'
+            f"{_html(delta)}</div>"
+        )
+
+    return (
+        '<div class="analytics-metric-tile">'
+        f'<div class="analytics-metric-label">{_html(label)}</div>'
+        f'<div class="analytics-metric-value">{_html(value)}</div>'
+        f"{delta_html}"
+        "</div>"
+    )
+
+
+def _render_metric_tile_grid(
+    tiles: list[tuple[str, str, str | None]],
+    max_columns: int = 6,
+) -> None:
+    """Render compact dashboard metric tiles with a predictable desktop layout."""
+    if not tiles:
+        return
+
+    column_count = min(len(tiles), max_columns)
+
+    tiles_html = "".join(
+        _metric_tile_html(label, value, delta) for label, value, delta in tiles
+    )
+
+    st.markdown(
+        f"""
+        <div
+            class="analytics-metric-grid"
+            style="
+                display: grid;
+                grid-template-columns: repeat({column_count}, minmax(0, 1fr));
+                gap: 0.5rem;
+                margin: 0.5rem 0 0.55rem 0;
+            "
+        >
+            {tiles_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+def _render_dashboard_status(message: str, tone: str = "info") -> None:
+    """Render a compact dashboard status message without Streamlit alert styling."""
+    safe_tone = tone if tone in {"success", "warning", "error", "info"} else "info"
+
+    st.markdown(
+        f"""
+        <div class="analytics-status analytics-status--{safe_tone}">
+            {_html(message)}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+def _render_diagnostic_intro(
+    eyebrow: str,
+    title: str,
+    caption: str,
+) -> None:
+    """Render a consistent compact intro for diagnostic tabs."""
+    st.markdown(
+        f"""
+        <div class="analytics-diagnostic-intro">
+            <div class="analytics-eyebrow">{_html(eyebrow)}</div>
+            <div class="analytics-card-title">{_html(title)}</div>
+            <p class="analytics-card-caption">{_html(caption)}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+def _apply_analytics_chart_layout(
+    fig: go.Figure,
+    title: str | None = None,
+    height: int = 340,
+    showlegend: bool = False,
+    legend_y: float = -0.22,
+) -> go.Figure:
+    """Apply consistent Analytics dashboard styling to Plotly charts."""
+    clean_title = title or ""
+
+    fig.update_layout(
+        template="plotly_white+boteco",
+        title_text=clean_title,
+        height=height,
+        margin=dict(l=24, r=18, t=48 if clean_title else 24, b=42),
+        showlegend=showlegend,
+        plot_bgcolor=ui_theme.CHART_BG,
+        paper_bgcolor=ui_theme.CHART_PAPER_BG,
+        font=dict(
+            family="Inter, sans-serif",
+            size=12,
+            color=ui_theme.TEXT_PRIMARY,
+        ),
+        hovermode="closest",
+        hoverlabel=dict(
+            bgcolor=ui_theme.SURFACE_RAISED,
+            bordercolor=ui_theme.BORDER_SUBTLE,
+            font_size=12,
+            font_family="Inter, sans-serif",
+            font_color=ui_theme.TEXT_PRIMARY,
+            align="left",
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=legend_y,
+            xanchor="center",
+            x=0.5,
+            bgcolor="rgba(0,0,0,0)",
+            bordercolor="rgba(0,0,0,0)",
+            font=dict(size=11),
+        ),
+    )
+
+    fig.update_xaxes(
+        showgrid=True,
+        gridcolor=ui_theme.CHART_GRID_COLOR,
+        zeroline=False,
+        linecolor=ui_theme.CHART_AXIS_COLOR,
+        tickfont=dict(size=11, color=ui_theme.CHART_TICK_COLOR),
+        title_font=dict(size=11, color=ui_theme.TEXT_SECONDARY),
+    )
+
+    fig.update_yaxes(
+        showgrid=True,
+        gridcolor=ui_theme.CHART_GRID_COLOR,
+        zeroline=False,
+        linecolor=ui_theme.CHART_AXIS_COLOR,
+        tickfont=dict(size=11, color=ui_theme.CHART_TICK_COLOR),
+        title_font=dict(size=11, color=ui_theme.TEXT_SECONDARY),
+    )
+
+    return fig
+
+def _analytics_chart_card(
+    title: str,
+    caption: str | None = None,
+) -> None:
+
+    def _render_diagnostic_intro(
+        eyebrow: str,
+        title: str,
+        caption: str,
+    ) -> None:
+        """Render a consistent compact intro for diagnostic tabs."""
+        st.markdown(
+            f"""
+            <div class="analytics-diagnostic-intro">
+                <div class="analytics-eyebrow">{_html(eyebrow)}</div>
+                <div class="analytics-card-title">{_html(title)}</div>
+                <p class="analytics-card-caption">{_html(caption)}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        
+    """Render a consistent chart heading."""
+    st.markdown(f"#### {title}")
+    if caption:
+        st.caption(caption)
+
+def _action_card_html(card: dict[str, str]) -> str:
+    """Build a compact recommendation card for forecast actions."""
+    severity_class = _dashboard_severity_class(card.get("severity", "info"))
+    badge_label = {
+        "error": "HIGH",
+        "warning": "WATCH",
+        "info": "INFO",
+        "success": "OK",
+    }.get(severity_class, "INFO")
+
+    title = card.get("title", "Recommendation")
+    reason = card.get("reason", "")
+    action = card.get("action", "")
+    metric = card.get("metric", "")
+
+    return (
+        f'<div class="analytics-action-card analytics-action-card--{severity_class}">'
+        '<div class="analytics-action-card-top">'
+        f'<span class="analytics-badge analytics-badge--{severity_class}">{badge_label}</span>'
+        f'<div class="analytics-action-title">{_html(title)}</div>'
+        '</div>'
+        f'<div class="analytics-action-metric">{_html(metric)}</div>'
+        f'<div class="analytics-action-body">{_html(reason)}</div>'
+        f'<div class="analytics-action-body"><strong>Action:</strong> {_html(action)}</div>'
+        '</div>'
+    )
+
+def render_owner_readout_and_data_confidence(
+    df: pd.DataFrame,
+    df_raw: pd.DataFrame,
+    prior_df: pd.DataFrame,
+    analysis_period: str,
+    start_date: date,
+    end_date: date,
+    monthly_target: float,
+    total_sales: float,
+    total_covers: int,
+    prior_total: float | None,
+    prior_covers: int | None,
+    analytics_loc_ids: list[int],
+) -> None:
+    """Render an owner-facing readout plus data confidence check."""
+    if df.empty:
+        return
+
+    work_df = df.copy()
+
+    work_df["date"] = pd.to_datetime(work_df["date"], errors="coerce")
+    work_df = work_df[work_df["date"].notna()].copy()
+
+    if work_df.empty:
+        return
+
+    work_df["net_total"] = pd.to_numeric(
+        work_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
+    work_df["covers"] = pd.to_numeric(
+        work_df["covers"],
+        errors="coerce",
+    ).fillna(0)
+
+    if "target" in work_df.columns:
+        work_df["target"] = pd.to_numeric(
+            work_df["target"],
+            errors="coerce",
+        ).fillna(0)
+    else:
+        work_df["target"] = 0
+
+    # Fallback in case prior totals were not calculated before this function call.
+    if prior_total is None and not prior_df.empty and "net_total" in prior_df.columns:
+        prior_total = float(
+            pd.to_numeric(prior_df["net_total"], errors="coerce").fillna(0).sum()
+        )
+
+    if prior_covers is None and not prior_df.empty and "covers" in prior_df.columns:
+        prior_covers = int(
+            pd.to_numeric(prior_df["covers"], errors="coerce").fillna(0).sum()
+        )
+
+    selected_target = float(work_df["target"].sum())
+    achievement_pct = (
+        total_sales / selected_target * 100
+        if selected_target > 0
+        else 0
+    )
+
+    selected_target_gap = (
+        selected_target - total_sales
+        if selected_target > 0
+        else None
+    )
+
+    current_apc = total_sales / total_covers if total_covers > 0 else 0.0
+
+    prior_apc = None
+    if (
+        prior_total is not None
+        and prior_covers is not None
+        and prior_covers > 0
+    ):
+        prior_apc = prior_total / prior_covers
+
+    sales_delta_pct = _safe_pct_change(total_sales, prior_total)
+    covers_delta_pct = _safe_pct_change(total_covers, prior_covers)
+    apc_delta_pct = _safe_pct_change(current_apc, prior_apc)
+
+    selected_range_days = max(1, (end_date - start_date).days + 1)
+    forecast_days = calculate_forecast_days(
+        analysis_period,
+        data_points=len(work_df),
+        selected_range_days=selected_range_days,
+    )
+
+    forecast_total = None
+    forecast_reliability = _forecast_reliability_label(len(work_df))
+
+    if forecast_days > 0:
+        forecast = linear_forecast(
+            work_df["date"],
+            work_df["net_total"].tolist(),
+            forecast_days=forecast_days,
+        )
+        if forecast:
+            forecast_total = total_sales + sum(float(item["value"]) for item in forecast)
+
+    forecast_gap = None
+    if monthly_target > 0 and forecast_total is not None:
+        forecast_gap = monthly_target - forecast_total
+
+    daily_recovery_required = None
+    if forecast_gap is not None and forecast_gap > 0 and forecast_days > 0:
+        daily_recovery_required = forecast_gap / forecast_days
+
+    # ── Owner readout decision rules ─────────────────────────────
+    severity = "info"
+    title = "Performance is stable"
+    diagnosis = (
+        "No major risk signal is visible from sales, covers, APC, target pace "
+        "and the selected comparison period."
+    )
+    primary_action = (
+        "Maintain current operating rhythm and continue monitoring outlet, weekday and category movement."
+    )
+    secondary_action = (
+        "Use the deep-dive layers only if a KPI starts moving materially."
+    )
+
+    if (
+        covers_delta_pct is not None
+        and apc_delta_pct is not None
+        and covers_delta_pct >= 8
+        and apc_delta_pct <= -8
+    ):
+        severity = "warning"
+        title = "Traffic is improving, but spend per guest is falling"
+        diagnosis = (
+            f"Covers are {_format_owner_delta(covers_delta_pct)} vs comparison, "
+            f"but APC is {_format_owner_delta(apc_delta_pct)}. "
+            "Demand exists, but guests are spending less per cover."
+        )
+        primary_action = (
+            "Push high-margin upsells, premium pairings, cocktails, desserts and sharing platters during peak hours."
+        )
+        secondary_action = (
+            "Check the Mix layer to see whether premium categories are losing contribution."
+        )
+
+    elif sales_delta_pct is not None and sales_delta_pct <= -8:
+        severity = "error"
+        title = "Sales are soft versus the comparison period"
+        diagnosis = (
+            f"Net sales are {_format_owner_delta(sales_delta_pct)} vs comparison. "
+            "This points to a demand, visibility, conversion or operating issue."
+        )
+        primary_action = (
+            "Identify which outlet and weekdays created the drop, then run a tactical demand push."
+        )
+        secondary_action = (
+            "Use the Drivers layer to check whether the issue is covers, APC or both."
+        )
+
+    elif apc_delta_pct is not None and apc_delta_pct <= -8:
+        severity = "warning"
+        title = "APC is under pressure"
+        diagnosis = (
+            f"APC is {_format_owner_delta(apc_delta_pct)} vs comparison. "
+            "Guests are spending less per cover even if sales look stable."
+        )
+        primary_action = (
+            "Review menu mix, server upsell behaviour and premium item availability."
+        )
+        secondary_action = (
+            "Use Category Pareto and Weekday Summary to identify where spend quality is weakening."
+        )
+
+    elif covers_delta_pct is not None and covers_delta_pct <= -8:
+        severity = "warning"
+        title = "Guest count is under pressure"
+        diagnosis = (
+            f"Covers are {_format_owner_delta(covers_delta_pct)} vs comparison. "
+            "The main issue appears to be traffic rather than ticket size."
+        )
+        primary_action = (
+            "Check reservations, corporate bookings, aggregator visibility and local marketing for weak days."
+        )
+        secondary_action = (
+            "Use the Covers vs APC Matrix to separate low-traffic days from low-spend days."
+        )
+
+    elif selected_target > 0 and achievement_pct < 70:
+        severity = "error"
+        title = "Selected period is materially behind target"
+        diagnosis = (
+            f"Achievement is {achievement_pct:.1f}% against the selected-period target. "
+            "The business needs an immediate recovery plan."
+        )
+        primary_action = (
+            "Focus on the strongest weekdays, high-conversion offers and premium upsell opportunities."
+        )
+        secondary_action = (
+            "Use Daily Target Variance to identify the exact days creating the target gap."
+        )
+
+    elif selected_target > 0 and achievement_pct >= 100:
+        severity = "success"
+        title = "Selected period is ahead of target"
+        diagnosis = (
+            f"Achievement is {achievement_pct:.1f}% against the selected-period target. "
+            "The priority is to protect the drivers that created this performance."
+        )
+        primary_action = (
+            "Protect availability of top categories and keep staffing aligned to peak demand."
+        )
+        secondary_action = (
+            "Use Mix and Drivers to identify which behaviours should be repeated."
+        )
+
+    # Forecast risk should override stable/positive readouts, but not erase stronger operational warnings.
+    if forecast_gap is not None and forecast_gap > 0:
+        if severity in {"info", "success"}:
+            severity = "warning"
+            title = "Forecast close is below monthly target"
+            diagnosis = (
+                f"Forecast close is {utils.format_rupee_short(forecast_total or 0)} "
+                f"against a monthly target of {utils.format_rupee_short(monthly_target)}. "
+                f"Projected gap is {utils.format_rupee_short(forecast_gap)}."
+            )
+
+            if daily_recovery_required is not None:
+                primary_action = (
+                    f"Generate roughly {utils.format_rupee_short(daily_recovery_required)} "
+                    "extra sales per forecast day versus current pace."
+                )
+            else:
+                primary_action = (
+                    "Focus the next operating cycle on days and categories with the highest conversion potential."
+                )
+
+            secondary_action = (
+                "Track required daily sales and review progress every 2–3 days."
+            )
+        else:
+            diagnosis += (
+                f" Forecast close is {utils.format_rupee_short(forecast_total or 0)} "
+                f"against target {utils.format_rupee_short(monthly_target)}."
+            )
+
+    evidence_lines = [
+        f"Net Sales: {utils.format_rupee_short(total_sales)} ({_format_owner_delta(sales_delta_pct)} vs comparison)",
+        f"Covers: {int(total_covers):,} ({_format_owner_delta(covers_delta_pct)} vs comparison)",
+        f"APC: {utils.format_currency(current_apc)} ({_format_owner_delta(apc_delta_pct)} vs comparison)",
+    ]
+
+    if selected_target > 0:
+        evidence_lines.append(
+            f"Selected Target Achievement: {achievement_pct:.1f}%"
+        )
+
+    if selected_target_gap is not None:
+        if selected_target_gap > 0:
+            evidence_lines.append(
+                f"Selected Period Target Gap: {utils.format_rupee_short(selected_target_gap)}"
+            )
+        else:
+            evidence_lines.append(
+                f"Selected Period Target Surplus: {utils.format_rupee_short(abs(selected_target_gap))}"
+            )
+
+    if forecast_total is not None:
+        evidence_lines.append(
+            f"Forecast Close: {utils.format_rupee_short(forecast_total)} · Reliability: {forecast_reliability}"
+        )
+
+    if daily_recovery_required is not None:
+        evidence_lines.append(
+            f"Extra Sales Needed per Forecast Day: {utils.format_rupee_short(daily_recovery_required)}"
+        )
+
+    # ── Data confidence checks ───────────────────────────────────
+    effective_end_date = min(end_date, date.today())
+
+    if start_date <= effective_end_date:
+        expected_dates = set(pd.date_range(start_date, effective_end_date).date)
+    else:
+        expected_dates = set()
+
+    observed_dates = set(work_df["date"].dt.date.dropna())
+
+    missing_dates = sorted(expected_dates - observed_dates)
+    missing_days_count = len(missing_dates)
+
+    zero_covers_with_sales = int(
+        len(work_df[(work_df["net_total"] > 0) & (work_df["covers"] <= 0)])
+    )
+
+    zero_sales_with_covers = int(
+        len(work_df[(work_df["net_total"] <= 0) & (work_df["covers"] > 0)])
+    )
+
+    missing_target_rows = int(len(work_df[work_df["target"] <= 0]))
+
+    duplicate_raw_rows = 0
+    if (
+        not df_raw.empty
+        and {"location_id", "date"}.issubset(set(df_raw.columns))
+    ):
+        duplicate_raw_rows = int(
+            df_raw.duplicated(subset=["location_id", "date"]).sum()
+        )
+
+    confidence_reasons: list[str] = []
+
+    if missing_days_count > 0:
+        confidence_reasons.append(
+            f"{missing_days_count} date(s) are missing from the selected window."
+        )
+
+    if zero_covers_with_sales > 0:
+        confidence_reasons.append(
+            f"{zero_covers_with_sales} day(s) have sales but zero covers. APC may be unreliable."
+        )
+
+    if zero_sales_with_covers > 0:
+        confidence_reasons.append(
+            f"{zero_sales_with_covers} day(s) have covers but zero sales. Check upload or mapping."
+        )
+
+    if missing_target_rows > 0:
+        confidence_reasons.append(
+            f"{missing_target_rows} row(s) have no target. Target achievement may be incomplete."
+        )
+
+    if duplicate_raw_rows > 0:
+        confidence_reasons.append(
+            f"{duplicate_raw_rows} duplicate outlet-date row(s) found in raw data."
+        )
+
+    missing_ratio = (
+        missing_days_count / len(expected_dates)
+        if expected_dates
+        else 0
+    )
+
+    if (
+        duplicate_raw_rows > 0
+        or zero_covers_with_sales >= 2
+        or missing_ratio >= 0.20
+    ):
+        confidence_label = "Low"
+        confidence_severity = "error"
+    elif confidence_reasons:
+        confidence_label = "Medium"
+        confidence_severity = "warning"
+    else:
+        confidence_label = "High"
+        confidence_severity = "success"
+        confidence_reasons.append(
+            "Sales, covers, targets and selected dates look usable for decision-making."
+        )
+
+    owner_col, confidence_col = st.columns([2.2, 1])
+    severity_class = _dashboard_severity_class(severity)
+    confidence_class = _dashboard_severity_class(confidence_severity)
+    confidence_preview = confidence_reasons[:3]
+    confidence_extra_count = max(0, len(confidence_reasons) - len(confidence_preview))
+    confidence_items_html = "".join(
+        f'<div class="analytics-confidence-item">{_html(reason)}</div>'
+        for reason in confidence_preview
+    )
+    if confidence_extra_count:
+        confidence_items_html += (
+            '<div class="analytics-confidence-item">'
+            f'+ {confidence_extra_count} more check(s) in the data review.'
+            '</div>'
+        )
+
+    with owner_col:
+        st.markdown(
+            f"""
+            <div class="analytics-readout-card analytics-readout-alert--{severity_class}">
+                <div class="analytics-card-header">
+                    <div>
+                        <div class="analytics-eyebrow">Owner Readout</div>
+                        <div class="analytics-card-title">{_html(title)}</div>
+                    </div>
+                    <span class="analytics-badge analytics-badge--{severity_class}">
+                        {_owner_badge_label(severity)}
+                    </span>
+                </div>
+                <p class="analytics-card-caption">{_html(diagnosis)}</p>
+                <div class="analytics-readout-points">
+                    <div class="analytics-readout-point">
+                        <span class="analytics-readout-marker">&bull;</span>
+                        <div>
+                            <strong>Priority action</strong><br>{_html(primary_action)}
+                        </div>
+                    </div>
+                    <div class="analytics-readout-point">
+                        <span class="analytics-readout-marker">&rarr;</span>
+                        <div>
+                            <strong>Next check</strong><br>{_html(secondary_action)}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        with st.expander("Why this readout was generated", expanded=False):
+            for line in evidence_lines:
+                st.caption(line)
+
+    with confidence_col:
+        st.markdown(
+            f"""
+            <div class="analytics-confidence-card analytics-readout-alert--{confidence_class}">
+                <div class="analytics-card-header">
+                    <div>
+                        <div class="analytics-eyebrow">Data Confidence</div>
+                        <div class="analytics-card-title">
+                            {_html(confidence_label)} confidence
+                        </div>
+                    </div>
+                    <span class="analytics-badge analytics-badge--{confidence_class}">
+                        {_html(confidence_label.upper())}
+                    </span>
+                </div>
+                <div class="analytics-confidence-list">
+                    {confidence_items_html}
+                </div>
+                <div class="analytics-confidence-scope">
+                    Scope checked: {_html(len(analytics_loc_ids))} outlet(s),
+                    {_html(len(expected_dates))} calendar day(s).
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+def _last_day_of_month(anchor_date: date) -> date:
+    """Return the last calendar day of the month for a date."""
+    if anchor_date.month == 12:
+        return date(anchor_date.year, 12, 31)
+
+    next_month = date(anchor_date.year, anchor_date.month + 1, 1)
+    return next_month - pd.Timedelta(days=1)
+
+
+def _quarter_end(anchor_date: date) -> date:
+    """Return the calendar quarter-end date for a date."""
+    quarter_start_month = ((anchor_date.month - 1) // 3) * 3 + 1
+    quarter_end_month = quarter_start_month + 2
+
+    if quarter_end_month == 12:
+        return date(anchor_date.year, 12, 31)
+
+    next_month = date(anchor_date.year, quarter_end_month + 1, 1)
+    return next_month - pd.Timedelta(days=1)
+
+
+def _remaining_day_split(
+    latest_data_date: date,
+    plan_end_date: date,
+) -> tuple[int, int, int]:
+    """Return total, weekday and weekend remaining days after latest uploaded data date."""
+    if latest_data_date >= plan_end_date:
+        return 0, 0, 0
+
+    remaining_dates = pd.date_range(
+        latest_data_date + pd.Timedelta(days=1),
+        plan_end_date,
+    )
+
+    total_days = len(remaining_dates)
+    weekend_days = int(
+        sum(day.day_name() in _WEEKEND_DAYS for day in remaining_dates)
+    )
+    weekday_days = total_days - weekend_days
+
+    return total_days, weekday_days, weekend_days
+
+
+def render_required_sales_plan(
+    df: pd.DataFrame,
+    analysis_period: str,
+    start_date: date,
+    end_date: date,
+    monthly_target: float,
+    total_sales: float,
+    total_covers: int,
+    compact: bool = False,
+) -> None:
+    """Render target recovery plan using required sales, covers and APC."""
+    if df.empty:
+        return
+
+    work_df = df.copy()
+
+    work_df["date"] = pd.to_datetime(work_df["date"], errors="coerce")
+    work_df = work_df[work_df["date"].notna()].copy()
+
+    if work_df.empty:
+        return
+
+    work_df["net_total"] = pd.to_numeric(
+        work_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
+    work_df["covers"] = pd.to_numeric(
+        work_df["covers"],
+        errors="coerce",
+    ).fillna(0)
+
+    if "target" in work_df.columns:
+        work_df["target"] = pd.to_numeric(
+            work_df["target"],
+            errors="coerce",
+        ).fillna(0)
+    else:
+        work_df["target"] = 0
+
+    latest_data_date = work_df["date"].max().date()
+    period_key = analysis_period.lower().replace(" ", "_")
+
+    selected_target = float(work_df["target"].sum())
+    selected_target_gap = selected_target - total_sales if selected_target > 0 else 0.0
+
+    # Decide which target this plan should recover against.
+    # Current open periods use full period targets; rolling/historical periods use selected-window target only.
+    if period_key in {"mtd", "this_month"}:
+        plan_label = "Monthly recovery plan"
+        plan_target = float(monthly_target or 0)
+        plan_end_date = _last_day_of_month(latest_data_date)
+        plan_gap = plan_target - total_sales
+
+    elif period_key == "qtd":
+        plan_label = "Quarter recovery plan"
+        plan_target = float(monthly_target or 0) * 3
+        plan_end_date = _quarter_end(latest_data_date)
+        plan_gap = plan_target - total_sales
+
+    elif period_key == "ytd":
+        plan_label = "Year recovery plan"
+        plan_target = float(monthly_target or 0) * 12
+        plan_end_date = date(latest_data_date.year, 12, 31)
+        plan_gap = plan_target - total_sales
+
+    else:
+        plan_label = "Selected-period target check"
+        plan_target = selected_target
+        plan_end_date = end_date
+        plan_gap = selected_target_gap
+
+    days_with_sales = int(len(work_df[work_df["net_total"] > 0]))
+    avg_daily_sales = total_sales / days_with_sales if days_with_sales > 0 else 0.0
+    avg_daily_covers = total_covers / days_with_sales if days_with_sales > 0 else 0.0
+    current_apc = total_sales / total_covers if total_covers > 0 else 0.0
+
+    remaining_days, remaining_weekdays, remaining_weekends = _remaining_day_split(
+        latest_data_date,
+        plan_end_date,
+    )
+
+    with st.container(border=True):
+        st.markdown("### Required Sales Plan")
+        st.caption(
+            "Use this to translate the target gap into daily sales, covers and APC requirements."
+        )
+
+        if plan_target <= 0:
+            st.info(
+                "No target is available for this period, so a recovery plan cannot be calculated."
+            )
+            return
+
+        if plan_gap <= 0:
+            surplus = abs(plan_gap)
+
+            success_body = (
+                f"**{plan_label}: ahead of target**\n\n"
+                f"Current sales are {utils.format_rupee_short(total_sales)} "
+                f"against a target of {utils.format_rupee_short(plan_target)}. "
+                f"Surplus: {utils.format_rupee_short(surplus)}.\n\n"
+                "**Priority:** Protect the drivers that created the surplus — category availability, staffing and service consistency."
+            )
+
+            st.success(success_body)
+            return
+
+        if remaining_days <= 0:
+            st.warning(
+                f"**{plan_label}: gap exists but no remaining calendar days are available in this plan window.**\n\n"
+                f"Gap: {utils.format_rupee_short(plan_gap)} against target "
+                f"{utils.format_rupee_short(plan_target)}. Use this as a performance review, not a recovery plan."
+            )
+            return
+
+        required_daily_sales = plan_gap / remaining_days
+        required_covers_at_current_apc = (
+            required_daily_sales / current_apc
+            if current_apc > 0
+            else 0
+        )
+        required_apc_at_current_covers = (
+            required_daily_sales / avg_daily_covers
+            if avg_daily_covers > 0
+            else 0
+        )
+
+        required_sales_lift_pct = (
+            ((required_daily_sales - avg_daily_sales) / avg_daily_sales) * 100
+            if avg_daily_sales > 0
+            else None
+        )
+
+        if compact:
+            _render_metric_tile_grid(
+                [
+                    ("Target Gap", utils.format_rupee_short(plan_gap), None),
+                    (
+                        "Required Daily Sales",
+                        utils.format_rupee_short(required_daily_sales),
+                        (
+                            f"{required_sales_lift_pct:+.1f}% vs current run-rate"
+                            if required_sales_lift_pct is not None
+                            else None
+                        ),
+                    ),
+                    ("Remaining Days", f"{remaining_days}", None),
+                    ("Current APC", utils.format_currency(current_apc), None),
+                ]
+            )
+        else:
+            metric_col_1, metric_col_2, metric_col_3, metric_col_4 = st.columns(4)
+
+            with metric_col_1:
+                st.metric(
+                    "Target Gap",
+                    utils.format_rupee_short(plan_gap),
+                    help="Sales still needed to reach the selected plan target.",
+                )
+
+            with metric_col_2:
+                st.metric(
+                    "Remaining Days",
+                    f"{remaining_days}",
+                    help="Calendar days remaining after the latest uploaded sales date.",
+                )
+
+            with metric_col_3:
+                st.metric(
+                    "Required Daily Sales",
+                    utils.format_rupee_short(required_daily_sales),
+                    (
+                        f"{required_sales_lift_pct:+.1f}% vs current run-rate"
+                        if required_sales_lift_pct is not None
+                        else None
+                    ),
+                )
+
+            with metric_col_4:
+                st.metric(
+                    "Current APC",
+                    utils.format_currency(current_apc),
+                    help="Current selected-period net sales divided by covers.",
+                )
+
+        with st.expander("Plan timing details", expanded=False):
+            st.caption(
+                f"Latest uploaded date: {latest_data_date.strftime('%d %b %Y')} · "
+                f"Plan end date: {plan_end_date.strftime('%d %b %Y')} · "
+                f"Remaining weekdays: {remaining_weekdays} · Remaining weekends: {remaining_weekends}"
+            )
+
+        scenario_rows: list[dict[str, object]] = []
+
+        scenario_rows.append(
+            {
+                "Scenario": "Traffic-led recovery",
+                "Required Sales / Day": utils.format_rupee_short(required_daily_sales),
+                "Covers / Day": f"{required_covers_at_current_apc:,.0f}",
+                "APC Needed": utils.format_currency(current_apc),
+                "Interpretation": "Keep APC stable; recover mainly through more covers.",
+            }
+        )
+
+        scenario_rows.append(
+            {
+                "Scenario": "Ticket-size recovery",
+                "Required Sales / Day": utils.format_rupee_short(required_daily_sales),
+                "Covers / Day": f"{avg_daily_covers:,.0f}",
+                "APC Needed": utils.format_currency(required_apc_at_current_covers),
+                "Interpretation": "Keep covers stable; recover mainly through APC improvement.",
+            }
+        )
+
+        if avg_daily_sales > 0 and avg_daily_covers > 0 and current_apc > 0:
+            lift_factor = max(required_daily_sales / avg_daily_sales, 0)
+
+            if lift_factor > 0:
+                balanced_factor = lift_factor ** 0.5
+                balanced_covers = avg_daily_covers * balanced_factor
+                balanced_apc = current_apc * balanced_factor
+
+                scenario_rows.append(
+                    {
+                        "Scenario": "Balanced recovery",
+                        "Required Sales / Day": utils.format_rupee_short(required_daily_sales),
+                        "Covers / Day": f"{balanced_covers:,.0f}",
+                        "APC Needed": utils.format_currency(balanced_apc),
+                        "Interpretation": "Split recovery between traffic and ticket-size improvement.",
+                    }
+                )
+
+        if remaining_weekends > 0:
+            weekend_share = 0.60 if remaining_weekdays > 0 else 1.00
+            weekday_share = 1.00 - weekend_share
+
+            weekend_sales_per_day = (plan_gap * weekend_share) / remaining_weekends
+            weekday_sales_per_day = (
+                (plan_gap * weekday_share) / remaining_weekdays
+                if remaining_weekdays > 0
+                else 0
+            )
+
+            scenario_rows.append(
+                {
+                    "Scenario": "Weekend-weighted push",
+                    "Required Sales / Day": (
+                        f"Weekend {utils.format_rupee_short(weekend_sales_per_day)}"
+                        + (
+                            f" / Weekday {utils.format_rupee_short(weekday_sales_per_day)}"
+                            if remaining_weekdays > 0
+                            else ""
+                        )
+                    ),
+                    "Covers / Day": "Varies",
+                    "APC Needed": "Varies",
+                    "Interpretation": "Recover more of the gap on Friday–Sunday when demand potential is usually higher.",
+                }
+            )
+
+        scenario_df = pd.DataFrame(scenario_rows)
+        if compact:
+            scenario_df = scenario_df.rename(
+                columns={
+                    "Required Sales / Day": "Sales / Day",
+                    "Interpretation": "Note",
+                }
+            )
+            compact_notes = {
+                "Traffic-led recovery": "More covers; keep APC stable.",
+                "Ticket-size recovery": "Hold covers; improve APC.",
+                "Balanced recovery": "Split the lift across covers and APC.",
+                "Weekend-weighted push": "Push harder on Friday-Sunday demand.",
+            }
+            scenario_df["Note"] = scenario_df["Scenario"].map(compact_notes).fillna(
+                scenario_df["Note"]
+            )
+            with st.expander("Recovery Scenarios", expanded=False):
+                st.dataframe(
+                    scenario_df,
+                    width="stretch",
+                    hide_index=True,
+                )
+        else:
+            st.markdown("#### Recovery Scenarios")
+            st.dataframe(
+                scenario_df,
+                width="stretch",
+                hide_index=True,
+            )
+
+        # Owner-facing recommendation.
+        if required_sales_lift_pct is None:
+            _render_dashboard_status(
+                "No current run-rate is available, so use the scenario table as a starting estimate.",
+                "info",
+            )
+        elif required_sales_lift_pct <= 10:
+            _render_dashboard_status(
+                "Recovery looks realistic if current run-rate is maintained and small improvements are made in conversion, upsell or covers.",
+                "success",
+            )
+        elif required_sales_lift_pct <= 25:
+            _render_dashboard_status(
+                "Recovery requires a meaningful lift versus current run-rate. Focus on the strongest weekdays, weekend conversion and premium item upsell.",
+                "warning",
+            )
+        else:
+            _render_dashboard_status(
+                "Recovery requires a large lift versus current run-rate. Treat this as a high-risk target and review whether the target, demand plan or remaining days are realistic.",
+                "error",
+            )
+
+        with st.expander("How this plan is calculated", expanded=False):
+            st.caption(
+                f"- Plan target: {utils.format_rupee_short(plan_target)}"
+            )
+            st.caption(
+                f"- Current sales: {utils.format_rupee_short(total_sales)}"
+            )
+            st.caption(
+                f"- Gap: {utils.format_rupee_short(plan_gap)}"
+            )
+            st.caption(
+                f"- Required daily sales: gap divided by remaining days = {utils.format_rupee_short(required_daily_sales)}"
+            )
+            st.caption(
+                "- Covers-led recovery assumes APC remains at the current selected-period APC."
+            )
+            st.caption(
+                "- APC-led recovery assumes average daily covers remain at the current selected-period run-rate."
+            )
+            st.caption(
+                "- Balanced recovery splits the required lift across covers and APC."
+            )
+
+def render_outlet_performance_scorecard(
+    df_raw: pd.DataFrame,
+    prior_df: pd.DataFrame,
+    analysis_period: str,
+    start_date: date,
+    end_date: date,
+    all_locs: list,
+) -> None:
+    """Render outlet-level owner scorecard for multi-outlet decision-making."""
+    required_columns = {"location_id", "date", "net_total", "covers"}
+
+    if df_raw.empty or not required_columns.issubset(set(df_raw.columns)):
+        return
+
+    work_df = df_raw.copy()
+
+    work_df["date"] = pd.to_datetime(work_df["date"], errors="coerce")
+    work_df = work_df[work_df["date"].notna()].copy()
+
+    if work_df.empty:
+        return
+
+    work_df["net_total"] = pd.to_numeric(
+        work_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
+    work_df["covers"] = pd.to_numeric(
+        work_df["covers"],
+        errors="coerce",
+    ).fillna(0)
+
+    if "target" in work_df.columns:
+        work_df["target"] = pd.to_numeric(
+            work_df["target"],
+            errors="coerce",
+        ).fillna(0)
+    else:
+        work_df["target"] = 0
+
+    loc_lookup = {
+        int(loc["id"]): str(loc.get("name", loc["id"]))
+        for loc in all_locs
+        if "id" in loc
+    }
+
+    work_df["Outlet"] = work_df["location_id"].apply(
+        lambda loc_id: loc_lookup.get(int(loc_id), str(loc_id))
+    )
+
+    unique_outlets = sorted(work_df["Outlet"].dropna().unique().tolist())
+
+    if len(unique_outlets) < 2:
+        return
+
+    prior_work_df = prior_df.copy() if prior_df is not None else pd.DataFrame()
+
+    if not prior_work_df.empty and required_columns.issubset(set(prior_work_df.columns)):
+        prior_work_df["date"] = pd.to_datetime(prior_work_df["date"], errors="coerce")
+        prior_work_df = prior_work_df[prior_work_df["date"].notna()].copy()
+
+        prior_work_df["net_total"] = pd.to_numeric(
+            prior_work_df["net_total"],
+            errors="coerce",
+        ).fillna(0)
+
+        prior_work_df["covers"] = pd.to_numeric(
+            prior_work_df["covers"],
+            errors="coerce",
+        ).fillna(0)
+
+        prior_work_df["Outlet"] = prior_work_df["location_id"].apply(
+            lambda loc_id: loc_lookup.get(int(loc_id), str(loc_id))
+        )
+    else:
+        prior_work_df = pd.DataFrame()
+
+    selected_range_days = max(1, (end_date - start_date).days + 1)
+
+    rows: list[dict[str, object]] = []
+
+    for outlet_name, outlet_df in work_df.groupby("Outlet"):
+        outlet_df = outlet_df.sort_values("date").copy()
+
+        net_sales = float(outlet_df["net_total"].sum())
+        covers = float(outlet_df["covers"].sum())
+        target = float(outlet_df["target"].sum())
+        apc = net_sales / covers if covers > 0 else 0.0
+        achievement_pct = net_sales / target * 100 if target > 0 else 0.0
+        target_gap = target - net_sales if target > 0 else 0.0
+
+        days_with_sales = int(len(outlet_df[outlet_df["net_total"] > 0]))
+
+        outlet_prior_df = (
+            prior_work_df[prior_work_df["Outlet"] == outlet_name].copy()
+            if not prior_work_df.empty
+            else pd.DataFrame()
+        )
+
+        prior_sales = (
+            float(outlet_prior_df["net_total"].sum())
+            if not outlet_prior_df.empty
+            else None
+        )
+        prior_covers = (
+            float(outlet_prior_df["covers"].sum())
+            if not outlet_prior_df.empty
+            else None
+        )
+        prior_apc = (
+            prior_sales / prior_covers
+            if prior_sales is not None and prior_covers is not None and prior_covers > 0
+            else None
+        )
+
+        sales_delta_pct = _safe_pct_change(net_sales, prior_sales)
+        covers_delta_pct = _safe_pct_change(covers, prior_covers)
+        apc_delta_pct = _safe_pct_change(apc, prior_apc)
+
+        forecast_days = calculate_forecast_days(
+            analysis_period,
+            data_points=len(outlet_df),
+            selected_range_days=selected_range_days,
+        )
+
+        forecast_close = None
+
+        if forecast_days > 0:
+            forecast = linear_forecast(
+                outlet_df["date"],
+                outlet_df["net_total"].tolist(),
+                forecast_days=forecast_days,
+            )
+
+            if forecast:
+                forecast_close = net_sales + sum(
+                    float(item.get("value", 0) or 0)
+                    for item in forecast
+                )
+
+        data_flags: list[str] = []
+
+        if days_with_sales < len(outlet_df):
+            data_flags.append("Missing / zero-sales day")
+
+        if len(outlet_df[(outlet_df["net_total"] > 0) & (outlet_df["covers"] <= 0)]) > 0:
+            data_flags.append("Sales with zero covers")
+
+        if target <= 0:
+            data_flags.append("Missing target")
+
+        priority_issue = "No major issue visible"
+
+        if target > 0 and achievement_pct < 70:
+            priority_issue = "Materially behind target"
+        elif sales_delta_pct is not None and sales_delta_pct <= -8:
+            priority_issue = "Sales declining vs comparison"
+        elif covers_delta_pct is not None and covers_delta_pct <= -8:
+            priority_issue = "Covers declining"
+        elif apc_delta_pct is not None and apc_delta_pct <= -8:
+            priority_issue = "APC declining"
+        elif target > 0 and target_gap > 0:
+            priority_issue = "Target gap still open"
+
+        if target <= 0 or data_flags:
+            status = "Watch"
+        elif achievement_pct >= 100 and (
+            sales_delta_pct is None or sales_delta_pct >= -5
+        ):
+            status = "Strong"
+        elif achievement_pct < 70 or (
+            sales_delta_pct is not None and sales_delta_pct <= -12
+        ):
+            status = "At Risk"
+        else:
+            status = "Watch"
+
+        rows.append(
+            {
+                "Outlet": outlet_name,
+                "Status": status,
+                "Net Sales": net_sales,
+                "Target": target,
+                "Achievement %": achievement_pct,
+                "Target Gap": target_gap,
+                "Covers": covers,
+                "APC": apc,
+                "Sales Trend %": sales_delta_pct,
+                "Covers Trend %": covers_delta_pct,
+                "APC Trend %": apc_delta_pct,
+                "Forecast Close": forecast_close,
+                "Priority Issue": priority_issue,
+                "Data Flags": ", ".join(data_flags) if data_flags else "OK",
+            }
+        )
+
+    if not rows:
+        return
+
+    scorecard_df = pd.DataFrame(rows)
+
+    status_rank = {
+        "At Risk": 0,
+        "Watch": 1,
+        "Strong": 2,
+    }
+
+    scorecard_df["status_rank"] = scorecard_df["Status"].map(status_rank).fillna(3)
+    scorecard_df = scorecard_df.sort_values(
+        ["status_rank", "Achievement %", "Net Sales"],
+        ascending=[True, True, False],
+    ).reset_index(drop=True)
+
+    at_risk_count = int((scorecard_df["Status"] == "At Risk").sum())
+    watch_count = int((scorecard_df["Status"] == "Watch").sum())
+    strong_count = int((scorecard_df["Status"] == "Strong").sum())
+
+    with st.container(border=True):
+        _render_diagnostic_intro(
+            "Outlet view",
+            "Which outlet needs attention first?",
+            "Compare outlets by target achievement, sales trend, covers, APC, forecast close, and data flags.",
+        )
+
+        weakest_row = scorecard_df.iloc[0]
+
+        _render_metric_tile_grid(
+            [
+                ("At Risk", f"{at_risk_count}", None),
+                ("Watch", f"{watch_count}", None),
+                ("Strong", f"{strong_count}", None),
+                (
+                    "Needs Attention",
+                    str(weakest_row["Status"]),
+                    f"{weakest_row['Outlet']} · {weakest_row['Priority Issue']}",
+                ),
+            ]
+        )
+
+        if at_risk_count > 0:
+            at_risk_names = ", ".join(
+                scorecard_df[scorecard_df["Status"] == "At Risk"]["Outlet"].tolist()
+            )
+            _render_dashboard_status(
+                f"Priority focus: {at_risk_names}. Review target gap, traffic and APC before pushing broad promotions.",
+                "error",
+            )
+        elif watch_count > 0:
+            watch_names = ", ".join(
+                scorecard_df[scorecard_df["Status"] == "Watch"]["Outlet"].tolist()
+            )
+            _render_dashboard_status(
+                f"Watch list: {watch_names}. Track these outlets closely before the gap widens.",
+                "warning",
+            )
+        else:
+            _render_dashboard_status(
+                "All visible outlets are currently in a strong position against the selected scorecard rules.",
+                "success",
+            )
+
+        display_df = scorecard_df.copy()
+
+        display_df["Net Sales"] = display_df["Net Sales"].apply(
+            lambda value: utils.format_rupee_short(float(value))
+        )
+        display_df["Target"] = display_df["Target"].apply(
+            lambda value: utils.format_rupee_short(float(value))
+        )
+        display_df["Target Gap"] = display_df["Target Gap"].apply(
+            lambda value: (
+                "Ahead"
+                if float(value) <= 0
+                else utils.format_rupee_short(float(value))
+            )
+        )
+        display_df["Achievement %"] = display_df["Achievement %"].apply(
+            lambda value: f"{float(value):.1f}%"
+        )
+        display_df["Covers"] = display_df["Covers"].apply(
+            lambda value: f"{int(value):,}"
+        )
+        display_df["APC"] = display_df["APC"].apply(
+            lambda value: utils.format_currency(float(value))
+        )
+
+        for col in ["Sales Trend %", "Covers Trend %", "APC Trend %"]:
+            display_df[col] = display_df[col].apply(
+                lambda value: "N/A" if pd.isna(value) else f"{float(value):+.1f}%"
+            )
+
+        display_df["Forecast Close"] = display_df["Forecast Close"].apply(
+            lambda value: (
+                "N/A"
+                if pd.isna(value)
+                else utils.format_rupee_short(float(value))
+            )
+        )
+
+        with st.expander("View outlet scorecard table", expanded=False):
+            st.dataframe(
+                display_df[
+                    [
+                        "Outlet",
+                        "Status",
+                        "Net Sales",
+                        "Achievement %",
+                        "Target Gap",
+                        "Covers",
+                        "APC",
+                        "Sales Trend %",
+                        "Covers Trend %",
+                        "APC Trend %",
+                        "Forecast Close",
+                        "Priority Issue",
+                        "Data Flags",
+                    ]
+                ],
+                width="stretch",
+                hide_index=True,
+            )
+
+        with st.expander("How outlet status is calculated", expanded=False):
+            st.caption("- Strong: outlet is at or above target and not materially declining versus comparison.")
+            st.caption("- Watch: outlet has a target gap, data flags, or moderate performance risk.")
+            st.caption("- At Risk: outlet is materially behind target or sales are sharply declining.")
+            st.caption("- Trends are calculated versus the selected comparison period.")
+            st.caption("- Forecast Close appears only for open/forward-looking periods where forecast days are available.")
+
+        outlet_actions = []
+
+        if at_risk_count > 0:
+            at_risk_names = ", ".join(
+                scorecard_df[scorecard_df["Status"] == "At Risk"]["Outlet"].tolist()
+            )
+            outlet_actions.append(
+                {
+                    "priority": "High",
+                    "action": "Run outlet recovery review",
+                    "reason": f"At-risk outlets detected: {at_risk_names}.",
+                    "owner": "Operations",
+                    "due": "Today",
+                    "success_metric": "Each at-risk outlet has one owner, one recovery lever, and one daily target.",
+                }
+            )
+
+        if watch_count > 0:
+            watch_names = ", ".join(
+                scorecard_df[scorecard_df["Status"] == "Watch"]["Outlet"].tolist()
+            )
+            outlet_actions.append(
+                {
+                    "priority": "Medium",
+                    "action": "Monitor watch-list outlets",
+                    "reason": f"Watch-list outlets detected: {watch_names}.",
+                    "owner": "Outlet Manager",
+                    "due": "Next 3 days",
+                    "success_metric": "Watch-list outlets improve target pace, covers, or APC.",
+                }
+            )
+
+        _render_diagnostic_action_cards(
+            "Outlet Scorecard",
+            outlet_actions,
+        )
+
+def _build_action_tracker_suggestions(
+    df: pd.DataFrame,
+    prior_df: pd.DataFrame,
+    monthly_target: float,
+    total_sales: float,
+    total_covers: int,
+    analysis_period: str,
+    selected_scope: str,
+) -> list[dict[str, str]]:
+    """Build actionable owner tasks from current dashboard signals."""
+    suggestions: list[dict[str, str]] = []
+
+    if df.empty:
+        return suggestions
+
+    work_df = df.copy()
+
+    work_df["net_total"] = pd.to_numeric(
+        work_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
+    work_df["covers"] = pd.to_numeric(
+        work_df["covers"],
+        errors="coerce",
+    ).fillna(0)
+
+    if "target" in work_df.columns:
+        work_df["target"] = pd.to_numeric(
+            work_df["target"],
+            errors="coerce",
+        ).fillna(0)
+    else:
+        work_df["target"] = 0
+
+    selected_target = float(work_df["target"].sum())
+    selected_gap = selected_target - total_sales if selected_target > 0 else 0.0
+    current_apc = total_sales / total_covers if total_covers > 0 else 0.0
+
+    prior_total = None
+    prior_covers = None
+    prior_apc = None
+
+    if prior_df is not None and not prior_df.empty:
+        prior_total = float(
+            pd.to_numeric(prior_df["net_total"], errors="coerce").fillna(0).sum()
+        )
+        prior_covers = float(
+            pd.to_numeric(prior_df["covers"], errors="coerce").fillna(0).sum()
+        )
+        prior_apc = prior_total / prior_covers if prior_covers > 0 else None
+
+    sales_delta_pct = _safe_pct_change(total_sales, prior_total)
+    covers_delta_pct = _safe_pct_change(total_covers, prior_covers)
+    apc_delta_pct = _safe_pct_change(current_apc, prior_apc)
+
+    if monthly_target > 0 and total_sales < monthly_target and analysis_period in {"MTD", "QTD", "YTD"}:
+        suggestions.append(
+            {
+                "priority": "High",
+                "action": "Review target recovery plan",
+                "reason": (
+                    f"Sales are below the active target plan. Current sales: "
+                    f"{utils.format_rupee_short(total_sales)}."
+                ),
+                "owner": "Operations",
+                "due": "Today",
+                "success_metric": "Daily sales run-rate improves versus required sales plan.",
+            }
+        )
+
+    if selected_target > 0 and selected_gap > 0:
+        suggestions.append(
+            {
+                "priority": "High",
+                "action": "Close selected-period target gap",
+                "reason": f"Selected-period target gap is {utils.format_rupee_short(selected_gap)}.",
+                "owner": "Outlet Manager",
+                "due": "Next 3 days",
+                "success_metric": "Target gap reduces versus current selected-period pace.",
+            }
+        )
+
+    if covers_delta_pct is not None and covers_delta_pct <= -8:
+        suggestions.append(
+            {
+                "priority": "High",
+                "action": "Recover covers on weak days",
+                "reason": f"Covers are {_format_owner_delta(covers_delta_pct)} versus comparison.",
+                "owner": "Marketing / Reservations",
+                "due": "This week",
+                "success_metric": "Covers improve versus comparison period.",
+            }
+        )
+
+    if apc_delta_pct is not None and apc_delta_pct <= -8:
+        suggestions.append(
+            {
+                "priority": "High",
+                "action": "Run APC improvement push",
+                "reason": f"APC is {_format_owner_delta(apc_delta_pct)} versus comparison.",
+                "owner": "Restaurant Manager",
+                "due": "This week",
+                "success_metric": "APC improves through premium items, drinks, desserts and sharing platters.",
+            }
+        )
+
+    if (
+        covers_delta_pct is not None
+        and apc_delta_pct is not None
+        and covers_delta_pct >= 8
+        and apc_delta_pct <= -8
+    ):
+        suggestions.append(
+            {
+                "priority": "High",
+                "action": "Convert traffic into higher spend",
+                "reason": (
+                    f"Covers are {_format_owner_delta(covers_delta_pct)}, "
+                    f"but APC is {_format_owner_delta(apc_delta_pct)}."
+                ),
+                "owner": "Restaurant Manager",
+                "due": "Next peak weekend",
+                "success_metric": "APC improves without reducing covers.",
+            }
+        )
+
+    if sales_delta_pct is not None and sales_delta_pct <= -8:
+        suggestions.append(
+            {
+                "priority": "High",
+                "action": "Diagnose sales decline",
+                "reason": f"Sales are {_format_owner_delta(sales_delta_pct)} versus comparison.",
+                "owner": "Operations",
+                "due": "Today",
+                "success_metric": "Primary decline driver is identified: traffic, APC, outlet, weekday, or category mix.",
+            }
+        )
+
+    if not suggestions:
+        suggestions.append(
+            {
+                "priority": "Medium",
+                "action": "Protect current momentum",
+                "reason": "No major negative signal is visible from sales, covers, APC or selected-period target gap.",
+                "owner": "Operations",
+                "due": "This week",
+                "success_metric": "Top categories remain available and staffing matches peak demand.",
+            }
+        )
+
+    # Remove duplicate action titles while keeping order.
+    seen_actions: set[str] = set()
+    unique_suggestions: list[dict[str, str]] = []
+
+    for suggestion in suggestions:
+        action_title = suggestion["action"]
+        if action_title not in seen_actions:
+            seen_actions.add(action_title)
+            unique_suggestions.append(suggestion)
+
+    priority_rank = {"High": 0, "Medium": 1, "Low": 2}
+    unique_suggestions = sorted(
+        unique_suggestions,
+        key=lambda item: priority_rank.get(item["priority"], 3),
+    )
+
+    return unique_suggestions[:5]
+
+
+def _ensure_action_tracker_state() -> None:
+    """Initialise session state for the analytics action tracker."""
+    if "analytics_action_tracker" not in st.session_state:
+        st.session_state.analytics_action_tracker = []
+
+
+def _action_exists(action_key: str) -> bool:
+    """Check whether an action is already present in session state."""
+    _ensure_action_tracker_state()
+    return any(
+        action.get("action_key") == action_key
+        for action in st.session_state.analytics_action_tracker
+    )
+
+def _render_diagnostic_action_cards(
+    section: str,
+    suggestions: list[dict[str, str]],
+) -> None:
+    """Render diagnostic-specific action cards that can be added to the Action Tracker."""
+    if not suggestions:
+        return
+
+    _ensure_action_tracker_state()
+
+    st.markdown("#### Recommended Follow-up")
+    st.caption(
+        "Add the most relevant follow-up to the Action Tracker if this diagnostic needs ownership."
+    )
+
+    cards_per_row = 2
+
+    for row_start in range(0, len(suggestions), cards_per_row):
+        row_suggestions = suggestions[row_start: row_start + cards_per_row]
+        cols = st.columns(cards_per_row)
+
+        for offset, suggestion in enumerate(row_suggestions):
+            index = row_start + offset
+            action_title = suggestion.get("action", "Review diagnostic signal")
+            priority = suggestion.get("priority", "Medium")
+
+            priority_class = (
+                "error"
+                if priority == "High"
+                else "warning"
+                if priority == "Medium"
+                else "info"
+            )
+
+            action_key = (
+                f"diagnostic_{section}_{index}_{action_title}"
+                .lower()
+                .replace(" ", "_")
+                .replace("/", "_")
+                .replace("&", "and")
+            )
+
+            with cols[offset]:
+                st.markdown(
+                    f"""
+                    <div class="analytics-action-card analytics-action-card--{priority_class}">
+                        <div class="analytics-action-card-top">
+                            <span class="analytics-badge analytics-badge--{priority_class}">
+                                {_html(priority)}
+                            </span>
+                            <div class="analytics-action-title">
+                                {_html(action_title)}
+                            </div>
+                        </div>
+                        <div class="analytics-action-body">
+                            {_html(suggestion.get("reason", ""))}
+                        </div>
+                        <div class="analytics-action-body">
+                            <strong>Owner:</strong> {_html(suggestion.get("owner", "Operations"))}
+                            · <strong>Due:</strong> {_html(suggestion.get("due", "This week"))}
+                        </div>
+                        <div class="analytics-action-metric">
+                            Success: {_html(suggestion.get("success_metric", "Impact reviewed in next dashboard check."))}
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                if _action_exists(action_key):
+                    _render_dashboard_status("Already added to Action Tracker.", "success")
+                else:
+                    if st.button(
+                        "Add to Action Tracker",
+                        key=f"add_diagnostic_action_{action_key}",
+                        width="stretch",
+                    ):
+                        st.session_state.analytics_action_tracker.append(
+                            {
+                                "action_key": action_key,
+                                "scope": section,
+                                "period": "Current dashboard selection",
+                                "priority": priority,
+                                "action": action_title,
+                                "reason": suggestion.get("reason", ""),
+                                "owner": suggestion.get("owner", "Operations"),
+                                "due": suggestion.get("due", "This week"),
+                                "status": "Open",
+                                "success_metric": suggestion.get(
+                                    "success_metric",
+                                    "Impact reviewed in next dashboard check.",
+                                ),
+                                "owner_note": "",
+                            }
+                        )
+                        st.rerun()
+
+def render_action_tracker(
+    df: pd.DataFrame,
+    prior_df: pd.DataFrame,
+    monthly_target: float,
+    total_sales: float,
+    total_covers: int,
+    analysis_period: str,
+    selected_scope: str,
+    layout: str = "vertical",
+    show_heading: bool = True,
+) -> None:
+    """Render owner action tracker from dashboard recommendations."""
+    if df.empty:
+        return
+
+    _ensure_action_tracker_state()
+
+    is_horizontal = layout == "horizontal"
+
+    suggestions = _build_action_tracker_suggestions(
+        df=df,
+        prior_df=prior_df,
+        monthly_target=monthly_target,
+        total_sales=total_sales,
+        total_covers=total_covers,
+        analysis_period=analysis_period,
+        selected_scope=selected_scope,
+    )
+
+    active_actions = [
+        action
+        for action in st.session_state.analytics_action_tracker
+        if action.get("status") not in {"Done", "Cancelled"}
+    ]
+
+    done_actions = [
+        action
+        for action in st.session_state.analytics_action_tracker
+        if action.get("status") == "Done"
+    ]
+
+    high_priority_open = len(
+        [
+            action
+            for action in active_actions
+            if action.get("priority") == "High"
+        ]
+    )
+
+    def _action_key(index: int, suggestion: dict[str, str]) -> str:
+        return (
+            f"{selected_scope}_{analysis_period}_{index}_{suggestion['action']}"
+            .lower()
+            .replace(" ", "_")
+            .replace("/", "_")
+        )
+
+    def _render_suggested_actions() -> None:
+        st.markdown("#### Suggested Actions")
+
+        if is_horizontal:
+            cards_per_row = 3
+
+            for row_start in range(0, len(suggestions), cards_per_row):
+                row_suggestions = suggestions[row_start: row_start + cards_per_row]
+                card_cols = st.columns(cards_per_row)
+
+                for offset, suggestion in enumerate(row_suggestions):
+                    index = row_start + offset
+                    action_key = _action_key(index, suggestion)
+
+                    with card_cols[offset]:
+                        priority_class = (
+                            "error"
+                            if suggestion["priority"] == "High"
+                            else "warning"
+                            if suggestion["priority"] == "Medium"
+                            else "info"
+                        )
+
+                        st.markdown(
+                            f"""
+                            <div class="analytics-action-card analytics-action-card--{priority_class}">
+                                <div class="analytics-action-card-top">
+                                    <span class="analytics-badge analytics-badge--{priority_class}">
+                                        {_html(suggestion["priority"])}
+                                    </span>
+                                    <div class="analytics-action-title">
+                                        {_html(suggestion["action"])}
+                                    </div>
+                                </div>
+                                <div class="analytics-action-body">
+                                    {_html(suggestion["owner"])} · Due: {_html(suggestion["due"])}
+                                </div>
+                                <div class="analytics-action-body">
+                                    {_html(suggestion["reason"])}
+                                </div>
+                                <div class="analytics-action-metric">
+                                    Success: {_html(suggestion["success_metric"])}
+                                </div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+
+                        if _action_exists(action_key):
+                            _render_dashboard_status("Added to Action Tracker.", "success")
+                        else:
+                            if st.button(
+                                "Add",
+                                key=f"add_action_{action_key}",
+                                width="stretch",
+                            ):
+                                    st.session_state.analytics_action_tracker.append(
+                                        {
+                                            "action_key": action_key,
+                                            "scope": selected_scope,
+                                            "period": analysis_period,
+                                            "priority": suggestion["priority"],
+                                            "action": suggestion["action"],
+                                            "reason": suggestion["reason"],
+                                            "owner": suggestion["owner"],
+                                            "due": suggestion["due"],
+                                            "status": "Open",
+                                            "success_metric": suggestion["success_metric"],
+                                            "owner_note": "",
+                                        }
+                                    )
+                                    st.rerun()
+
+            return
+
+        for index, suggestion in enumerate(suggestions):
+            action_key = _action_key(index, suggestion)
+
+            with st.container(border=True):
+                s_col_1, s_col_2 = st.columns([4, 1])
+
+                with s_col_1:
+                    st.markdown(f"**{suggestion['action']}**")
+                    st.caption(
+                        f"Priority: {suggestion['priority']} · "
+                        f"Suggested owner: {suggestion['owner']} · "
+                        f"Due: {suggestion['due']}"
+                    )
+                    st.caption(f"Reason: {suggestion['reason']}")
+                    st.caption(f"Success metric: {suggestion['success_metric']}")
+
+                with s_col_2:
+                    if _action_exists(action_key):
+                        _render_dashboard_status("Added to Action Tracker.", "success")
+                    else:
+                        if st.button(
+                            "Add",
+                            key=f"add_action_{action_key}",
+                            width="stretch",
+                        ):
+                            st.session_state.analytics_action_tracker.append(
+                                {
+                                    "action_key": action_key,
+                                    "scope": selected_scope,
+                                    "period": analysis_period,
+                                    "priority": suggestion["priority"],
+                                    "action": suggestion["action"],
+                                    "reason": suggestion["reason"],
+                                    "owner": suggestion["owner"],
+                                    "due": suggestion["due"],
+                                    "status": "Open",
+                                    "success_metric": suggestion["success_metric"],
+                                    "owner_note": "",
+                                }
+                            )
+                            st.rerun()
+
+    def _render_action_management() -> None:
+        with st.expander("Add custom action", expanded=False):
+            with st.form("custom_analytics_action_form", clear_on_submit=True):
+                custom_action = st.text_input(
+                    "Action",
+                    placeholder="Example: Push cocktail upsell script this weekend",
+                )
+                custom_owner = st.text_input(
+                    "Owner",
+                    placeholder="Example: Outlet Manager",
+                )
+                custom_priority = st.selectbox(
+                    "Priority",
+                    options=["High", "Medium", "Low"],
+                    index=1,
+                )
+                custom_due = st.text_input(
+                    "Due",
+                    placeholder="Example: Friday / This week / 2026-05-20",
+                )
+                custom_success_metric = st.text_input(
+                    "Success metric",
+                    placeholder="Example: APC improves by 8%",
+                )
+                custom_note = st.text_area(
+                    "Note",
+                    placeholder="Add operating context or instructions.",
+                    height=80,
+                )
+
+                submitted = st.form_submit_button("Add custom action")
+
+                if submitted and custom_action.strip():
+                    custom_key = (
+                        f"custom_{selected_scope}_{analysis_period}_{custom_action}"
+                        .lower()
+                        .replace(" ", "_")
+                        .replace("/", "_")
+                    )
+
+                    if not _action_exists(custom_key):
+                        st.session_state.analytics_action_tracker.append(
+                            {
+                                "action_key": custom_key,
+                                "scope": selected_scope,
+                                "period": analysis_period,
+                                "priority": custom_priority,
+                                "action": custom_action.strip(),
+                                "reason": "Custom owner-entered action.",
+                                "owner": custom_owner.strip() or "Unassigned",
+                                "due": custom_due.strip() or "Not set",
+                                "status": "Open",
+                                "success_metric": custom_success_metric.strip(),
+                                "owner_note": custom_note.strip(),
+                            }
+                        )
+                        _render_dashboard_status("Custom action added.", "success")
+                        st.rerun()
+                    else:
+                        _render_dashboard_status(
+                            "This custom action is already in the tracker.",
+                            "warning",
+                        )
+
+        if not st.session_state.analytics_action_tracker:
+            _render_dashboard_status(
+                "No tracked actions yet. Add one of the suggested actions above.",
+                "info",
+            )
+            return
+
+        st.markdown("#### Tracked Actions")
+
+        updated_actions: list[dict[str, object]] = []
+
+        for index, action in enumerate(st.session_state.analytics_action_tracker):
+            with st.container(border=True):
+                header_col, remove_col = st.columns([5, 1])
+
+                with header_col:
+                    st.markdown(f"**{action.get('action', 'Untitled action')}**")
+                    st.caption(
+                        f"Scope: {action.get('scope', selected_scope)} · "
+                        f"Period: {action.get('period', analysis_period)} · "
+                        f"Reason: {action.get('reason', '')}"
+                    )
+
+                with remove_col:
+                    remove_clicked = st.button(
+                        "Remove",
+                        key=f"remove_action_{index}_{action.get('action_key', index)}",
+                    )
+
+                if remove_clicked:
+                    continue
+
+                edit_col_1, edit_col_2, edit_col_3 = st.columns(3)
+
+                with edit_col_1:
+                    action["status"] = st.selectbox(
+                        "Status",
+                        options=["Open", "In Progress", "Blocked", "Done", "Cancelled"],
+                        index=(
+                            ["Open", "In Progress", "Blocked", "Done", "Cancelled"].index(
+                                action.get("status", "Open")
+                            )
+                            if action.get("status", "Open")
+                            in ["Open", "In Progress", "Blocked", "Done", "Cancelled"]
+                            else 0
+                        ),
+                        key=f"action_status_{index}_{action.get('action_key', index)}",
+                    )
+
+                with edit_col_2:
+                    action["owner"] = st.text_input(
+                        "Owner",
+                        value=str(action.get("owner", "")),
+                        key=f"action_owner_{index}_{action.get('action_key', index)}",
+                    )
+
+                with edit_col_3:
+                    action["due"] = st.text_input(
+                        "Due",
+                        value=str(action.get("due", "")),
+                        key=f"action_due_{index}_{action.get('action_key', index)}",
+                    )
+
+                action["owner_note"] = st.text_area(
+                    "Owner note / impact check",
+                    value=str(action.get("owner_note", "")),
+                    key=f"action_note_{index}_{action.get('action_key', index)}",
+                    height=80,
+                )
+
+                st.caption(
+                    f"Success metric: {action.get('success_metric', 'Not set')}"
+                )
+
+                updated_actions.append(action)
+
+        st.session_state.analytics_action_tracker = updated_actions
+
+        export_df = pd.DataFrame(st.session_state.analytics_action_tracker)
+
+        if not export_df.empty:
+            st.download_button(
+                label="Download action tracker CSV",
+                data=export_df.to_csv(index=False).encode("utf-8"),
+                file_name="analytics_action_tracker.csv",
+                mime="text/csv",
+                key="download_analytics_action_tracker",
+            )
+
+        st.caption(
+            "Current limitation: actions are stored in the app session. "
+            "Download the CSV before refreshing if you need to preserve them. "
+            "Database persistence can be added later."
+        )
+
+    with st.container(border=True):
+        if is_horizontal:
+            if show_heading:
+                st.markdown("### Action Tracker")
+                st.caption(
+                    "Convert dashboard signals into trackable operating actions."
+                )
+
+            _render_metric_tile_grid(
+                [
+                    ("Open", f"{len(active_actions)}", None),
+                    ("High Priority", f"{high_priority_open}", None),
+                    ("Completed", f"{len(done_actions)}", None),
+                ]
+            )
+
+            _render_suggested_actions()
+
+            with st.expander("Manage tracked actions", expanded=False):
+                _render_action_management()
+
+        else:
+            st.markdown("### Action Tracker")
+            st.caption(
+                "Convert dashboard signals into trackable operating actions. "
+                "This version stores actions in the current app session and allows CSV export."
+            )
+
+            _render_metric_tile_grid(
+                [
+                    ("Open Actions", f"{len(active_actions)}", None),
+                    ("High Priority", f"{high_priority_open}", None),
+                    ("Completed", f"{len(done_actions)}", None),
+                ]
+            )
+
+            _render_suggested_actions()
+            _render_action_management()
+
+def render_sales_quality_layer(
+    df: pd.DataFrame,
+    prior_df: pd.DataFrame,
+    total_sales: float,
+    total_covers: int,
+) -> None:
+    """Render owner-facing sales quality and estimated contribution layer."""
+    if df.empty:
+        return
+
+    work_df = df.copy()
+
+    numeric_columns = [
+        "gross_total",
+        "net_total",
+        "discount",
+        "complimentary",
+        "service_charge",
+        "zomato_sales",
+        "covers",
+    ]
+
+    for column in numeric_columns:
+        if column not in work_df.columns:
+            work_df[column] = 0
+
+        work_df[column] = pd.to_numeric(
+            work_df[column],
+            errors="coerce",
+        ).fillna(0)
+
+    gross_sales = float(work_df["gross_total"].sum())
+    net_sales = float(work_df["net_total"].sum())
+    discount_total = float(work_df["discount"].sum())
+    complimentary_total = float(work_df["complimentary"].sum())
+    service_charge_total = float(work_df["service_charge"].sum())
+    zomato_pay_sales = float(work_df["zomato_sales"].sum())
+    covers = float(work_df["covers"].sum())
+
+    sales_base = gross_sales if gross_sales > 0 else net_sales
+    current_apc = net_sales / covers if covers > 0 else 0.0
+
+    prior_work_df = prior_df.copy() if prior_df is not None else pd.DataFrame()
+
+    prior_net_sales = None
+    prior_covers = None
+    prior_apc = None
+    prior_discount_total = None
+    prior_complimentary_total = None
+    prior_zomato_sales = None
+    prior_sales_base = None
+
+    if not prior_work_df.empty:
+        for column in numeric_columns:
+            if column not in prior_work_df.columns:
+                prior_work_df[column] = 0
+
+            prior_work_df[column] = pd.to_numeric(
+                prior_work_df[column],
+                errors="coerce",
+            ).fillna(0)
+
+        prior_gross_sales = float(prior_work_df["gross_total"].sum())
+        prior_net_sales = float(prior_work_df["net_total"].sum())
+        prior_discount_total = float(prior_work_df["discount"].sum())
+        prior_complimentary_total = float(prior_work_df["complimentary"].sum())
+        prior_zomato_sales = float(prior_work_df["zomato_sales"].sum())
+        prior_covers = float(prior_work_df["covers"].sum())
+        prior_sales_base = prior_gross_sales if prior_gross_sales > 0 else prior_net_sales
+        prior_apc = prior_net_sales / prior_covers if prior_covers > 0 else None
+
+    sales_delta_pct = _safe_pct_change(net_sales, prior_net_sales)
+    apc_delta_pct = _safe_pct_change(current_apc, prior_apc)
+
+    discount_pct = discount_total / sales_base * 100 if sales_base > 0 else 0.0
+    complimentary_pct = complimentary_total / sales_base * 100 if sales_base > 0 else 0.0
+    service_charge_pct = service_charge_total / net_sales * 100 if net_sales > 0 else 0.0
+    zomato_exposure_pct = zomato_pay_sales / net_sales * 100 if net_sales > 0 else 0.0
+
+    prior_discount_pct = (
+        prior_discount_total / prior_sales_base * 100
+        if prior_discount_total is not None
+        and prior_sales_base is not None
+        and prior_sales_base > 0
+        else None
+    )
+
+    prior_complimentary_pct = (
+        prior_complimentary_total / prior_sales_base * 100
+        if prior_complimentary_total is not None
+        and prior_sales_base is not None
+        and prior_sales_base > 0
+        else None
+    )
+
+    prior_zomato_exposure_pct = (
+        prior_zomato_sales / prior_net_sales * 100
+        if prior_zomato_sales is not None
+        and prior_net_sales is not None
+        and prior_net_sales > 0
+        else None
+    )
+
+    discount_delta_pts = (
+        discount_pct - prior_discount_pct
+        if prior_discount_pct is not None
+        else None
+    )
+
+    complimentary_delta_pts = (
+        complimentary_pct - prior_complimentary_pct
+        if prior_complimentary_pct is not None
+        else None
+    )
+
+    zomato_exposure_delta_pts = (
+        zomato_exposure_pct - prior_zomato_exposure_pct
+        if prior_zomato_exposure_pct is not None
+        else None
+    )
+
+    with st.container(border=True):
+        _render_diagnostic_intro(
+            "Quality view",
+            "Is revenue translating into contribution?",
+            "Review leakage, contribution assumptions, platform exposure, and APC movement before chasing more sales.",
+        )
+
+        with st.expander("Cost assumptions", expanded=False):
+            assumption_col_1, assumption_col_2, assumption_col_3 = st.columns(3)
+
+            with assumption_col_1:
+                food_cost_pct = st.number_input(
+                    "Food cost %",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=33.0,
+                    step=1.0,
+                    key="sales_quality_food_cost_pct",
+                    help="Used only for estimated contribution. Adjust this to your current food-cost assumption.",
+                )
+
+            with assumption_col_2:
+                other_variable_cost_pct = st.number_input(
+                    "Other variable cost %",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=5.0,
+                    step=1.0,
+                    key="sales_quality_other_variable_cost_pct",
+                    help="Packaging, payment charges, direct variable costs or other cost assumptions.",
+                )
+
+            with assumption_col_3:
+                zomato_pay_fee_pct = st.number_input(
+                    "Zomato Pay fee %",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=5.9,
+                    step=0.1,
+                    key="sales_quality_zomato_fee_pct",
+                    help="Estimated fee on Zomato Pay sales. Change if your commercial terms are different.",
+                )
+
+        platform_cost = zomato_pay_sales * (zomato_pay_fee_pct / 100)
+        food_cost_estimate = net_sales * (food_cost_pct / 100)
+        other_variable_cost_estimate = net_sales * (other_variable_cost_pct / 100)
+
+        estimated_contribution = (
+            net_sales
+            - food_cost_estimate
+            - other_variable_cost_estimate
+            - platform_cost
+        )
+
+        estimated_contribution_pct = (
+            estimated_contribution / net_sales * 100
+            if net_sales > 0
+            else 0.0
+        )
+
+        leakage_total = discount_total + complimentary_total + platform_cost
+        leakage_pct = leakage_total / sales_base * 100 if sales_base > 0 else 0.0
+
+        quality_score = 100.0
+
+        if discount_pct > 5:
+            quality_score -= min(20, (discount_pct - 5) * 2)
+
+        if complimentary_pct > 2:
+            quality_score -= min(15, (complimentary_pct - 2) * 3)
+
+        if zomato_exposure_pct > 20:
+            quality_score -= min(15, (zomato_exposure_pct - 20) * 0.5)
+
+        if apc_delta_pct is not None and apc_delta_pct < -5:
+            quality_score -= min(20, abs(apc_delta_pct))
+
+        if estimated_contribution_pct < 12:
+            quality_score -= 15
+        elif estimated_contribution_pct < 18:
+            quality_score -= 8
+
+        quality_score = max(0.0, min(100.0, quality_score))
+
+        if quality_score >= 80:
+            quality_label = "Strong"
+            quality_severity = "success"
+            quality_message = "Sales quality looks healthy from the available data."
+        elif quality_score >= 65:
+            quality_label = "Watch"
+            quality_severity = "warning"
+            quality_message = "Sales quality is acceptable, but at least one leakage or contribution risk is visible."
+        else:
+            quality_label = "Weak"
+            quality_severity = "error"
+            quality_message = "Sales quality is weak. Review leakage, APC and platform exposure before chasing more revenue."
+
+        _render_metric_tile_grid(
+            [
+                (
+                    "Net Sales",
+                    utils.format_rupee_short(net_sales),
+                    (
+                        f"{sales_delta_pct:+.1f}% vs comparison"
+                        if sales_delta_pct is not None
+                        else None
+                    ),
+                ),
+                (
+                    "Estimated Contribution",
+                    utils.format_rupee_short(estimated_contribution),
+                    f"{estimated_contribution_pct:.1f}% of net sales",
+                ),
+                (
+                    "Total Leakage",
+                    utils.format_rupee_short(leakage_total),
+                    f"{leakage_pct:.1f}% of sales base",
+                ),
+                (
+                    "Sales Quality Score",
+                    f"{quality_score:.0f}/100",
+                    quality_label,
+                ),
+            ]
+        )
+
+        _render_dashboard_status(
+            f"{quality_label} sales quality — {quality_message}",
+            quality_severity,
+        )
+
+        leakage_rows = [
+            {
+                "Metric": "Discount",
+                "Value": utils.format_rupee_short(discount_total),
+                "% of Sales": f"{discount_pct:.1f}%",
+                "Change vs Comparison": (
+                    "N/A"
+                    if discount_delta_pts is None
+                    else f"{discount_delta_pts:+.1f} pts"
+                ),
+                "Owner Interpretation": (
+                    "High discount leakage"
+                    if discount_pct > 5
+                    else "Controlled"
+                ),
+            },
+            {
+                "Metric": "Complimentary",
+                "Value": utils.format_rupee_short(complimentary_total),
+                "% of Sales": f"{complimentary_pct:.1f}%",
+                "Change vs Comparison": (
+                    "N/A"
+                    if complimentary_delta_pts is None
+                    else f"{complimentary_delta_pts:+.1f} pts"
+                ),
+                "Owner Interpretation": (
+                    "High complimentary leakage"
+                    if complimentary_pct > 2
+                    else "Controlled"
+                ),
+            },
+            {
+                "Metric": "Zomato Pay Exposure",
+                "Value": utils.format_rupee_short(zomato_pay_sales),
+                "% of Sales": f"{zomato_exposure_pct:.1f}%",
+                "Change vs Comparison": (
+                    "N/A"
+                    if zomato_exposure_delta_pts is None
+                    else f"{zomato_exposure_delta_pts:+.1f} pts"
+                ),
+                "Owner Interpretation": (
+                    "High platform exposure"
+                    if zomato_exposure_pct > 20
+                    else "Controlled"
+                ),
+            },
+            {
+                "Metric": "Estimated Zomato Pay Cost",
+                "Value": utils.format_rupee_short(platform_cost),
+                "% of Sales": f"{platform_cost / net_sales * 100:.1f}%" if net_sales > 0 else "0.0%",
+                "Change vs Comparison": "N/A",
+                "Owner Interpretation": "Estimated from Zomato Pay sales × fee assumption.",
+            },
+            {
+                "Metric": "Service Charge",
+                "Value": utils.format_rupee_short(service_charge_total),
+                "% of Sales": f"{service_charge_pct:.1f}%",
+                "Change vs Comparison": "N/A",
+                "Owner Interpretation": "Positive revenue line, not leakage.",
+            },
+            {
+                "Metric": "APC",
+                "Value": utils.format_currency(current_apc),
+                "% of Sales": "N/A",
+                "Change vs Comparison": (
+                    "N/A"
+                    if apc_delta_pct is None
+                    else f"{apc_delta_pct:+.1f}%"
+                ),
+                "Owner Interpretation": (
+                    "APC declining"
+                    if apc_delta_pct is not None and apc_delta_pct < -5
+                    else "Stable / acceptable"
+                ),
+            },
+        ]
+
+        with st.expander("View quality drivers", expanded=False):
+            st.dataframe(
+                pd.DataFrame(leakage_rows),
+                width="stretch",
+                hide_index=True,
+            )
+
+        risk_messages: list[str] = []
+
+        if discount_pct > 5:
+            risk_messages.append(
+                f"Discount is {discount_pct:.1f}% of sales base. Check whether discounts are intentional and profitable."
+            )
+
+        if complimentary_pct > 2:
+            risk_messages.append(
+                f"Complimentary is {complimentary_pct:.1f}% of sales base. Review approval controls."
+            )
+
+        if zomato_exposure_pct > 20:
+            risk_messages.append(
+                f"Zomato Pay exposure is {zomato_exposure_pct:.1f}% of net sales. Check whether incremental sales justify platform cost."
+            )
+
+        if apc_delta_pct is not None and apc_delta_pct < -5:
+            risk_messages.append(
+                f"APC is {apc_delta_pct:+.1f}% vs comparison. Sales quality may be weakening even if sales look stable."
+            )
+
+        if estimated_contribution_pct < 15:
+            risk_messages.append(
+                f"Estimated contribution is {estimated_contribution_pct:.1f}% of net sales. Check assumptions and margin leakage."
+            )
+
+        with st.expander("Sales quality risks and assumptions", expanded=False):
+            if risk_messages:
+                for message in risk_messages:
+                    st.warning(message)
+            else:
+                st.success("No major sales quality risk detected from the available data.")
+
+            st.caption(
+                "- Estimated contribution is not accounting profit. It is a directional contribution estimate based on your assumptions."
+            )
+            st.caption(
+                "- Zomato Pay cost is estimated only from the Zomato Pay sales field and the fee percentage entered above."
+            )
+            st.caption(
+                "- Discount and complimentary percentages use gross sales when available; otherwise they use net sales."
+            )
+            st.caption(
+                "- Sales Quality Score is a decision signal, not an accounting metric."
+            )
+
+        sales_quality_actions = []
+
+        if discount_pct > 5:
+            sales_quality_actions.append(
+                {
+                    "priority": "High",
+                    "action": "Audit discount leakage",
+                    "reason": f"Discounts are {discount_pct:.1f}% of sales base.",
+                    "owner": "Finance / Operations",
+                    "due": "This week",
+                    "success_metric": "Discount percentage reduces or all discounts are mapped to approved reasons.",
+                }
+            )
+
+        if complimentary_pct > 2:
+            sales_quality_actions.append(
+                {
+                    "priority": "Medium",
+                    "action": "Review complimentary approval control",
+                    "reason": f"Complimentary is {complimentary_pct:.1f}% of sales base.",
+                    "owner": "Restaurant Manager",
+                    "due": "This week",
+                    "success_metric": "Complimentary usage is approved, reason-coded, and reduced where unnecessary.",
+                }
+            )
+
+        if zomato_exposure_pct > 20:
+            sales_quality_actions.append(
+                {
+                    "priority": "Medium",
+                    "action": "Check Zomato Pay incrementality",
+                    "reason": f"Zomato Pay exposure is {zomato_exposure_pct:.1f}% of net sales.",
+                    "owner": "Operations / Marketing",
+                    "due": "Before next platform activation",
+                    "success_metric": "Incremental sales estimate covers platform cost at target coverage ratio.",
+                }
+            )
+
+        if apc_delta_pct is not None and apc_delta_pct < -5:
+            sales_quality_actions.append(
+                {
+                    "priority": "High",
+                    "action": "Run APC improvement push",
+                    "reason": f"APC is {apc_delta_pct:+.1f}% versus comparison.",
+                    "owner": "Restaurant Manager",
+                    "due": "Next peak weekend",
+                    "success_metric": "APC improves through drinks, desserts, sharing platters, or premium item attachment.",
+                }
+            )
+
+        if not sales_quality_actions and quality_score < 80:
+            sales_quality_actions.append(
+                {
+                    "priority": "Medium",
+                    "action": "Review sales quality assumptions",
+                    "reason": f"Sales Quality Score is {quality_score:.0f}/100.",
+                    "owner": "Finance / Operations",
+                    "due": "This week",
+                    "success_metric": "Food cost, variable cost, and platform fee assumptions are validated.",
+                }
+            )
+
+        _render_diagnostic_action_cards(
+            "Sales Quality",
+            sales_quality_actions,
+        )
+
+def render_category_quality_layer(
+    report_loc_ids: list[int],
+    start_str: str,
+    end_str: str,
+    prior_start: date | None,
+    prior_end: date | None,
+    total_sales: float,
+    prior_total: float | None,
+) -> None:
+    """Render owner-facing actual category quality and menu mix layer."""
+    import database_analytics
+
+    if not report_loc_ids:
+        return
+
+    current_rows = database_analytics.get_category_sales_for_date_range(
+        report_loc_ids,
+        start_str,
+        end_str,
+    )
+
+    if not current_rows:
+        return
+
+    current_df = pd.DataFrame(current_rows)
+
+    if (
+        current_df.empty
+        or "category" not in current_df.columns
+        or "amount" not in current_df.columns
+    ):
+        return
+
+    current_df["category"] = current_df["category"].astype(str).str.strip()
+    current_df["category"] = current_df["category"].replace("", "Uncategorized")
+
+    current_df["amount"] = pd.to_numeric(
+        current_df["amount"],
+        errors="coerce",
+    ).fillna(0)
+
+    if "qty" in current_df.columns:
+        current_df["qty"] = pd.to_numeric(
+            current_df["qty"],
+            errors="coerce",
+        ).fillna(0)
+    else:
+        current_df["qty"] = 0
+
+    current_df = current_df[current_df["amount"] > 0].copy()
+
+    if current_df.empty:
+        return
+
+    category_total = float(current_df["amount"].sum())
+
+    if category_total <= 0:
+        return
+
+    current_df["share_pct"] = current_df["amount"] / category_total * 100
+
+    prior_df = pd.DataFrame()
+
+    if prior_start and prior_end:
+        prior_rows = database_analytics.get_category_sales_for_date_range(
+            report_loc_ids,
+            prior_start.strftime("%Y-%m-%d"),
+            prior_end.strftime("%Y-%m-%d"),
+        )
+
+        if prior_rows:
+            prior_df = pd.DataFrame(prior_rows)
+
+            if (
+                not prior_df.empty
+                and "category" in prior_df.columns
+                and "amount" in prior_df.columns
+            ):
+                prior_df["category"] = prior_df["category"].astype(str).str.strip()
+                prior_df["category"] = prior_df["category"].replace("", "Uncategorized")
+
+                prior_df["amount"] = pd.to_numeric(
+                    prior_df["amount"],
+                    errors="coerce",
+                ).fillna(0)
+
+                if "qty" in prior_df.columns:
+                    prior_df["qty"] = pd.to_numeric(
+                        prior_df["qty"],
+                        errors="coerce",
+                    ).fillna(0)
+                else:
+                    prior_df["qty"] = 0
+
+                prior_total_amount = float(prior_df["amount"].sum())
+                prior_df["share_pct"] = (
+                    prior_df["amount"] / prior_total_amount * 100
+                    if prior_total_amount > 0
+                    else 0
+                )
+            else:
+                prior_df = pd.DataFrame()
+
+    merged_df = current_df.merge(
+        prior_df[["category", "amount", "share_pct"]].rename(
+            columns={
+                "amount": "prior_amount",
+                "share_pct": "prior_share_pct",
+            }
+        )
+        if not prior_df.empty
+        else pd.DataFrame(columns=["category", "prior_amount", "prior_share_pct"]),
+        on="category",
+        how="left",
+    )
+
+    merged_df["prior_amount"] = pd.to_numeric(
+        merged_df["prior_amount"],
+        errors="coerce",
+    ).fillna(0)
+
+    merged_df["prior_share_pct"] = pd.to_numeric(
+        merged_df["prior_share_pct"],
+        errors="coerce",
+    ).fillna(0)
+
+    merged_df["growth_pct"] = merged_df.apply(
+        lambda row: (
+            (
+                (float(row["amount"]) - float(row["prior_amount"]))
+                / float(row["prior_amount"])
+                * 100
+            )
+            if float(row["prior_amount"]) > 0
+            else None
+        ),
+        axis=1,
+    )
+
+    merged_df["share_change_pts"] = merged_df["share_pct"] - merged_df["prior_share_pct"]
+
+    merged_df = merged_df.sort_values("amount", ascending=False).reset_index(drop=True)
+
+    def _is_beverage_category(category_name: str) -> bool:
+        text = str(category_name or "").lower()
+        beverage_terms = [
+            "liquor",
+            "beer",
+            "wine",
+            "spirit",
+            "cocktail",
+            "mocktail",
+            "beverage",
+            "drink",
+            "coffee",
+            "tea",
+            "juice",
+            "soft",
+            "water",
+        ]
+        return any(term in text for term in beverage_terms)
+
+    def _is_premium_category(category_name: str) -> bool:
+        text = str(category_name or "").lower()
+        premium_terms = [
+            "meat",
+            "beef",
+            "pork",
+            "seafood",
+            "grill",
+            "steak",
+            "platter",
+            "special",
+            "chef",
+            "wine",
+            "cocktail",
+            "liquor",
+        ]
+        return any(term in text for term in premium_terms)
+
+    merged_df["is_beverage"] = merged_df["category"].apply(_is_beverage_category)
+    merged_df["is_premium_signal"] = merged_df["category"].apply(_is_premium_category)
+
+    beverage_sales = float(merged_df[merged_df["is_beverage"]]["amount"].sum())
+    beverage_share = beverage_sales / category_total * 100 if category_total > 0 else 0.0
+
+    prior_beverage_share = None
+
+    if not prior_df.empty:
+        prior_df["is_beverage"] = prior_df["category"].apply(_is_beverage_category)
+        prior_category_total = float(prior_df["amount"].sum())
+        prior_beverage_sales = float(prior_df[prior_df["is_beverage"]]["amount"].sum())
+
+        prior_beverage_share = (
+            prior_beverage_sales / prior_category_total * 100
+            if prior_category_total > 0
+            else None
+        )
+
+    beverage_share_delta = (
+        beverage_share - prior_beverage_share
+        if prior_beverage_share is not None
+        else None
+    )
+
+    premium_sales = float(merged_df[merged_df["is_premium_signal"]]["amount"].sum())
+    premium_share = premium_sales / category_total * 100 if category_total > 0 else 0.0
+
+    top_category = str(merged_df.iloc[0]["category"])
+    top_category_share = float(merged_df.iloc[0]["share_pct"])
+
+    top_5_share = float(merged_df.head(5)["amount"].sum() / category_total * 100)
+
+    category_coverage_pct = (
+        category_total / total_sales * 100
+        if total_sales > 0
+        else 0.0
+    )
+
+    quality_score = 100.0
+
+    if top_category_share >= 35:
+        quality_score -= 18
+    elif top_category_share >= 25:
+        quality_score -= 10
+
+    if top_5_share >= 80:
+        quality_score -= 15
+    elif top_5_share >= 65:
+        quality_score -= 8
+
+    if beverage_share < 12:
+        quality_score -= 15
+    elif beverage_share < 18:
+        quality_score -= 8
+
+    if beverage_share_delta is not None and beverage_share_delta <= -3:
+        quality_score -= 10
+
+    declining_major_categories = merged_df[
+        (merged_df["share_pct"] >= 5)
+        & (merged_df["growth_pct"].notna())
+        & (merged_df["growth_pct"] <= -8)
+    ]
+
+    if not declining_major_categories.empty:
+        quality_score -= 12
+
+    if category_coverage_pct < 70:
+        quality_score -= 10
+
+    quality_score = max(0.0, min(100.0, quality_score))
+
+    if quality_score >= 80:
+        quality_label = "Strong"
+        quality_severity = "success"
+        quality_message = "Actual category mix looks healthy from the available data."
+    elif quality_score >= 65:
+        quality_label = "Watch"
+        quality_severity = "warning"
+        quality_message = "Actual category mix is usable, but at least one mix risk needs review."
+    else:
+        quality_label = "Weak"
+        quality_severity = "error"
+        quality_message = "Actual category mix quality is weak. Review concentration, beverage share and declining categories."
+
+    with st.container(border=True):
+        _render_diagnostic_intro(
+            "Menu view",
+            "Is the menu mix supporting APC and contribution?",
+            "Review category concentration, beverage share, premium signals, and important category movement.",
+        )
+
+        _render_metric_tile_grid(
+            [
+                (
+                    "Top Actual Category",
+                    top_category,
+                    f"{top_category_share:.1f}% of category sales",
+                ),
+                (
+                    "Beverage Share",
+                    f"{beverage_share:.1f}%",
+                    (
+                        "N/A"
+                        if beverage_share_delta is None
+                        else f"{beverage_share_delta:+.1f} pts vs comparison"
+                    ),
+                ),
+                (
+                    "Top 5 Share",
+                    f"{top_5_share:.1f}%",
+                    "Concentration signal",
+                ),
+                (
+                    "Mix Quality Score",
+                    f"{quality_score:.0f}/100",
+                    quality_label,
+                ),
+            ]
+        )
+
+        _render_dashboard_status(
+            f"{quality_label} mix quality — {quality_message}",
+            quality_severity,
+        )
+
+        insight_messages: list[str] = []
+
+        if top_category_share >= 25:
+            insight_messages.append(
+                f"{top_category} contributes {top_category_share:.1f}% of actual category sales. Protect availability, consistency and margin for this category."
+            )
+
+        if top_5_share >= 65:
+            insight_messages.append(
+                f"Top 5 actual categories contribute {top_5_share:.1f}% of category sales. This is a concentration risk if one category underperforms."
+            )
+
+        if beverage_share_delta is not None and beverage_share_delta <= -3:
+            insight_messages.append(
+                f"Beverage share is down {abs(beverage_share_delta):.1f} pts versus comparison. This may be hurting APC and contribution."
+            )
+
+        if beverage_share < 15:
+            insight_messages.append(
+                f"Beverage share is only {beverage_share:.1f}%. Review drinks attachment, upsell scripts and menu visibility."
+            )
+
+        if premium_share < 35:
+            insight_messages.append(
+                f"Premium signal categories are only {premium_share:.1f}% of actual category sales. Check whether high-value items are contributing enough."
+            )
+
+        if not declining_major_categories.empty:
+            weak_names = ", ".join(
+                declining_major_categories["category"].head(5).astype(str).tolist()
+            )
+            insight_messages.append(
+                f"Declining important actual categories detected: {weak_names}. Check availability, pricing, guest preference shift or service execution."
+            )
+
+        if category_coverage_pct < 70:
+            insight_messages.append(
+                f"Category data covers only {category_coverage_pct:.1f}% of net sales. Use mix conclusions carefully."
+            )
+
+        if not insight_messages:
+            insight_messages.append(
+                "No major category quality issue detected from concentration, beverage share or comparison movement."
+            )
+
+        st.markdown("#### Owner Insights")
+
+        insight_html = "".join(
+            (
+                '<div class="analytics-readout-point">'
+                '<span class="analytics-readout-marker">→</span>'
+                f'<div>{_html(message)}</div>'
+                '</div>'
+            )
+            for message in insight_messages[:5]
+        )
+
+        st.markdown(
+            f'<div class="analytics-readout-points">{insight_html}</div>',
+            unsafe_allow_html=True,
+        )
+
+        display_df = merged_df.copy()
+
+        display_df["Sales"] = display_df["amount"].apply(
+            lambda value: utils.format_rupee_short(float(value))
+        )
+
+        display_df["Share"] = display_df["share_pct"].apply(
+            lambda value: f"{float(value):.1f}%"
+        )
+
+        display_df["Growth vs Comparison"] = display_df["growth_pct"].apply(
+            lambda value: "N/A" if pd.isna(value) else f"{float(value):+.1f}%"
+        )
+
+        display_df["Share Change"] = display_df["share_change_pts"].apply(
+            lambda value: f"{float(value):+.1f} pts"
+        )
+
+        display_df["Qty"] = display_df["qty"].apply(
+            lambda value: f"{int(value):,}"
+        )
+
+        display_df["Category Type"] = display_df.apply(
+            lambda row: (
+                "Beverage"
+                if bool(row["is_beverage"])
+                else "Premium signal"
+                if bool(row["is_premium_signal"])
+                else "Food / Other"
+            ),
+            axis=1,
+        )
+
+        display_df = display_df.rename(
+            columns={
+                "category": "Actual Category",
+            }
+        )
+
+        with st.expander("View actual category movement", expanded=False):
+            st.dataframe(
+                display_df[
+                    [
+                        "Actual Category",
+                        "Category Type",
+                        "Sales",
+                        "Share",
+                        "Growth vs Comparison",
+                        "Share Change",
+                        "Qty",
+                    ]
+                ],
+                width="stretch",
+                hide_index=True,
+            )
+
+        with st.expander("How category quality is calculated", expanded=False):
+            st.caption(
+                "- This section uses actual POS category names from `get_category_sales_for_date_range()`."
+            )
+            st.caption(
+                "- Beverage Share is derived from actual category names containing terms such as liquor, beer, wine, cocktail, mocktail, coffee, tea, juice, soft, drink, beverage or water."
+            )
+            st.caption(
+                "- Premium signal categories are derived from actual category names containing terms such as meat, beef, pork, seafood, grill, steak, platter, special, chef, wine, cocktail or liquor."
+            )
+            st.caption(
+                "- Top 5 Share checks whether sales are too dependent on a small number of actual POS categories."
+            )
+            st.caption(
+                "- Growth vs Comparison compares actual category sales against the selected comparison period."
+            )
+            st.caption(
+                "- Category totals may not perfectly match net sales because taxes, service charge, discounts, mapping and report-source differences can affect totals."
+            )
+            
+        menu_mix_actions = []
+
+        if beverage_share < 15:
+            menu_mix_actions.append(
+                {
+                    "priority": "High",
+                    "action": "Improve beverage attachment",
+                    "reason": f"Beverage share is only {beverage_share:.1f}%.",
+                    "owner": "Restaurant Manager",
+                    "due": "This week",
+                    "success_metric": "Beverage share improves and APC moves upward.",
+                }
+            )
+
+        if beverage_share_delta is not None and beverage_share_delta <= -3:
+            menu_mix_actions.append(
+                {
+                    "priority": "Medium",
+                    "action": "Recover beverage share decline",
+                    "reason": f"Beverage share is down {abs(beverage_share_delta):.1f} pts versus comparison.",
+                    "owner": "Bar / Service Lead",
+                    "due": "Next 7 days",
+                    "success_metric": "Beverage share stabilises versus comparison.",
+                }
+            )
+
+        if top_5_share >= 65:
+            menu_mix_actions.append(
+                {
+                    "priority": "Medium",
+                    "action": "Protect top category availability",
+                    "reason": f"Top 5 categories contribute {top_5_share:.1f}% of category sales.",
+                    "owner": "Kitchen / Purchase",
+                    "due": "This week",
+                    "success_metric": "Top categories remain available with no stockout-driven sales loss.",
+                }
+            )
+
+        if not declining_major_categories.empty:
+            weak_names = ", ".join(
+                declining_major_categories["category"].head(3).astype(str).tolist()
+            )
+            menu_mix_actions.append(
+                {
+                    "priority": "High",
+                    "action": "Investigate declining key categories",
+                    "reason": f"Important categories are declining: {weak_names}.",
+                    "owner": "Chef / Operations",
+                    "due": "This week",
+                    "success_metric": "Cause is identified: availability, pricing, demand shift, or execution.",
+                }
+            )
+
+        _render_diagnostic_action_cards(
+            "Menu Mix & Timing",
+            menu_mix_actions,
+        )         
 
 def _style_achievement(val) -> str:
     """Pandas Styler.map function: color an Achievement % cell by band."""
@@ -444,6 +3490,888 @@ def _weekly_covers_commentary(weekly_df: pd.DataFrame) -> str:
         return f"Week-over-week trend is decreasing: avg daily covers are down {abs(pct):.1f}%."
     return "Week-over-week trend is stable: avg daily covers are broadly flat."
 
+def render_sales_movement_waterfall(
+    current_df: pd.DataFrame,
+    prior_df: pd.DataFrame,
+) -> None:
+    """Render sales movement waterfall between current and prior period."""
+    if current_df.empty or prior_df.empty:
+        return
+
+    required_columns = {"net_total", "covers"}
+    if not required_columns.issubset(set(current_df.columns)):
+        return
+    if not required_columns.issubset(set(prior_df.columns)):
+        return
+
+    current_sales = float(
+        pd.to_numeric(current_df["net_total"], errors="coerce").fillna(0).sum()
+    )
+    current_covers = float(
+        pd.to_numeric(current_df["covers"], errors="coerce").fillna(0).sum()
+    )
+
+    prior_sales = float(
+        pd.to_numeric(prior_df["net_total"], errors="coerce").fillna(0).sum()
+    )
+    prior_covers = float(
+        pd.to_numeric(prior_df["covers"], errors="coerce").fillna(0).sum()
+    )
+
+    if prior_sales <= 0 or prior_covers <= 0 or current_covers <= 0:
+        return
+
+    prior_apc = prior_sales / prior_covers
+    current_apc = current_sales / current_covers
+
+    cover_effect = (current_covers - prior_covers) * prior_apc
+    apc_effect = current_covers * (current_apc - prior_apc)
+
+    total_movement = current_sales - prior_sales
+    explained_movement = cover_effect + apc_effect
+    residual_effect = total_movement - explained_movement
+
+    with st.container(border=True):
+        st.markdown("#### Sales Movement Breakdown")
+        st.caption(
+            "Explains whether sales changed because of guest count movement or APC movement."
+        )
+
+        fig_waterfall = go.Figure(
+            go.Waterfall(
+                name="Sales Movement",
+                orientation="v",
+                measure=[
+                    "absolute",
+                    "relative",
+                    "relative",
+                    "relative",
+                    "total",
+                ],
+                x=[
+                    "Prior Sales",
+                    "Cover Effect",
+                    "APC Effect",
+                    "Other / Rounding",
+                    "Current Sales",
+                ],
+                y=[
+                    prior_sales,
+                    cover_effect,
+                    apc_effect,
+                    residual_effect,
+                    current_sales,
+                ],
+                connector={"line": {"width": 1}},
+                hovertemplate="%{x}<br>₹%{y:,.0f}<extra></extra>",
+            )
+        )
+
+        _apply_analytics_chart_layout(
+            fig_waterfall,
+            title="Prior Period to Current Period Sales Movement",
+            height=340,
+            showlegend=False,
+        )
+        fig_waterfall.update_yaxes(title_text="Sales ₹")
+
+        st.plotly_chart(fig_waterfall, width="stretch")
+
+        movement_summary = pd.DataFrame(
+            [
+                {
+                    "Driver": "Prior Sales",
+                    "Impact": utils.format_currency(prior_sales),
+                },
+                {
+                    "Driver": "Cover Effect",
+                    "Impact": utils.format_currency(cover_effect),
+                },
+                {
+                    "Driver": "APC Effect",
+                    "Impact": utils.format_currency(apc_effect),
+                },
+                {
+                    "Driver": "Other / Rounding",
+                    "Impact": utils.format_currency(residual_effect),
+                },
+                {
+                    "Driver": "Current Sales",
+                    "Impact": utils.format_currency(current_sales),
+                },
+            ]
+        )
+
+        with st.expander("View movement explanation"):
+            st.dataframe(movement_summary, width="stretch", hide_index=True)
+
+            if cover_effect > 0 and apc_effect > 0:
+                _render_dashboard_status(
+                    "Sales improved because both covers and APC moved positively.",
+                    "success",
+                )
+            elif cover_effect > 0 and apc_effect < 0:
+                _render_dashboard_status(
+                    "Covers improved, but APC declined. This points to an upselling or menu-mix issue.",
+                    "warning",
+                )
+            elif cover_effect < 0 and apc_effect > 0:
+                _render_dashboard_status(
+                    "APC improved, but covers declined. This points to a traffic or demand issue.",
+                    "warning",
+                )
+            elif cover_effect < 0 and apc_effect < 0:
+                _render_dashboard_status(
+                    "Both covers and APC declined. This needs demand recovery and ticket-size improvement.",
+                    "error",
+                )
+
+def _render_forecast_anomaly_inputs(variance_table: pd.DataFrame) -> None:
+    """Render manual cause inputs for forecast anomaly days.
+
+    These labels are stored in session_state for now and can be exported as CSV.
+    Later, this can be persisted to the database and used as ML training labels.
+    """
+    if variance_table.empty:
+        return
+
+    cause_options = [
+        "Not labelled",
+        "Corporate booking / large party",
+        "Private event",
+        "Holiday / festival",
+        "Local event",
+        "Weather / rain",
+        "Staffing issue",
+        "Stockout",
+        "Menu availability issue",
+        "Service issue",
+        "Aggregator / Zomato activity",
+        "Marketing / promotion",
+        "Data issue",
+        "Unexpected walk-ins",
+        "Low reservations",
+        "Other",
+    ]
+
+    if "forecast_anomaly_labels" not in st.session_state:
+        st.session_state.forecast_anomaly_labels = {}
+
+    st.markdown("#### Manual Cause Labels")
+    st.caption(
+        "Label the likely cause of each forecast anomaly. These labels can later become training data for the ML model."
+    )
+
+    export_rows: list[dict[str, object]] = []
+
+    for _, row in variance_table.iterrows():
+        anomaly_date = pd.Timestamp(row["date"]).strftime("%Y-%m-%d")
+        default_key = f"{anomaly_date}_{str(row.get('weekday', ''))}"
+        saved = st.session_state.forecast_anomaly_labels.get(default_key, {})
+
+        with st.container(border=True):
+            st.markdown(
+                f"**{pd.Timestamp(row['date']).strftime('%d %b %Y')} · {row.get('weekday', '')}**"
+            )
+
+            st.caption(
+                "Actual: {} | Forecast: {} | Variance: {} ({})".format(
+                    utils.format_rupee_short(float(row.get("actual_sales", 0) or 0)),
+                    utils.format_rupee_short(float(row.get("forecast_sales", 0) or 0)),
+                    utils.format_rupee_short(float(row.get("variance", 0) or 0)),
+                    (
+                        "N/A"
+                        if pd.isna(row.get("variance_pct"))
+                        else f"{float(row.get('variance_pct')):+.1f}%"
+                    ),
+                )
+            )
+
+            st.caption(
+                f"System-detected factor: {row.get('likely_factors', 'No factor detected')}"
+            )
+
+            selected_cause = st.selectbox(
+                "Manual cause",
+                options=cause_options,
+                index=(
+                    cause_options.index(saved.get("cause"))
+                    if saved.get("cause") in cause_options
+                    else 0
+                ),
+                key=f"forecast_anomaly_cause_{default_key}",
+            )
+
+            note = st.text_area(
+                "Owner note",
+                value=str(saved.get("note", "")),
+                placeholder="Example: Large corporate table, rain affected lunch, stockout of key dish, Zomato campaign active, etc.",
+                key=f"forecast_anomaly_note_{default_key}",
+                height=80,
+            )
+
+            st.session_state.forecast_anomaly_labels[default_key] = {
+                "date": anomaly_date,
+                "weekday": str(row.get("weekday", "")),
+                "actual_sales": float(row.get("actual_sales", 0) or 0),
+                "forecast_sales": float(row.get("forecast_sales", 0) or 0),
+                "variance": float(row.get("variance", 0) or 0),
+                "variance_pct": (
+                    None
+                    if pd.isna(row.get("variance_pct"))
+                    else float(row.get("variance_pct"))
+                ),
+                "actual_covers": float(row.get("actual_covers", 0) or 0),
+                "actual_apc": float(row.get("actual_apc", 0) or 0),
+                "outcome": str(row.get("outcome", "")),
+                "system_detected_factors": str(row.get("likely_factors", "")),
+                "manual_cause": selected_cause,
+                "owner_note": note,
+            }
+
+            export_rows.append(st.session_state.forecast_anomaly_labels[default_key])
+
+    labelled_df = pd.DataFrame(export_rows)
+
+    if not labelled_df.empty:
+        st.download_button(
+            label="Download anomaly labels CSV",
+            data=labelled_df.to_csv(index=False).encode("utf-8"),
+            file_name="forecast_anomaly_labels.csv",
+            mime="text/csv",
+            key="download_forecast_anomaly_labels",
+        )
+
+def _forecast_quality_grade(
+    accuracy: float | None,
+    within_range_pct: float,
+    bias_pct: float,
+    tested_days: int,
+) -> tuple[str, str, str]:
+    """Convert backtest metrics into an owner-friendly forecast quality grade."""
+    if accuracy is None or tested_days < 7:
+        return (
+            "Insufficient",
+            "warning",
+            "Not enough tested days to judge forecast quality confidently.",
+        )
+
+    abs_bias = abs(float(bias_pct))
+
+    if accuracy >= 85 and within_range_pct >= 70 and abs_bias <= 8:
+        return (
+            "Strong",
+            "success",
+            "Forecast performance is strong enough for directional planning.",
+        )
+
+    if accuracy >= 75 and within_range_pct >= 60 and abs_bias <= 15:
+        return (
+            "Usable",
+            "info",
+            "Forecast is usable for owner decisions, but should be checked against context.",
+        )
+
+    if accuracy >= 65 and within_range_pct >= 45:
+        return (
+            "Watch",
+            "warning",
+            "Forecast has moderate error. Use it as a warning signal, not a firm target.",
+        )
+
+    return (
+        "Weak",
+        "error",
+        "Forecast accuracy is weak for this period. Investigate variance drivers before relying on it.",
+    )
+
+
+def _render_forecast_quality_dashboard(
+    result_df: pd.DataFrame,
+    accuracy: float | None,
+    within_range_pct: float,
+    bias_pct: float,
+) -> None:
+    """Render a compact forecast quality dashboard from backtest results."""
+    if result_df.empty:
+        return
+
+    quality_label, quality_severity, quality_message = _forecast_quality_grade(
+        accuracy=accuracy,
+        within_range_pct=within_range_pct,
+        bias_pct=bias_pct,
+        tested_days=len(result_df),
+    )
+
+    work_df = result_df.copy()
+
+    work_df["abs_variance"] = pd.to_numeric(
+        work_df["variance"],
+        errors="coerce",
+    ).abs()
+
+    work_df["abs_pct_error"] = work_df.apply(
+        lambda row: (
+            abs(float(row["actual_sales"]) - float(row["forecast_sales"]))
+            / float(row["actual_sales"])
+            * 100
+        )
+        if float(row.get("actual_sales", 0) or 0) > 0
+        and float(row.get("forecast_sales", 0) or 0) > 0
+        else None,
+        axis=1,
+    )
+
+    valid_error_df = work_df[work_df["abs_pct_error"].notna()].copy()
+
+    hardest_weekday = "N/A"
+    hardest_weekday_error = None
+
+    if not valid_error_df.empty:
+        weekday_errors = (
+            valid_error_df.groupby("weekday", as_index=False)["abs_pct_error"]
+            .mean()
+            .sort_values("abs_pct_error", ascending=False)
+        )
+
+        if not weekday_errors.empty:
+            hardest_weekday = str(weekday_errors.iloc[0]["weekday"])
+            hardest_weekday_error = float(weekday_errors.iloc[0]["abs_pct_error"])
+
+    # Error trend compares recent tested days against earlier tested days.
+    error_trend_label = "N/A"
+    error_trend_detail = "Need more tested days to compare recent forecast error."
+
+    if len(valid_error_df) >= 10:
+        recent_n = min(7, len(valid_error_df) // 2)
+        recent_error = float(valid_error_df.tail(recent_n)["abs_pct_error"].mean())
+        prior_error = float(valid_error_df.iloc[:-recent_n]["abs_pct_error"].mean())
+
+        if prior_error > 0:
+            error_delta = recent_error - prior_error
+
+            if error_delta <= -3:
+                error_trend_label = "Improving"
+                error_trend_detail = (
+                    f"Recent absolute error is down {abs(error_delta):.1f} pts "
+                    "versus earlier tested days."
+                )
+            elif error_delta >= 3:
+                error_trend_label = "Worsening"
+                error_trend_detail = (
+                    f"Recent absolute error is up {error_delta:.1f} pts "
+                    "versus earlier tested days."
+                )
+            else:
+                error_trend_label = "Stable"
+                error_trend_detail = (
+                    "Recent forecast error is broadly stable versus earlier tested days."
+                )
+
+    if bias_pct >= 8:
+        bias_label = "Optimistic"
+        bias_detail = "The model is generally forecasting higher than actual sales."
+    elif bias_pct <= -8:
+        bias_label = "Conservative"
+        bias_detail = "The model is generally forecasting lower than actual sales."
+    else:
+        bias_label = "Balanced"
+        bias_detail = "Forecast bias is within a reasonable range."
+
+    with st.container(border=True):
+        st.markdown("#### Forecast Quality Dashboard")
+        st.caption(
+            "Use this to judge whether the forecast is reliable enough for owner decisions."
+        )
+
+        if quality_severity == "success":
+            st.success(f"**Forecast Quality: {quality_label}** — {quality_message}")
+        elif quality_severity == "info":
+            st.info(f"**Forecast Quality: {quality_label}** — {quality_message}")
+        elif quality_severity == "warning":
+            st.warning(f"**Forecast Quality: {quality_label}** — {quality_message}")
+        else:
+            st.error(f"**Forecast Quality: {quality_label}** — {quality_message}")
+
+        q_col_1, q_col_2, q_col_3, q_col_4 = st.columns(4)
+
+        with q_col_1:
+            st.metric(
+                "Hardest Day",
+                hardest_weekday,
+                (
+                    f"{hardest_weekday_error:.1f}% avg error"
+                    if hardest_weekday_error is not None
+                    else None
+                ),
+            )
+
+        with q_col_2:
+            st.metric(
+                "Bias Type",
+                bias_label,
+                f"{bias_pct:+.1f}%",
+                help=bias_detail,
+            )
+
+        with q_col_3:
+            st.metric(
+                "Error Trend",
+                error_trend_label,
+            )
+
+        with q_col_4:
+            st.metric(
+                "Range Reliability",
+                f"{within_range_pct:.1f}%",
+                help="Percentage of tested days where actual sales landed within the forecast range.",
+            )
+
+        st.caption(error_trend_detail)
+
+        with st.expander("Forecast quality details by weekday", expanded=False):
+            if valid_error_df.empty:
+                st.caption("No valid percentage-error rows available.")
+            else:
+                weekday_quality = (
+                    valid_error_df.groupby("weekday", as_index=False)
+                    .agg(
+                        tested_days=("date", "count"),
+                        avg_actual=("actual_sales", "mean"),
+                        avg_forecast=("forecast_sales", "mean"),
+                        avg_abs_error_pct=("abs_pct_error", "mean"),
+                    )
+                    .sort_values("avg_abs_error_pct", ascending=False)
+                )
+
+                weekday_quality["Avg Actual"] = weekday_quality["avg_actual"].apply(
+                    lambda value: utils.format_rupee_short(float(value))
+                )
+                weekday_quality["Avg Forecast"] = weekday_quality["avg_forecast"].apply(
+                    lambda value: utils.format_rupee_short(float(value))
+                )
+                weekday_quality["Avg Error %"] = weekday_quality["avg_abs_error_pct"].apply(
+                    lambda value: f"{float(value):.1f}%"
+                )
+
+                weekday_quality = weekday_quality.rename(
+                    columns={
+                        "weekday": "Weekday",
+                        "tested_days": "Tested Days",
+                    }
+                )
+
+                st.dataframe(
+                    weekday_quality[
+                        [
+                            "Weekday",
+                            "Tested Days",
+                            "Avg Actual",
+                            "Avg Forecast",
+                            "Avg Error %",
+                        ]
+                    ],
+                    width="stretch",
+                    hide_index=True,
+                )
+
+        with st.expander("Forecast outcome split", expanded=False):
+            outcome_df = (
+                work_df.groupby("outcome", as_index=False)
+                .agg(days=("date", "count"))
+                .sort_values("days", ascending=False)
+            )
+
+            outcome_df["Share"] = outcome_df["days"].apply(
+                lambda value: f"{value / len(work_df) * 100:.1f}%"
+                if len(work_df) > 0
+                else "0.0%"
+            )
+
+            outcome_df = outcome_df.rename(
+                columns={
+                    "outcome": "Outcome",
+                    "days": "Days",
+                }
+            )
+
+            st.dataframe(
+                outcome_df[["Outcome", "Days", "Share"]],
+                width="stretch",
+                hide_index=True,
+            )
+
+def render_forecast_backtest(df: pd.DataFrame) -> None:
+    """Render rolling forecast-vs-achieved backtest for historical confidence building."""
+    required_columns = {"date", "net_total"}
+
+    if df.empty or not required_columns.issubset(set(df.columns)):
+        return
+
+    backtest_df = df.copy()
+
+    backtest_df["date"] = pd.to_datetime(backtest_df["date"], errors="coerce")
+    backtest_df = backtest_df[backtest_df["date"].notna()].copy()
+
+    if backtest_df.empty:
+        return
+
+    backtest_df["net_total"] = pd.to_numeric(
+        backtest_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
+    if "covers" in backtest_df.columns:
+        backtest_df["covers"] = pd.to_numeric(
+            backtest_df["covers"],
+            errors="coerce",
+        ).fillna(0)
+    else:
+        backtest_df["covers"] = 0
+
+    backtest_df = backtest_df.sort_values("date").reset_index(drop=True)
+    backtest_df["weekday"] = backtest_df["date"].dt.day_name()
+
+    if len(backtest_df) < 10:
+        return
+
+    min_train_days = 14 if len(backtest_df) >= 21 else 7
+    max_train_days = 35
+
+    rows: list[dict[str, object]] = []
+
+    for idx in range(min_train_days, len(backtest_df)):
+        actual_row = backtest_df.iloc[idx]
+        train_start_idx = max(0, idx - max_train_days)
+        train_df = backtest_df.iloc[train_start_idx:idx].copy()
+
+        if len(train_df) < 3:
+            continue
+
+        forecast = linear_forecast(
+            train_df["date"],
+            train_df["net_total"].tolist(),
+            forecast_days=1,
+        )
+
+        if not forecast:
+            continue
+
+        forecast_point = forecast[0]
+
+        actual_sales = float(actual_row["net_total"])
+        forecast_sales = float(forecast_point.get("value", 0) or 0)
+        lower_bound = float(forecast_point.get("lower", 0) or 0)
+        upper_bound = float(forecast_point.get("upper", 0) or 0)
+
+        variance = actual_sales - forecast_sales
+        variance_pct = (
+            variance / forecast_sales * 100
+            if forecast_sales > 0
+            else None
+        )
+
+        actual_covers = float(actual_row["covers"])
+        train_avg_covers = float(train_df["covers"].mean()) if "covers" in train_df.columns else 0.0
+
+        train_total_sales = float(train_df["net_total"].sum())
+        train_total_covers = float(train_df["covers"].sum()) if "covers" in train_df.columns else 0.0
+        train_apc = train_total_sales / train_total_covers if train_total_covers > 0 else 0.0
+        actual_apc = actual_sales / actual_covers if actual_covers > 0 else 0.0
+
+        weekday_name = str(actual_row["weekday"])
+        same_weekday_df = train_df[train_df["weekday"] == weekday_name]
+        same_weekday_avg = (
+            float(same_weekday_df["net_total"].mean())
+            if len(same_weekday_df) >= 2
+            else None
+        )
+
+        variance_factors: list[str] = []
+
+        if train_avg_covers > 0 and actual_covers > 0:
+            covers_delta_pct = ((actual_covers - train_avg_covers) / train_avg_covers) * 100
+
+            if covers_delta_pct >= 10:
+                variance_factors.append(
+                    f"Covers were {covers_delta_pct:+.1f}% above recent average."
+                )
+            elif covers_delta_pct <= -10:
+                variance_factors.append(
+                    f"Covers were {covers_delta_pct:+.1f}% below recent average."
+                )
+
+        if train_apc > 0 and actual_apc > 0:
+            apc_delta_pct = ((actual_apc - train_apc) / train_apc) * 100
+
+            if apc_delta_pct >= 8:
+                variance_factors.append(
+                    f"APC was {apc_delta_pct:+.1f}% above recent average."
+                )
+            elif apc_delta_pct <= -8:
+                variance_factors.append(
+                    f"APC was {apc_delta_pct:+.1f}% below recent average."
+                )
+
+        if same_weekday_avg is not None and same_weekday_avg > 0:
+            weekday_delta_pct = ((actual_sales - same_weekday_avg) / same_weekday_avg) * 100
+
+            if weekday_delta_pct >= 12:
+                variance_factors.append(
+                    f"{weekday_name} performed {weekday_delta_pct:+.1f}% above recent same-weekday average."
+                )
+            elif weekday_delta_pct <= -12:
+                variance_factors.append(
+                    f"{weekday_name} performed {weekday_delta_pct:+.1f}% below recent same-weekday average."
+                )
+
+        if forecast_sales > 0 and upper_bound > lower_bound:
+            band_width_pct = ((upper_bound - lower_bound) / forecast_sales) * 100
+
+            if band_width_pct >= 60:
+                variance_factors.append(
+                    "Forecast range was wide, indicating high sales volatility."
+                )
+
+        if not variance_factors:
+            variance_factors.append(
+                "Variance appears to be normal daily volatility or a factor not visible in sales/covers data."
+            )
+
+        if actual_sales > upper_bound:
+            outcome = "Over achieved"
+        elif actual_sales < lower_bound:
+            outcome = "Under achieved"
+        else:
+            outcome = "Within forecast range"
+
+        rows.append(
+            {
+                "date": actual_row["date"],
+                "weekday": weekday_name,
+                "actual_sales": actual_sales,
+                "forecast_sales": forecast_sales,
+                "lower_bound": lower_bound,
+                "upper_bound": upper_bound,
+                "variance": variance,
+                "variance_pct": variance_pct,
+                "actual_covers": actual_covers,
+                "actual_apc": actual_apc,
+                "outcome": outcome,
+                "likely_factors": " ".join(variance_factors),
+            }
+        )
+
+    if not rows:
+        return
+
+    result_df = pd.DataFrame(rows).sort_values("date").reset_index(drop=True)
+
+    actual_total = float(result_df["actual_sales"].sum())
+    forecast_total = float(result_df["forecast_sales"].sum())
+    total_variance = actual_total - forecast_total
+
+    valid_pct_rows = result_df[
+        (result_df["actual_sales"] > 0)
+        & (result_df["forecast_sales"] > 0)
+    ].copy()
+
+    if valid_pct_rows.empty:
+        mape = None
+    else:
+        mape = float(
+            (
+                (valid_pct_rows["actual_sales"] - valid_pct_rows["forecast_sales"]).abs()
+                / valid_pct_rows["actual_sales"]
+            ).mean()
+            * 100
+        )
+
+    accuracy = max(0.0, 100.0 - mape) if mape is not None else None
+
+    within_range_pct = float(
+        (result_df["outcome"] == "Within forecast range").mean() * 100
+    )
+
+    if actual_total > 0:
+        bias_pct = ((forecast_total - actual_total) / actual_total) * 100
+    else:
+        bias_pct = 0.0
+
+    with st.expander("Forecast backtest: forecast vs achieved", expanded=False):
+        st.caption(
+            "This tests the forecast method against days that already happened. "
+            "For each tested day, the model only uses earlier days in the selected period, "
+            "then compares the forecast against actual sales."
+        )
+
+        metric_col_1, metric_col_2, metric_col_3, metric_col_4 = st.columns(4)
+
+        with metric_col_1:
+            st.metric(
+                "Tested Days",
+                f"{len(result_df):,}",
+            )
+
+        with metric_col_2:
+            st.metric(
+                "Backtest Accuracy",
+                f"{accuracy:.1f}%" if accuracy is not None else "N/A",
+                help="Calculated as 100% minus mean absolute percentage error. Higher is better.",
+            )
+
+        with metric_col_3:
+            st.metric(
+                "Range Hit Rate",
+                f"{within_range_pct:.1f}%",
+                help="Percentage of tested days where actual sales fell inside the forecast range.",
+            )
+
+        with metric_col_4:
+            st.metric(
+                "Forecast Bias",
+                f"{bias_pct:+.1f}%",
+                help="Positive means the model over-forecasted overall. Negative means it under-forecasted.",
+            )
+
+        _render_forecast_quality_dashboard(
+            result_df=result_df,
+            accuracy=accuracy,
+            within_range_pct=within_range_pct,
+            bias_pct=bias_pct,
+        )
+
+        fig_backtest = go.Figure()
+
+        fig_backtest.add_trace(
+            go.Scatter(
+                x=result_df["date"],
+                y=result_df["upper_bound"],
+                mode="lines",
+                name="Upper Range",
+                line=dict(width=0),
+                showlegend=False,
+                hoverinfo="skip",
+            )
+        )
+
+        fig_backtest.add_trace(
+            go.Scatter(
+                x=result_df["date"],
+                y=result_df["lower_bound"],
+                mode="lines",
+                name="Forecast Range",
+                fill="tonexty",
+                line=dict(width=0),
+                fillcolor=_hex_to_rgba(ui_theme.BRAND_INFO, 0.18),
+                hoverinfo="skip",
+            )
+        )
+
+        fig_backtest.add_trace(
+            go.Scatter(
+                x=result_df["date"],
+                y=result_df["actual_sales"],
+                mode="lines+markers",
+                name="Actual Sales",
+                line=dict(color=ui_theme.BRAND_PRIMARY, width=3),
+                marker=dict(size=5),
+                hovertemplate="Actual: ₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
+            )
+        )
+
+        fig_backtest.add_trace(
+            go.Scatter(
+                x=result_df["date"],
+                y=result_df["forecast_sales"],
+                mode="lines+markers",
+                name="Forecast",
+                line=dict(color=ui_theme.BRAND_WARN, width=2, dash="dash"),
+                marker=dict(size=4),
+                hovertemplate="Forecast: ₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
+            )
+        )
+
+        fig_backtest.update_layout(
+            title="Rolling Forecast Backtest",
+            xaxis_title="Date",
+            yaxis_title="Sales ₹",
+            height=360,
+            hovermode="x unified",
+            margin=dict(l=0, r=0, t=50, b=40),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.25,
+                xanchor="center",
+                x=0.5,
+            ),
+        )
+
+        st.plotly_chart(fig_backtest, width="stretch")
+
+        st.markdown("#### Largest Variance Days")
+
+        variance_table = result_df.copy()
+        variance_table["abs_variance"] = variance_table["variance"].abs()
+        variance_table = variance_table.sort_values("abs_variance", ascending=False).head(7)
+
+        display_df = variance_table.copy()
+
+        display_df["Date"] = display_df["date"].dt.strftime("%d %b %Y")
+        display_df["Actual"] = display_df["actual_sales"].apply(
+            lambda value: utils.format_rupee_short(float(value))
+        )
+        display_df["Forecast"] = display_df["forecast_sales"].apply(
+            lambda value: utils.format_rupee_short(float(value))
+        )
+        display_df["Variance"] = display_df["variance"].apply(
+            lambda value: utils.format_rupee_short(float(value))
+        )
+        display_df["Variance %"] = display_df["variance_pct"].apply(
+            lambda value: "N/A" if pd.isna(value) else f"{float(value):+.1f}%"
+        )
+        display_df["Covers"] = display_df["actual_covers"].apply(
+            lambda value: f"{int(value):,}"
+        )
+        display_df["APC"] = display_df["actual_apc"].apply(
+            lambda value: utils.format_rupee_short(float(value))
+        )
+
+        display_df = display_df.rename(
+            columns={
+                "weekday": "Day",
+                "outcome": "Outcome",
+                "likely_factors": "Likely Variance Factors",
+            }
+        )
+
+        st.dataframe(
+            display_df[
+                [
+                    "Date",
+                    "Day",
+                    "Actual",
+                    "Forecast",
+                    "Variance",
+                    "Variance %",
+                    "Covers",
+                    "APC",
+                    "Outcome",
+                    "Likely Variance Factors",
+                ]
+            ],
+            width="stretch",
+            hide_index=True,
+        )
+
+        st.caption(
+            "Variance factors are directional, not causal proof. "
+            "They are inferred from sales, covers, APC, weekday pattern and forecast range."
+        )
+
+        with st.expander("Add manual causes for anomaly days", expanded=False):
+            _render_forecast_anomaly_inputs(variance_table)
 
 def render_forecast_command_center(
     df: pd.DataFrame,
@@ -461,6 +4389,8 @@ def render_forecast_command_center(
     prior_total: float | None,
     prior_covers: int | None,
     prior_avg: float | None,
+    show_kpis: bool = True,
+    show_movement_breakdown: bool = True,
 ) -> None:
     """Render forecast-first executive block with actionable cards."""
     if df.empty:
@@ -513,7 +4443,7 @@ def render_forecast_command_center(
             delta=utils.format_delta(total_sales, prior_total) if prior_total else None,
         ),
         KpiMetric(
-            label="Forecast",
+            label="Forecast Close",
             value=forecast_value,
             delta=f"Reliability: {reliability}",
         ),
@@ -523,84 +4453,102 @@ def render_forecast_command_center(
             delta=(
                 "On track"
                 if monthly_target > 0 and forecast and forecast_total >= monthly_target
+                else "Behind pace"
+                if monthly_target > 0 and forecast
                 else None
             ),
         ),
         KpiMetric(
-            label="APC / Covers",
-            value=f"{utils.format_currency(apc)} / {total_covers:,}",
-            delta=f"APC {apc_delta or 'N/A'} | Covers {cov_delta or 'N/A'}",
+            label="Covers",
+            value=f"{total_covers:,}",
+            delta=f"{cov_delta or 'N/A'} vs prior",
+        ),
+        KpiMetric(
+            label="APC",
+            value=utils.format_currency(apc),
+            delta=f"{apc_delta or 'N/A'} vs prior",
         ),
     ]
-    kpi_row(metrics)
+    if show_kpis:
+        kpi_row(metrics, columns=5)
 
-    left_col, right_col = st.columns([2, 1])
+    if show_kpis:
+        left_col, right_col = st.columns([2, 1])
+    else:
+        left_col = st.container()
+        right_col = None
     with left_col:
-        fig = go.Figure()
-        # Keep the hero chart to one story: observed points, smoothed trend, forecast.
-        if len(values) >= 7:
-            ma_values = moving_average(values, window=7)
-            ma_series = pd.Series(ma_values)
-            ma_mask = pd.notna(ma_series).values
-            fig.add_trace(
-                go.Scatter(
-                    x=dates,
-                    y=values,
-                    mode="markers",
-                    name="Daily sales",
-                    marker=dict(
-                        size=5,
-                        color=_hex_to_rgba(ui_theme.BRAND_PRIMARY, 0.35),
-                    ),
-                    hovertemplate="₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
-                )
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=dates[ma_mask],
-                    y=ma_series[ma_mask].tolist(),
-                    mode="lines",
-                    name="Trend",
-                    line=dict(color=ui_theme.BRAND_PRIMARY, width=3),
-                    hovertemplate="Trend: ₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
-                )
-            )
+        chart_df = df.copy()
+        chart_df["date"] = pd.to_datetime(chart_df["date"], errors="coerce")
+        chart_df = chart_df[chart_df["date"].notna()].sort_values("date")
+
+        chart_df["net_total"] = pd.to_numeric(
+            chart_df["net_total"], errors="coerce"
+        ).fillna(0)
+
+        if "target" in chart_df.columns:
+            chart_df["target"] = pd.to_numeric(
+                chart_df["target"], errors="coerce"
+            ).fillna(0)
         else:
-            fig.add_trace(
-                go.Scatter(
-                    x=dates,
-                    y=values,
-                    mode="lines+markers",
-                    name="Daily sales",
-                    line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
-                    marker=dict(size=5),
-                    hovertemplate="₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
-                )
+            chart_df["target"] = 0
+
+        chart_df["cumulative_sales"] = chart_df["net_total"].cumsum()
+        chart_df["cumulative_target"] = chart_df["target"].cumsum()
+
+        fig = go.Figure()
+
+        fig.add_trace(
+            go.Scatter(
+                x=chart_df["date"],
+                y=chart_df["cumulative_sales"],
+                mode="lines+markers",
+                name="Actual Sales",
+                line=dict(color=ui_theme.BRAND_PRIMARY, width=3),
+                marker=dict(size=5),
+                hovertemplate="Actual: ₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
             )
+        )
+
+        fig.add_trace(
+            go.Scatter(
+                x=chart_df["date"],
+                y=chart_df["cumulative_target"],
+                mode="lines",
+                name="Target Pace",
+                line=dict(color=ui_theme.BRAND_WARN, width=2, dash="dash"),
+                hovertemplate="Target Pace: ₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
+            )
+        )
+
         if forecast:
+            last_actual_date = chart_df["date"].max()
+            last_actual_value = float(chart_df["cumulative_sales"].iloc[-1])
+
             f_dates = [f["date"] for f in forecast]
-            f_values = [f["value"] for f in forecast]
+            f_daily_values = [float(f["value"]) for f in forecast]
+
+            cumulative_forecast = []
+            running_total = last_actual_value
+            for value in f_daily_values:
+                running_total += value
+                cumulative_forecast.append(running_total)
+
             fig.add_trace(
                 go.Scatter(
-                    x=f_dates,
-                    y=f_values,
+                    x=[last_actual_date] + f_dates,
+                    y=[last_actual_value] + cumulative_forecast,
                     mode="lines",
-                    name="Forecast",
-                    line=dict(color=ui_theme.BRAND_WARN, width=3),
+                    name="Forecast Close",
+                    line=dict(color=ui_theme.BRAND_SUCCESS, width=3, dash="dot"),
                     hovertemplate="Forecast: ₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
                 )
             )
-            fig.add_vrect(
-                x0=f_dates[0],
-                x1=f_dates[-1],
-                fillcolor=_hex_to_rgba(ui_theme.BRAND_WARN, 0.08),
-                line_width=0,
-                layer="below",
-            )
+
         fig.update_layout(
-            title="Forecast Trend",
+            title="Cumulative Sales vs Target Pace",
             xaxis_title="Date",
-            yaxis_title="Net Sales (₹)",
+            yaxis_title="Sales ₹",
             hovermode="x unified",
             height=ui_theme.CHART_HEIGHT,
             legend=dict(
@@ -611,30 +4559,372 @@ def render_forecast_command_center(
                 x=0.5,
             ),
         )
-        st.plotly_chart(fig, width="stretch")
+
+        with st.container(border=True):
+            st.plotly_chart(fig, width="stretch")
+
+        forecast_explanation = build_forecast_explanation(values, forecast)
+
+        if forecast_explanation.get("available"):
+            with st.expander("Forecast explanation", expanded=False):
+                st.markdown(
+                    f"**Model:** {forecast_explanation['model_label']}"
+                )
+
+                explanation_col_1, explanation_col_2, explanation_col_3 = st.columns(3)
+
+                with explanation_col_1:
+                    st.metric(
+                        "Forecast Confidence",
+                        forecast_explanation["confidence"],
+                    )
+
+                with explanation_col_2:
+                    st.metric(
+                        "Forecast Days",
+                        f"{forecast_explanation['forecast_days']}",
+                    )
+
+                with explanation_col_3:
+                    st.metric(
+                        "Volatility",
+                        f"{forecast_explanation['volatility_pct'] * 100:.1f}%",
+                    )
+
+                st.caption(
+                    "This is a transparent statistical forecast, not a machine-learning model. "
+                    "It blends recent sales momentum, smoothing and weekday behaviour."
+                )
+
+                st.markdown("**What is driving the forecast**")
+                for driver in forecast_explanation["drivers"]:
+                    st.caption(f"- {driver}")
+
+                st.markdown("**Key forecast inputs**")
+                st.caption(
+                    f"- Overall average: {utils.format_rupee_short(forecast_explanation['overall_avg'])}"
+                )
+                st.caption(
+                    f"- Recent 7-day average: {utils.format_rupee_short(forecast_explanation['recent_7_avg'])}"
+                )
+                st.caption(
+                    f"- Recent 14-day average: {utils.format_rupee_short(forecast_explanation['recent_14_avg'])}"
+                )
+                st.caption(
+                    f"- Base forecast per day: {utils.format_rupee_short(forecast_explanation['base_forecast'])}"
+                )
+                st.caption(
+                    f"- Weekday coverage: {forecast_explanation['weekday_coverage']} day type(s)"
+                )
+
+                if forecast_explanation["reliability_reasons"]:
+                    st.markdown("**Confidence reasons**")
+                    for reason in forecast_explanation["reliability_reasons"]:
+                        st.caption(f"- {reason}")
+
+                if forecast_explanation["cautions"]:
+                    st.markdown("**Cautions**")
+                    for caution in forecast_explanation["cautions"]:
+                        st.warning(caution)
+                        
+        with st.expander("Forecast backtest", expanded=False):
+            render_forecast_backtest(chart_df)
+
         if prior_start and prior_end:
             st.caption(
-                "Previous period is summarized in the KPI deltas: {} to {}.".format(
+                "Comparison period: {} to {}.".format(
                     prior_start.strftime("%d %b %Y"),
                     prior_end.strftime("%d %b %Y"),
                 )
             )
 
-    with right_col:
+    def _render_recommendations(compact: bool) -> None:
         st.markdown("### Recommended Actions")
-        for card in action_cards:
-            body = (
-                f"**{card['title']}**\n\n{card['reason']}\n\n"
-                f"**Action:** {card['action']}\n\n{card['metric']}"
-            )
-            tone = card["severity"]
-            if tone == "high":
-                st.error(body)
-            elif tone == "medium":
-                st.warning(body)
-            else:
-                st.info(body)
 
+        visible_cards = action_cards[:2]
+        hidden_cards = action_cards[2:]
+        grid_class = "analytics-action-grid"
+        if not compact:
+            grid_class += " analytics-action-grid--stacked"
+
+        if visible_cards:
+            cards_html = "".join(_action_card_html(card) for card in visible_cards)
+            st.markdown(
+                f'<div class="{grid_class}">{cards_html}</div>',
+                unsafe_allow_html=True,
+            )
+
+        if hidden_cards:
+            with st.expander("More actions", expanded=False):
+                cards_html = "".join(_action_card_html(card) for card in hidden_cards)
+                st.markdown(
+                    '<div class="analytics-action-grid analytics-action-grid--stacked">'
+                    f'{cards_html}</div>',
+                    unsafe_allow_html=True,
+                )
+
+    if right_col is None:
+        _render_recommendations(compact=True)
+    else:
+        with right_col:
+            _render_recommendations(compact=False)
+
+    if show_movement_breakdown:
+        render_sales_movement_waterfall(df, prior_df)
+
+
+def render_category_pareto(
+    report_loc_ids: list[int],
+    start_str: str,
+    end_str: str,
+) -> None:
+    """Render category Pareto chart for Mix layer."""
+    category_rows = database.get_category_sales_for_date_range(
+        report_loc_ids,
+        start_str,
+        end_str,
+    )
+
+    if not category_rows:
+        st.info("No category sales available for Pareto analysis.")
+        return
+
+    pareto_df = pd.DataFrame(category_rows)
+
+    if pareto_df.empty:
+        st.info("No category sales available for Pareto analysis.")
+        return
+
+    if "category" not in pareto_df.columns or "amount" not in pareto_df.columns:
+        st.warning("Category Pareto could not be rendered because category or amount data is missing.")
+        return
+
+    pareto_df["amount"] = pd.to_numeric(
+        pareto_df["amount"],
+        errors="coerce",
+    ).fillna(0)
+
+    pareto_df = pareto_df[pareto_df["amount"] > 0].copy()
+
+    if pareto_df.empty:
+        st.info("No positive category sales available for Pareto analysis.")
+        return
+
+    pareto_df = (
+        pareto_df.groupby("category", as_index=False)["amount"]
+        .sum()
+        .sort_values("amount", ascending=False)
+    )
+
+    pareto_df["cumulative_sales"] = pareto_df["amount"].cumsum()
+    total_sales = float(pareto_df["amount"].sum())
+    pareto_df["cumulative_pct"] = pareto_df["cumulative_sales"] / total_sales * 100
+
+    with st.container(border=True):
+        st.markdown("#### Category Pareto")
+        st.caption(
+            "Bars show category sales. The line shows cumulative contribution, helping identify the few categories driving most revenue."
+        )
+
+        fig_pareto = make_subplots(specs=[[{"secondary_y": True}]])
+
+        fig_pareto.add_trace(
+            go.Bar(
+                x=pareto_df["category"],
+                y=pareto_df["amount"],
+                name="Category Sales",
+                marker_color=ui_theme.BRAND_PRIMARY,
+                hovertemplate="%{x}<br>Sales: ₹%{y:,.0f}<extra></extra>",
+            ),
+            secondary_y=False,
+        )
+
+        fig_pareto.add_trace(
+            go.Scatter(
+                x=pareto_df["category"],
+                y=pareto_df["cumulative_pct"],
+                name="Cumulative %",
+                mode="lines+markers",
+                line=dict(color=ui_theme.BRAND_WARN, width=3),
+                marker=dict(size=6),
+                hovertemplate="%{x}<br>Cumulative: %{y:.1f}%<extra></extra>",
+            ),
+            secondary_y=True,
+        )
+
+        _apply_analytics_chart_layout(
+            fig_pareto,
+            title=None,
+            height=360,
+            showlegend=True,
+            legend_y=-0.32,
+        )
+        fig_pareto.update_xaxes(tickangle=-30)
+
+        fig_pareto.update_yaxes(title_text="Sales ₹", secondary_y=False)
+        fig_pareto.update_yaxes(
+            title_text="Cumulative %",
+            range=[0, 105],
+            secondary_y=True,
+        )
+
+        st.plotly_chart(fig_pareto, width="stretch")
+
+        with st.expander("View category Pareto data"):
+            display_df = pareto_df.copy()
+            display_df["Sales"] = display_df["amount"].apply(
+                lambda val: utils.format_currency(float(val))
+            )
+            display_df["Cumulative %"] = display_df["cumulative_pct"].apply(
+                lambda val: f"{val:.1f}%"
+            )
+            display_df = display_df[["category", "Sales", "Cumulative %"]]
+            display_df = display_df.rename(columns={"category": "Category"})
+            st.dataframe(display_df, width="stretch", hide_index=True)
+
+def render_outlet_leaderboard(
+    df_raw: pd.DataFrame,
+    multi_analytics: bool,
+) -> None:
+    """Render outlet-level performance leaderboard."""
+    if not multi_analytics or df_raw.empty or "Outlet" not in df_raw.columns:
+        return
+
+    required_columns = {"Outlet", "net_total", "covers"}
+    if not required_columns.issubset(set(df_raw.columns)):
+        return
+
+    outlet_df = df_raw.copy()
+
+    outlet_df["net_total"] = pd.to_numeric(
+        outlet_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
+    outlet_df["covers"] = pd.to_numeric(
+        outlet_df["covers"],
+        errors="coerce",
+    ).fillna(0)
+
+    if "target" in outlet_df.columns:
+        outlet_df["target"] = pd.to_numeric(
+            outlet_df["target"],
+            errors="coerce",
+        ).fillna(0)
+    else:
+        outlet_df["target"] = 0
+
+    outlet_summary = (
+        outlet_df.groupby("Outlet", as_index=False)
+        .agg(
+            net_total=("net_total", "sum"),
+            covers=("covers", "sum"),
+            target=("target", "sum"),
+        )
+        .sort_values("net_total", ascending=False)
+    )
+
+    if outlet_summary.empty:
+        return
+
+    outlet_summary["apc"] = outlet_summary.apply(
+        lambda row: row["net_total"] / row["covers"] if row["covers"] > 0 else 0,
+        axis=1,
+    )
+
+    outlet_summary["target_pct"] = outlet_summary.apply(
+        lambda row: row["net_total"] / row["target"] * 100
+        if row["target"] > 0
+        else 0,
+        axis=1,
+    )
+
+    outlet_summary["status"] = outlet_summary["target_pct"].apply(
+        lambda value: "On Track"
+        if value >= 100
+        else "Watch"
+        if value >= 70
+        else "At Risk"
+    )
+
+    colors = [
+        ui_theme.BRAND_SUCCESS
+        if value >= 100
+        else ui_theme.BRAND_WARN
+        if value >= 70
+        else "#EF4444"
+        for value in outlet_summary["target_pct"]
+    ]
+
+    with st.container(border=True):
+        st.markdown("#### Outlet Leaderboard")
+        st.caption(
+            "Compare outlets by sales, covers, APC and target achievement for the selected period."
+        )
+
+        fig_outlet = go.Figure()
+
+        fig_outlet.add_trace(
+            go.Bar(
+                x=outlet_summary["Outlet"],
+                y=outlet_summary["net_total"],
+                marker_color=colors,
+                name="Net Sales",
+                hovertemplate=(
+                    "%{x}<br>"
+                    "Sales: ₹%{y:,.0f}<br>"
+                    "<extra></extra>"
+                ),
+            )
+        )
+
+        _apply_analytics_chart_layout(
+            fig_outlet,
+            title="Outlet Sales Ranking",
+            height=320,
+            showlegend=False,
+        )
+        fig_outlet.update_xaxes(title_text="Outlet")
+        fig_outlet.update_yaxes(title_text="Net Sales ₹")
+
+        st.plotly_chart(fig_outlet, width="stretch")
+
+        display_df = outlet_summary.copy()
+        display_df["Sales"] = display_df["net_total"].apply(
+            lambda value: utils.format_currency(float(value))
+        )
+        display_df["Covers"] = display_df["covers"].apply(
+            lambda value: f"{int(value):,}"
+        )
+        display_df["APC"] = display_df["apc"].apply(
+            lambda value: utils.format_currency(float(value))
+        )
+        display_df["Target"] = display_df["target"].apply(
+            lambda value: utils.format_currency(float(value))
+        )
+        display_df["Target %"] = display_df["target_pct"].apply(
+            lambda value: f"{value:.1f}%"
+        )
+
+        display_df = display_df[
+            [
+                "Outlet",
+                "Sales",
+                "Covers",
+                "APC",
+                "Target",
+                "Target %",
+                "status",
+            ]
+        ]
+
+        display_df = display_df.rename(
+            columns={
+                "status": "Status",
+            }
+        )
+
+        st.dataframe(display_df, width="stretch", hide_index=True)
 
 def render_driver_analysis(
     df: pd.DataFrame,
@@ -646,48 +4936,259 @@ def render_driver_analysis(
         st.caption("No driver data for this period.")
         return
 
-    st.markdown("### Traffic & Ticket Drivers")
-    st.caption("Use this layer to separate footfall movement from ticket-size movement.")
+    _render_diagnostic_intro(
+        "Driver view",
+        "What is moving sales: covers, APC, or both?",
+        "Separate guest-count movement from ticket-size movement and identify which operating lever needs attention.",
+    )
 
+    # 1. Visible by default: outlet leaderboard
+
+    # 2. Build daily driver dataset
     if multi_analytics and not df_raw.empty:
         driver_df = (
-            df_raw.groupby("date")[["covers", "net_total"]].sum().reset_index().sort_values("date")
+            df_raw.groupby("date")[["covers", "net_total"]]
+            .sum()
+            .reset_index()
+            .sort_values("date")
         )
     else:
         driver_df = df[["date", "covers", "net_total"]].copy().sort_values("date")
 
-    driver_df["covers"] = pd.to_numeric(driver_df["covers"], errors="coerce").fillna(0)
-    driver_df["net_total"] = pd.to_numeric(driver_df["net_total"], errors="coerce").fillna(0)
+    driver_df["date"] = pd.to_datetime(driver_df["date"], errors="coerce")
+    driver_df = driver_df[driver_df["date"].notna()].copy()
+
+    driver_df["covers"] = pd.to_numeric(
+        driver_df["covers"],
+        errors="coerce",
+    ).fillna(0)
+
+    driver_df["net_total"] = pd.to_numeric(
+        driver_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
     driver_df["apc"] = driver_df.apply(
         lambda row: row["net_total"] / row["covers"] if row["covers"] > 0 else 0,
         axis=1,
     )
 
-    covers_col, apc_col = st.columns(2)
-    with covers_col:
-        with st.container(border=True):
-            st.markdown("#### Covers")
+    if driver_df.empty:
+        st.info("No valid driver rows available.")
+        return
+
+    total_covers = float(driver_df["covers"].sum())
+    total_sales = float(driver_df["net_total"].sum())
+    avg_apc = total_sales / total_covers if total_covers > 0 else 0.0
+    avg_daily_covers = float(driver_df["covers"].mean()) if not driver_df.empty else 0.0
+
+    best_day_row = driver_df.sort_values("net_total", ascending=False).iloc[0]
+    weakest_day_row = driver_df.sort_values("net_total", ascending=True).iloc[0]
+
+    best_day_label = pd.Timestamp(best_day_row["date"]).strftime("%d %b")
+    weakest_day_label = pd.Timestamp(weakest_day_row["date"]).strftime("%d %b")
+
+    weekpart_insight = _build_weekpart_insight(driver_df)
+
+    weekend_lift_label = "N/A"
+    if weekpart_insight.get("status") == "ok":
+        delta_pct = weekpart_insight.get("delta_pct")
+        weekend_lift_label = (
+            "N/A"
+            if delta_pct is None
+            else f"{float(delta_pct):+.1f}%"
+        )
+
+    _render_metric_tile_grid(
+        [
+            (
+                "Total Covers",
+                f"{int(total_covers):,}",
+                f"Avg {avg_daily_covers:,.1f} per day",
+            ),
+            (
+                "Average APC",
+                utils.format_currency(avg_apc),
+                "Ticket-size signal",
+            ),
+            (
+                "Best Sales Day",
+                best_day_label,
+                utils.format_rupee_short(float(best_day_row["net_total"])),
+            ),
+            (
+                "Weekend Lift",
+                weekend_lift_label,
+                "Fri-Sun vs Mon-Thu",
+            ),
+        ]
+    )
+
+    if weekpart_insight.get("status") == "ok":
+        _render_dashboard_status(
+            str(weekpart_insight.get("commentary", "")),
+            "info",
+        )
+    else:
+        _render_dashboard_status(
+            "Insufficient weekday/weekend data to judge weekpart pattern confidently.",
+            "warning",
+        )
+
+    with st.expander("View outlet leaderboard", expanded=False):
+        render_outlet_leaderboard(df_raw, multi_analytics)
+
+    # 3. Visible by default: Covers vs APC Matrix
+    with st.container(border=True): 
+        st.markdown("#### Covers vs APC Matrix")
+        st.caption(
+            "Each point is a day. This shows whether sales are driven by footfall, ticket size, or both."
+        )
+
+        scatter_df = driver_df.copy()
+        scatter_df["weekday"] = scatter_df["date"].dt.day_name()
+
+        fig_scatter = px.scatter(
+            scatter_df,
+            x="covers",
+            y="apc",
+            size="net_total",
+            color="weekday",
+            hover_data={
+                "date": True,
+                "covers": ":,.0f",
+                "apc": ":,.0f",
+                "net_total": ":,.0f",
+                "weekday": True,
+            },
+            labels={
+                "covers": "Covers",
+                "apc": "APC ₹",
+                "net_total": "Net Sales ₹",
+                "weekday": "Weekday",
+            },
+            title="Covers vs APC",
+        )
+
+        avg_covers = float(scatter_df["covers"].mean())
+        avg_apc = float(scatter_df["apc"].mean())
+        max_covers = float(scatter_df["covers"].max())
+        max_apc = float(scatter_df["apc"].max())
+
+        if avg_covers > 0:
+            fig_scatter.add_vline(
+                x=avg_covers,
+                line_width=1,
+                line_dash="dash",
+                line_color=ui_theme.CHART_BAR_MUTED,
+                annotation_text=f"Avg Covers: {avg_covers:.0f}",
+                annotation_position="top",
+            )
+
+        if avg_apc > 0:
+            fig_scatter.add_hline(
+                y=avg_apc,
+                line_width=1,
+                line_dash="dash",
+                line_color=ui_theme.CHART_BAR_MUTED,
+                annotation_text=f"Avg APC: {utils.format_currency(avg_apc)}",
+                annotation_position="right",
+            )
+
+        if max_covers > 0 and max_apc > 0:
+            fig_scatter.add_annotation(
+                x=max_covers,
+                y=max_apc,
+                text="Best Days<br>High Covers + High APC",
+                showarrow=False,
+                xanchor="right",
+                yanchor="top",
+                bgcolor="rgba(255,255,255,0.85)",
+                bordercolor=ui_theme.BORDER_SUBTLE,
+                borderwidth=1,
+                font=dict(size=11),
+            )
+
+            fig_scatter.add_annotation(
+                x=avg_covers * 0.55,
+                y=max_apc,
+                text="Premium but Low Traffic",
+                showarrow=False,
+                xanchor="left",
+                yanchor="top",
+                bgcolor="rgba(255,255,255,0.85)",
+                bordercolor=ui_theme.BORDER_SUBTLE,
+                borderwidth=1,
+                font=dict(size=11),
+            )
+
+            fig_scatter.add_annotation(
+                x=max_covers,
+                y=avg_apc * 0.55,
+                text="Busy but Low Spend<br>Upsell Opportunity",
+                showarrow=False,
+                xanchor="right",
+                yanchor="bottom",
+                bgcolor="rgba(255,255,255,0.85)",
+                bordercolor=ui_theme.BORDER_SUBTLE,
+                borderwidth=1,
+                font=dict(size=11),
+            )
+
+            fig_scatter.add_annotation(
+                x=avg_covers * 0.55,
+                y=avg_apc * 0.55,
+                text="Weak Days",
+                showarrow=False,
+                xanchor="left",
+                yanchor="bottom",
+                bgcolor="rgba(255,255,255,0.85)",
+                bordercolor=ui_theme.BORDER_SUBTLE,
+                borderwidth=1,
+                font=dict(size=11),
+            )
+
+        _apply_analytics_chart_layout(
+            fig_scatter,
+            title="Covers vs APC",
+            height=360,
+            showlegend=True,
+            legend_y=-0.32,
+        )
+        fig_scatter.update_xaxes(title_text="Covers")
+        fig_scatter.update_yaxes(title_text="APC ₹")
+
+        st.plotly_chart(fig_scatter, width="stretch")
+
+    # 4. Collapsed: trend diagnostics
+    with st.expander("Trend details: Covers and APC over time", expanded=False):
+        covers_col, apc_col = st.columns(2)
+
+        with covers_col:
+            st.markdown("#### Covers Trend")
+
             fig_covers = go.Figure(
                 go.Scatter(
-                    x=pd.to_datetime(driver_df["date"]),
+                    x=driver_df["date"],
                     y=driver_df["covers"],
                     mode="lines+markers",
                     name="Covers",
                     line=dict(color=ui_theme.BRAND_SUCCESS, width=2),
-                    marker=dict(size=3),
-                    opacity=0.75,
+                    marker=dict(size=4),
                     hovertemplate="%{y:,.0f} covers<br>%{x|%a, %d %b}<extra></extra>",
                 )
             )
+
             covers_values = driver_df["covers"].tolist()
             if len(covers_values) >= 7:
                 ma_values = moving_average(covers_values, window=7)
                 ma_series = pd.Series(ma_values)
                 ma_valid = ma_series[pd.notna(ma_series)]
+
                 if not ma_valid.empty:
                     fig_covers.add_trace(
                         go.Scatter(
-                            x=pd.to_datetime(driver_df["date"])[pd.notna(ma_series)],
+                            x=driver_df["date"][pd.notna(ma_series)],
                             y=ma_valid.tolist(),
                             mode="lines",
                             name="7-day Avg",
@@ -698,49 +5199,31 @@ def render_driver_analysis(
                             ),
                         )
                     )
-            fig_covers.update_layout(
-                xaxis_title="Date",
-                yaxis_title="Covers",
-                height=320,
-                hovermode="x unified",
-                xaxis=dict(tickformat="%a %d %b"),
-            )
+
+                _apply_analytics_chart_layout(
+                    fig_covers,
+                    title="Covers Trend",
+                    height=300,
+                    showlegend=True,
+                )
+                fig_covers.update_layout(hovermode="x unified")
+                fig_covers.update_xaxes(title_text="Date", tickformat="%a %d %b")
+                fig_covers.update_yaxes(title_text="Covers")
+
             st.plotly_chart(fig_covers, width="stretch")
 
             weekly_df = _build_weekly_covers_trend(driver_df[["date", "covers"]])
             if weekly_df.empty:
                 st.caption("Need valid date/cover rows to compute weekly trend.")
             else:
-                fig_weekly = go.Figure(
-                    go.Scatter(
-                        x=weekly_df["week_start"],
-                        y=weekly_df["avg_daily_covers"],
-                        mode="lines+markers",
-                        name="Weekly Avg Covers",
-                        line=dict(color=ui_theme.BRAND_WARN, width=2),
-                        marker=dict(size=4),
-                        hovertemplate=(
-                            "Week of %{x|%a, %d %b}: %{y:,.1f} avg covers/day"
-                            "<extra></extra>"
-                        ),
-                    )
-                )
-                fig_weekly.update_layout(
-                    xaxis_title="Week Start",
-                    yaxis_title="Avg Covers / Day",
-                    height=220,
-                    margin=dict(l=0, r=0, t=8, b=0),
-                    xaxis=dict(tickformat="%a %d %b"),
-                )
-                st.plotly_chart(fig_weekly, width="stretch")
                 st.caption(_weekly_covers_commentary(weekly_df))
 
-    with apc_col:
-        with st.container(border=True):
-            st.markdown("#### Average Per Cover")
+        with apc_col:
+            st.markdown("#### APC Trend")
+
             fig_apc = go.Figure(
                 go.Scatter(
-                    x=pd.to_datetime(driver_df["date"]),
+                    x=driver_df["date"],
                     y=driver_df["apc"],
                     mode="lines+markers",
                     name="APC",
@@ -749,6 +5232,7 @@ def render_driver_analysis(
                     hovertemplate="₹%{y:,.0f} APC<br>%{x|%d %b}<extra></extra>",
                 )
             )
+
             avg_apc = float(driver_df["apc"].mean()) if not driver_df.empty else 0.0
             if avg_apc > 0:
                 fig_apc.add_hline(
@@ -757,32 +5241,375 @@ def render_driver_analysis(
                     line_color=ui_theme.CHART_BAR_MUTED,
                     annotation_text=f"Avg {utils.format_currency(avg_apc)}",
                 )
-            fig_apc.update_layout(
-                xaxis_title="Date",
-                yaxis_title="APC (₹)",
-                height=320,
-                hovermode="x unified",
-            )
+
+                _apply_analytics_chart_layout(
+                    fig_apc,
+                    title="APC Trend",
+                    height=300,
+                    showlegend=False,
+                )
+                fig_apc.update_layout(hovermode="x unified")
+                fig_apc.update_xaxes(title_text="Date")
+                fig_apc.update_yaxes(title_text="APC ₹")
+
             st.plotly_chart(fig_apc, width="stretch")
 
-    if st.toggle("Show driver data table", value=False, key="analytics_driver_table_toggle"):
-        with st.container(border=True):
-            st.caption("Daily driver table")
-            table = driver_df.rename(
-                columns={
-                    "date": "Date",
-                    "covers": "Covers",
-                    "net_total": "Net Sales (₹)",
-                    "apc": "APC (₹)",
+    # 5. Collapsed: daily driver table
+    with st.expander("Daily driver data table", expanded=False):
+        table = driver_df.rename(
+            columns={
+                "date": "Date",
+                "covers": "Covers",
+                "net_total": "Net Sales ₹",
+                "apc": "APC ₹",
+            }
+        ).copy()
+
+        table["Date"] = table["Date"].dt.strftime("%d %b %Y")
+        table["Net Sales ₹"] = table["Net Sales ₹"].apply(
+            lambda value: utils.format_currency(float(value))
+        )
+        table["APC ₹"] = table["APC ₹"].apply(
+            lambda value: utils.format_currency(float(value))
+        )
+        table["Covers"] = table["Covers"].apply(lambda value: f"{int(value):,}")
+
+        st.dataframe(table, width="stretch", hide_index=True)
+
+    driver_actions = []
+
+    if weekpart_insight.get("status") == "ok":
+        delta_pct = weekpart_insight.get("delta_pct")
+
+        if isinstance(delta_pct, (float, int)) and delta_pct <= -3:
+            driver_actions.append(
+                {
+                    "priority": "Medium",
+                    "action": "Improve weekend conversion",
+                    "reason": f"Weekend covers are {abs(float(delta_pct)):.1f}% below weekdays.",
+                    "owner": "Marketing / Reservations",
+                    "due": "Next weekend",
+                    "success_metric": "Weekend covers improve versus weekday baseline.",
                 }
             )
-            table["Net Sales (₹)"] = table["Net Sales (₹)"].apply(
-                lambda val: utils.format_currency(float(val))
-            )
-            table["APC (₹)"] = table["APC (₹)"].apply(lambda val: utils.format_currency(float(val)))
-            table["Covers"] = table["Covers"].apply(lambda val: f"{int(val):,}")
-            st.dataframe(table, width="stretch", hide_index=True)
 
+        elif isinstance(delta_pct, (float, int)) and delta_pct >= 8:
+            driver_actions.append(
+                {
+                    "priority": "Medium",
+                    "action": "Protect weekend execution",
+                    "reason": f"Weekend covers are {float(delta_pct):+.1f}% above weekdays.",
+                    "owner": "Operations",
+                    "due": "Before next weekend",
+                    "success_metric": "Staffing, prep, and inventory match weekend demand.",
+                }
+            )
+
+    if avg_apc > 0:
+        driver_actions.append(
+            {
+                "priority": "Medium",
+                "action": "Review low APC high-cover days",
+                "reason": "Covers vs APC matrix can reveal busy days where spend per guest is weak.",
+                "owner": "Restaurant Manager",
+                "due": "This week",
+                "success_metric": "Low APC high-cover days get one upsell or menu-mix intervention.",
+            }
+        )
+
+    _render_diagnostic_action_cards(
+        "Drivers",
+        driver_actions,
+    )
+
+def render_weekday_heatmap(df: pd.DataFrame) -> None:
+    """Render week-by-week weekday heatmap for Mix layer."""
+    if df.empty:
+        st.info("No data available for weekday heatmap.")
+        return
+
+    required_columns = {"date", "net_total", "covers"}
+    if not required_columns.issubset(set(df.columns)):
+        st.warning("Weekday heatmap could not be rendered because date, net_total, or covers data is missing.")
+        return
+
+    heatmap_df = df.copy()
+
+    heatmap_df["date"] = pd.to_datetime(heatmap_df["date"], errors="coerce")
+    heatmap_df = heatmap_df[heatmap_df["date"].notna()].copy()
+
+    if heatmap_df.empty:
+        st.info("No valid dated rows available for weekday heatmap.")
+        return
+
+    heatmap_df["net_total"] = pd.to_numeric(
+        heatmap_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
+    heatmap_df["covers"] = pd.to_numeric(
+        heatmap_df["covers"],
+        errors="coerce",
+    ).fillna(0)
+
+    if "target" in heatmap_df.columns:
+        heatmap_df["target"] = pd.to_numeric(
+            heatmap_df["target"],
+            errors="coerce",
+        ).fillna(0)
+    else:
+        heatmap_df["target"] = 0
+
+    heatmap_df["pct_target"] = heatmap_df.apply(
+        lambda row: row["net_total"] / row["target"] * 100
+        if row["target"] > 0
+        else 0,
+        axis=1,
+    )
+
+    heatmap_df["weekday"] = heatmap_df["date"].dt.day_name()
+    heatmap_df["week_start"] = heatmap_df["date"] - pd.to_timedelta(
+        heatmap_df["date"].dt.weekday,
+        unit="D",
+    )
+    heatmap_df["week_label"] = heatmap_df["week_start"].dt.strftime("Week of %d %b")
+
+    with st.container(border=True):
+        st.markdown("#### Weekday Heatmap")
+        st.caption(
+            "Shows how performance changes across weeks and weekdays. Use this to spot weak days, weekend dependency, and demand patterns."
+        )
+
+        selected_heatmap_metric = st.segmented_control(
+            "Heatmap Metric",
+            options=[
+                "Net Sales",
+                "Covers",
+                "Target %",
+            ],
+            default="Net Sales",
+            key="analytics_weekday_heatmap_metric",
+        )
+
+        if selected_heatmap_metric == "Net Sales":
+            value_col = "net_total"
+            aggfunc = "sum"
+            color_label = "Net Sales ₹"
+        elif selected_heatmap_metric == "Covers":
+            value_col = "covers"
+            aggfunc = "sum"
+            color_label = "Covers"
+        else:
+            value_col = "pct_target"
+            aggfunc = "mean"
+            color_label = "Target %"
+
+        weekday_order = [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday",
+        ]
+
+        pivot = heatmap_df.pivot_table(
+            index="week_label",
+            columns="weekday",
+            values=value_col,
+            aggfunc=aggfunc,
+            fill_value=0,
+        )
+
+        pivot = pivot.reindex(
+            columns=[day for day in weekday_order if day in pivot.columns]
+        )
+
+        week_order = (
+            heatmap_df[["week_start", "week_label"]]
+            .drop_duplicates()
+            .sort_values("week_start")["week_label"]
+            .tolist()
+        )
+        pivot = pivot.reindex(index=week_order)
+
+        if selected_heatmap_metric == "Net Sales":
+            text_values = pivot.map(
+                lambda value: utils.format_currency(float(value))
+            )
+        elif selected_heatmap_metric == "Covers":
+            text_values = pivot.map(lambda value: f"{int(value):,}")
+        else:
+            text_values = pivot.map(lambda value: f"{float(value):.1f}%")
+
+        fig_heatmap = go.Figure(
+            data=go.Heatmap(
+                z=pivot.values,
+                x=pivot.columns,
+                y=pivot.index,
+                text=text_values.values,
+                texttemplate="%{text}",
+                colorscale="Blues",
+                colorbar=dict(title=color_label),
+                hovertemplate=(
+                    "Week: %{y}<br>"
+                    "Day: %{x}<br>"
+                    f"{color_label}: %{{text}}"
+                    "<extra></extra>"
+                ),
+            )
+        )
+
+        _apply_analytics_chart_layout(
+            fig_heatmap,
+            title=None,
+            height=340,
+            showlegend=False,
+        )
+        fig_heatmap.update_xaxes(title_text="Day of Week")
+        fig_heatmap.update_yaxes(title_text="Week")
+
+        st.plotly_chart(fig_heatmap, width="stretch")
+
+def render_weekday_summary_table(df: pd.DataFrame) -> None:
+    """Render weekday-level sales, covers, APC and target achievement summary."""
+    if df.empty:
+        return
+
+    required_columns = {"date", "net_total", "covers"}
+    if not required_columns.issubset(set(df.columns)):
+        return
+
+    weekday_df = df.copy()
+
+    weekday_df["date"] = pd.to_datetime(weekday_df["date"], errors="coerce")
+    weekday_df = weekday_df[weekday_df["date"].notna()].copy()
+
+    if weekday_df.empty:
+        return
+
+    weekday_df["net_total"] = pd.to_numeric(
+        weekday_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
+    weekday_df["covers"] = pd.to_numeric(
+        weekday_df["covers"],
+        errors="coerce",
+    ).fillna(0)
+
+    if "target" in weekday_df.columns:
+        weekday_df["target"] = pd.to_numeric(
+            weekday_df["target"],
+            errors="coerce",
+        ).fillna(0)
+    else:
+        weekday_df["target"] = 0
+
+    weekday_df["weekday"] = weekday_df["date"].dt.day_name()
+
+    weekday_summary = (
+        weekday_df.groupby("weekday", as_index=False)
+        .agg(
+            sales=("net_total", "sum"),
+            covers=("covers", "sum"),
+            target=("target", "sum"),
+            days=("date", "count"),
+        )
+    )
+
+    weekday_summary["apc"] = weekday_summary.apply(
+        lambda row: row["sales"] / row["covers"] if row["covers"] > 0 else 0,
+        axis=1,
+    )
+
+    weekday_summary["target_pct"] = weekday_summary.apply(
+        lambda row: row["sales"] / row["target"] * 100
+        if row["target"] > 0
+        else 0,
+        axis=1,
+    )
+
+    weekday_summary["avg_sales_per_day"] = weekday_summary.apply(
+        lambda row: row["sales"] / row["days"] if row["days"] > 0 else 0,
+        axis=1,
+    )
+
+    weekday_summary["status"] = weekday_summary["target_pct"].apply(
+        lambda value: "Strong"
+        if value >= 100
+        else "Watch"
+        if value >= 70
+        else "Weak"
+    )
+
+    day_order = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    ]
+
+    weekday_summary["weekday"] = pd.Categorical(
+        weekday_summary["weekday"],
+        categories=day_order,
+        ordered=True,
+    )
+
+    weekday_summary = weekday_summary.sort_values("weekday")
+
+    display_df = weekday_summary.copy()
+    display_df["Sales"] = display_df["sales"].apply(
+        lambda value: utils.format_rupee_short(float(value))
+    )
+    display_df["Avg Sales / Day"] = display_df["avg_sales_per_day"].apply(
+        lambda value: utils.format_rupee_short(float(value))
+    )
+    display_df["Covers"] = display_df["covers"].apply(
+        lambda value: f"{int(value):,}"
+    )
+    display_df["APC"] = display_df["apc"].apply(
+        lambda value: utils.format_rupee_short(float(value))
+    )
+    display_df["Target %"] = display_df["target_pct"].apply(
+        lambda value: f"{value:.1f}%"
+    )
+
+    display_df = display_df.rename(
+        columns={
+            "weekday": "Day",
+            "days": "Days",
+            "status": "Status",
+        }
+    )
+
+    display_df = display_df[
+        [
+            "Day",
+            "Days",
+            "Sales",
+            "Avg Sales / Day",
+            "Covers",
+            "APC",
+            "Target %",
+            "Status",
+        ]
+    ]
+
+    st.markdown("#### Weekday Summary")
+    st.caption(
+        "Use this table to compare weekday performance and identify whether weak days are driven by covers, APC, or both."
+    )
+
+    st.dataframe(
+        display_df,
+        width="stretch",
+        hide_index=True,
+    )
 
 def render_mix_snapshot(
     report_loc_ids: list[int],
@@ -791,181 +5618,399 @@ def render_mix_snapshot(
     df: pd.DataFrame,
     start_date: date,
 ) -> None:
-    """Render concise category and weekday mix charts without default tables."""
-    st.markdown("### Mix & Timing")
-    st.caption("Use this layer to spot what is driving the period without digging through rows.")
+    """Render focused mix and timing diagnostics without redundant charts."""
+    if df.empty:
+        st.caption("No mix or timing data for this period.")
+        return
 
-    cat_col, weekday_col = st.columns(2)
-    with cat_col:
-        with st.container(border=True):
-            st.markdown("#### Category Contribution")
-            cat_data = database.get_category_sales_for_date_range(
-                report_loc_ids,
-                start_str,
-                end_str,
+    st.markdown("#### Additional menu and timing diagnostics")
+    st.caption(
+        "Open these details when you need category Pareto, weekday heatmap, or weekday-level performance."
+    )
+
+    with st.expander("View category Pareto", expanded=False):
+        render_category_pareto(report_loc_ids, start_str, end_str)
+
+    with st.expander("View weekday heatmap", expanded=False):
+        render_weekday_heatmap(df)
+
+    with st.expander("View weekday summary table", expanded=False):
+        render_weekday_summary_table(df)
+
+def render_target_pace_snapshot(df: pd.DataFrame) -> None:
+    """Render selected-period target pace snapshot."""
+    if df.empty:
+        return
+
+    required_columns = {"date", "net_total", "target"}
+    if not required_columns.issubset(set(df.columns)):
+        return
+
+    pace_df = df.copy()
+
+    pace_df["date"] = pd.to_datetime(pace_df["date"], errors="coerce")
+    pace_df = pace_df[pace_df["date"].notna()].copy()
+
+    if pace_df.empty:
+        return
+
+    pace_df["net_total"] = pd.to_numeric(
+        pace_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
+    pace_df["target"] = pd.to_numeric(
+        pace_df["target"],
+        errors="coerce",
+    ).fillna(0)
+
+    total_sales = float(pace_df["net_total"].sum())
+    total_target = float(pace_df["target"].sum())
+    days_count = int(len(pace_df))
+    days_with_sales = int(len(pace_df[pace_df["net_total"] > 0]))
+
+    achievement_pct = (total_sales / total_target * 100) if total_target > 0 else 0
+    variance = total_sales - total_target
+    avg_daily_sales = total_sales / days_with_sales if days_with_sales > 0 else 0
+    required_daily_sales = total_target / days_count if days_count > 0 else 0
+
+    status_delta = (
+        "Ahead of target"
+        if variance >= 0
+        else f"Behind by {utils.format_rupee_short(abs(variance))}"
+    )
+
+    with st.container(border=True):
+        st.markdown("#### Target Pace Snapshot")
+        st.caption(
+            "Quick summary of sales performance against the selected period target."
+        )
+
+        _render_metric_tile_grid(
+            [
+                (
+                    "Selected Period Sales",
+                    utils.format_rupee_short(total_sales),
+                    status_delta,
+                ),
+                (
+                    "Selected Period Target",
+                    utils.format_rupee_short(total_target),
+                    f"{days_count} days in view",
+                ),
+                (
+                    "Achievement",
+                    f"{achievement_pct:.1f}%",
+                    "Target progress",
+                ),
+                (
+                    "Avg Daily Sales",
+                    utils.format_rupee_short(avg_daily_sales),
+                    f"{days_with_sales} sales days",
+                ),
+                (
+                    "Required Daily Sales",
+                    utils.format_rupee_short(required_daily_sales),
+                    "To match target pace",
+                ),
+                (
+                    "Variance",
+                    (
+                        "Ahead"
+                        if variance >= 0
+                        else utils.format_rupee_short(abs(variance))
+                    ),
+                    "Selected period gap",
+                ),
+            ],
+            max_columns=6,
+        )
+
+        _render_dashboard_status(
+            (
+                "Sales are ahead of the selected-period target pace."
+                if variance >= 0
+                else f"Sales are behind the selected-period target by {utils.format_rupee_short(abs(variance))}."
+            ),
+            "success" if variance >= 0 else "error",
+        )
+
+def render_daily_target_variance(df: pd.DataFrame) -> None:
+    """Render daily sales variance against target."""
+    if df.empty:
+        st.info("No daily data available for target variance.")
+        return
+
+    variance_df = df.copy()
+
+    required_columns = {"date", "net_total", "target"}
+    if not required_columns.issubset(set(variance_df.columns)):
+        st.warning("Daily target variance could not be rendered because date, net_total, or target data is missing.")
+        return
+
+    variance_df["date"] = pd.to_datetime(variance_df["date"], errors="coerce")
+    variance_df = variance_df[variance_df["date"].notna()].copy()
+
+    variance_df["net_total"] = pd.to_numeric(
+        variance_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
+    variance_df["target"] = pd.to_numeric(
+        variance_df["target"],
+        errors="coerce",
+    ).fillna(0)
+
+    variance_df = variance_df.sort_values("date")
+    variance_df["variance"] = variance_df["net_total"] - variance_df["target"]
+
+    if variance_df.empty:
+        st.info("No valid daily rows available for target variance.")
+        return
+
+    colors = [
+        ui_theme.BRAND_SUCCESS if value >= 0 else ui_theme.BRAND_ERROR
+        for value in variance_df["variance"]
+    ]
+
+    with st.container(border=True):
+        st.markdown("#### Daily Target Variance")
+        st.caption(
+            "Green bars beat target. Red bars missed target. This helps identify which exact days created the target gap."
+        )
+
+        fig_variance = go.Figure()
+
+        fig_variance.add_trace(
+            go.Bar(
+                x=variance_df["date"],
+                y=variance_df["variance"],
+                name="Variance vs Target",
+                marker_color=colors,
+                hovertemplate=(
+                    "%{x|%d %b}<br>"
+                    "Variance: ₹%{y:,.0f}<extra></extra>"
+                ),
             )
-            if not cat_data:
-                st.caption("No category data for this period.")
-            else:
-                cat_df = pd.DataFrame(cat_data).head(8).copy()
-                total_cat = float(cat_df["amount"].sum())
-                cat_df["share"] = cat_df["amount"] / total_cat * 100 if total_cat > 0 else 0
-                cat_df = cat_df.sort_values("amount", ascending=True)
-                fig_cat = go.Figure(
-                    go.Bar(
-                        x=cat_df["amount"],
-                        y=cat_df["category"],
-                        orientation="h",
-                        marker_color=ui_theme.BRAND_PRIMARY,
-                        text=[f"{x:.1f}%" for x in cat_df["share"]],
-                        textposition="auto",
-                        hovertemplate=("%{y}<br>₹%{x:,.0f}<br>%{text} of top mix<extra></extra>"),
-                    )
-                )
-                fig_cat.update_layout(
-                    xaxis_title="Net Sales",
-                    yaxis_title="",
-                    height=360,
-                    margin=dict(l=8, r=8, t=16, b=32),
-                )
-                fig_cat.update_xaxes(tickprefix="₹", tickformat=",")
-                st.plotly_chart(fig_cat, width="stretch")
+        )
 
-    with weekday_col:
-        with st.container(border=True):
-            st.markdown("#### Weekday Strength")
-            if len(df) < 7:
-                st.caption("Need at least 7 days of data for weekday strength.")
-            else:
-                wd_df = df[df["net_total"] > 0].copy()
-                wd_df["weekday"] = wd_df["date"].apply(utils.get_weekday_name)
-                wd_agg = (
-                    wd_df.groupby("weekday")[["net_total", "covers"]]
-                    .mean()
-                    .reset_index()
-                    .rename(columns={"net_total": "avg_sales", "covers": "avg_covers"})
-                )
-                day_order = [
-                    "Monday",
-                    "Tuesday",
-                    "Wednesday",
-                    "Thursday",
-                    "Friday",
-                    "Saturday",
-                    "Sunday",
+        fig_variance.add_hline(
+            y=0,
+            line_width=1,
+            line_dash="dash",
+            line_color=ui_theme.CHART_BAR_MUTED,
+        )
+
+        _apply_analytics_chart_layout(
+            fig_variance,
+            title=None,
+            height=340,
+            showlegend=False,
+        )
+        fig_variance.update_xaxes(title_text="Date")
+        fig_variance.update_yaxes(title_text="Variance ₹")
+
+        st.plotly_chart(fig_variance, width="stretch")
+
+        with st.expander("View daily target variance data"):
+            display_df = variance_df.copy()
+            display_df["Date"] = display_df["date"].dt.strftime("%d %b %Y")
+            display_df["Net Sales"] = display_df["net_total"].apply(
+                lambda val: utils.format_currency(float(val))
+            )
+            display_df["Target"] = display_df["target"].apply(
+                lambda val: utils.format_currency(float(val))
+            )
+            display_df["Variance"] = display_df["variance"].apply(
+                lambda val: utils.format_currency(float(val))
+            )
+
+            display_df = display_df[
+                [
+                    "Date",
+                    "Net Sales",
+                    "Target",
+                    "Variance",
                 ]
-                wd_agg["weekday"] = pd.Categorical(
-                    wd_agg["weekday"], categories=day_order, ordered=True
-                )
-                wd_agg = wd_agg.sort_values("weekday")
+            ]
 
-                monthly_tgt = scope.sum_location_monthly_targets(report_loc_ids)
-                days_in_mo = utils.get_days_in_month(start_date.year, start_date.month)
-                daily_tgt = monthly_tgt / days_in_mo if monthly_tgt > 0 else 0
-                colors = [
-                    ui_theme.BRAND_SUCCESS
-                    if daily_tgt > 0 and val >= daily_tgt
-                    else ui_theme.BRAND_WARN
-                    if daily_tgt > 0 and val >= daily_tgt * 0.8
-                    else ui_theme.CHART_BAR_MUTED
-                    for val in wd_agg["avg_sales"]
-                ]
-                fig_wd = go.Figure(
-                    go.Bar(
-                        x=wd_agg["weekday"],
-                        y=wd_agg["avg_sales"],
-                        marker_color=colors,
-                        text=[utils.format_rupee_short(v) for v in wd_agg["avg_sales"]],
-                        textposition="outside",
-                        hovertemplate=("%{x}<br>Avg sales: ₹%{y:,.0f}<extra></extra>"),
-                    )
-                )
-                if daily_tgt > 0:
-                    fig_wd.add_hline(
-                        y=daily_tgt,
-                        line_dash="dash",
-                        line_color=ui_theme.CHART_BAR_MUTED,
-                        annotation_text=f"Target {utils.format_rupee_short(daily_tgt)}",
-                    )
-                fig_wd.update_layout(
-                    xaxis_title="",
-                    yaxis_title="Avg Net Sales",
-                    height=360,
-                    margin=dict(l=8, r=8, t=16, b=32),
-                )
-                fig_wd.update_yaxes(tickprefix="₹", tickformat=",")
-                st.plotly_chart(fig_wd, width="stretch")
+            st.dataframe(display_df, width="stretch", hide_index=True)
 
+def render_top_bottom_target_days(df: pd.DataFrame) -> None:
+    """Render best and worst days versus target."""
+    if df.empty:
+        return
+
+    required_columns = {"date", "net_total", "target"}
+    if not required_columns.issubset(set(df.columns)):
+        return
+
+    days_df = df.copy()
+
+    days_df["date"] = pd.to_datetime(days_df["date"], errors="coerce")
+    days_df = days_df[days_df["date"].notna()].copy()
+
+    if days_df.empty:
+        return
+
+    days_df["net_total"] = pd.to_numeric(
+        days_df["net_total"],
+        errors="coerce",
+    ).fillna(0)
+
+    days_df["target"] = pd.to_numeric(
+        days_df["target"],
+        errors="coerce",
+    ).fillna(0)
+
+    days_df["variance"] = days_df["net_total"] - days_df["target"]
+    days_df["achievement_pct"] = days_df.apply(
+        lambda row: row["net_total"] / row["target"] * 100
+        if row["target"] > 0
+        else 0,
+        axis=1,
+    )
+
+    days_df = days_df.sort_values("variance", ascending=False)
+
+    top_days = days_df.head(5).copy()
+    bottom_days = days_df.tail(5).sort_values("variance", ascending=True).copy()
+
+    def _format_target_days_table(table_df: pd.DataFrame) -> pd.DataFrame:
+        display_df = table_df.copy()
+        display_df["Date"] = display_df["date"].dt.strftime("%d %b %Y")
+        display_df["Net Sales"] = display_df["net_total"].apply(
+            lambda value: utils.format_rupee_short(float(value))
+        )
+        display_df["Target"] = display_df["target"].apply(
+            lambda value: utils.format_rupee_short(float(value))
+        )
+        display_df["Variance"] = display_df["variance"].apply(
+            lambda value: utils.format_rupee_short(float(value))
+        )
+        display_df["Achievement"] = display_df["achievement_pct"].apply(
+            lambda value: f"{value:.1f}%"
+        )
+
+        return display_df[
+            [
+                "Date",
+                "Net Sales",
+                "Target",
+                "Variance",
+                "Achievement",
+            ]
+        ]
+
+    st.markdown("#### Best & Worst Target Days")
+    st.caption(
+        "Quickly identify which days contributed most positively or negatively to target achievement."
+    )
+
+    top_col, bottom_col = st.columns(2)
+
+    with top_col:
+            st.markdown("##### Top 5 Days")
+            st.dataframe(
+                _format_target_days_table(top_days),
+                width="stretch",
+                hide_index=True,
+            )
+
+    with bottom_col:
+            st.markdown("##### Bottom 5 Days")
+            st.dataframe(
+                _format_target_days_table(bottom_days),
+                width="stretch",
+                hide_index=True,
+            )
 
 def render_target_snapshot(
     report_loc_ids: list[int],
     start_date: date,
     df: pd.DataFrame,
 ) -> None:
-    """Render a compact target snapshot without the legacy daily table."""
-    st.markdown("### Target Pace")
-    monthly_target = scope.sum_location_monthly_targets(report_loc_ids)
-    if monthly_target <= 0 or df.empty:
-        st.caption("No target data available for this period.")
+    """Render focused target and daily diagnostics without redundant views."""
+    if df.empty:
+        st.caption("No target data for this period.")
         return
 
-    target_df = df.copy().sort_values("date")
-    target_df["net_total"] = pd.to_numeric(target_df["net_total"], errors="coerce").fillna(0)
-    target_df["cumulative"] = target_df["net_total"].cumsum()
-    days_in_month = utils.get_days_in_month(start_date.year, start_date.month)
-    daily_target = monthly_target / days_in_month
-    target_df["target_pace"] = [daily_target * (idx + 1) for idx in range(len(target_df))]
-    actual_last = float(target_df["cumulative"].iloc[-1])
-    target_last = float(target_df["target_pace"].iloc[-1])
-    gap = actual_last - target_last
+    _render_diagnostic_intro(
+        "Target view",
+        "Which days created the target gap?",
+        "Review selected-period target pace, daily variance, and the specific days that helped or hurt performance.",
+    )
 
-    status_col, chart_col = st.columns([1, 2])
-    with status_col:
-        with st.container(border=True):
-            st.metric(
-                "Actual vs Pace",
-                utils.format_rupee_short(actual_last),
-                utils.format_rupee_short(gap),
-            )
-            st.metric("Required Daily Pace", utils.format_rupee_short(daily_target))
-            if gap >= 0:
-                st.success("On pace for the selected target period.")
-            else:
-                st.warning("Behind target pace. Focus on high-confidence demand days.")
+    render_target_pace_snapshot(df)
 
-    with chart_col:
-        with st.container(border=True):
-            fig_target = go.Figure()
-            fig_target.add_trace(
-                go.Scatter(
-                    x=pd.to_datetime(target_df["date"]),
-                    y=target_df["cumulative"],
-                    mode="lines+markers",
-                    name="Actual",
-                    fill="tozeroy",
-                    fillcolor=_hex_to_rgba(ui_theme.BRAND_PRIMARY, 0.12),
-                    line=dict(color=ui_theme.BRAND_PRIMARY, width=2),
-                )
-            )
-            fig_target.add_trace(
-                go.Scatter(
-                    x=pd.to_datetime(target_df["date"]),
-                    y=target_df["target_pace"],
-                    mode="lines",
-                    name="Target pace",
-                    line=dict(color=ui_theme.CHART_BAR_MUTED, width=2, dash="dash"),
-                )
-            )
-            fig_target.update_layout(
-                xaxis_title="Date",
-                yaxis_title="Cumulative Sales",
-                height=360,
-                hovermode="x unified",
-                margin=dict(l=8, r=8, t=16, b=32),
-            )
-            fig_target.update_yaxes(tickprefix="₹", tickformat=",")
-            st.plotly_chart(fig_target, width="stretch")
+    render_daily_target_variance(df)
 
+    with st.expander("Best & worst target days", expanded=False):
+        render_top_bottom_target_days(df)
+
+    with st.expander("Daily target table", expanded=False):
+        daily_view = build_daily_view_table(
+            df=df,
+            df_raw=pd.DataFrame(),
+            multi_analytics=False,
+            numeric=False,
+        )
+
+        if daily_view.empty:
+            st.info("No daily target rows available.")
+        else:
+            st.dataframe(
+                daily_view,
+                width="stretch",
+                hide_index=True,
+            )
+    target_actions = []
+
+    if "target" in df.columns and "net_total" in df.columns:
+        target_df = df.copy()
+        target_df["target"] = pd.to_numeric(
+            target_df["target"],
+            errors="coerce",
+        ).fillna(0)
+        target_df["net_total"] = pd.to_numeric(
+            target_df["net_total"],
+            errors="coerce",
+        ).fillna(0)
+
+        selected_target = float(target_df["target"].sum())
+        selected_sales = float(target_df["net_total"].sum())
+        selected_gap = selected_target - selected_sales
+
+        if selected_target > 0 and selected_gap > 0:
+            target_actions.append(
+                {
+                    "priority": "High",
+                    "action": "Close selected-period target gap",
+                    "reason": f"Selected-period target gap is {utils.format_rupee_short(selected_gap)}.",
+                    "owner": "Operations",
+                    "due": "Today",
+                    "success_metric": "Daily recovery plan is set for the remaining days.",
+                }
+            )
+
+        missed_days = int((target_df["net_total"] < target_df["target"]).sum())
+
+        if missed_days > 0:
+            target_actions.append(
+                {
+                    "priority": "Medium",
+                    "action": "Review missed target days",
+                    "reason": f"{missed_days} day(s) missed target in the selected period.",
+                    "owner": "Outlet Manager",
+                    "due": "This week",
+                    "success_metric": "Largest missed days have clear causes and prevention steps.",
+                }
+            )
+
+    _render_diagnostic_action_cards(
+        "Targets & Daily",
+        target_actions,
+    )
 
 def render_overview(
     analysis_period: str,
@@ -1944,148 +6989,344 @@ def render_payment_reconciliation(
     start_str: str,
     end_str: str,
 ) -> None:
-    """Render per-provider payment breakdown for ops team reconciliation."""
+    """Render payment summary, Zomato Pay economics, risks, and reconciliation downloads."""
     from io import BytesIO
 
     import database_analytics
 
-    st.markdown("### Payment Reconciliation")
-    st.caption(
-        "Per-provider breakdown for reconciling against Paytm / PhonePe / GPay settlement "
-        "statements. Live data shows raw Payment Type labels; "
-        "local mode shows the 5-bucket summary."
+    _render_diagnostic_intro(
+        "Payment view",
+        "Are payment channels and platform economics clean?",
+        "Review payment provider concentration, settlement checks, and Zomato Pay economics assumptions.",
     )
 
-    data = database_analytics.get_payment_provider_breakdown(report_loc_ids, start_str, end_str)
+    data = database_analytics.get_payment_provider_breakdown(
+        report_loc_ids,
+        start_str,
+        end_str,
+    )
 
     if not data:
         st.caption("No payment data for this period.")
         return
 
     recon_df = pd.DataFrame(data)
+
+    if recon_df.empty or "gross_amount" not in recon_df.columns:
+        st.caption("No usable payment data for this period.")
+        return
+
+    recon_df["gross_amount"] = pd.to_numeric(
+        recon_df["gross_amount"],
+        errors="coerce",
+    ).fillna(0)
+
     total_gross = float(recon_df["gross_amount"].sum())
+
+    if "txn_count" in recon_df.columns:
+        recon_df["txn_count"] = pd.to_numeric(
+            recon_df["txn_count"],
+            errors="coerce",
+        ).fillna(0)
+    else:
+        recon_df["txn_count"] = 0
+
+    has_txn_count = recon_df["txn_count"].sum() > 0
+
     recon_df["% of Total"] = recon_df["gross_amount"].apply(
-        lambda x: f"{x / total_gross * 100:.1f}%" if total_gross > 0 else "0%"
+        lambda value: f"{value / total_gross * 100:.1f}%" if total_gross > 0 else "0.0%"
     )
 
-    has_txn_count = recon_df["txn_count"].notna().any()
+    provider_count = int(recon_df["provider"].nunique()) if "provider" in recon_df.columns else 0
+    top_provider = "N/A"
+    top_provider_share = 0.0
 
-    display_df = recon_df.copy()
-    display_df["Gross Amount (₹)"] = display_df["gross_amount"].apply(
-        lambda x: utils.format_currency(float(x))
-    )
-    display_df = display_df.rename(columns={"provider": "Provider"})
+    if "provider" in recon_df.columns and total_gross > 0:
+        provider_summary = (
+            recon_df.groupby("provider", as_index=False)["gross_amount"]
+            .sum()
+            .sort_values("gross_amount", ascending=False)
+        )
 
-    cols_to_show = ["Provider", "Gross Amount (₹)", "% of Total"]
-    if has_txn_count:
-        display_df = display_df.rename(columns={"txn_count": "Bills"})
-        display_df["Bills"] = display_df["Bills"].fillna(0).astype(int)
-        cols_to_show = ["Provider", "Bills", "Gross Amount (₹)", "% of Total"]
+        if not provider_summary.empty:
+            top_provider = str(provider_summary.iloc[0]["provider"])
+            top_provider_share = float(provider_summary.iloc[0]["gross_amount"] / total_gross * 100)
 
-    st.dataframe(display_df[cols_to_show], width="stretch", hide_index=True)
-
-    recon_metrics = [
-        KpiMetric(
-            label="Total Gross (period)",
-            value=utils.format_currency(total_gross),
+    payment_tiles = [
+        (
+            "Total Gross",
+            utils.format_rupee_short(total_gross),
+            "Payment gross in selected period",
+        ),
+        (
+            "Payment Providers",
+            f"{provider_count:,}",
+            "Distinct providers",
+        ),
+        (
+            "Top Provider",
+            top_provider,
+            f"{top_provider_share:.1f}% of gross" if top_provider_share > 0 else None,
         ),
     ]
+
     if has_txn_count:
-        recon_metrics.append(
-            KpiMetric(
-                label="Total Bills",
-                value=f"{int(recon_df['txn_count'].sum()):,}",
+        payment_tiles.append(
+            (
+                "Total Bills",
+                f"{int(recon_df['txn_count'].sum()):,}",
+                "Visible payment bill count",
             )
         )
-    kpi_row(recon_metrics)
 
-    export_df = recon_df[["provider", "txn_count", "gross_amount", "% of Total"]].copy()
-    export_df = export_df.rename(
-        columns={
-            "provider": "Provider",
-            "txn_count": "Bill Count",
-            "gross_amount": "Gross Amount",
-        }
+    _render_metric_tile_grid(payment_tiles)
+
+    display_df = recon_df.copy()
+    display_df = display_df.rename(columns={"provider": "Provider"})
+
+    display_df["Gross Amount ₹"] = display_df["gross_amount"].apply(
+        lambda value: utils.format_currency(float(value))
     )
-    c1, c2 = st.columns(2)
-    with c1:
-        csv_bytes = export_df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="Download CSV",
-            data=csv_bytes,
-            file_name=f"payment_recon_{start_str}_{end_str}.csv",
-            mime="text/csv",
-            key="recon_csv_btn",
+
+    cols_to_show = ["Provider", "Gross Amount ₹", "% of Total"]
+
+    if has_txn_count:
+        display_df["Bills"] = display_df["txn_count"].apply(lambda value: f"{int(value):,}")
+        cols_to_show = ["Provider", "Bills", "Gross Amount ₹", "% of Total"]
+
+    with st.expander("View provider payment summary", expanded=False):
+        st.caption(
+            "Provider-level payment view for checking settlement concentration and reconciling against payment statements."
         )
-    with c2:
-        excel_buf = BytesIO()
-        with pd.ExcelWriter(excel_buf, engine="openpyxl") as writer:
-            export_df.to_excel(writer, index=False, sheet_name="Payment Reconciliation")
-        excel_buf.seek(0)
-        st.download_button(
-            label="Download Excel",
-            data=excel_buf.getvalue(),
-            file_name=f"payment_recon_{start_str}_{end_str}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="recon_excel_btn",
+        st.dataframe(
+            display_df[cols_to_show],
+            width="stretch",
+            hide_index=True,
         )
 
-    zomato_pay_sales = float(
-        recon_df[
-            recon_df["provider"].astype(str).str.contains("zomato", case=False, na=False)
-        ]["gross_amount"].sum()
-    )
+    zomato_pay_sales = 0.0
+    if "provider" in recon_df.columns:
+        zomato_pay_sales = float(
+            recon_df[
+                recon_df["provider"]
+                .astype(str)
+                .str.contains("zomato", case=False, na=False)
+            ]["gross_amount"].sum()
+        )
+
     render_zomato_economics(zomato_pay_sales)
 
+    with st.expander("Exceptions / Risks", expanded=False):
+        risk_messages = []
+
+        if total_gross <= 0:
+            risk_messages.append("Total payment gross is zero for the selected period.")
+
+        if provider_count <= 1:
+            risk_messages.append(
+                "Only one payment provider is visible. Check whether payment labels are being grouped too broadly."
+            )
+
+        if top_provider_share >= 80:
+            risk_messages.append(
+                f"{top_provider} contributes {top_provider_share:.1f}% of payment gross. Verify this concentration against settlement reports."
+            )
+
+        if has_txn_count and (recon_df["txn_count"] <= 0).any():
+            risk_messages.append(
+                "One or more payment providers have zero bills. Check whether bill counts are missing or incorrectly mapped."
+            )
+
+        if zomato_pay_sales <= 0:
+            risk_messages.append(
+                "No Zomato Pay sales are visible in this period. This is fine if Zomato Pay was inactive, but verify if it should have been active."
+            )
+
+        if not risk_messages:
+            _render_dashboard_status(
+                "No major payment reconciliation risk detected from the available payment summary.",
+                "success",
+            )
+
+        for message in risk_messages:
+            _render_dashboard_status(message, "warning")
+
+    with st.expander("Full payment table and downloads", expanded=False):
+        export_df = recon_df[["provider", "txn_count", "gross_amount", "% of Total"]].copy()
+        export_df = export_df.rename(
+            columns={
+                "provider": "Provider",
+                "txn_count": "Bill Count",
+                "gross_amount": "Gross Amount",
+            }
+        )
+
+        table_df = export_df.copy()
+        table_df["Gross Amount"] = table_df["Gross Amount"].apply(
+            lambda value: utils.format_currency(float(value))
+        )
+        table_df["Bill Count"] = table_df["Bill Count"].apply(
+            lambda value: f"{int(value):,}"
+        )
+
+        st.dataframe(table_df, width="stretch", hide_index=True)
+
+        download_col_1, download_col_2 = st.columns(2)
+
+        with download_col_1:
+            csv_bytes = export_df.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="Download CSV",
+                data=csv_bytes,
+                file_name=f"payment_recon_{start_str}_{end_str}.csv",
+                mime="text/csv",
+                key="recon_csv_btn",
+            )
+
+        with download_col_2:
+            excel_buf = BytesIO()
+            with pd.ExcelWriter(excel_buf, engine="openpyxl") as writer:
+                export_df.to_excel(
+                    writer,
+                    index=False,
+                    sheet_name="Payment Reconciliation",
+                )
+            excel_buf.seek(0)
+
+            st.download_button(
+                label="Download Excel",
+                data=excel_buf.getvalue(),
+                file_name=f"payment_recon_{start_str}_{end_str}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="recon_excel_btn",
+            )
+    payment_actions = []
+
+    if top_provider_share >= 80:
+        payment_actions.append(
+            {
+                "priority": "Medium",
+                "action": "Verify payment provider concentration",
+                "reason": f"{top_provider} contributes {top_provider_share:.1f}% of payment gross.",
+                "owner": "Finance",
+                "due": "This week",
+                "success_metric": "Provider concentration matches settlement reports and payment labels.",
+            }
+        )
+
+    if provider_count <= 1:
+        payment_actions.append(
+            {
+                "priority": "Medium",
+                "action": "Check payment provider mapping",
+                "reason": "Only one payment provider is visible in the selected period.",
+                "owner": "Finance / Data",
+                "due": "This week",
+                "success_metric": "Payment provider labels are correctly mapped and not over-grouped.",
+            }
+        )
+
+    if has_txn_count and (recon_df["txn_count"] <= 0).any():
+        payment_actions.append(
+            {
+                "priority": "High",
+                "action": "Fix missing bill counts in payment data",
+                "reason": "One or more payment providers have zero bill count.",
+                "owner": "Finance / Data",
+                "due": "Today",
+                "success_metric": "Payment providers show valid bill counts where expected.",
+            }
+        )
+
+    if zomato_pay_sales > 0:
+        payment_actions.append(
+            {
+                "priority": "Medium",
+                "action": "Validate Zomato Pay economics",
+                "reason": f"Zomato Pay sales are {utils.format_rupee_short(zomato_pay_sales)} in this period.",
+                "owner": "Operations / Finance",
+                "due": "Before next activation",
+                "success_metric": "Coverage ratio and incrementality assumption are agreed.",
+            }
+        )
+
+    _render_diagnostic_action_cards(
+        "Payments",
+        payment_actions,
+    )
 
 def render_zomato_economics(zomato_pay_sales: float) -> None:
     """Render manual Zomato Pay incrementality economics for the selected period."""
-    st.markdown("### Zomato Economics")
+    st.markdown("#### Zomato Pay what-if analysis")
+
     if zomato_pay_sales <= 0:
         st.caption("No Zomato Pay sales in this period.")
         return
 
     st.caption(
-        "Manual decision model: compare estimated incremental booking contribution "
-        "against total Zomato Pay cost for this period."
+        "Owner decision model: estimate how much Zomato Pay sales were truly incremental, "
+        "then check whether the contribution after food/direct variable costs covers the Zomato Pay fee."
     )
 
     with st.container(border=True):
-        input_cols = st.columns(4)
-        with input_cols[0]:
-            fee_pct = st.number_input(
-                "Zomato fee %",
-                min_value=0.0,
-                max_value=100.0,
-                value=5.9,
-                step=0.1,
-                key="zomato_fee_pct",
-            )
-        with input_cols[1]:
-            contribution_margin_pct = st.number_input(
-                "Contribution margin %",
-                min_value=0.0,
-                max_value=100.0,
-                value=60.0,
-                step=1.0,
-                key="zomato_contribution_margin_pct",
-            )
-        with input_cols[2]:
-            incremental_sales = st.number_input(
-                "Estimated incremental booking sales",
-                min_value=0.0,
-                value=float(zomato_pay_sales * 0.15),
-                step=10_000.0,
-                key="zomato_incremental_sales",
-            )
-        with input_cols[3]:
-            target_coverage_ratio = st.number_input(
-                "Target coverage ratio",
-                min_value=0.0,
-                value=1.5,
-                step=0.1,
-                key="zomato_target_coverage_ratio",
-            )
+        with st.expander("Zomato economics assumptions", expanded=False):
+            input_cols = st.columns(4)
+
+            with input_cols[0]:
+                fee_pct = st.number_input(
+                    "Zomato fee %",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=5.9,
+                    step=0.1,
+                    key="zomato_fee_pct",
+                    help="The commission or fee charged on Zomato Pay sales for this period.",
+                )
+
+            with input_cols[1]:
+                contribution_margin_pct = st.number_input(
+                    "Incremental contribution margin %",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=60.0,
+                    step=1.0,
+                    key="zomato_contribution_margin_pct",
+                    help=(
+                        "Money retained from estimated extra Zomato-driven sales after food and direct "
+                        "variable costs, before rent, fixed salaries, and other existing fixed costs. "
+                        "Example: if food cost is 33%, a conservative contribution margin may be around 55–60%."
+                    ),
+                )
+
+            with input_cols[2]:
+                incremental_sales_pct = st.number_input(
+                    "Assumed incremental sales %",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=15.0,
+                    step=1.0,
+                    key="zomato_incremental_sales_pct",
+                    help=(
+                        "The percentage of Zomato Pay sales that you believe were truly extra sales "
+                        "because of Zomato. Example: 15% means you assume 15% of Zomato Pay sales "
+                        "would not have happened without Zomato."
+                    ),
+                )
+
+            with input_cols[3]:
+                target_coverage_ratio = st.number_input(
+                    "Target coverage ratio",
+                    min_value=0.0,
+                    value=1.5,
+                    step=0.1,
+                    key="zomato_target_coverage_ratio",
+                    help=(
+                        "1.0x means break-even. 1.5x means the incremental contribution should be "
+                        "50% higher than the Zomato Pay fee."
+                    ),
+                )
+
+        incremental_sales = zomato_pay_sales * incremental_sales_pct / 100
 
         economics = build_zomato_economics(
             zomato_pay_sales=zomato_pay_sales,
@@ -2094,7 +7335,14 @@ def render_zomato_economics(zomato_pay_sales: float) -> None:
             incremental_sales=incremental_sales,
             target_coverage_ratio=target_coverage_ratio,
         )
+
         coverage = classify_platform_cost_coverage(economics["coverage_ratio"])
+
+        st.caption(
+            f"Current assumption: {incremental_sales_pct:.1f}% of "
+            f"{utils.format_rupee_short(economics['zomato_pay_sales'] or 0)} Zomato Pay sales "
+            f"= {utils.format_rupee_short(economics['incremental_sales'] or 0)} estimated incremental sales."
+        )
 
         kpi_row(
             [
@@ -2103,8 +7351,12 @@ def render_zomato_economics(zomato_pay_sales: float) -> None:
                     value=utils.format_rupee_short(economics["zomato_pay_sales"] or 0),
                 ),
                 KpiMetric(
-                    label=f"Estimated Cost @ {fee_pct:.1f}%",
+                    label=f"Zomato Pay Fee Cost @ {fee_pct:.1f}%",
                     value=utils.format_rupee_short(economics["platform_cost"] or 0),
+                ),
+                KpiMetric(
+                    label="Estimated Incremental Sales",
+                    value=utils.format_rupee_short(economics["incremental_sales"] or 0),
                 ),
                 KpiMetric(
                     label="Incremental Contribution",
@@ -2113,33 +7365,55 @@ def render_zomato_economics(zomato_pay_sales: float) -> None:
                 KpiMetric(
                     label="Coverage Ratio",
                     value=_format_ratio(economics["coverage_ratio"]),
-                    delta=coverage["label"],
                 ),
             ]
         )
 
+        break_even_sales = economics["break_even_incremental_sales"] or 0
+        target_sales = economics["target_incremental_sales"] or 0
+
+        break_even_pct = (
+            break_even_sales / zomato_pay_sales * 100
+            if zomato_pay_sales > 0
+            else 0
+        )
+
+        target_pct = (
+            target_sales / zomato_pay_sales * 100
+            if zomato_pay_sales > 0
+            else 0
+        )
+
         decision_label = "Healthy channel" if coverage["label"] == "Healthy" else coverage["label"]
+
         decision_text = (
             f"**{decision_label}**  \n"
             f"{coverage['message']}  \n\n"
-            f"Break-even incremental sales: "
-            f"{utils.format_rupee_short(economics['break_even_incremental_sales'] or 0)}  \n"
+            f"Break-even incremental sales needed: "
+            f"{utils.format_rupee_short(break_even_sales)} "
+            f"({break_even_pct:.1f}% of Zomato Pay sales)  \n"
             f"Sales needed for {target_coverage_ratio:.1f}x target: "
-            f"{utils.format_rupee_short(economics['target_incremental_sales'] or 0)}  \n"
-            f"Current estimate: {utils.format_rupee_short(economics['incremental_sales'] or 0)}"
+            f"{utils.format_rupee_short(target_sales)} "
+            f"({target_pct:.1f}% of Zomato Pay sales)  \n"
+            f"Current estimate: "
+            f"{utils.format_rupee_short(economics['incremental_sales'] or 0)} "
+            f"({incremental_sales_pct:.1f}% of Zomato Pay sales)"
         )
-        if coverage["severity"] == "success":
-            st.success(decision_text)
-        elif coverage["severity"] == "warning":
-            st.warning(decision_text)
-        elif coverage["severity"] == "error":
-            st.error(decision_text)
-        else:
-            st.info(decision_text)
+
+        _render_dashboard_status(
+            decision_text.replace("**", "").replace("  \n", " "),
+            coverage["severity"],
+        )
+
+        sensitivity_pcts = sorted(
+            set([5.0, 10.0, 15.0, 25.0, 35.0, 50.0, round(incremental_sales_pct, 1)])
+        )
 
         sensitivity_rows = []
-        for pct in (5, 10, 15, 25):
+
+        for pct in sensitivity_pcts:
             assumed_sales = zomato_pay_sales * pct / 100
+
             assumed = build_zomato_economics(
                 zomato_pay_sales=zomato_pay_sales,
                 fee_pct=fee_pct,
@@ -2147,13 +7421,24 @@ def render_zomato_economics(zomato_pay_sales: float) -> None:
                 incremental_sales=assumed_sales,
                 target_coverage_ratio=target_coverage_ratio,
             )
+
             assumed_coverage = classify_platform_cost_coverage(assumed["coverage_ratio"])
+
             sensitivity_rows.append(
                 {
-                    "Incremental Assumption": f"{pct}% of Zomato Pay",
+                    "Incremental Assumption": f"{pct:g}% of Zomato Pay",
                     "Incremental Sales": utils.format_rupee_short(assumed_sales),
+                    f"Contribution @ {contribution_margin_pct:.0f}%": utils.format_rupee_short(
+                        assumed["incremental_contribution"] or 0
+                    ),
                     "Coverage Ratio": _format_ratio(assumed["coverage_ratio"]),
                     "Decision": assumed_coverage["label"],
                 }
             )
-        st.dataframe(pd.DataFrame(sensitivity_rows), width="stretch", hide_index=True)
+
+        with st.expander("View Zomato sensitivity table", expanded=False):
+            st.dataframe(
+                pd.DataFrame(sensitivity_rows),
+                width="stretch",
+                hide_index=True,
+            )
