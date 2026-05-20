@@ -2163,11 +2163,11 @@ def _build_footfall_metrics(
 
     col_w = [
         avail_w * 0.20,
-        avail_w * 0.15,
+        avail_w * 0.145,
+        avail_w * 0.165,
+        avail_w * 0.155,
         avail_w * 0.16,
-        avail_w * 0.14,
-        avail_w * 0.16,
-        avail_w * 0.17,
+        avail_w * 0.175,
     ]
 
     if monthly:
@@ -2248,6 +2248,12 @@ def _build_footfall_metrics(
         ]
         style_cmds.extend(
             _meta_header_table_style_cmds(header_row=HEADER_ROW, first_body_row=FIRST_BODY_ROW)
+        )
+        style_cmds.extend(
+            [
+                ("FONTSIZE", (0, HEADER_ROW), (-1, HEADER_ROW), FONT_SIZE_HEADER - 1),
+                ("ALIGN", (1, HEADER_ROW), (-1, HEADER_ROW), "CENTER"),
+            ]
         )
         for i in range(FIRST_BODY_ROW, len(all_rows)):
             if (i - FIRST_BODY_ROW) % 2 == 1:
@@ -2341,9 +2347,10 @@ def _build_footfall_metrics(
                 ("BACKGROUND", (0, 0), (-1, 0), _hex(C_HEADER)),
                 ("TEXTCOLOR", (0, 0), (-1, 0), _hex(C_BRAND)),
                 ("FONTNAME", (0, 0), (-1, 0), FONT_BOLD),
-                ("FONTSIZE", (0, 0), (-1, 0), FONT_SIZE_HEADER),
+                ("FONTSIZE", (0, 0), (-1, 0), FONT_SIZE_HEADER - 1),
                 ("ALIGN", (0, 0), (0, -1), "LEFT"),
-                ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+                ("ALIGN", (1, 0), (-1, 0), "CENTER"),
+                ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
                 ("TOPPADDING", (0, 0), (-1, -1), ROW_PAD_TOP),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), ROW_PAD_BOTTOM),
                 ("LEFTPADDING", (0, 0), (-1, -1), CELL_PAD_LEFT),
@@ -2367,6 +2374,12 @@ def _build_footfall_metrics(
             ]
             style_cmds.extend(
                 _meta_header_table_style_cmds(header_row=HEADER_ROW, first_body_row=FIRST_BODY_ROW)
+            )
+            style_cmds.extend(
+                [
+                    ("FONTSIZE", (0, HEADER_ROW), (-1, HEADER_ROW), FONT_SIZE_HEADER - 1),
+                    ("ALIGN", (1, HEADER_ROW), (-1, HEADER_ROW), "CENTER"),
+                ]
             )
             for i in range(FIRST_BODY_ROW, len(all_rows)):
                 if (i - FIRST_BODY_ROW) % 2 == 1:
