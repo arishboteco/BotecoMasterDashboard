@@ -2175,7 +2175,7 @@ def _build_footfall_metrics(
             "Month",
             "Footfall",
             "% Change",
-            "Total Days",
+            "Days",
             "Daily Avg.",
             "% Change",
         ]
@@ -2280,7 +2280,7 @@ def _build_footfall_metrics(
             "Week",
             "Footfall",
             "% Change",
-            "Total Days",
+            "Days",
             "Daily Avg.",
             "% Change",
         ]
