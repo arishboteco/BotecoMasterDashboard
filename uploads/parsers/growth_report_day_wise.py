@@ -14,7 +14,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
-from services.payment_mapping import payment_method_key, payment_method_name
+from services.payment_mapping import (
+    is_delivery_payment_method,
+    payment_method_key,
+    payment_method_name,
+)
 
 # ---------------------------------------------------------------------------
 # Payment column mappings
@@ -468,6 +472,18 @@ def parse_growth_report_day_wise(
                     )
 
         out["payment_methods"] = [payment_methods[key] for key in sorted(payment_methods.keys())]
+        if float(out.get("delivery_sales") or 0) == 0:
+            out["delivery_sales"] = round(
+                sum(
+                    float(method.get("amount") or 0)
+                    for method in out["payment_methods"]
+                    if is_delivery_payment_method(
+                        str(method.get("payment_method") or ""),
+                        str(method.get("payment_key") or ""),
+                    )
+                ),
+                2,
+            )
 
         rows.append(out)
 

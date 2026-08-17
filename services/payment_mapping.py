@@ -112,6 +112,13 @@ def payment_method_key(raw_name: str) -> Optional[str]:
     return key or None
 
 
+def is_delivery_payment_method(raw_name: str, raw_key: str = "") -> bool:
+    """Return whether a payment method explicitly represents online delivery."""
+    name = payment_method_name(raw_name) or str(raw_name or "").strip()
+    searchable = f"{name} {raw_key}".lower().replace("_", " ")
+    return "delivery" in searchable
+
+
 def _col_total(df: pd.DataFrame, col_name: str) -> float:
     """Sum a named DataFrame column, treating non-numeric as 0."""
     if col_name not in df.columns:

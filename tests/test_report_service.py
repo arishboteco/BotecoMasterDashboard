@@ -31,6 +31,11 @@ def test_build_mtd_maps_caps_to_selected_date(monkeypatch):
         "get_service_sales_for_date_range",
         _fake_svc,
     )
+    monkeypatch.setattr(
+        report_service.database,
+        "get_summaries_for_date_range_multi",
+        lambda *_args, **_kwargs: [],
+    )
 
     mtd_cat, mtd_svc = report_service.build_mtd_maps([1, 2], 2026, 4, "2026-04-08")
 
@@ -51,11 +56,41 @@ def test_build_mtd_maps_accepts_total_keys(monkeypatch):
         "get_service_sales_for_date_range",
         lambda *_args, **_kwargs: [{"type": "Dinner", "total": 700.0}],
     )
+    monkeypatch.setattr(
+        report_service.database,
+        "get_summaries_for_date_range_multi",
+        lambda *_args, **_kwargs: [],
+    )
 
     mtd_cat, mtd_svc = report_service.build_mtd_maps([1], 2026, 4, "2026-04-08")
 
     assert mtd_cat == {"Food": 500.0}
     assert mtd_svc == {"Dinner": 700.0}
+
+
+def test_build_mtd_maps_adds_delivery_from_daily_summaries(monkeypatch):
+    monkeypatch.setattr(
+        report_service.database,
+        "get_category_sales_grouped_for_date_range",
+        lambda *_args, **_kwargs: [{"category": "Food", "amount": 500.0}],
+    )
+    monkeypatch.setattr(
+        report_service.database,
+        "get_service_sales_for_date_range",
+        lambda *_args, **_kwargs: [{"type": "Lunch", "amount": 500.0}],
+    )
+    monkeypatch.setattr(
+        report_service.database,
+        "get_summaries_for_date_range_multi",
+        lambda *_args, **_kwargs: [
+            {"delivery_sales": 2961.0},
+            {"delivery_sales": 1234.0},
+        ],
+    )
+
+    _, mtd_svc = report_service.build_mtd_maps([1, 2], 2026, 8, "2026-08-16")
+
+    assert mtd_svc == {"Lunch": 500.0, "Delivery": 4195.0}
 
 
 def test_load_report_bundle_cached_uses_cache(monkeypatch):

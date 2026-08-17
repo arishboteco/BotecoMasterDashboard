@@ -581,6 +581,7 @@ class TestGrowthReportParser:
                 "amount": 4195.0,
             }
         ]
+        assert rows[0]["delivery_sales"] == 4195.0
         assert meta["dynamic_payment_types"] == ["Zomato Delivery"]
 
     def test_payment_methods_excludes_fixed_payment_columns(self):

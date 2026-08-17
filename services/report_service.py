@@ -52,6 +52,15 @@ def build_mtd_maps(
         for r in (svc_rows or [])
         if str(r.get("service_type") or r.get("type") or "").strip()
     }
+
+    summary_rows = database.get_summaries_for_date_range_multi(
+        location_ids,
+        start_date,
+        as_of_date,
+    )
+    delivery_total = sum(float(row.get("delivery_sales") or 0) for row in summary_rows or [])
+    if delivery_total > 0:
+        mtd_svc["Delivery"] = max(float(mtd_svc.get("Delivery") or 0), delivery_total)
     return mtd_cat, mtd_svc
 
 

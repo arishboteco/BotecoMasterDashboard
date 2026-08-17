@@ -111,6 +111,32 @@ class TestCategorySuperCategoryDisplay:
         assert rows_by_label["Delivery"][1:] == ["\u20b9750", "\u20b92,500"]
         assert rows_by_label["Category Total"][1:] == ["\u20b91,000", "\u20b95,000"]
 
+    def test_category_delivery_falls_back_to_delivery_payment_method(self):
+        elements = sheet_reports._build_category(
+            {
+                "date": "2026-08-16",
+                "delivery_sales": 0.0,
+                "payment_methods": [
+                    {
+                        "payment_method": "Zomato Other",
+                        "payment_key": "zomato_other",
+                        "amount": 2961.0,
+                    }
+                ],
+                "categories": [{"category": "Food", "amount": 1000.0}],
+            },
+            location_name="Boteco",
+            mtd_category={"Food": 5000.0},
+            mtd_service={"Delivery": 2961.0},
+            day_lbl="Sun, 16 Aug 2026",
+        )
+
+        table = _first_table(elements)
+        rows_by_label = {row[0]: row for row in table._cellvalues if row}
+
+        assert rows_by_label["Delivery"][1:] == ["\u20b92,961", "\u20b92,961"]
+        assert rows_by_label["Category Total"][1:] == ["\u20b91,000", "\u20b95,000"]
+
     def test_category_section_displays_super_categories_only(self):
         report_data = {
             "date": "2026-04-08",
