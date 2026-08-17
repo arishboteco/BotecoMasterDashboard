@@ -92,6 +92,25 @@ class TestSalesSummaryPaymentMethods:
 
 
 class TestCategorySuperCategoryDisplay:
+    def test_category_section_includes_delivery_without_double_counting(self):
+        elements = sheet_reports._build_category(
+            {
+                "date": "2026-04-08",
+                "delivery_sales": 750.0,
+                "categories": [{"category": "Food", "amount": 1000.0}],
+            },
+            location_name="Boteco",
+            mtd_category={"Food": 5000.0},
+            mtd_service={"Delivery": 2500.0},
+            day_lbl="Wed, 8 Apr 2026",
+        )
+
+        table = _first_table(elements)
+        rows_by_label = {row[0]: row for row in table._cellvalues if row}
+
+        assert rows_by_label["Delivery"][1:] == ["\u20b9750", "\u20b92,500"]
+        assert rows_by_label["Category Total"][1:] == ["\u20b91,000", "\u20b95,000"]
+
     def test_category_section_displays_super_categories_only(self):
         report_data = {
             "date": "2026-04-08",

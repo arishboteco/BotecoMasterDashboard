@@ -3,6 +3,37 @@
 import scope
 
 
+def test_payment_aliases_group_in_single_outlet_summary():
+    combined = scope.aggregate_daily_summaries(
+        [
+            {
+                "date": "2026-04-08",
+                "payment_methods": [
+                    {
+                        "payment_method": "Zomato Other",
+                        "payment_key": "zomato_other",
+                        "amount": 2961.0,
+                    },
+                    {
+                        "payment_method": "Zomato Delivery",
+                        "payment_key": "zomato_delivery",
+                        "amount": 1234.0,
+                    },
+                ],
+            }
+        ]
+    )
+
+    assert combined is not None
+    assert combined["payment_methods"] == [
+        {
+            "payment_method": "Zomato Delivery",
+            "payment_key": "zomato_delivery",
+            "amount": 4195.0,
+        }
+    ]
+
+
 def test_daily_report_bundle_uses_detailed_rows_for_services_and_categories(
     monkeypatch,
 ):

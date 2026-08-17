@@ -13,6 +13,7 @@ import streamlit as st
 
 from core.dates import month_bounds
 from db.category_rows import CATEGORY_ROW_PREFIX
+from services.payment_mapping import payment_method_name
 
 
 def _bill_items_success(status: Any) -> bool:
@@ -765,6 +766,8 @@ def _normalize_provider(raw: str) -> str:
     s = str(raw or "").strip().lower()
     if not s or s in ("nan", "none", "null", "-"):
         return "Other"
+    if "zomato other" in s or "zomato delivery" in s:
+        return "Zomato Delivery"
     if "zomato" in s:
         return "Zomato"
     if "swiggy" in s:
@@ -835,7 +838,8 @@ def get_payment_provider_breakdown(
         if method_rows:
             totals: Dict[str, Dict[str, Any]] = {}
             for row in method_rows:
-                provider = str(row.get("payment_method") or "Other").strip() or "Other"
+                raw_provider = str(row.get("payment_method") or "Other").strip() or "Other"
+                provider = payment_method_name(raw_provider) or raw_provider
                 if provider not in totals:
                     totals[provider] = {
                         "provider": provider,
@@ -896,15 +900,21 @@ def get_payment_provider_breakdown(
             )
             method_rows = cur.fetchall()
             if method_rows:
-                return [
-                    {
-                        "provider": str(row["payment_method"]),
-                        "txn_count": None,
-                        "gross_amount": float(row["amount"] or 0),
-                    }
-                    for row in method_rows
-                    if float(row["amount"] or 0) > 0
-                ]
+                totals: Dict[str, Dict[str, Any]] = {}
+                for row in method_rows:
+                    raw_provider = str(row["payment_method"] or "Other").strip() or "Other"
+                    provider = payment_method_name(raw_provider) or raw_provider
+                    if provider not in totals:
+                        totals[provider] = {
+                            "provider": provider,
+                            "txn_count": None,
+                            "gross_amount": 0.0,
+                        }
+                    totals[provider]["gross_amount"] += float(row["amount"] or 0)
+                return sorted(
+                    (row for row in totals.values() if row["gross_amount"] > 0),
+                    key=lambda row: -row["gross_amount"],
+                )
             cur.execute(
                 f"""
                 SELECT

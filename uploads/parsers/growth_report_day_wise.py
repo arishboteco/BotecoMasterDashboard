@@ -269,6 +269,9 @@ def _payment_columns(
         if header in ALLOWED_PAYMENT_COLUMNS:
             payments[header] = idx
             continue
+        if payment_method_name(header):
+            dynamic_payments[header] = idx
+            continue
         if header.startswith("other [") and header.endswith("]"):
             dynamic_payments[header] = idx
             continue

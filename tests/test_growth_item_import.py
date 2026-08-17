@@ -419,6 +419,13 @@ class TestPaymentMapping:
         assert normalize_payment_column("Card") == "card_sales"
         assert normalize_payment_column("UPI") == "upi_sales"
 
+    def test_zomato_other_uses_zomato_delivery_identity(self):
+        from services.payment_mapping import payment_method_key, payment_method_name
+
+        for variant in ["Zomato Delivery", "Zomato Other", "Other [Zomato Other]"]:
+            assert payment_method_name(variant) == "Zomato Delivery"
+            assert payment_method_key(variant) == "zomato_delivery"
+
     def test_generic_other_nonzero_is_allowed_for_dynamic_payment_method(self):
         from services.payment_mapping import validate_payment_columns_or_raise
 
@@ -554,6 +561,27 @@ class TestGrowthReportParser:
             "Razorpay",
             "Zomato Delivery",
         ]
+
+    def test_zomato_other_groups_with_zomato_delivery(self):
+        from uploads.parsers.growth_report_day_wise import parse_growth_report_day_wise
+
+        content = _growth_report_bytes(
+            payment_cols={
+                "Zomato Other": 2961.0,
+                "Other [Zomato Delivery]": 1234.0,
+            }
+        )
+        rows, errors, meta = parse_growth_report_day_wise(content, "test.xlsx")
+
+        assert not errors, errors
+        assert rows[0]["payment_methods"] == [
+            {
+                "payment_method": "Zomato Delivery",
+                "payment_key": "zomato_delivery",
+                "amount": 4195.0,
+            }
+        ]
+        assert meta["dynamic_payment_types"] == ["Zomato Delivery"]
 
     def test_payment_methods_excludes_fixed_payment_columns(self):
         from uploads.parsers.growth_report_day_wise import parse_growth_report_day_wise

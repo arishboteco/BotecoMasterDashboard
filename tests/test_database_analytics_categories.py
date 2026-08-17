@@ -31,6 +31,7 @@ def test_payment_provider_breakdown_uses_dynamic_payment_methods_supabase(monkey
             return _Query(
                 [
                     {"payment_method": "Zomato Delivery", "amount": 1200.0},
+                    {"payment_method": "Zomato Other", "amount": 300.0},
                     {"payment_method": "Razorpay", "amount": 800.0},
                     {"payment_method": "Razorpay", "amount": 200.0},
                 ]
@@ -42,7 +43,7 @@ def test_payment_provider_breakdown_uses_dynamic_payment_methods_supabase(monkey
     out = database_analytics.get_payment_provider_breakdown([1], "2026-05-01", "2026-05-31")
 
     assert out == [
-        {"provider": "Zomato Delivery", "txn_count": None, "gross_amount": 1200.0},
+        {"provider": "Zomato Delivery", "txn_count": None, "gross_amount": 1500.0},
         {"provider": "Razorpay", "txn_count": None, "gross_amount": 1000.0},
     ]
 

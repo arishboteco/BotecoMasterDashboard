@@ -48,6 +48,15 @@ _IGNORED_IF_ZERO = {
     "cod",
 }
 
+# Petpooja can emit this online-delivery tender either as a direct header or
+# inside its generic ``Other [...]`` wrapper. Both labels represent the same
+# dashboard provider and must aggregate under one stable key.
+_PAYMENT_METHOD_ALIASES = {
+    "zomato delivery": "Zomato Delivery",
+    "zomato other": "Zomato Delivery",
+    "other [zomato other]": "Zomato Delivery",
+}
+
 
 def _norm(raw: str) -> str:
     s = re.sub(r"\s+", " ", raw.replace("\xa0", " ").strip().lower())
@@ -76,10 +85,15 @@ def payment_method_name(raw_name: str) -> Optional[str]:
     key = _norm(raw)
     if not key or key in _IGNORED_IF_ZERO:
         return None
+    if key in _PAYMENT_METHOD_ALIASES:
+        return _PAYMENT_METHOD_ALIASES[key]
     if key.startswith("other [") and key.endswith("]"):
         inner = re.sub(r"\s+", " ", raw[raw.find("[") + 1 : raw.rfind("]")].strip())
         if not inner:
             return None
+        alias = _PAYMENT_METHOD_ALIASES.get(_norm(inner))
+        if alias:
+            return alias
         return " ".join(
             part.upper() if part.isupper() and len(part) <= 3 else part.title()
             for part in inner.split(" ")
@@ -134,7 +148,7 @@ def validate_payment_columns_or_raise(
     problems: List[str] = []
     for raw in columns:
         key = _norm(raw)
-        if key in _ALLOWED:
+        if key in _ALLOWED or key in _PAYMENT_METHOD_ALIASES:
             continue  # known and mapped
         if key.startswith("other [") and key.endswith("]"):
             continue  # dynamic payment method, stored by normalized method name

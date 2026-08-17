@@ -45,6 +45,7 @@ from reportlab.platypus import (
 
 import config
 from exceptions import ReportGenerationError
+from services.payment_mapping import payment_method_key, payment_method_name
 
 # ── Font registration ────────────────────────────────────────────────────────
 FONT_DIR = os.path.join(os.path.dirname(__file__), "fonts")
@@ -1003,6 +1004,9 @@ _PAYMENT_METHOD_FIXED_FIELDS = {
 
 
 def _payment_method_norm(label: str) -> str:
+    canonical_key = payment_method_key(label)
+    if canonical_key:
+        return canonical_key
     return re.sub(r"\s+", " ", str(label or "").strip().lower())
 
 
@@ -1023,7 +1027,8 @@ def _payment_method_labels(*summaries: Dict) -> List[str]:
     seen = set()
     for summary in summaries:
         for method in (summary or {}).get("payment_methods") or []:
-            label = str(method.get("payment_method") or "").strip()
+            raw_label = str(method.get("payment_method") or "").strip()
+            label = payment_method_name(raw_label) or raw_label
             key = _payment_method_norm(label)
             if label and key not in seen:
                 labels.append(label)
@@ -1449,6 +1454,7 @@ def _build_category(
     n_outlets: int = 1,
     per_outlet: Optional[List[Tuple[str, Dict]]] = None,
     per_outlet_category: Optional[List[Tuple[str, Dict[str, float]]]] = None,
+    mtd_service: Optional[Dict[str, float]] = None,
 ) -> list:
     multi = per_outlet and len(per_outlet) >= 2
     if multi:
@@ -1465,6 +1471,33 @@ def _build_category(
     if multi and per_outlet:
         for _, od in per_outlet:
             outlet_daily_cats.append(_collapse_super_category_amounts(od.get("categories") or []))
+
+    def delivery_amount(summary: Dict[str, Any]) -> float:
+        direct_amount = float(summary.get("delivery_sales") or 0)
+        if direct_amount != 0:
+            return direct_amount
+        return sum(
+            float(service.get("amount") or service.get("total") or 0)
+            for service in summary.get("services") or []
+            if str(service.get("type") or service.get("service_type") or "").strip().lower()
+            == "delivery"
+        )
+
+    daily_delivery = delivery_amount(r)
+    mtd_delivery = next(
+        (
+            float(value or 0)
+            for name, value in (mtd_service or {}).items()
+            if str(name).strip().lower() == "delivery"
+        ),
+        0.0,
+    )
+    outlet_daily_delivery = (
+        [delivery_amount(od) for _, od in per_outlet] if multi and per_outlet else []
+    )
+    has_delivery = daily_delivery != 0 or mtd_delivery != 0 or any(
+        amount != 0 for amount in outlet_daily_delivery
+    )
 
     cat_order = [x for x in std_cats if x in daily_cat or x in mtd_category]
     for k in sorted(mtd_category.keys()):
@@ -1505,11 +1538,28 @@ def _build_category(
             cells = [name_with_pct, _r(d_amt), _r(m_amt)]
         rows.append(cells)
 
+    # Delivery is an order channel that overlaps the product categories above.
+    # Show it for operational context, but do not add it to the category total.
+    if has_delivery:
+        if multi:
+            rows.append(
+                ["Delivery"]
+                + [_r(amount) for amount in outlet_daily_delivery]
+                + [_r(daily_delivery), _r(mtd_delivery)]
+            )
+        else:
+            rows.append(["Delivery", _r(daily_delivery), _r(mtd_delivery)])
+
     # Totals row
     if multi:
-        tot_cells = ["Total"] + [_r(t) for t in outlet_totals] + [_r(daily_total), _r(mtd_total)]
+        total_label = "Category Total" if has_delivery else "Total"
+        tot_cells = [total_label] + [_r(t) for t in outlet_totals] + [
+            _r(daily_total),
+            _r(mtd_total),
+        ]
     else:
-        tot_cells = ["Total", _r(daily_total), _r(mtd_total)]
+        total_label = "Category Total" if has_delivery else "Total"
+        tot_cells = [total_label, _r(daily_total), _r(mtd_total)]
     rows.append(tot_cells)
 
     col_w = _auto_col_widths(rows, avail_w)
@@ -2501,6 +2551,7 @@ def generate_sheet_style_report_sections(
         n_outlets=n_outlets,
         per_outlet=per_outlet,
         per_outlet_category=per_outlet_cat,
+        mtd_service=ms,
     )
     out["category"] = _render_elements_to_png(elements, width)
 

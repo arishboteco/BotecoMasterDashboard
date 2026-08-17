@@ -12,6 +12,7 @@ import config
 import database
 import pos_parser as parser
 import utils
+from services.payment_mapping import payment_method_key, payment_method_name
 
 
 def _normalize_detail_lists(summary: Dict[str, Any]) -> Dict[str, Any]:
@@ -43,17 +44,24 @@ def _normalize_detail_lists(summary: Dict[str, Any]) -> Dict[str, Any]:
         out["services"] = svcs
 
     pmts_raw = out.get("payment_methods")
-    pmts = []
+    pmts_by_key: Dict[str, Dict[str, Any]] = {}
     for pmt in pmts_raw if isinstance(pmts_raw, list) else []:
         amount = float(pmt.get("amount") or 0)
         if amount == 0:
             continue
-        name = str(pmt.get("payment_method") or "").strip()
-        key = str(pmt.get("payment_key") or name.lower().replace(" ", "_")).strip()
+        raw_name = str(pmt.get("payment_method") or "").strip()
+        name = payment_method_name(raw_name) or raw_name
+        key = payment_method_key(raw_name) or str(
+            pmt.get("payment_key") or name.lower().replace(" ", "_")
+        ).strip()
         if name and key:
-            pmts.append({"payment_method": name, "payment_key": key, "amount": amount})
-    if pmts or pmts_raw is not None:
-        out["payment_methods"] = pmts
+            row = pmts_by_key.setdefault(
+                key,
+                {"payment_method": name, "payment_key": key, "amount": 0.0},
+            )
+            row["amount"] += amount
+    if pmts_by_key or pmts_raw is not None:
+        out["payment_methods"] = list(pmts_by_key.values())
 
     return out
 
