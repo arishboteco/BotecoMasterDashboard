@@ -6,7 +6,6 @@ No Streamlit or database dependencies.
 
 from __future__ import annotations
 
-from collections import defaultdict
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -141,6 +140,7 @@ def linear_forecast(
     dates: pd.Series,
     values: List[float],
     forecast_days: int = 5,
+    forecast_after_date: date | pd.Timestamp | None = None,
 ) -> Optional[List[Dict[str, Any]]]:
     """Forecast future restaurant sales using weighted smoothing + weekday pattern logic.
 
@@ -224,7 +224,11 @@ def linear_forecast(
         weekday_coverage=weekday_coverage,
     )
 
-    last_date = pd.Timestamp(daily_df["date"].iloc[-1])
+    last_date = (
+        pd.Timestamp(forecast_after_date).normalize()
+        if forecast_after_date is not None
+        else pd.Timestamp(daily_df["date"].iloc[-1])
+    )
     forecast_dates = generate_forecast_dates(last_date, forecast_days)
 
     result: List[Dict[str, Any]] = []

@@ -150,9 +150,9 @@ class TestCalculateForecastDays:
         result = calculate_forecast_days("This Week", data_points=10)
         assert result == 7
 
-    def test_last_week_returns_7_days(self):
+    def test_last_week_returns_no_forward_forecast(self):
         result = calculate_forecast_days("Last Week", data_points=10)
-        assert result == 7
+        assert result == 0
 
     def test_7d_returns_half_window_capped_at_7(self):
         result = calculate_forecast_days("7D", data_points=10, selected_range_days=7)
@@ -163,9 +163,9 @@ class TestCalculateForecastDays:
         assert result >= 1
         assert result <= 31
 
-    def test_last_month_returns_30_days(self):
+    def test_last_month_returns_no_forward_forecast(self):
         result = calculate_forecast_days("Last Month", data_points=10)
-        assert result == 30
+        assert result == 0
 
     def test_30d_returns_7_days(self):
         result = calculate_forecast_days("30D", data_points=10, selected_range_days=30)

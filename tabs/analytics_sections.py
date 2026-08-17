@@ -16,6 +16,7 @@ import scope
 import ui_theme
 import utils
 from components import KpiMetric, kpi_row
+from services.forecast_service import calculate_month_end_forecast
 from tabs.analytics_logic import (
     build_daily_view_table,
     build_zomato_economics,
@@ -31,6 +32,53 @@ from tabs.forecasting import (
 
 _WEEKEND_DAYS = {"Friday", "Saturday", "Sunday"}
 _WEEKDAY_DAYS = {"Monday", "Tuesday", "Wednesday", "Thursday"}
+
+
+def _calculate_period_forecast(
+    df: pd.DataFrame,
+    analysis_period: str,
+    start_date: date,
+    end_date: date,
+    total_sales: float,
+) -> tuple[list[dict[str, object]], float | None, int, str]:
+    """Return a consistently labelled forecast for the selected period."""
+    selected_days = max(1, (end_date - start_date).days + 1)
+    forecast_days = calculate_forecast_days(
+        analysis_period,
+        data_points=len(df),
+        selected_range_days=selected_days,
+    )
+    period_key = analysis_period.lower().replace(" ", "_")
+
+    if period_key in {"mtd", "this_month"}:
+        month_end = calculate_month_end_forecast(
+            df["date"],
+            pd.to_numeric(df["net_total"], errors="coerce").fillna(0).tolist(),
+            as_of_date=end_date,
+            actual_total=total_sales,
+        )
+        forecast = month_end["forecast"]
+        return (
+            forecast,
+            float(month_end["forecast_total"]),
+            int(month_end["remaining_days"]),
+            "Forecast Month-End",
+        )
+
+    forecast = linear_forecast(
+        pd.to_datetime(df["date"]),
+        pd.to_numeric(df["net_total"], errors="coerce").fillna(0).tolist(),
+        forecast_days=forecast_days,
+    )
+    label = (
+        f"Projected Total + Next {forecast_days} Days"
+        if forecast_days > 0
+        else "Projected Total"
+    )
+    if not forecast:
+        return [], None, forecast_days, label
+    forecast_total = total_sales + sum(float(item["value"]) for item in forecast)
+    return forecast, forecast_total, forecast_days, label
 
 
 def _format_ratio(ratio: float | None) -> str:
@@ -479,27 +527,21 @@ def render_owner_readout_and_data_confidence(
     covers_delta_pct = _safe_pct_change(total_covers, prior_covers)
     apc_delta_pct = _safe_pct_change(current_apc, prior_apc)
 
-    selected_range_days = max(1, (end_date - start_date).days + 1)
-    forecast_days = calculate_forecast_days(
+    _forecast, forecast_total, forecast_days, forecast_label = _calculate_period_forecast(
+        work_df,
         analysis_period,
-        data_points=len(work_df),
-        selected_range_days=selected_range_days,
+        start_date,
+        end_date,
+        total_sales,
     )
-
-    forecast_total = None
     forecast_reliability = _forecast_reliability_label(len(work_df))
 
-    if forecast_days > 0:
-        forecast = linear_forecast(
-            work_df["date"],
-            work_df["net_total"].tolist(),
-            forecast_days=forecast_days,
-        )
-        if forecast:
-            forecast_total = total_sales + sum(float(item["value"]) for item in forecast)
-
     forecast_gap = None
-    if monthly_target > 0 and forecast_total is not None:
+    if (
+        forecast_label == "Forecast Month-End"
+        and monthly_target > 0
+        and forecast_total is not None
+    ):
         forecast_gap = monthly_target - forecast_total
 
     daily_recovery_required = None
@@ -663,7 +705,8 @@ def render_owner_readout_and_data_confidence(
 
     if forecast_total is not None:
         evidence_lines.append(
-            f"Forecast Close: {utils.format_rupee_short(forecast_total)} · Reliability: {forecast_reliability}"
+            f"{forecast_label}: {utils.format_rupee_short(forecast_total)} · "
+            f"Reliability: {forecast_reliability}"
         )
 
     if daily_recovery_required is not None:
@@ -1291,9 +1334,8 @@ def render_outlet_performance_scorecard(
     else:
         prior_work_df = pd.DataFrame()
 
-    selected_range_days = max(1, (end_date - start_date).days + 1)
-
     rows: list[dict[str, object]] = []
+    forecast_column_label = "Forecast"
 
     for outlet_name, outlet_df in work_df.groupby("Outlet"):
         outlet_df = outlet_df.sort_values("date").copy()
@@ -1333,26 +1375,15 @@ def render_outlet_performance_scorecard(
         covers_delta_pct = _safe_pct_change(covers, prior_covers)
         apc_delta_pct = _safe_pct_change(apc, prior_apc)
 
-        forecast_days = calculate_forecast_days(
-            analysis_period,
-            data_points=len(outlet_df),
-            selected_range_days=selected_range_days,
-        )
-
-        forecast_close = None
-
-        if forecast_days > 0:
-            forecast = linear_forecast(
-                outlet_df["date"],
-                outlet_df["net_total"].tolist(),
-                forecast_days=forecast_days,
+        _forecast, forecast_close, _forecast_days, forecast_column_label = (
+            _calculate_period_forecast(
+                outlet_df,
+                analysis_period,
+                start_date,
+                end_date,
+                net_sales,
             )
-
-            if forecast:
-                forecast_close = net_sales + sum(
-                    float(item.get("value", 0) or 0)
-                    for item in forecast
-                )
+        )
 
         data_flags: list[str] = []
 
@@ -1404,7 +1435,7 @@ def render_outlet_performance_scorecard(
                 "Sales Trend %": sales_delta_pct,
                 "Covers Trend %": covers_delta_pct,
                 "APC Trend %": apc_delta_pct,
-                "Forecast Close": forecast_close,
+                forecast_column_label: forecast_close,
                 "Priority Issue": priority_issue,
                 "Data Flags": ", ".join(data_flags) if data_flags else "OK",
             }
@@ -1505,7 +1536,7 @@ def render_outlet_performance_scorecard(
                 lambda value: "N/A" if pd.isna(value) else f"{float(value):+.1f}%"
             )
 
-        display_df["Forecast Close"] = display_df["Forecast Close"].apply(
+        display_df[forecast_column_label] = display_df[forecast_column_label].apply(
             lambda value: (
                 "N/A"
                 if pd.isna(value)
@@ -1527,7 +1558,7 @@ def render_outlet_performance_scorecard(
                         "Sales Trend %",
                         "Covers Trend %",
                         "APC Trend %",
-                        "Forecast Close",
+                        forecast_column_label,
                         "Priority Issue",
                         "Data Flags",
                     ]
@@ -1541,7 +1572,10 @@ def render_outlet_performance_scorecard(
             st.caption("- Watch: outlet has a target gap, data flags, or moderate performance risk.")
             st.caption("- At Risk: outlet is materially behind target or sales are sharply declining.")
             st.caption("- Trends are calculated versus the selected comparison period.")
-            st.caption("- Forecast Close appears only for open/forward-looking periods where forecast days are available.")
+            st.caption(
+                f"- {forecast_column_label} appears only for open/forward-looking periods "
+                "where forecast days are available."
+            )
 
         outlet_actions = []
 
@@ -4396,29 +4430,30 @@ def render_forecast_command_center(
     if df.empty:
         return
 
-    dates = pd.to_datetime(df["date"])
     values = pd.to_numeric(df["net_total"], errors="coerce").fillna(0).tolist()
-    selected_days = max(1, (end_date - start_date).days + 1)
-    forecast_days = calculate_forecast_days(
+    forecast, forecast_total, forecast_days, forecast_label = _calculate_period_forecast(
+        df,
         analysis_period,
-        data_points=len(values),
-        selected_range_days=selected_days,
+        start_date,
+        end_date,
+        total_sales,
     )
-    forecast = linear_forecast(dates, values, forecast_days=forecast_days)
-    forecast_total = total_sales + sum(f["value"] for f in (forecast or []))
     reliability = _forecast_reliability_label(len(values))
+    is_month_end_forecast = forecast_label == "Forecast Month-End"
 
     action_cards = _build_action_cards(
         current_df=df,
         prior_df=prior_df,
-        monthly_target=monthly_target,
-        forecast_total=forecast_total if forecast else 0.0,
+        monthly_target=monthly_target if is_month_end_forecast else 0.0,
+        forecast_total=forecast_total if forecast_total is not None else 0.0,
     )
 
-    forecast_value = utils.format_rupee_short(forecast_total) if forecast else "N/A"
+    forecast_value = (
+        utils.format_rupee_short(forecast_total) if forecast_total is not None else "N/A"
+    )
     target_gap = (
         utils.format_rupee_short(max(0.0, monthly_target - forecast_total))
-        if monthly_target > 0 and forecast
+        if is_month_end_forecast and monthly_target > 0 and forecast_total is not None
         else "N/A"
     )
     cov_delta = None
@@ -4443,7 +4478,7 @@ def render_forecast_command_center(
             delta=utils.format_delta(total_sales, prior_total) if prior_total else None,
         ),
         KpiMetric(
-            label="Forecast Close",
+            label=forecast_label,
             value=forecast_value,
             delta=f"Reliability: {reliability}",
         ),
@@ -4452,9 +4487,12 @@ def render_forecast_command_center(
             value=target_gap,
             delta=(
                 "On track"
-                if monthly_target > 0 and forecast and forecast_total >= monthly_target
+                if is_month_end_forecast
+                and monthly_target > 0
+                and forecast_total is not None
+                and forecast_total >= monthly_target
                 else "Behind pace"
-                if monthly_target > 0 and forecast
+                if is_month_end_forecast and monthly_target > 0 and forecast_total is not None
                 else None
             ),
         ),
@@ -4539,7 +4577,7 @@ def render_forecast_command_center(
                     x=[last_actual_date] + f_dates,
                     y=[last_actual_value] + cumulative_forecast,
                     mode="lines",
-                    name="Forecast Close",
+                    name=forecast_label,
                     line=dict(color=ui_theme.BRAND_SUCCESS, width=3, dash="dot"),
                     hovertemplate="Forecast: ₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
                 )

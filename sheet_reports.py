@@ -45,6 +45,7 @@ from reportlab.platypus import (
 
 import config
 from exceptions import ReportGenerationError
+from services.forecast_service import calculate_month_end_forecast
 from services.payment_mapping import (
     is_delivery_payment_method,
     payment_method_key,
@@ -340,26 +341,23 @@ def compute_forecast_metrics(
         dt = datetime.strptime(iso, "%Y-%m-%d")
     except ValueError:
         dt = datetime.now()
-    first_next = (dt.replace(day=28) + timedelta(days=4)).replace(day=1)
-    dim = int((first_next - timedelta(days=1)).day)
-    elapsed = int(max(1, dt.day))
-    remaining = max(dim - elapsed, 0)
-
     mtd_net = _safe_float(report_data.get("mtd_net_sales"))
     mtd_target = _safe_float(report_data.get("mtd_target"))
-
-    forecast_run_rate = (mtd_net / elapsed) * dim if elapsed > 0 else 0.0
-
-    forecast_weekday = _weekday_weighted_forecast(
-        dt,
-        remaining,
-        daily_sales_history or [],
+    history = daily_sales_history or []
+    shared_forecast = calculate_month_end_forecast(
+        [row.get("date") or row.get("report_date") for row in history],
+        [_safe_float(row.get("net_total") or row.get("net_sales")) for row in history],
+        as_of_date=dt.date(),
+        actual_total=mtd_net,
     )
-
-    if len(daily_sales_history or []) >= 7:
-        forecast = 0.5 * forecast_run_rate + 0.5 * forecast_weekday
-    else:
-        forecast = forecast_run_rate
+    dim = int(shared_forecast["days_in_month"])
+    elapsed = int(shared_forecast["elapsed_days"])
+    remaining = int(shared_forecast["remaining_days"])
+    forecast = float(shared_forecast["forecast_total"])
+    forecast_run_rate = (mtd_net / elapsed) * dim if elapsed > 0 else 0.0
+    forecast_weighted = (
+        forecast if shared_forecast["method"] == "weighted" else 0.0
+    )
 
     pct = (forecast / mtd_target) * 100.0 if mtd_target > 0 else None
     gap = (forecast - mtd_target) if mtd_target > 0 else None
@@ -371,7 +369,8 @@ def compute_forecast_metrics(
         "remaining_days": remaining,
         "forecast_month_end_sales": forecast,
         "forecast_run_rate": forecast_run_rate,
-        "forecast_weekday_weighted": forecast_weekday,
+        "forecast_weekday_weighted": forecast_weighted,
+        "forecast_method": shared_forecast["method"],
         "forecast_target_pct": pct,
         "forecast_gap_amount": gap,
         "required_daily_run_rate": req_run_rate,
@@ -1046,6 +1045,7 @@ def _build_sales_summary(
     n_outlets: int = 1,
     per_outlet: Optional[List[Tuple[str, Dict]]] = None,
     daily_sales_history: Optional[List[Dict]] = None,
+    per_outlet_daily_sales_history: Optional[List[Tuple[str, List[Dict]]]] = None,
 ) -> list:
     multi = per_outlet and len(per_outlet) >= 2
     if multi:
@@ -1059,6 +1059,18 @@ def _build_sales_summary(
     pct_tgt = float(r.get("pct_target") or 0)
     target_total = float(r.get("target") or 0)
     statuses = compute_metric_statuses(r, daily_sales_history=daily_sales_history)
+    forecast_by_data_id = {
+        id(r): compute_forecast_metrics(r, daily_sales_history=daily_sales_history)
+    }
+    outlet_history_by_name = dict(per_outlet_daily_sales_history or [])
+    for outlet_name, outlet_data in per_outlet or []:
+        forecast_by_data_id[id(outlet_data)] = compute_forecast_metrics(
+            outlet_data,
+            daily_sales_history=outlet_history_by_name.get(outlet_name, []),
+        )
+
+    def _forecast_for(data: Dict) -> Dict[str, Any]:
+        return forecast_by_data_id[id(data)]
     ach_color = statuses["target"]["color"]
 
     elements = []
@@ -1256,12 +1268,12 @@ def _build_sales_summary(
     add_mtd_row("Actual % of Target", "mtd_pct_target", fmt="pct", bold=True, right_color=ach_color)
 
     def _forecast_end(d):
-        return compute_forecast_metrics(d)["forecast_month_end_sales"]
+        return _forecast_for(d)["forecast_month_end_sales"]
 
     add_mtd_row("Forecast Month-End", _forecast_end)
 
     def _forecast_target_pct(d):
-        val = compute_forecast_metrics(d)["forecast_target_pct"]
+        val = _forecast_for(d)["forecast_target_pct"]
         return _pct(val) if val is not None else "N/A"
 
     add_mtd_row(
@@ -1272,7 +1284,7 @@ def _build_sales_summary(
     )
 
     def _required_run_rate(d):
-        val = compute_forecast_metrics(d)["required_daily_run_rate"]
+        val = _forecast_for(d)["required_daily_run_rate"]
         return _r(val) if val is not None else "N/A"
 
     add_mtd_row("Required Daily Run Rate", _required_run_rate, fmt="str")
@@ -1393,7 +1405,7 @@ def _build_sales_summary(
                 )
                 style_cmds.append(("FONTNAME", (col_index, i), (col_index, i), FONT_BOLD))
         elif label == "Forecast % of Target":
-            pct_val = compute_forecast_metrics(r).get("forecast_target_pct")
+            pct_val = _forecast_for(r).get("forecast_target_pct")
             cell_style = _performance_style(pct_val)
             style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(cell_style["background"])))
             style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(cell_style["text"])))
@@ -2562,6 +2574,7 @@ def generate_sheet_style_report_sections(
         n_outlets=n_outlets,
         per_outlet=per_outlet,
         daily_sales_history=daily_sales_history,
+        per_outlet_daily_sales_history=per_outlet_ff,
     )
     width = SECTION_WIDTHS.get(n_outlets, min(520 + (n_outlets - 2) * 90, 700))
     out["sales_summary"] = _render_elements_to_png(elements, width)
