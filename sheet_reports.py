@@ -1638,6 +1638,16 @@ def _build_service(
         for s in r.get("services") or []
     }
     mtd_service = dict(mtd_service or {})
+    has_meal_period_split = any(
+        str(name or "").strip().lower() in {"breakfast", "lunch", "dinner"}
+        for name in daily_svc
+    )
+    if has_meal_period_split:
+        mtd_service = {
+            name: amount
+            for name, amount in mtd_service.items()
+            if str(name or "").strip().lower() != "delivery"
+        }
     total_svc_mtd = sum(mtd_service.values()) or 1.0
 
     outlet_daily_svcs = []

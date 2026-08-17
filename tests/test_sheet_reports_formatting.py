@@ -231,6 +231,30 @@ class TestCategoryServiceTotalRows:
 
         assert _has_dark_footer_band(sections["service"])
 
+    def test_meal_period_service_table_does_not_double_count_delivery(self):
+        elements = sheet_reports._build_service(
+            {
+                "date": "2026-08-16",
+                "services": [
+                    {"service_type": "Lunch", "amount": 153508.0},
+                    {"service_type": "Dinner", "amount": 130103.0},
+                ],
+            },
+            location_name="All locations",
+            mtd_service={
+                "Lunch": 1525288.0,
+                "Dinner": 2042443.0,
+                "Delivery": 37519.0,
+            },
+            day_lbl="Sun, 16 Aug 2026",
+        )
+
+        table = _first_table(elements)
+        rows_by_label = {row[0]: row for row in table._cellvalues if row}
+
+        assert "Delivery" not in rows_by_label
+        assert rows_by_label["Total"][1:] == ["\u20b9283,611", "\u20b93,567,731"]
+
 
 class TestSalesSummaryRowBackgrounds:
     def test_discount_row_uses_non_red_background_tint(self):
