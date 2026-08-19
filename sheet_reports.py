@@ -46,7 +46,6 @@ from reportlab.platypus import (
 import config
 from exceptions import ReportGenerationError
 from services.forecast_service import calculate_month_end_forecast
-from services.plan_service import build_plan_vs_actual
 from services.payment_mapping import (
     is_delivery_payment_method,
     payment_method_key,
@@ -161,14 +160,12 @@ ROW_GROUPS = {
     "summary_metric": {"MTD Net Sales", "MTD Net (Excl. Disc.)"},
     "planning_metric": {
         "Sales Target",
-        "Plan To Date",
         "Forecast Month-End",
         "Required Daily Run Rate",
     },
     "conditional_performance": {
         "Actual % of Target",
         "Forecast % of Target",
-        "Actual vs Plan",
     },
 }
 
@@ -224,12 +221,10 @@ def _sales_summary_row_bg(
         return C_ROW_DEDUCTION
     if label in EXCEPTION_SUMMARY_ROWS:
         return C_ROW_EXCEPTION
-    if label in {"Sales Target", "Plan To Date"}:
+    if label == "Sales Target":
         return C_ROW_TARGET_NEUTRAL
     if label == "Forecast Month-End":
         return C_ROW_FORECAST
-    if label == "Actual vs Plan":
-        return _target_row_bg(status_color) if status_color else C_ROW_TARGET_NEUTRAL
     if label in {"Actual % of Target", "Forecast % of Target", "Required Daily Run Rate"}:
         if is_multi_outlet and label in {"Forecast % of Target", "Required Daily Run Rate"}:
             return C_ROW_TARGET_NEUTRAL
@@ -337,17 +332,6 @@ def _achievement_color(pct: float) -> str:
     return C_RED
 
 
-def _plan_status_color(status: Optional[str]) -> str:
-    """Colour for the actual-vs-plan row."""
-    if status == "ahead":
-        return C_GREEN
-    if status == "behind":
-        return C_RED
-    if status == "on_track":
-        return C_AMBER
-    return C_MUTED
-
-
 def _safe_float(value: Any, default: float = 0.0) -> float:
     try:
         return float(value)
@@ -359,7 +343,7 @@ def compute_forecast_metrics(
     report_data: Dict[str, Any],
     daily_sales_history: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
-    """Month-end forecast and plan metrics for one report scope.
+    """Month-end forecast metrics for one report scope.
 
     ``daily_sales_history`` should be the trailing window ending on the report
     date, not just the current month; the forecast model reads its weekday
@@ -397,15 +381,6 @@ def compute_forecast_metrics(
     gap = (forecast - mtd_target) if mtd_target > 0 else None
     req_run_rate = (mtd_target - mtd_net) / remaining if mtd_target > 0 and remaining > 0 else None
 
-    plan = build_plan_vs_actual(
-        history_dates,
-        history_values,
-        as_of_date=dt.date(),
-        month_target=mtd_target,
-        actual_total=mtd_net,
-        forecast_result=shared_forecast,
-    )
-
     return {
         "days_in_month": dim,
         "elapsed_days": elapsed,
@@ -418,10 +393,6 @@ def compute_forecast_metrics(
         "forecast_target_pct": pct,
         "forecast_gap_amount": gap,
         "required_daily_run_rate": req_run_rate,
-        "plan_to_date": plan.get("plan_to_date") if plan.get("available") else None,
-        "plan_variance": plan.get("variance_to_date") if plan.get("available") else None,
-        "plan_variance_pct": plan.get("variance_pct") if plan.get("available") else None,
-        "plan_status": plan.get("status") if plan.get("available") else None,
     }
 
 
@@ -1283,26 +1254,6 @@ def _build_sales_summary(
     add_mtd_row("Sales Target", "mtd_target", fmt="currency")
     add_mtd_row("Actual % of Target", "mtd_pct_target", fmt="pct", bold=True, right_color=ach_color)
 
-    def _plan_to_date(d):
-        val = _forecast_for(d)["plan_to_date"]
-        return _r(val) if val is not None else "N/A"
-
-    add_mtd_row("Plan To Date", _plan_to_date, fmt="str")
-
-    def _plan_variance(d):
-        val = _forecast_for(d)["plan_variance"]
-        if val is None:
-            return "N/A"
-        pct = _forecast_for(d)["plan_variance_pct"]
-        return f"{_r(val)} ({pct:+.1f}%)" if pct is not None else _r(val)
-
-    add_mtd_row(
-        "Actual vs Plan",
-        _plan_variance,
-        fmt="str",
-        right_color=_plan_status_color(_forecast_for(r)["plan_status"]),
-    )
-
     def _forecast_end(d):
         return _forecast_for(d)["forecast_month_end_sales"]
 
@@ -1447,47 +1398,6 @@ def _build_sales_summary(
             style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(cell_style["text"])))
             style_cmds.append(("FONTNAME", (0, i), (-1, i), FONT_BOLD))
 
-        if label == "Actual vs Plan":
-            # Score the variance on the same scale as target achievement, so
-            # "level with plan" reads green and a deep shortfall reads red.
-            if multi and per_outlet:
-                style_cmds.append(("BACKGROUND", (0, i), (0, i), _hex(C_ROW_TARGET_NEUTRAL)))
-                style_cmds.append(("TEXTCOLOR", (0, i), (0, i), _hex(C_SLATE)))
-                outlet_variances = [
-                    _forecast_for(od).get("plan_variance_pct") for _nm, od in per_outlet
-                ] + [_forecast_for(r).get("plan_variance_pct")]
-                for col_index, variance_pct in enumerate(outlet_variances, start=1):
-                    cell_style = _performance_style(
-                        None if variance_pct is None else 100 + variance_pct
-                    )
-                    style_cmds.append(
-                        (
-                            "BACKGROUND",
-                            (col_index, i),
-                            (col_index, i),
-                            _hex(cell_style["background"]),
-                        )
-                    )
-                    style_cmds.append(
-                        (
-                            "TEXTCOLOR",
-                            (col_index, i),
-                            (col_index, i),
-                            _hex(cell_style["text"]),
-                        )
-                    )
-                    style_cmds.append(("FONTNAME", (col_index, i), (col_index, i), FONT_BOLD))
-            else:
-                variance_pct = _forecast_for(r).get("plan_variance_pct")
-                cell_style = _performance_style(
-                    None if variance_pct is None else 100 + variance_pct
-                )
-                style_cmds.append(
-                    ("BACKGROUND", (0, i), (-1, i), _hex(cell_style["background"]))
-                )
-                style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(cell_style["text"])))
-                style_cmds.append(("FONTNAME", (0, i), (-1, i), FONT_BOLD))
-
     # Net Total row highlight (row before MTD section label)
     net_total_row = n_header - 1 + META_ROWS
     style_cmds.extend(
@@ -1536,6 +1446,25 @@ def _build_sales_summary(
 
     tbl.setStyle(TableStyle(style_cmds))
     elements.append(tbl)
+
+    elements.append(Spacer(1, 4))
+    sty_footnote = ParagraphStyle(
+        "sales_summary_footnote",
+        fontName=FONT_NAME,
+        fontSize=8.5,
+        textColor=colors.HexColor(C_MUTED),
+        alignment=TA_LEFT,
+        leading=11,
+    )
+    elements.append(
+        Paragraph(
+            "* Forecast Month-End = today's sales so far, plus each remaining day "
+            "estimated from what that day of the week has averaged over the last "
+            "12 weeks (e.g. Saturdays are forecast from past Saturdays).",
+            sty_footnote,
+        )
+    )
+
     return elements
 
 
