@@ -56,65 +56,99 @@ def _prepare_daily_series(
     return daily_df
 
 
-def _simple_exponential_smoothing(values: np.ndarray, alpha: float) -> float:
-    """Calculate a simple exponential smoothing terminal value."""
-    smoothed = float(values[0])
+# A weekday seen this many times is treated as fully measured; below that its
+# effect is scaled back toward the overall average in proportion to the evidence.
+WEEKDAY_MIN_OBSERVATIONS = 4
 
-    for value in values[1:]:
-        smoothed = alpha * float(value) + (1 - alpha) * smoothed
+# Outer bounds on a single weekday's effect. Deliberately wide: real restaurant
+# weekday spreads exceed 3x, and clipping a genuine pattern biases the forecast.
+WEEKDAY_FACTOR_FLOOR = 0.30
+WEEKDAY_FACTOR_CEILING = 2.00
 
-    return float(smoothed)
+
+def _trading_days(daily_df: pd.DataFrame) -> pd.DataFrame:
+    """Rows where the outlet actually traded.
+
+    Closed days are real zeros, not typical days, so averaging them in would drag
+    every forecast down. They are excluded from fitting but stay in the actuals.
+    """
+    if daily_df.empty:
+        return daily_df
+
+    return daily_df[daily_df["value"] > 0].reset_index(drop=True)
 
 
 def build_weekday_shape(
     dates: pd.Series,
     values: List[float],
 ) -> dict[int, float]:
-    """Return the weekday multipliers the forecast would apply to this history.
+    """Return the weekday factors the forecast would apply to this history.
 
     Exposed so target plans can be shaped by the same weekday pattern the
     forecast uses, instead of spreading a target flat across very unequal days.
-    Weekdays without enough history are simply absent (callers treat them as 1.0).
-    """
-    daily_df = _prepare_daily_series(dates, values)
+    Weekdays without any history are simply absent (callers treat them as 1.0).
 
-    if daily_df.empty:
+    Returns an empty mapping until a full week has traded. Shaping a whole
+    month's target from a part-week would spread it by which days happen to have
+    opened rather than by any real pattern; callers fall back to an even spread.
+    """
+    trading = _trading_days(_prepare_daily_series(dates, values))
+
+    if len(trading) < 7:
         return {}
 
-    overall_avg = float(daily_df["value"].mean())
-    multipliers, _coverage = _build_weekday_multipliers(daily_df, overall_avg)
+    factors, _coverage = _build_weekday_multipliers(
+        trading,
+        float(trading["value"].mean()),
+    )
 
-    return multipliers
+    return factors
 
 
 def _build_weekday_multipliers(
     daily_df: pd.DataFrame,
     overall_avg: float,
 ) -> tuple[dict[int, float], int]:
-    """Build conservative weekday multipliers from historical same-weekday performance."""
+    """Measure how each weekday performs relative to an average trading day.
+
+    Each weekday's factor is simply its own mean divided by the overall mean, so
+    a Saturday that really earns 1.5x an average day is forecast at 1.5x. The
+    only adjustment is for thin evidence: a weekday seen fewer than
+    ``WEEKDAY_MIN_OBSERVATIONS`` times has its effect scaled back proportionally,
+    which matters for a newly opened outlet and fades away as history builds.
+
+    Backtesting on this dataset showed that shrinking well-evidenced weekday
+    effects toward flat — the previous behaviour — cost more accuracy than the
+    occasional odd weekday it guarded against.
+    """
     if daily_df.empty or overall_avg <= 0:
         return {}, 0
 
     weekday_multipliers: dict[int, float] = {}
+    well_evidenced = 0
 
     for weekday, weekday_df in daily_df.groupby("weekday"):
-        if len(weekday_df) < 2:
+        observations = len(weekday_df)
+
+        if observations < 1:
             continue
 
-        weekday_median = float(weekday_df["value"].median())
-        raw_multiplier = weekday_median / overall_avg if overall_avg > 0 else 1.0
+        weekday_mean = float(weekday_df["value"].mean())
+        raw_multiplier = weekday_mean / overall_avg
 
-        # Shrink the multiplier toward 1.0 so one unusual weekday does not dominate.
-        conservative_multiplier = 1 + ((raw_multiplier - 1) * 0.65)
+        evidence = min(1.0, observations / WEEKDAY_MIN_OBSERVATIONS)
+        adjusted = 1 + ((raw_multiplier - 1) * evidence)
 
-        # Cap extreme weekday effects.
         weekday_multipliers[int(weekday)] = _bounded(
-            conservative_multiplier,
-            0.65,
-            1.45,
+            adjusted,
+            WEEKDAY_FACTOR_FLOOR,
+            WEEKDAY_FACTOR_CEILING,
         )
 
-    return weekday_multipliers, len(weekday_multipliers)
+        if observations >= WEEKDAY_MIN_OBSERVATIONS:
+            well_evidenced += 1
+
+    return weekday_multipliers, well_evidenced
 
 
 def _forecast_reliability(
@@ -169,20 +203,24 @@ def linear_forecast(
     forecast_days: int = 5,
     forecast_after_date: date | pd.Timestamp | None = None,
 ) -> Optional[List[Dict[str, Any]]]:
-    """Forecast future restaurant sales using weighted smoothing + weekday pattern logic.
+    """Forecast future restaurant sales from same-weekday averages.
 
-    This is not a machine-learning model. It is a transparent statistical forecast.
+    This is not a machine-learning model. It is a transparent statistical forecast,
+    and a deliberately simple one: backtesting on this dataset found that a plain
+    per-weekday average beat exponential smoothing, trend terms and shrunk weekday
+    multipliers, because a restaurant week is a strong, stable, repeating pattern
+    and the extra machinery mostly damped that real signal.
 
     Approach:
     1. Clean the daily series and aggregate duplicate dates.
-    2. Use simple exponential smoothing for a stable baseline.
-    3. Blend the baseline with recent 7-day and 14-day averages.
-    4. Apply conservative weekday multipliers only when same-weekday history is sufficient.
-    5. Apply a capped recent-trend adjustment.
-    6. Build volatility-aware confidence bands.
+    2. Drop closed days, which are zeros rather than typical trading days.
+    3. Take the average trading day as the baseline level.
+    4. Scale it by how that weekday actually performs, easing the effect in only
+       while a weekday still has thin history.
+    5. Build confidence bands from how far this model has actually missed on the
+       history it was fitted to, rather than from raw dispersion.
 
-    Returns None if fewer than 3 valid daily data points are available.
-    Each entry includes:
+    Returns None if fewer than 3 trading days are available. Each entry includes:
     {
         "date": Timestamp,
         "value": float,
@@ -195,64 +233,44 @@ def linear_forecast(
         return None
 
     daily_df = _prepare_daily_series(dates, values)
+    trading_df = _trading_days(daily_df)
 
-    if len(daily_df) < 3:
+    if len(trading_df) < 3:
         return None
 
-    y = daily_df["value"].to_numpy(dtype=float)
+    y = trading_df["value"].to_numpy(dtype=float)
     data_points = len(y)
 
-    overall_avg = float(np.mean(y)) if data_points > 0 else 0.0
+    overall_avg = float(np.mean(y))
+
+    if overall_avg <= 0:
+        return None
+
     recent_7_avg = float(np.mean(y[-min(7, data_points):]))
     recent_14_avg = float(np.mean(y[-min(14, data_points):]))
 
-    if data_points >= 21:
-        alpha = 0.25
-    elif data_points >= 10:
-        alpha = 0.30
-    else:
-        alpha = 0.40
+    weekday_multipliers, weekday_coverage = _build_weekday_multipliers(
+        trading_df,
+        overall_avg,
+    )
 
-    smoothed = _simple_exponential_smoothing(y, alpha=alpha)
+    # Confidence bands come from this model's own historical error: fit each past
+    # trading day and measure the spread of what it got wrong. That is a truer
+    # statement of uncertainty than the spread of the raw numbers, most of which
+    # is the weekday pattern the model already explains.
+    fitted = overall_avg * np.array(
+        [weekday_multipliers.get(int(wd), 1.0) for wd in trading_df["weekday"]],
+        dtype=float,
+    )
+    residual_std = float(np.std(y - fitted))
+    volatility_pct = _bounded(residual_std / overall_avg, 0.08, 0.45)
 
-    if data_points >= 14:
-        base_forecast = (
-            (0.45 * smoothed)
-            + (0.35 * recent_7_avg)
-            + (0.20 * recent_14_avg)
-        )
-    elif data_points >= 7:
-        base_forecast = (0.55 * smoothed) + (0.45 * recent_7_avg)
-    else:
-        base_forecast = smoothed
-
-    # Recent trend: compare latest 7 days against the previous 7 days when available.
+    # Reported for context only; the forecast itself applies no trend term.
     trend_pct = 0.0
     if data_points >= 14:
         previous_7_avg = float(np.mean(y[-14:-7]))
         if previous_7_avg > 0:
             trend_pct = (recent_7_avg / previous_7_avg) - 1.0
-
-    # Do not allow recent trend to swing the forecast too aggressively.
-    safe_trend_pct = _bounded(trend_pct, -0.20, 0.20)
-
-    weekday_multipliers, weekday_coverage = _build_weekday_multipliers(
-        daily_df,
-        overall_avg,
-    )
-
-    # Measure volatility on weekday-detrended values. The forecast already applies
-    # a weekday multiplier, so using raw std here would charge the band twice for
-    # the same weekday swing and inflate every interval.
-    detrended = y / np.array(
-        [max(0.01, weekday_multipliers.get(int(wd), 1.0)) for wd in daily_df["weekday"]],
-        dtype=float,
-    )
-    detrended_avg = float(np.mean(detrended)) if detrended.size else 0.0
-    volatility_pct = (
-        float(np.std(detrended)) / detrended_avg if detrended_avg > 0 else 0.35
-    )
-    volatility_pct = _bounded(volatility_pct, 0.08, 0.45)
 
     reliability_label, reliability_reasons = _forecast_reliability(
         data_points=data_points,
@@ -274,28 +292,26 @@ def linear_forecast(
 
         weekday_multiplier = weekday_multipliers.get(weekday, 1.0)
 
-        # Spread the recent trend effect gradually across forecast days.
-        trend_multiplier = 1 + (safe_trend_pct * min((index + 1) / 7, 1) * 0.50)
-
-        forecast_value = base_forecast * weekday_multiplier * trend_multiplier
-        forecast_value = max(0, float(forecast_value))
+        forecast_value = max(0, float(overall_avg * weekday_multiplier))
 
         band = forecast_value * volatility_pct * (1 + index * 0.06)
 
         metadata = {
-            "model_label": "Weighted smoothing + weekday adjustment",
-            "alpha": alpha,
+            "model_label": "Same-weekday average",
             "data_points": data_points,
             "overall_avg": overall_avg,
             "recent_7_avg": recent_7_avg,
             "recent_14_avg": recent_14_avg,
-            "base_forecast": base_forecast,
+            "base_forecast": overall_avg,
             "trend_pct": trend_pct,
-            "safe_trend_pct": safe_trend_pct,
+            "safe_trend_pct": 0.0,
             "weekday_multiplier": weekday_multiplier,
             "weekday_adjustment_applied": weekday_multiplier != 1.0,
             "weekday_coverage": weekday_coverage,
+            "weekday_multipliers": dict(weekday_multipliers),
             "volatility_pct": volatility_pct,
+            "residual_std": residual_std,
+            "closed_days_excluded": int(len(daily_df) - data_points),
             "reliability": reliability_label,
             "reliability_reasons": reliability_reasons,
         }
@@ -334,32 +350,50 @@ def build_forecast_explanation(
     safe_trend_pct = float(metadata.get("safe_trend_pct", 0) or 0)
     volatility_pct = float(metadata.get("volatility_pct", 0) or 0)
 
+    overall_avg = float(metadata.get("overall_avg", 0) or 0)
+    multipliers = metadata.get("weekday_multipliers") or {}
+
     drivers: list[str] = []
 
     drivers.append(
-        "Forecast uses a weighted blend of exponential smoothing, recent 7-day average and recent 14-day average."
+        f"Each day is forecast as the average trading day "
+        f"({overall_avg:,.0f}) scaled by how that weekday actually performs."
     )
+
+    if multipliers:
+        names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        strongest = max(multipliers, key=multipliers.get)
+        weakest = min(multipliers, key=multipliers.get)
+        drivers.append(
+            f"Strongest day is {names[int(strongest)]} at "
+            f"{multipliers[strongest]:.2f}x an average day; weakest is "
+            f"{names[int(weakest)]} at {multipliers[weakest]:.2f}x."
+        )
 
     if metadata.get("weekday_coverage", 0) >= 5:
         drivers.append(
-            "Weekday adjustment is active because sufficient same-weekday history is available."
+            "Every weekday has enough history for its own average to be used directly."
         )
     elif metadata.get("weekday_coverage", 0) > 0:
         drivers.append(
-            "Weekday adjustment is partially active because only some weekdays have enough history."
+            "Some weekdays still have thin history, so their effect is eased in gradually."
         )
     else:
         drivers.append(
-            "Weekday adjustment is limited because same-weekday history is insufficient."
+            "Weekday history is thin, so days are forecast close to the overall average."
         )
 
     if abs(trend_pct) >= 0.05:
         drivers.append(
-            f"Recent 7-day trend is {trend_pct * 100:+.1f}%; model applies a capped trend of {safe_trend_pct * 100:+.1f}%."
+            f"For context, the last 7 days ran {trend_pct * 100:+.1f}% against the 7 before; "
+            "the forecast applies no trend term, so a sustained shift shows up as the "
+            "averages move."
         )
-    else:
+
+    closed_days = int(metadata.get("closed_days_excluded", 0) or 0)
+    if closed_days:
         drivers.append(
-            "Recent 7-day trend is broadly stable, so the model applies minimal trend pressure."
+            f"{closed_days} closed day(s) were excluded from the averages."
         )
 
     cautions: list[str] = []
@@ -371,17 +405,18 @@ def build_forecast_explanation(
 
     if volatility_pct >= 0.30:
         cautions.append(
-            "High sales volatility detected; actual sales may move materially outside the central forecast."
+            "Day-to-day sales vary widely even after allowing for the weekday pattern; "
+            "actual sales may move materially outside the central forecast."
         )
 
     if metadata.get("data_points", 0) < 14:
         cautions.append(
-            "Less than 14 days of data is available, so weekday and trend patterns may be weak."
+            "Less than 14 trading days are available, so the weekday pattern may be weak."
         )
 
     return {
         "available": True,
-        "model_label": metadata.get("model_label", "Weighted smoothing forecast"),
+        "model_label": metadata.get("model_label", "Same-weekday average"),
         "confidence": metadata.get("reliability", "Low"),
         "data_points": int(metadata.get("data_points", 0) or 0),
         "forecast_days": len(forecast),
