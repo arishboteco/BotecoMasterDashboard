@@ -111,8 +111,8 @@ class TestRenderDataQuality:
             ],
         )
         monkeypatch.setattr(
-            "services.data_quality.audit_month_data_quality",
-            lambda location_ids, loc_name_map, year, month: [flagged],
+            "services.data_quality.audit_recent_data_quality",
+            lambda location_ids, loc_name_map: [flagged],
         )
 
         ctx = SimpleNamespace(
@@ -127,15 +127,17 @@ class TestRenderDataQuality:
         assert any("no category breakdown" in w for w in warnings)
         assert any("don't\nmatch net sales" in w or "don't match net sales" in w for w in warnings)
 
-    def test_renders_nothing_when_no_issues(self, monkeypatch):
+    def test_shows_all_clear_caption_when_no_issues(self, monkeypatch):
         warnings: list[str] = []
+        captions: list[str] = []
         monkeypatch.setattr(upload_tab.st, "expander", lambda *_a, **_k: _NoopContext())
         monkeypatch.setattr(upload_tab.st, "warning", lambda text, **_k: warnings.append(text))
+        monkeypatch.setattr(upload_tab.st, "caption", lambda text, **_k: captions.append(text))
 
         clean = LocationDataQuality(location_id=1, location_name="Boteco - Indiqube")
         monkeypatch.setattr(
-            "services.data_quality.audit_month_data_quality",
-            lambda location_ids, loc_name_map, year, month: [clean],
+            "services.data_quality.audit_recent_data_quality",
+            lambda location_ids, loc_name_map: [clean],
         )
 
         ctx = SimpleNamespace(
@@ -146,3 +148,4 @@ class TestRenderDataQuality:
         upload_tab._render_data_quality(ctx)
 
         assert warnings == []
+        assert any("No missing uploads" in c for c in captions)
