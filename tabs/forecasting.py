@@ -23,10 +23,16 @@ def _prepare_daily_series(
     values: List[float],
 ) -> pd.DataFrame:
     """Clean, sort and aggregate input dates/values to one row per day."""
+    # Drop any incoming index before pairing. A filtered Series keeps the index
+    # it was sliced from, and pandas would align it against a plain list's 0..n
+    # index — silently pairing each date with another day's value.
+    date_series = pd.Series(dates).reset_index(drop=True)
+    value_series = pd.Series(values).reset_index(drop=True)
+
     raw_df = pd.DataFrame(
         {
-            "date": pd.to_datetime(pd.Series(dates), errors="coerce"),
-            "value": pd.to_numeric(pd.Series(values), errors="coerce"),
+            "date": pd.to_datetime(date_series, errors="coerce"),
+            "value": pd.to_numeric(value_series, errors="coerce"),
         }
     )
 
@@ -58,6 +64,27 @@ def _simple_exponential_smoothing(values: np.ndarray, alpha: float) -> float:
         smoothed = alpha * float(value) + (1 - alpha) * smoothed
 
     return float(smoothed)
+
+
+def build_weekday_shape(
+    dates: pd.Series,
+    values: List[float],
+) -> dict[int, float]:
+    """Return the weekday multipliers the forecast would apply to this history.
+
+    Exposed so target plans can be shaped by the same weekday pattern the
+    forecast uses, instead of spreading a target flat across very unequal days.
+    Weekdays without enough history are simply absent (callers treat them as 1.0).
+    """
+    daily_df = _prepare_daily_series(dates, values)
+
+    if daily_df.empty:
+        return {}
+
+    overall_avg = float(daily_df["value"].mean())
+    multipliers, _coverage = _build_weekday_multipliers(daily_df, overall_avg)
+
+    return multipliers
 
 
 def _build_weekday_multipliers(
@@ -214,8 +241,17 @@ def linear_forecast(
         overall_avg,
     )
 
-    std_dev = float(np.std(y))
-    volatility_pct = std_dev / overall_avg if overall_avg > 0 else 0.35
+    # Measure volatility on weekday-detrended values. The forecast already applies
+    # a weekday multiplier, so using raw std here would charge the band twice for
+    # the same weekday swing and inflate every interval.
+    detrended = y / np.array(
+        [max(0.01, weekday_multipliers.get(int(wd), 1.0)) for wd in daily_df["weekday"]],
+        dtype=float,
+    )
+    detrended_avg = float(np.mean(detrended)) if detrended.size else 0.0
+    volatility_pct = (
+        float(np.std(detrended)) / detrended_avg if detrended_avg > 0 else 0.35
+    )
     volatility_pct = _bounded(volatility_pct, 0.08, 0.45)
 
     reliability_label, reliability_reasons = _forecast_reliability(

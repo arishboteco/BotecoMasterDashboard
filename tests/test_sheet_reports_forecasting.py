@@ -1,5 +1,7 @@
 """Forecast/status/summary tests for sheet reports."""
 
+import pytest
+
 import sheet_reports
 
 
@@ -47,9 +49,39 @@ class TestForecastMetrics:
             daily_sales_history=history,
         )
         assert result["forecast_run_rate"] > 0
-        assert result["forecast_weekday_weighted"] > 0
+        assert result["forecast_method"] == "weighted"
         assert result["forecast_month_end_sales"] > 0
         assert result["forecast_month_end_sales"] != result["forecast_run_rate"]
+
+    def test_run_rate_uses_calendar_days_when_history_has_gaps(self):
+        """An incomplete upload history must not inflate the run rate."""
+        history = [
+            {"date": "2026-04-01", "net_total": 15000},
+            {"date": "2026-04-02", "net_total": 14000},
+        ]
+        result = sheet_reports.compute_forecast_metrics(
+            {"date": "2026-04-15", "mtd_net_sales": 225000, "mtd_target": 450000},
+            daily_sales_history=history,
+        )
+
+        # 15 elapsed calendar days, not the 2 days that happen to be uploaded.
+        assert result["rate_days"] == 15
+        assert result["forecast_run_rate"] == pytest.approx((225000 / 15) * 30)
+
+    def test_run_rate_excludes_closed_days_when_history_is_complete(self):
+        """A genuine closure should not drag the daily run rate down."""
+        history = [
+            {"date": f"2026-04-{day:02d}", "net_total": 0 if day == 3 else 15000}
+            for day in range(1, 11)
+        ]
+        result = sheet_reports.compute_forecast_metrics(
+            {"date": "2026-04-10", "mtd_net_sales": 135000, "mtd_target": 450000},
+            daily_sales_history=history,
+        )
+
+        # 10 days covered, 1 closed, so rates divide by the 9 trading days.
+        assert result["rate_days"] == 9
+        assert result["forecast_run_rate"] == pytest.approx((135000 / 9) * 30)
 
     def test_fallback_to_run_rate_with_insufficient_history(self):
         history = [
