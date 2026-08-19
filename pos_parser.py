@@ -653,6 +653,19 @@ def process_upload_batch(
     return results, notes
 
 
+def _gross_sales_for_day(summary: Dict) -> float:
+    """Gross sales (before discount) for one saved day.
+
+    Prefers the Growth Report's "My Amount" column; falls back to
+    net_total + discount for rows saved by a legacy parser that never
+    populated my_amount.
+    """
+    my_amount = float(summary.get("my_amount", 0) or 0)
+    if my_amount:
+        return my_amount
+    return float(summary.get("net_total", 0) or 0) + float(summary.get("discount", 0) or 0)
+
+
 def calculate_mtd_metrics(
     location_id: int,
     target_monthly: float,
@@ -681,8 +694,11 @@ def calculate_mtd_metrics(
         summaries = [s for s in summaries if str(s.get("date", ""))[:10] <= cap]
 
     total_covers = sum(s.get("covers", 0) or 0 for s in summaries)
+    # "Net Sales" per the Growth Report is already net of discount (My Amount -
+    # Discount). Target/APC/forecast metrics stay on this net figure.
     total_sales = sum(s.get("net_total", 0) or 0 for s in summaries)
     total_discount = sum(s.get("discount", 0) or 0 for s in summaries)
+    total_gross_sales = sum(_gross_sales_for_day(s) for s in summaries)
     total_complimentary = sum(s.get("complimentary", 0) or 0 for s in summaries)
     days_counted = len([s for s in summaries if (s.get("net_total", 0) or 0) > 0])
 
@@ -693,6 +709,7 @@ def calculate_mtd_metrics(
     return {
         "mtd_total_covers": total_covers,
         "mtd_net_sales": total_sales,
+        "mtd_gross_sales": total_gross_sales,
         "mtd_discount": total_discount,
         "mtd_complimentary": total_complimentary,
         "mtd_avg_daily": avg_daily,
@@ -723,8 +740,11 @@ def calculate_mtd_metrics_multi(
         summaries = [s for s in summaries if str(s.get("date", ""))[:10] <= cap]
 
     total_covers = sum(s.get("covers", 0) or 0 for s in summaries)
+    # "Net Sales" per the Growth Report is already net of discount (My Amount -
+    # Discount). Target/APC/forecast metrics stay on this net figure.
     total_sales = sum(s.get("net_total", 0) or 0 for s in summaries)
     total_discount = sum(s.get("discount", 0) or 0 for s in summaries)
+    total_gross_sales = sum(_gross_sales_for_day(s) for s in summaries)
     total_complimentary = sum(s.get("complimentary", 0) or 0 for s in summaries)
     days_counted = len([s for s in summaries if (s.get("net_total", 0) or 0) > 0])
 
@@ -735,6 +755,7 @@ def calculate_mtd_metrics_multi(
     return {
         "mtd_total_covers": total_covers,
         "mtd_net_sales": total_sales,
+        "mtd_gross_sales": total_gross_sales,
         "mtd_discount": total_discount,
         "mtd_complimentary": total_complimentary,
         "mtd_avg_daily": avg_daily,
