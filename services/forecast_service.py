@@ -13,7 +13,11 @@ from tabs.forecasting import linear_forecast
 # boundaries: fitting on the current month alone leaves the first ten days of a
 # month with too few points to read a weekday pattern, which is where month-end
 # forecasts were least accurate.
-DEFAULT_TRAILING_DAYS = 56
+#
+# Twelve weeks gives roughly a dozen observations of every weekday. Backtesting
+# preferred it to 4 or 8 weeks — long enough for stable weekday averages, short
+# enough to follow a genuine shift in trading.
+DEFAULT_TRAILING_DAYS = 84
 
 
 def calculate_month_end_forecast(

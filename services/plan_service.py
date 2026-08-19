@@ -17,7 +17,7 @@ Three series are produced for the month:
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from typing import Any, Sequence
 
 import pandas as pd
