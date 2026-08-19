@@ -46,6 +46,7 @@ from reportlab.platypus import (
 import config
 from exceptions import ReportGenerationError
 from services.forecast_service import calculate_month_end_forecast
+from services.plan_service import build_plan_vs_actual
 from services.payment_mapping import (
     is_delivery_payment_method,
     payment_method_key,
@@ -158,8 +159,17 @@ ROW_GROUPS = {
         "Daily Avg. Net Sales",
     },
     "summary_metric": {"MTD Net Sales", "MTD Net (Excl. Disc.)"},
-    "planning_metric": {"Sales Target", "Forecast Month-End", "Required Daily Run Rate"},
-    "conditional_performance": {"Actual % of Target", "Forecast % of Target"},
+    "planning_metric": {
+        "Sales Target",
+        "Plan To Date",
+        "Forecast Month-End",
+        "Required Daily Run Rate",
+    },
+    "conditional_performance": {
+        "Actual % of Target",
+        "Forecast % of Target",
+        "Actual vs Plan",
+    },
 }
 
 ROW_STYLE_MAP = {
@@ -214,10 +224,12 @@ def _sales_summary_row_bg(
         return C_ROW_DEDUCTION
     if label in EXCEPTION_SUMMARY_ROWS:
         return C_ROW_EXCEPTION
-    if label == "Sales Target":
+    if label in {"Sales Target", "Plan To Date"}:
         return C_ROW_TARGET_NEUTRAL
     if label == "Forecast Month-End":
         return C_ROW_FORECAST
+    if label == "Actual vs Plan":
+        return _target_row_bg(status_color) if status_color else C_ROW_TARGET_NEUTRAL
     if label in {"Actual % of Target", "Forecast % of Target", "Required Daily Run Rate"}:
         if is_multi_outlet and label in {"Forecast % of Target", "Required Daily Run Rate"}:
             return C_ROW_TARGET_NEUTRAL
@@ -325,6 +337,17 @@ def _achievement_color(pct: float) -> str:
     return C_RED
 
 
+def _plan_status_color(status: Optional[str]) -> str:
+    """Colour for the actual-vs-plan row."""
+    if status == "ahead":
+        return C_GREEN
+    if status == "behind":
+        return C_RED
+    if status == "on_track":
+        return C_AMBER
+    return C_MUTED
+
+
 def _safe_float(value: Any, default: float = 0.0) -> float:
     try:
         return float(value)
@@ -336,6 +359,12 @@ def compute_forecast_metrics(
     report_data: Dict[str, Any],
     daily_sales_history: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
+    """Month-end forecast and plan metrics for one report scope.
+
+    ``daily_sales_history`` should be the trailing window ending on the report
+    date, not just the current month; the forecast model reads its weekday
+    pattern from it.
+    """
     iso = str(report_data.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]
     try:
         dt = datetime.strptime(iso, "%Y-%m-%d")
@@ -344,69 +373,56 @@ def compute_forecast_metrics(
     mtd_net = _safe_float(report_data.get("mtd_net_sales"))
     mtd_target = _safe_float(report_data.get("mtd_target"))
     history = daily_sales_history or []
+    history_dates = [row.get("date") or row.get("report_date") for row in history]
+    history_values = [
+        _safe_float(row.get("net_total") or row.get("net_sales")) for row in history
+    ]
     shared_forecast = calculate_month_end_forecast(
-        [row.get("date") or row.get("report_date") for row in history],
-        [_safe_float(row.get("net_total") or row.get("net_sales")) for row in history],
+        history_dates,
+        history_values,
         as_of_date=dt.date(),
         actual_total=mtd_net,
     )
     dim = int(shared_forecast["days_in_month"])
     elapsed = int(shared_forecast["elapsed_days"])
+    # Rate metrics divide by trading days rather than calendar days, so a closed
+    # day does not understate the run rate. Falls back to calendar days when the
+    # history does not cover every elapsed day.
+    rate_days = int(shared_forecast["rate_days"])
     remaining = int(shared_forecast["remaining_days"])
     forecast = float(shared_forecast["forecast_total"])
-    forecast_run_rate = (mtd_net / elapsed) * dim if elapsed > 0 else 0.0
-    forecast_weighted = (
-        forecast if shared_forecast["method"] == "weighted" else 0.0
-    )
+    forecast_run_rate = (mtd_net / rate_days) * dim if rate_days > 0 else 0.0
 
     pct = (forecast / mtd_target) * 100.0 if mtd_target > 0 else None
     gap = (forecast - mtd_target) if mtd_target > 0 else None
     req_run_rate = (mtd_target - mtd_net) / remaining if mtd_target > 0 and remaining > 0 else None
 
+    plan = build_plan_vs_actual(
+        history_dates,
+        history_values,
+        as_of_date=dt.date(),
+        month_target=mtd_target,
+        actual_total=mtd_net,
+        forecast_result=shared_forecast,
+    )
+
     return {
         "days_in_month": dim,
         "elapsed_days": elapsed,
+        "active_days": int(shared_forecast["active_days"]),
+        "rate_days": rate_days,
         "remaining_days": remaining,
         "forecast_month_end_sales": forecast,
         "forecast_run_rate": forecast_run_rate,
-        "forecast_weekday_weighted": forecast_weighted,
         "forecast_method": shared_forecast["method"],
         "forecast_target_pct": pct,
         "forecast_gap_amount": gap,
         "required_daily_run_rate": req_run_rate,
+        "plan_to_date": plan.get("plan_to_date") if plan.get("available") else None,
+        "plan_variance": plan.get("variance_to_date") if plan.get("available") else None,
+        "plan_variance_pct": plan.get("variance_pct") if plan.get("available") else None,
+        "plan_status": plan.get("status") if plan.get("available") else None,
     }
-
-
-def _weekday_weighted_forecast(
-    today: datetime,
-    remaining_days: int,
-    history: List[Dict[str, Any]],
-) -> float:
-    if not history or remaining_days <= 0:
-        return 0.0
-    weekday_sums: Dict[int, float] = {}
-    weekday_counts: Dict[int, int] = {}
-    for row in history:
-        date_str = str(row.get("date") or row.get("report_date") or "")
-        net = _safe_float(row.get("net_total") or row.get("net_sales"))
-        if not date_str or net <= 0:
-            continue
-        try:
-            d = datetime.strptime(date_str[:10], "%Y-%m-%d")
-        except ValueError:
-            continue
-        wd = d.weekday()
-        weekday_sums[wd] = weekday_sums.get(wd, 0) + net
-        weekday_counts[wd] = weekday_counts.get(wd, 0) + 1
-    if not weekday_counts:
-        return 0.0
-    weekday_avg = {wd: weekday_sums[wd] / weekday_counts[wd] for wd in weekday_counts}
-    forecast = 0.0
-    for i in range(1, remaining_days + 1):
-        future_date = today + timedelta(days=i)
-        wd = future_date.weekday()
-        forecast += weekday_avg.get(wd, 0.0)
-    return forecast
 
 
 def status_from_threshold(
@@ -1267,6 +1283,26 @@ def _build_sales_summary(
     add_mtd_row("Sales Target", "mtd_target", fmt="currency")
     add_mtd_row("Actual % of Target", "mtd_pct_target", fmt="pct", bold=True, right_color=ach_color)
 
+    def _plan_to_date(d):
+        val = _forecast_for(d)["plan_to_date"]
+        return _r(val) if val is not None else "N/A"
+
+    add_mtd_row("Plan To Date", _plan_to_date, fmt="str")
+
+    def _plan_variance(d):
+        val = _forecast_for(d)["plan_variance"]
+        if val is None:
+            return "N/A"
+        pct = _forecast_for(d)["plan_variance_pct"]
+        return f"{_r(val)} ({pct:+.1f}%)" if pct is not None else _r(val)
+
+    add_mtd_row(
+        "Actual vs Plan",
+        _plan_variance,
+        fmt="str",
+        right_color=_plan_status_color(_forecast_for(r)["plan_status"]),
+    )
+
     def _forecast_end(d):
         return _forecast_for(d)["forecast_month_end_sales"]
 
@@ -1410,6 +1446,47 @@ def _build_sales_summary(
             style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(cell_style["background"])))
             style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(cell_style["text"])))
             style_cmds.append(("FONTNAME", (0, i), (-1, i), FONT_BOLD))
+
+        if label == "Actual vs Plan":
+            # Score the variance on the same scale as target achievement, so
+            # "level with plan" reads green and a deep shortfall reads red.
+            if multi and per_outlet:
+                style_cmds.append(("BACKGROUND", (0, i), (0, i), _hex(C_ROW_TARGET_NEUTRAL)))
+                style_cmds.append(("TEXTCOLOR", (0, i), (0, i), _hex(C_SLATE)))
+                outlet_variances = [
+                    _forecast_for(od).get("plan_variance_pct") for _nm, od in per_outlet
+                ] + [_forecast_for(r).get("plan_variance_pct")]
+                for col_index, variance_pct in enumerate(outlet_variances, start=1):
+                    cell_style = _performance_style(
+                        None if variance_pct is None else 100 + variance_pct
+                    )
+                    style_cmds.append(
+                        (
+                            "BACKGROUND",
+                            (col_index, i),
+                            (col_index, i),
+                            _hex(cell_style["background"]),
+                        )
+                    )
+                    style_cmds.append(
+                        (
+                            "TEXTCOLOR",
+                            (col_index, i),
+                            (col_index, i),
+                            _hex(cell_style["text"]),
+                        )
+                    )
+                    style_cmds.append(("FONTNAME", (col_index, i), (col_index, i), FONT_BOLD))
+            else:
+                variance_pct = _forecast_for(r).get("plan_variance_pct")
+                cell_style = _performance_style(
+                    None if variance_pct is None else 100 + variance_pct
+                )
+                style_cmds.append(
+                    ("BACKGROUND", (0, i), (-1, i), _hex(cell_style["background"]))
+                )
+                style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(cell_style["text"])))
+                style_cmds.append(("FONTNAME", (0, i), (-1, i), FONT_BOLD))
 
     # Net Total row highlight (row before MTD section label)
     net_total_row = n_header - 1 + META_ROWS
@@ -2549,6 +2626,7 @@ def generate_sheet_style_report_sections(
     footfall_metrics_weekly: Optional[List[Dict]] = None,
     per_outlet_footfall_metrics: Optional[List[Tuple[str, List[Dict], List[Dict]]]] = None,
     daily_sales_history: Optional[List[Dict]] = None,
+    per_outlet_daily_sales_history: Optional[List[Tuple[str, List[Dict]]]] = None,
 ) -> Dict[str, BytesIO]:
     r = report_data
     mc = dict(mtd_category or {})
@@ -2574,7 +2652,13 @@ def generate_sheet_style_report_sections(
         n_outlets=n_outlets,
         per_outlet=per_outlet,
         daily_sales_history=daily_sales_history,
-        per_outlet_daily_sales_history=per_outlet_ff,
+        # Falls back to the footfall rows (current month only) when no wider
+        # per-outlet history was supplied.
+        per_outlet_daily_sales_history=(
+            list(per_outlet_daily_sales_history)
+            if per_outlet_daily_sales_history
+            else per_outlet_ff
+        ),
     )
     width = SECTION_WIDTHS.get(n_outlets, min(520 + (n_outlets - 2) * 90, 700))
     out["sales_summary"] = _render_elements_to_png(elements, width)

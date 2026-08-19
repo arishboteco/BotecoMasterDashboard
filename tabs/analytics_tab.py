@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import calendar
 import logging
-from datetime import date
+from datetime import date, timedelta
 from html import escape
 from typing import Dict, List
 
@@ -20,6 +20,7 @@ from components import classed_container, page_shell
 from components.feedback import empty_state
 from components.navigation import date_range_nav
 from tabs import TabContext
+from services.forecast_service import DEFAULT_TRAILING_DAYS
 from tabs.analytics_logic import resolve_period_window
 from tabs.analytics_sections import (
     render_action_tracker,
@@ -30,6 +31,7 @@ from tabs.analytics_sections import (
     render_outlet_performance_scorecard,
     render_owner_readout_and_data_confidence,
     render_payment_reconciliation,
+    render_plan_vs_actual,
     render_required_sales_plan,
     render_sales_movement_waterfall,
     render_sales_quality_layer,
@@ -177,6 +179,26 @@ def _load_raw_summaries_cached(
         )
     _RAW_SUMMARY_CACHE[key] = raw
     return raw
+
+
+def _load_forecast_history(
+    location_ids: List[int],
+    end_date: date,
+    trailing_days: int = DEFAULT_TRAILING_DAYS,
+) -> List[Dict]:
+    """Load the trailing window the forecast model is fitted on.
+
+    Separate from the selected analysis window: a short selection (or the first
+    days of a month) does not carry enough history to read a weekday pattern,
+    so the model is always given a wider trailing span to learn from.
+    """
+    start = end_date - timedelta(days=max(1, trailing_days) - 1)
+
+    return _load_raw_summaries_cached(
+        location_ids,
+        start.strftime("%Y-%m-%d"),
+        end_date.strftime("%Y-%m-%d"),
+    )
 
 
 def _format_comparison_delta(value: float | None) -> str:
@@ -561,6 +583,23 @@ def render(ctx: TabContext) -> None:
         if summaries:
             df = pd.DataFrame(summaries)
 
+            # ── Trailing history for forecast fitting ────────────────
+            # Anchored on the last date with data, not on today, so a day of
+            # upload lag does not shorten the window.
+            _hist_dates = pd.to_datetime(df["date"], errors="coerce").dropna()
+            history_anchor = (
+                min(_hist_dates.max().date(), end_date)
+                if not _hist_dates.empty
+                else end_date
+            )
+            history_rows = _load_forecast_history(analytics_loc_ids, history_anchor)
+            history_raw_df = pd.DataFrame(history_rows) if history_rows else pd.DataFrame()
+            history_df = (
+                pd.DataFrame(scope.merge_summaries_by_date(history_rows))
+                if history_rows
+                else pd.DataFrame()
+            )
+
             # ── Period-over-period comparison data ───────────────────
             prior_summaries = []
             if prior_start and prior_end:
@@ -678,6 +717,7 @@ def render(ctx: TabContext) -> None:
                 prior_total=prior_total,
                 prior_covers=prior_covers,
                 analytics_loc_ids=analytics_loc_ids,
+                history_df=history_df,
             )
 
             # ── Row 2: Required plan + forecast command center ───────
@@ -714,7 +754,18 @@ def render(ctx: TabContext) -> None:
                     prior_avg,
                     show_kpis=False,
                     show_movement_breakdown=False,
+                    history_df=history_df,
                 )
+
+            # ── Row 2b: Plan vs actual ───────────────────────────────
+            render_plan_vs_actual(
+                df=df,
+                analysis_period=analysis_period,
+                end_date=end_date,
+                monthly_target=monthly_target,
+                total_sales=total_sales,
+                history_df=history_df,
+            )
 
             # ── Row 3: Diagnostics and deep-dive layers ──────────────
             st.markdown(
@@ -750,6 +801,7 @@ def render(ctx: TabContext) -> None:
                         start_date=start_date,
                         end_date=end_date,
                         all_locs=ctx.all_locs,
+                        history_raw_df=history_raw_df,
                     )
 
                 with diagnostic_tabs[1]:

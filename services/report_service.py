@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+from datetime import date, timedelta
 from typing import List, Tuple
 
 import cache_manager
 import database
 import scope
+from services.forecast_service import DEFAULT_TRAILING_DAYS
 
 _REPORT_CACHE: dict = cache_manager.register("report")
 _MTD_CACHE: dict = cache_manager.register("mtd")
 _FOOT_CACHE: dict = cache_manager.register("foot")
+_HISTORY_CACHE: dict = cache_manager.register("forecast_history")
 
 
 def clear_report_cache() -> None:
@@ -18,6 +21,7 @@ def clear_report_cache() -> None:
     cache_manager.invalidate("report")
     cache_manager.invalidate("mtd")
     cache_manager.invalidate("foot")
+    cache_manager.invalidate("forecast_history")
 
 
 def load_report_bundle_cached(location_ids: List[int], date_str: str):
@@ -86,4 +90,27 @@ def get_foot_rows_cached(location_ids: List[int], year: int, month: int):
     else:
         rows = database.get_summaries_for_month(location_ids[0], year, month)
     _FOOT_CACHE[key] = rows
+    return rows
+
+
+def get_forecast_history_cached(
+    location_ids: List[int],
+    as_of_date: date,
+    trailing_days: int = DEFAULT_TRAILING_DAYS,
+):
+    """Load the trailing daily history the month-end forecast is fitted on.
+
+    Deliberately wider than the report month: fitting on the current month alone
+    leaves early-month forecasts with too few points to read a weekday pattern.
+    """
+    start = as_of_date - timedelta(days=max(1, trailing_days) - 1)
+    key = (tuple(location_ids), start.isoformat(), as_of_date.isoformat())
+    if key in _HISTORY_CACHE:
+        return _HISTORY_CACHE[key]
+    rows = database.get_summaries_for_date_range_multi(
+        list(location_ids),
+        start.strftime("%Y-%m-%d"),
+        as_of_date.strftime("%Y-%m-%d"),
+    )
+    _HISTORY_CACHE[key] = rows
     return rows

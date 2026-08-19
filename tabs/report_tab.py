@@ -171,6 +171,16 @@ def render(ctx: TabContext) -> None:
                     )
                     for lid, name, _ in outlets_bundle
                 ]
+                forecast_history = report_service.get_forecast_history_cached(
+                    ctx.report_loc_ids, selected_date
+                )
+                per_outlet_forecast_history = [
+                    (
+                        name,
+                        report_service.get_forecast_history_cached([lid], selected_date),
+                    )
+                    for lid, name, _ in outlets_bundle
+                ]
                 per_outlet_cat = None
                 per_outlet_svc = [
                     (
@@ -186,6 +196,10 @@ def render(ctx: TabContext) -> None:
                 foot_rows = report_service.get_foot_rows_cached(
                     [ctx.report_loc_ids[0]], y_m[0], y_m[1]
                 )
+                forecast_history = report_service.get_forecast_history_cached(
+                    [ctx.report_loc_ids[0]], selected_date
+                )
+                per_outlet_forecast_history = None
                 per_outlet_footfall = None
                 per_outlet_footfall_metrics = None
                 per_outlet_cat = None
@@ -202,7 +216,8 @@ def render(ctx: TabContext) -> None:
                 per_outlet_service=per_outlet_svc,
                 per_outlet_footfall=per_outlet_footfall,
                 per_outlet_footfall_metrics=per_outlet_footfall_metrics,
-                daily_sales_history=foot_rows,
+                daily_sales_history=forecast_history,
+                per_outlet_daily_sales_history=per_outlet_forecast_history,
             )
 
             def _footfall_sections() -> List[Tuple[str, str]]:
@@ -321,7 +336,9 @@ def render(ctx: TabContext) -> None:
                         per_outlet_service=_single_outlet_svc,
                         per_outlet_footfall=_single_outlet_footfall,
                         per_outlet_footfall_metrics=_single_outlet_footfall_metrics,
-                        daily_sales_history=foot_rows,
+                        daily_sales_history=report_service.get_forecast_history_cached(
+                            [_selected_lid], selected_date
+                        ),
                     )
 
                     def _single_footfall_sections() -> List[Tuple[str, str]]:

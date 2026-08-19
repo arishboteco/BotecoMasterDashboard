@@ -16,7 +16,8 @@ import scope
 import ui_theme
 import utils
 from components import KpiMetric, kpi_row
-from services.forecast_service import calculate_month_end_forecast
+from services.forecast_service import DEFAULT_TRAILING_DAYS, calculate_month_end_forecast
+from services.plan_service import build_plan_vs_actual
 from tabs.analytics_logic import (
     build_daily_view_table,
     build_zomato_economics,
@@ -34,14 +35,57 @@ _WEEKEND_DAYS = {"Friday", "Saturday", "Sunday"}
 _WEEKDAY_DAYS = {"Monday", "Tuesday", "Wednesday", "Thursday"}
 
 
+def _latest_data_date(df: pd.DataFrame, end_date: date) -> date | None:
+    """Return the last date actually present in ``df``, capped at ``end_date``.
+
+    Forecasts must be anchored here rather than on ``end_date``. When ``end_date``
+    is today but sales land a day in arrears, anchoring on today drops the most
+    recent day from both the actual and the forecast, understating month-end.
+    """
+    if df.empty or "date" not in df.columns:
+        return None
+
+    dates = pd.to_datetime(df["date"], errors="coerce").dropna()
+
+    if dates.empty:
+        return None
+
+    return min(dates.max().date(), end_date)
+
+
+def _model_history(
+    df: pd.DataFrame,
+    history_df: pd.DataFrame | None,
+) -> tuple[pd.Series, list[float]]:
+    """Return the date/value series the forecast model should be fitted on.
+
+    Falls back to the selected window when no wider history was supplied.
+    """
+    source = df if history_df is None or history_df.empty else history_df
+
+    return (
+        pd.to_datetime(source["date"], errors="coerce"),
+        pd.to_numeric(source["net_total"], errors="coerce").fillna(0).tolist(),
+    )
+
+
 def _calculate_period_forecast(
     df: pd.DataFrame,
     analysis_period: str,
     start_date: date,
     end_date: date,
     total_sales: float,
-) -> tuple[list[dict[str, object]], float | None, int, str]:
-    """Return a consistently labelled forecast for the selected period."""
+    history_df: pd.DataFrame | None = None,
+) -> dict[str, object]:
+    """Return a consistently labelled forecast for the selected period.
+
+    The headline value differs by period type, so it is labelled explicitly
+    rather than blending two meanings into one number:
+
+    * month-to-date periods report a **month-end close** (actual + forecast);
+    * rolling windows report **forward sales only** for the next N days, which
+      is a self-contained figure rather than a part-actual, part-forecast total.
+    """
     selected_days = max(1, (end_date - start_date).days + 1)
     forecast_days = calculate_forecast_days(
         analysis_period,
@@ -49,36 +93,69 @@ def _calculate_period_forecast(
         selected_range_days=selected_days,
     )
     period_key = analysis_period.lower().replace(" ", "_")
+    as_of = _latest_data_date(df, end_date)
+
+    empty: dict[str, object] = {
+        "forecast": [],
+        "headline_label": "Projected Total",
+        "headline_value": None,
+        "forecast_days": forecast_days,
+        "forward_total": None,
+        "is_month_end": False,
+        "as_of_date": as_of,
+        "reliability": None,
+        "month_end_result": None,
+    }
+
+    if as_of is None:
+        return empty
+
+    dates, values = _model_history(df, history_df)
 
     if period_key in {"mtd", "this_month"}:
         month_end = calculate_month_end_forecast(
-            df["date"],
-            pd.to_numeric(df["net_total"], errors="coerce").fillna(0).tolist(),
-            as_of_date=end_date,
+            dates,
+            values,
+            as_of_date=as_of,
             actual_total=total_sales,
+            trailing_days=DEFAULT_TRAILING_DAYS,
         )
         forecast = month_end["forecast"]
-        return (
-            forecast,
-            float(month_end["forecast_total"]),
-            int(month_end["remaining_days"]),
-            "Forecast Month-End",
-        )
+        return {
+            "forecast": forecast,
+            "headline_label": "Forecast Month-End",
+            "headline_value": float(month_end["forecast_total"]),
+            "forecast_days": int(month_end["remaining_days"]),
+            "forward_total": float(month_end["forecast_future_sales"]),
+            "is_month_end": True,
+            "as_of_date": as_of,
+            "reliability": _reliability_from_forecast(forecast),
+            "month_end_result": month_end,
+        }
 
     forecast = linear_forecast(
-        pd.to_datetime(df["date"]),
-        pd.to_numeric(df["net_total"], errors="coerce").fillna(0).tolist(),
+        dates,
+        values,
         forecast_days=forecast_days,
+        forecast_after_date=as_of,
     )
-    label = (
-        f"Projected Total + Next {forecast_days} Days"
-        if forecast_days > 0
-        else "Projected Total"
-    )
+
     if not forecast:
-        return [], None, forecast_days, label
-    forecast_total = total_sales + sum(float(item["value"]) for item in forecast)
-    return forecast, forecast_total, forecast_days, label
+        return empty
+
+    forward_total = sum(float(item["value"]) for item in forecast)
+
+    return {
+        "forecast": forecast,
+        "headline_label": f"Next {forecast_days} Days (Forecast)",
+        "headline_value": forward_total,
+        "forecast_days": forecast_days,
+        "forward_total": forward_total,
+        "is_month_end": False,
+        "as_of_date": as_of,
+        "reliability": _reliability_from_forecast(forecast),
+        "month_end_result": None,
+    }
 
 
 def _format_ratio(ratio: float | None) -> str:
@@ -458,6 +535,7 @@ def render_owner_readout_and_data_confidence(
     prior_total: float | None,
     prior_covers: int | None,
     analytics_loc_ids: list[int],
+    history_df: pd.DataFrame | None = None,
 ) -> None:
     """Render an owner-facing readout plus data confidence check."""
     if df.empty:
@@ -527,18 +605,24 @@ def render_owner_readout_and_data_confidence(
     covers_delta_pct = _safe_pct_change(total_covers, prior_covers)
     apc_delta_pct = _safe_pct_change(current_apc, prior_apc)
 
-    _forecast, forecast_total, forecast_days, forecast_label = _calculate_period_forecast(
+    forecast_result = _calculate_period_forecast(
         work_df,
         analysis_period,
         start_date,
         end_date,
         total_sales,
+        history_df=history_df,
     )
-    forecast_reliability = _forecast_reliability_label(len(work_df))
+    forecast_total = forecast_result["headline_value"]
+    forecast_days = forecast_result["forecast_days"]
+    forecast_label = forecast_result["headline_label"]
+    forecast_reliability = forecast_result["reliability"] or _forecast_reliability_label(
+        len(work_df)
+    )
 
     forecast_gap = None
     if (
-        forecast_label == "Forecast Month-End"
+        forecast_result["is_month_end"]
         and monthly_target > 0
         and forecast_total is not None
     ):
@@ -1257,6 +1341,210 @@ def render_required_sales_plan(
                 "- Balanced recovery splits the required lift across covers and APC."
             )
 
+
+def render_plan_vs_actual(
+    df: pd.DataFrame,
+    analysis_period: str,
+    end_date: date,
+    monthly_target: float,
+    total_sales: float,
+    history_df: pd.DataFrame | None = None,
+) -> None:
+    """Render the weekday-shaped monthly plan against actuals and the forecast.
+
+    Only meaningful for month-to-date periods, where a monthly target and a
+    month-end horizon both exist.
+    """
+    period_key = analysis_period.lower().replace(" ", "_")
+
+    if df.empty or period_key not in {"mtd", "this_month"}:
+        return
+
+    as_of = _latest_data_date(df, end_date)
+
+    if as_of is None:
+        return
+
+    source = df if history_df is None or history_df.empty else history_df
+    plan = build_plan_vs_actual(
+        pd.to_datetime(source["date"], errors="coerce"),
+        pd.to_numeric(source["net_total"], errors="coerce").fillna(0).tolist(),
+        as_of_date=as_of,
+        month_target=monthly_target,
+        actual_total=total_sales,
+    )
+
+    with st.container(border=True):
+        st.markdown("### Plan vs Actual")
+        st.caption(
+            "The monthly target is spread across days using the same weekday "
+            "pattern the forecast uses, so a Monday is not asked to deliver a "
+            "Saturday's sales."
+        )
+
+        if not plan.get("available"):
+            st.info(str(plan.get("reason", "Plan comparison is unavailable.")))
+            return
+
+        variance = float(plan["variance_to_date"])
+        status_tone = {
+            "ahead": "success",
+            "on_track": "info",
+            "behind": "error",
+        }[str(plan["status"])]
+
+        _render_metric_tile_grid(
+            [
+                (
+                    "Plan to date",
+                    utils.format_rupee_short(plan["plan_to_date"]),
+                    f"{plan['as_of_date'].strftime('%d %b')} · shaped by weekday",
+                ),
+                (
+                    "Actual to date",
+                    utils.format_rupee_short(plan["actual_to_date"]),
+                    f"{plan['variance_pct']:+.1f}% vs plan",
+                ),
+                (
+                    "Variance",
+                    utils.format_rupee_short(variance),
+                    "Ahead of plan" if variance >= 0 else "Behind plan",
+                ),
+                (
+                    "Forecast close",
+                    utils.format_rupee_short(plan["forecast_close"]),
+                    (
+                        f"{plan['forecast_target_pct']:.0f}% of target"
+                        if plan.get("forecast_target_pct") is not None
+                        else None
+                    ),
+                ),
+            ]
+        )
+
+        lift = plan.get("required_lift_pct")
+        if plan["remaining_days"] > 0:
+            message = (
+                f"To close the month on target you need "
+                f"{utils.format_rupee_short(plan['required_forward_daily'])} per day "
+                f"across the remaining {plan['remaining_days']} days. "
+                f"The forecast expects "
+                f"{utils.format_rupee_short(plan['suggested_forward_daily'])} per day"
+            )
+            message += f" — a {lift:+.0f}% change." if lift is not None else "."
+            _render_dashboard_status(message, status_tone)
+
+        chart_rows = [
+            {
+                "Date": pd.Timestamp(row["date"]),
+                "Plan": row["plan"],
+                "Actual": row["actual"],
+                "Forecast": row["suggested"],
+            }
+            for row in plan["daily"]
+        ]
+        chart_df = pd.DataFrame(chart_rows)
+
+        fig = go.Figure()
+        fig.add_trace(
+            go.Bar(
+                x=chart_df["Date"],
+                y=chart_df["Plan"],
+                name="Plan",
+                marker_color=_hex_to_rgba(ui_theme.BRAND_WARN, 0.45),
+                hovertemplate="Plan: ₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
+            )
+        )
+        fig.add_trace(
+            go.Bar(
+                x=chart_df["Date"],
+                y=chart_df["Actual"],
+                name="Actual",
+                marker_color=ui_theme.BRAND_PRIMARY,
+                hovertemplate="Actual: ₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
+            )
+        )
+        fig.add_trace(
+            go.Bar(
+                x=chart_df["Date"],
+                y=chart_df["Forecast"],
+                name="Forecast",
+                marker_color=_hex_to_rgba(ui_theme.BRAND_SUCCESS, 0.65),
+                hovertemplate="Forecast: ₹%{y:,.0f}<br>%{x|%d %b}<extra></extra>",
+            )
+        )
+        fig.update_layout(
+            barmode="group",
+            title="Daily plan, actual and forecast",
+            xaxis_title="Date",
+            yaxis_title="Net Sales ₹",
+            hovermode="x unified",
+            height=ui_theme.CHART_HEIGHT,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.22,
+                xanchor="center",
+                x=0.5,
+            ),
+        )
+        st.plotly_chart(fig, width="stretch")
+
+        with st.expander("Day-by-day plan detail", expanded=False):
+            detail = pd.DataFrame(
+                [
+                    {
+                        "Date": pd.Timestamp(row["date"]).strftime("%d %b"),
+                        "Day": row["weekday"],
+                        "Plan": utils.format_rupee_short(row["plan"]),
+                        "Actual": (
+                            utils.format_rupee_short(row["actual"])
+                            if row["actual"] is not None
+                            else "—"
+                        ),
+                        "Forecast": (
+                            utils.format_rupee_short(row["suggested"])
+                            if row["suggested"] is not None
+                            else "—"
+                        ),
+                        "Variance": (
+                            utils.format_rupee_short(row["variance"])
+                            if row["variance"] is not None
+                            else "—"
+                        ),
+                    }
+                    for row in plan["daily"]
+                ]
+            )
+            st.dataframe(detail, width="stretch", hide_index=True)
+
+        if plan["catchup"]:
+            with st.expander("Catch-up plan for remaining days", expanded=False):
+                st.caption(
+                    "Required = the outstanding target gap spread across remaining "
+                    "days by weekday weight. Shortfall = required minus forecast."
+                )
+                catchup = pd.DataFrame(
+                    [
+                        {
+                            "Date": pd.Timestamp(row["date"]).strftime("%d %b"),
+                            "Day": row["weekday"],
+                            "Required": utils.format_rupee_short(row["required"]),
+                            "Forecast": utils.format_rupee_short(row["suggested"]),
+                            "Shortfall": utils.format_rupee_short(row["shortfall"]),
+                        }
+                        for row in plan["catchup"]
+                    ]
+                )
+                st.dataframe(catchup, width="stretch", hide_index=True)
+
+        if plan.get("shape_is_flat"):
+            st.caption(
+                "Not enough same-weekday history yet, so the plan is spread evenly "
+                "across days."
+            )
+
+
 def render_outlet_performance_scorecard(
     df_raw: pd.DataFrame,
     prior_df: pd.DataFrame,
@@ -1264,6 +1552,7 @@ def render_outlet_performance_scorecard(
     start_date: date,
     end_date: date,
     all_locs: list,
+    history_raw_df: pd.DataFrame | None = None,
 ) -> None:
     """Render outlet-level owner scorecard for multi-outlet decision-making."""
     required_columns = {"location_id", "date", "net_total", "covers"}
@@ -1334,6 +1623,23 @@ def render_outlet_performance_scorecard(
     else:
         prior_work_df = pd.DataFrame()
 
+    # Trailing history per outlet, so each outlet's forecast is fitted on more
+    # than the selected window (the same widening applied to the headline chart).
+    outlet_history_df: dict[str, pd.DataFrame] = {}
+    if history_raw_df is not None and not history_raw_df.empty:
+        if required_columns.issubset(set(history_raw_df.columns)):
+            hist = history_raw_df.copy()
+            hist["date"] = pd.to_datetime(hist["date"], errors="coerce")
+            hist = hist[hist["date"].notna()]
+            hist["net_total"] = pd.to_numeric(hist["net_total"], errors="coerce").fillna(0)
+            hist["Outlet"] = hist["location_id"].apply(
+                lambda loc_id: loc_lookup.get(int(loc_id), str(loc_id))
+            )
+            outlet_history_df = {
+                str(name): group.sort_values("date")
+                for name, group in hist.groupby("Outlet")
+            }
+
     rows: list[dict[str, object]] = []
     forecast_column_label = "Forecast"
 
@@ -1375,15 +1681,16 @@ def render_outlet_performance_scorecard(
         covers_delta_pct = _safe_pct_change(covers, prior_covers)
         apc_delta_pct = _safe_pct_change(apc, prior_apc)
 
-        _forecast, forecast_close, _forecast_days, forecast_column_label = (
-            _calculate_period_forecast(
-                outlet_df,
-                analysis_period,
-                start_date,
-                end_date,
-                net_sales,
-            )
+        outlet_forecast = _calculate_period_forecast(
+            outlet_df,
+            analysis_period,
+            start_date,
+            end_date,
+            net_sales,
+            history_df=outlet_history_df.get(str(outlet_name)),
         )
+        forecast_close = outlet_forecast["headline_value"]
+        forecast_column_label = outlet_forecast["headline_label"]
 
         data_flags: list[str] = []
 
@@ -3342,11 +3649,27 @@ def _daily_table_column_config() -> dict:
 
 
 def _forecast_reliability_label(points: int) -> str:
+    """History-length-only reliability, used when no forecast was produced.
+
+    Prefer :func:`_reliability_from_forecast`, which reflects the model's own
+    assessment (history, volatility and weekday coverage) rather than counting
+    rows. Two different definitions on one screen used to disagree.
+    """
     if points >= 21:
         return "High"
     if points >= 10:
         return "Medium"
     return "Low"
+
+
+def _reliability_from_forecast(forecast: list[dict[str, object]] | None) -> str | None:
+    """Return the reliability the forecast model itself reported."""
+    if not forecast:
+        return None
+
+    metadata = forecast[0].get("metadata") or {}
+
+    return metadata.get("reliability")
 
 
 def _split_covers_weekpart(driver_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -4425,21 +4748,27 @@ def render_forecast_command_center(
     prior_avg: float | None,
     show_kpis: bool = True,
     show_movement_breakdown: bool = True,
+    history_df: pd.DataFrame | None = None,
 ) -> None:
     """Render forecast-first executive block with actionable cards."""
     if df.empty:
         return
 
     values = pd.to_numeric(df["net_total"], errors="coerce").fillna(0).tolist()
-    forecast, forecast_total, forecast_days, forecast_label = _calculate_period_forecast(
+    result = _calculate_period_forecast(
         df,
         analysis_period,
         start_date,
         end_date,
         total_sales,
+        history_df=history_df,
     )
-    reliability = _forecast_reliability_label(len(values))
-    is_month_end_forecast = forecast_label == "Forecast Month-End"
+    forecast = result["forecast"]
+    forecast_total = result["headline_value"]
+    forecast_days = result["forecast_days"]
+    forecast_label = result["headline_label"]
+    is_month_end_forecast = bool(result["is_month_end"])
+    reliability = result["reliability"] or _forecast_reliability_label(len(values))
 
     action_cards = _build_action_cards(
         current_df=df,
@@ -4571,6 +4900,33 @@ def render_forecast_command_center(
             for value in f_daily_values:
                 running_total += value
                 cumulative_forecast.append(running_total)
+
+            # Cumulative band: daily uncertainty accumulates across the horizon.
+            cumulative_upper = []
+            cumulative_lower = []
+            up_total = low_total = last_actual_value
+            for item in forecast:
+                up_total += float(item.get("upper", item["value"]))
+                low_total += float(item.get("lower", item["value"]))
+                cumulative_upper.append(up_total)
+                cumulative_lower.append(max(0.0, low_total))
+
+            fig.add_trace(
+                go.Scatter(
+                    x=[last_actual_date] + f_dates + f_dates[::-1],
+                    y=(
+                        [last_actual_value]
+                        + cumulative_upper
+                        + cumulative_lower[::-1]
+                    ),
+                    fill="toself",
+                    fillcolor=_hex_to_rgba(ui_theme.BRAND_SUCCESS, 0.12),
+                    line=dict(color="rgba(0,0,0,0)"),
+                    hoverinfo="skip",
+                    showlegend=True,
+                    name="Forecast range",
+                )
+            )
 
             fig.add_trace(
                 go.Scatter(
