@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
+from services.data_quality import CategoryMismatch, LocationDataQuality
 from tabs import upload_tab
 from uploads.models import FileResult
 
@@ -92,3 +93,56 @@ def test_file_details_includes_comp_rows(monkeypatch):
     assert captured
     file_names = set(captured[0]["File"].tolist())
     assert "comp.xlsx" in file_names
+
+
+class TestRenderDataQuality:
+    def test_shows_warnings_for_flagged_outlets(self, monkeypatch):
+        warnings: list[str] = []
+        monkeypatch.setattr(upload_tab.st, "expander", lambda *_a, **_k: _NoopContext())
+        monkeypatch.setattr(upload_tab.st, "warning", lambda text, **_k: warnings.append(text))
+
+        flagged = LocationDataQuality(
+            location_id=2,
+            location_name="Boteco - Bagmane",
+            missing_days=["2026-08-05"],
+            category_missing_days=["2026-08-10", "2026-08-11"],
+            category_mismatches=[
+                CategoryMismatch(date="2026-08-12", net_total=50000, category_total=40000)
+            ],
+        )
+        monkeypatch.setattr(
+            "services.data_quality.audit_month_data_quality",
+            lambda location_ids, loc_name_map, year, month: [flagged],
+        )
+
+        ctx = SimpleNamespace(
+            report_loc_ids=[2],
+            all_locs=[{"id": 2, "name": "Boteco - Bagmane"}],
+        )
+
+        upload_tab._render_data_quality(ctx)
+
+        assert len(warnings) == 3
+        assert any("no data uploaded at all" in w for w in warnings)
+        assert any("no category breakdown" in w for w in warnings)
+        assert any("don't\nmatch net sales" in w or "don't match net sales" in w for w in warnings)
+
+    def test_renders_nothing_when_no_issues(self, monkeypatch):
+        warnings: list[str] = []
+        monkeypatch.setattr(upload_tab.st, "expander", lambda *_a, **_k: _NoopContext())
+        monkeypatch.setattr(upload_tab.st, "warning", lambda text, **_k: warnings.append(text))
+
+        clean = LocationDataQuality(location_id=1, location_name="Boteco - Indiqube")
+        monkeypatch.setattr(
+            "services.data_quality.audit_month_data_quality",
+            lambda location_ids, loc_name_map, year, month: [clean],
+        )
+
+        ctx = SimpleNamespace(
+            report_loc_ids=[1],
+            all_locs=[{"id": 1, "name": "Boteco - Indiqube"}],
+        )
+
+        upload_tab._render_data_quality(ctx)
+
+        assert warnings == []

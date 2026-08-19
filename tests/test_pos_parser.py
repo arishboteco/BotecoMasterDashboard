@@ -202,3 +202,47 @@ class TestMtdTargetPercentage:
 
         assert out["mtd_net_sales"] == 600_000
         assert out["mtd_pct_target"] == 15.0
+
+
+class TestMtdGrossSales:
+    def test_uses_my_amount_when_present(self, monkeypatch):
+        monkeypatch.setattr(
+            "database.get_summaries_for_month",
+            lambda location_id, year, month: [
+                {
+                    "date": "2026-04-01",
+                    "net_total": 950,
+                    "discount": 50,
+                    "my_amount": 1000,
+                    "covers": 10,
+                },
+                {
+                    "date": "2026-04-02",
+                    "net_total": 500,
+                    "discount": 0,
+                    "my_amount": 500,
+                    "covers": 5,
+                },
+            ],
+        )
+
+        out = calculate_mtd_metrics(1, target_monthly=10_000, year=2026, month=4)
+
+        # Gross (My Amount) is reported separately from net-of-discount sales;
+        # target/APC metrics stay on the net figure.
+        assert out["mtd_gross_sales"] == 1500
+        assert out["mtd_net_sales"] == 1450
+        assert out["mtd_discount"] == 50
+
+    def test_falls_back_to_net_plus_discount_when_my_amount_missing(self, monkeypatch):
+        monkeypatch.setattr(
+            "database.get_summaries_for_month_multi",
+            lambda location_ids, year, month: [
+                {"date": "2026-04-01", "net_total": 900, "discount": 100, "covers": 10},
+            ],
+        )
+
+        out = calculate_mtd_metrics_multi([1, 2], target_monthly=10_000, year=2026, month=4)
+
+        assert out["mtd_gross_sales"] == 1000
+        assert out["mtd_net_sales"] == 900

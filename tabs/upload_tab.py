@@ -170,6 +170,67 @@ def _render_import_history(ctx: TabContext) -> None:
         st.caption("No imports yet for this outlet.")
 
 
+def _fmt_short_day(iso_date: str) -> str:
+    try:
+        return datetime.strptime(iso_date[:10], "%Y-%m-%d").strftime("%d %b")
+    except ValueError:
+        return iso_date
+
+
+def _render_data_quality(ctx: TabContext) -> None:
+    """Flag this month's upload gaps and category/net-sales mismatches.
+
+    Growth Report and Item Report are uploaded as separate files, so a
+    missed or mismatched file for either one doesn't error out — it just
+    silently understates a report until someone notices. This surfaces
+    those gaps proactively instead of waiting for an audit.
+    """
+    from services import data_quality
+
+    loc_name_map = {loc["id"]: loc["name"] for loc in ctx.all_locs}
+    today = datetime.now()
+    results = data_quality.audit_month_data_quality(
+        ctx.report_loc_ids, loc_name_map, today.year, today.month
+    )
+    flagged = [r for r in results if r.has_issues]
+    if not flagged:
+        return
+
+    section_title(
+        "Data health this month",
+        "Gaps and mismatches found in saved data — reupload the affected file(s) to fix.",
+        icon="fact_check",
+    )
+    for r in flagged:
+        with st.expander(f"⚠️ {r.location_name}", expanded=False):
+            if r.missing_days:
+                days = ", ".join(_fmt_short_day(d) for d in r.missing_days[:12])
+                more = "…" if len(r.missing_days) > 12 else ""
+                st.warning(
+                    f"**{len(r.missing_days)} day(s) with no data uploaded at all:** "
+                    f"{days}{more}"
+                )
+            if r.category_missing_days:
+                days = ", ".join(_fmt_short_day(d) for d in r.category_missing_days[:12])
+                more = "…" if len(r.category_missing_days) > 12 else ""
+                st.warning(
+                    f"**{len(r.category_missing_days)} day(s) have sales data but no "
+                    f"category breakdown** (Item Report not uploaded): {days}{more}"
+                )
+            if r.category_mismatches:
+                worst = sorted(r.category_mismatches, key=lambda m: -abs(m.diff))[:8]
+                detail = "; ".join(
+                    f"{_fmt_short_day(m.date)}: net {utils.format_currency(m.net_total)} "
+                    f"vs category {utils.format_currency(m.category_total)}"
+                    for m in worst
+                )
+                more = "…" if len(r.category_mismatches) > 8 else ""
+                st.warning(
+                    f"**{len(r.category_mismatches)} day(s) where category totals don't "
+                    f"match net sales:** {detail}{more}"
+                )
+
+
 def _render_post_import_footfall(shell, ctx: TabContext) -> None:
     """Render the optional footfall entry step shown after a successful import."""
     state = st.session_state.get("_post_import_state", {})
@@ -239,6 +300,7 @@ def render(ctx: TabContext) -> None:
             )
         _render_post_import_footfall(shell, ctx)
         with shell.footer_actions:
+            _render_data_quality(ctx)
             _render_import_history(ctx)
         return
 
@@ -506,4 +568,5 @@ def render(ctx: TabContext) -> None:
                         st.rerun()
 
     with shell.footer_actions:
+        _render_data_quality(ctx)
         _render_import_history(ctx)

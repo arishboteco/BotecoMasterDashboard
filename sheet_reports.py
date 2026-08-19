@@ -1239,7 +1239,14 @@ def _build_sales_summary(
     add_mtd_row("Complimentary", "complimentary", fmt="currency")
     add_mtd_row("MTD Complimentary", "mtd_complimentary", fmt="currency")
     add_mtd_row("Daily Avg. Net Sales", "mtd_avg_daily", fmt="currency")
-    add_mtd_row("MTD Net Sales", "mtd_net_sales", fmt="currency", bold=True)
+
+    def _mtd_gross(d):
+        # "My Amount" (before discount); falls back to mtd_net_sales for older
+        # rows that predate the gross-sales field.
+        gross = d.get("mtd_gross_sales")
+        return float(gross) if gross is not None else float(d.get("mtd_net_sales") or 0)
+
+    add_mtd_row("MTD Net Sales", _mtd_gross, fmt="currency", bold=True)
     add_mtd_row(
         "MTD Discount",
         "mtd_discount",
@@ -1247,10 +1254,10 @@ def _build_sales_summary(
         right_color=statuses["discount"]["color"],
     )
 
-    def _mtd_net_excl(d):
-        return float(d.get("mtd_net_sales") or 0) - float(d.get("mtd_discount") or 0)
-
-    add_mtd_row("MTD Net (Excl. Disc.)", _mtd_net_excl, fmt="currency", bold=True)
+    # mtd_net_sales is already net of discount (My Amount - Discount per the
+    # Growth Report), so it's used directly here rather than subtracting
+    # mtd_discount a second time.
+    add_mtd_row("MTD Net (Excl. Disc.)", "mtd_net_sales", fmt="currency", bold=True)
     add_mtd_row("Sales Target", "mtd_target", fmt="currency")
     add_mtd_row("Actual % of Target", "mtd_pct_target", fmt="pct", bold=True, right_color=ach_color)
 

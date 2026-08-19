@@ -302,6 +302,48 @@ class TestSalesSummaryRowBackgrounds:
         assert _background_hex_for_label(table, "Required Daily Run Rate") == sheet_reports.C_BAND
 
 
+def _cell_value_for_label(table, label: str, col_index: int = 1):
+    row = next(row for row in table._cellvalues if row and row[0] == label)
+    return row[col_index]
+
+
+class TestSalesSummaryMtdNetSalesFields:
+    def test_mtd_net_excl_disc_is_not_double_subtracted(self):
+        report_data = {
+            "date": "2026-04-27",
+            "covers": 48,
+            "turns": 0.69,
+            "gross_total": 49775,
+            "net_total": 44010,
+            "gpay_sales": 49775,
+            "discount": 650,
+            "complimentary": 0,
+            "cgst": 1153,
+            "sgst": 1153,
+            "service_charge": 0,
+            "mtd_total_covers": 2079,
+            "apc": 917,
+            "mtd_gross_sales": 1_516_852,
+            "mtd_net_sales": 1_499_784,
+            "mtd_discount": 17_068,
+            "mtd_complimentary": 0,
+            "mtd_avg_daily": 122662,
+            "mtd_target": 4_000_000,
+            "mtd_pct_target": 37.5,
+        }
+
+        table = _first_table(
+            sheet_reports._build_sales_summary(report_data, location_name="Bagmane")
+        )
+
+        assert _cell_value_for_label(table, "MTD Net Sales") == sheet_reports._r(1_516_852)
+        # Must equal mtd_net_sales as-is (My Amount already has discount removed
+        # once), not mtd_net_sales - mtd_discount a second time.
+        assert _cell_value_for_label(table, "MTD Net (Excl. Disc.)") == sheet_reports._r(
+            1_499_784
+        )
+
+
 class TestSalesSummaryHeaderKpiText:
     def test_kpi_banner_displays_net_and_target_amounts(self):
         report_data = {
