@@ -147,3 +147,52 @@ class TestMultiLocation:
 
     def test_no_locations_returns_empty(self):
         assert data_quality.audit_month_data_quality([], {}, year=2026, month=4) == []
+
+
+class TestAuditRecentDataQuality:
+    def test_covers_prior_closed_month_by_default(self, monkeypatch):
+        # A gap in March (already closed) should still be caught when
+        # auditing "as of" early April, since audit_recent_data_quality
+        # looks back one full month by default.
+        _patch_summaries(
+            monkeypatch,
+            [
+                {"location_id": 1, "date": "2026-03-01", "net_total": 40000},
+                {"location_id": 1, "date": "2026-03-03", "net_total": 45000},
+            ],
+        )
+        _patch_categories(monkeypatch, [])
+
+        out = data_quality.audit_recent_data_quality([1], {1: "Bagmane"}, as_of_date="2026-04-02")
+
+        assert "2026-03-02" in out[0].missing_days
+
+    def test_as_of_date_caps_the_window(self, monkeypatch):
+        seen_ranges = []
+
+        def _fake_summaries(location_ids, start, end):
+            seen_ranges.append((start, end))
+            return []
+
+        monkeypatch.setattr("database.get_summaries_for_date_range_multi", _fake_summaries)
+        _patch_categories(monkeypatch, [])
+
+        data_quality.audit_recent_data_quality([1], {1: "Bagmane"}, as_of_date="2026-04-02")
+
+        assert seen_ranges == [("2026-03-01", "2026-04-02")]
+
+    def test_months_back_extends_window(self, monkeypatch):
+        seen_ranges = []
+
+        def _fake_summaries(location_ids, start, end):
+            seen_ranges.append((start, end))
+            return []
+
+        monkeypatch.setattr("database.get_summaries_for_date_range_multi", _fake_summaries)
+        _patch_categories(monkeypatch, [])
+
+        data_quality.audit_recent_data_quality(
+            [1], {1: "Bagmane"}, as_of_date="2026-04-02", months_back=2
+        )
+
+        assert seen_ranges == [("2026-02-01", "2026-04-02")]

@@ -4,7 +4,7 @@ Growth Report (daily_summary) and Item Report (category_summary) are
 uploaded as separate files. When a team member uploads one and forgets
 the other — or uploads a file for the wrong outlet/date — the numbers
 silently drift apart with no indication in the dashboard. This module
-scans a month of saved data per outlet and flags:
+scans a window of saved data per outlet and flags:
 
   * calendar days with no saved data at all (an upload was skipped)
   * days that have Growth Report sales but no category breakdown
@@ -27,6 +27,12 @@ from core.dates import date_range_inclusive
 # noise between the two reports and not worth flagging.
 MISMATCH_ABS_FLOOR = 25.0
 MISMATCH_PCT_FLOOR = 0.01  # 1% of the day's net sales
+
+# How many full prior calendar months (in addition to the current one) the
+# Upload page audit looks back over by default. A team's audit of last
+# month's numbers often happens after that month has already closed, so
+# limiting the check to "this month" would never catch it.
+DEFAULT_MONTHS_BACK = 1
 
 
 @dataclass
@@ -57,32 +63,33 @@ def _mismatch_tolerance(net_total: float) -> float:
     return max(MISMATCH_ABS_FLOOR, abs(net_total) * MISMATCH_PCT_FLOOR)
 
 
-def audit_month_data_quality(
+def _parse_date(value: Optional[str]) -> date:
+    if not value:
+        return date.today()
+    return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+
+
+def audit_date_range_data_quality(
     location_ids: List[int],
     loc_name_map: Dict[int, str],
-    year: int,
-    month: int,
-    as_of_date: Optional[str] = None,
+    start_date: str,
+    end_date: str,
 ) -> List[LocationDataQuality]:
-    """Audit each location's saved data for the given month.
+    """Audit each location's saved data across an explicit inclusive date range.
 
-    ``as_of_date`` caps the audit window (defaults to today). Calendar-day
-    gaps are only flagged up to the day before the end of that window, so
+    Calendar-day gaps are only flagged up to the day before ``end_date``, so
     the most recent (possibly still-trading) day isn't reported as a
     missing upload.
     """
     import database
     from database_reads import get_category_totals_for_date_range
 
-    start_d = date(year, month, 1)
-    next_month = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
-    month_end_d = next_month - timedelta(days=1)
+    if not location_ids:
+        return []
 
-    cap_d = (
-        datetime.strptime(str(as_of_date)[:10], "%Y-%m-%d").date() if as_of_date else date.today()
-    )
-    end_d = min(month_end_d, cap_d)
-    if end_d < start_d or not location_ids:
+    start_d = _parse_date(start_date)
+    end_d = _parse_date(end_date)
+    if end_d < start_d:
         return []
 
     start_s, end_s = start_d.strftime("%Y-%m-%d"), end_d.strftime("%Y-%m-%d")
@@ -148,3 +155,50 @@ def audit_month_data_quality(
         )
 
     return results
+
+
+def audit_month_data_quality(
+    location_ids: List[int],
+    loc_name_map: Dict[int, str],
+    year: int,
+    month: int,
+    as_of_date: Optional[str] = None,
+) -> List[LocationDataQuality]:
+    """Audit each location's saved data for a single given month.
+
+    ``as_of_date`` caps the audit window (defaults to today).
+    """
+    start_d = date(year, month, 1)
+    next_month = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+    month_end_d = next_month - timedelta(days=1)
+    cap_d = _parse_date(as_of_date)
+    end_d = min(month_end_d, cap_d)
+    if end_d < start_d:
+        return []
+    return audit_date_range_data_quality(
+        location_ids, loc_name_map, start_d.strftime("%Y-%m-%d"), end_d.strftime("%Y-%m-%d")
+    )
+
+
+def audit_recent_data_quality(
+    location_ids: List[int],
+    loc_name_map: Dict[int, str],
+    as_of_date: Optional[str] = None,
+    months_back: int = DEFAULT_MONTHS_BACK,
+) -> List[LocationDataQuality]:
+    """Audit the current month plus ``months_back`` full prior months.
+
+    Unlike :func:`audit_month_data_quality`, this also catches issues in a
+    month that has already closed — e.g. discovered during a post-close
+    audit — not just problems in the month still in progress.
+    """
+    cap_d = _parse_date(as_of_date)
+    y, m = cap_d.year, cap_d.month
+    for _ in range(max(0, months_back)):
+        m -= 1
+        if m == 0:
+            m, y = 12, y - 1
+    start_d = date(y, m, 1)
+    return audit_date_range_data_quality(
+        location_ids, loc_name_map, start_d.strftime("%Y-%m-%d"), cap_d.strftime("%Y-%m-%d")
+    )

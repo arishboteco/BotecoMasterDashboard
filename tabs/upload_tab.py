@@ -178,29 +178,32 @@ def _fmt_short_day(iso_date: str) -> str:
 
 
 def _render_data_quality(ctx: TabContext) -> None:
-    """Flag this month's upload gaps and category/net-sales mismatches.
+    """Flag recent upload gaps and category/net-sales mismatches.
 
     Growth Report and Item Report are uploaded as separate files, so a
     missed or mismatched file for either one doesn't error out — it just
-    silently understates a report until someone notices. This surfaces
-    those gaps proactively instead of waiting for an audit.
+    silently understates a report until someone notices. Covers this month
+    plus the prior full month, since an audit of last month's numbers
+    typically happens after that month has already closed. Always renders
+    (even when clean) so the check is visibly present, not just when it
+    has something to flag.
     """
     from services import data_quality
 
     loc_name_map = {loc["id"]: loc["name"] for loc in ctx.all_locs}
-    today = datetime.now()
-    results = data_quality.audit_month_data_quality(
-        ctx.report_loc_ids, loc_name_map, today.year, today.month
-    )
-    flagged = [r for r in results if r.has_issues]
-    if not flagged:
-        return
+    results = data_quality.audit_recent_data_quality(ctx.report_loc_ids, loc_name_map)
 
     section_title(
-        "Data health this month",
-        "Gaps and mismatches found in saved data — reupload the affected file(s) to fix.",
+        "Data health",
+        "This month and last month — gaps and mismatches found in saved data.",
         icon="fact_check",
     )
+
+    flagged = [r for r in results if r.has_issues]
+    if not flagged:
+        st.caption("✅ No missing uploads or category mismatches found.")
+        return
+
     for r in flagged:
         with st.expander(f"⚠️ {r.location_name}", expanded=False):
             if r.missing_days:
