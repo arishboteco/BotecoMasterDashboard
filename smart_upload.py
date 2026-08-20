@@ -16,6 +16,7 @@ LEGACY FLOW (backward compatible):
 from __future__ import annotations
 
 import hashlib
+import json
 import time
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
@@ -782,6 +783,8 @@ def save_smart_upload_results(
                             file_type="growth_report_day_wise",
                             uploaded_by=uploaded_by,
                             fmeta=fmeta,
+                            merged=merged,
+                            warnings=day_result.warnings,
                         )
                     )
                 else:
@@ -880,6 +883,7 @@ def save_smart_upload_results(
                         file_type="dynamic_report",
                         uploaded_by=uploaded_by,
                         fmeta={},
+                        merged=merged,
                     )
                 )
                 saved += 1
@@ -1056,6 +1060,26 @@ def _find_file_meta(new_flow_meta: Dict[str, Any], loc_id: int) -> Dict[str, Any
     return {}
 
 
+def _build_import_summary(
+    merged: Optional[Dict[str, Any]], warnings: Optional[List[str]]
+) -> Optional[str]:
+    """Compact JSON blob describing what was saved for one day.
+
+    Deliberately small — the Upload page's import-activity table already
+    shows days/rows per batch; this is per-day detail for anyone reading
+    ``upload_history`` directly (support, debugging, or a future export).
+    """
+    if merged is None:
+        return None
+    payload: Dict[str, Any] = {
+        "net_total": round(float(merged.get("net_total") or 0), 2),
+        "covers": int(merged.get("covers") or 0),
+    }
+    if warnings:
+        payload["warnings"] = len(warnings)
+    return json.dumps(payload)
+
+
 def _build_upload_history_row(
     loc_id: int,
     date_str: str,
@@ -1063,6 +1087,8 @@ def _build_upload_history_row(
     file_type: str,
     uploaded_by: str,
     fmeta: Dict[str, Any],
+    merged: Optional[Dict[str, Any]] = None,
+    warnings: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     return {
         "location_id": loc_id,
@@ -1077,6 +1103,7 @@ def _build_upload_history_row(
         "row_count": fmeta.get("row_count"),
         "status": "imported",
         "file_hash": fmeta.get("file_hash"),
+        "import_summary": _build_import_summary(merged, warnings),
     }
 
 

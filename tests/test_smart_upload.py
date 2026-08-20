@@ -825,3 +825,68 @@ class TestNewFlowMetaFileType:
 
         assert meta["growth.xlsx"]["file_type"] == "growth_report_day_wise"
         assert daily_by_loc[1]
+
+
+class TestBuildImportSummary:
+    def test_none_merged_returns_none(self):
+        assert smart_upload._build_import_summary(None, None) is None
+
+    def test_compact_json_with_net_total_and_covers(self):
+        import json
+
+        summary = smart_upload._build_import_summary(
+            {"net_total": 12345.678, "covers": 40}, None
+        )
+
+        assert json.loads(summary) == {"net_total": 12345.68, "covers": 40}
+
+    def test_includes_warning_count_when_present(self):
+        import json
+
+        summary = smart_upload._build_import_summary(
+            {"net_total": 1000.0, "covers": 10}, ["bad thing", "another bad thing"]
+        )
+
+        assert json.loads(summary)["warnings"] == 2
+
+    def test_omits_warnings_key_when_empty(self):
+        import json
+
+        summary = smart_upload._build_import_summary({"net_total": 1000.0, "covers": 10}, [])
+
+        assert "warnings" not in json.loads(summary)
+
+
+class TestBuildUploadHistoryRow:
+    def test_includes_import_summary_when_merged_given(self):
+        row = smart_upload._build_upload_history_row(
+            loc_id=1,
+            date_str="2026-08-01",
+            filename="growth.xlsx",
+            file_type="growth_report_day_wise",
+            uploaded_by="asha",
+            fmeta={},
+            merged={"net_total": 5000.0, "covers": 20},
+            warnings=["a warning"],
+        )
+
+        assert row["import_summary"] is not None
+        import json
+
+        assert json.loads(row["import_summary"]) == {
+            "net_total": 5000.0,
+            "covers": 20,
+            "warnings": 1,
+        }
+
+    def test_import_summary_none_without_merged(self):
+        row = smart_upload._build_upload_history_row(
+            loc_id=1,
+            date_str="2026-08-01",
+            filename="growth.xlsx",
+            file_type="growth_report_day_wise",
+            uploaded_by="asha",
+            fmeta={},
+        )
+
+        assert row["import_summary"] is None
