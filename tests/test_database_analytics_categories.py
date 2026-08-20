@@ -22,8 +22,18 @@ def test_payment_provider_breakdown_uses_dynamic_payment_methods_supabase(monkey
         def lte(self, _col, _val):
             return self
 
+        def order(self, _col, desc=False):
+            return self
+
+        def range(self, start, end):
+            self._start, self._end = start, end
+            return self
+
         def execute(self):
-            return type("R", (), {"data": self._rows})
+            rows = self._rows
+            if getattr(self, "_end", None) is not None:
+                rows = rows[self._start : self._end + 1]
+            return type("R", (), {"data": rows})
 
     class _Client:
         def table(self, name):
@@ -65,8 +75,18 @@ def test_get_category_sales_returns_detailed_categories_supabase(monkeypatch):
         def lte(self, _col, _val):
             return self
 
+        def order(self, _col, desc=False):
+            return self
+
+        def range(self, start, end):
+            self._start, self._end = start, end
+            return self
+
         def execute(self):
-            return type("R", (), {"data": self._rows})
+            rows = self._rows
+            if getattr(self, "_end", None) is not None:
+                rows = rows[self._start : self._end + 1]
+            return type("R", (), {"data": rows})
 
     class _Client:
         def __init__(self, rows):
@@ -159,8 +179,18 @@ def test_get_category_sales_grouped_prefers_normalized_category_supabase(monkeyp
         def lte(self, _col, _val):
             return self
 
+        def order(self, _col, desc=False):
+            return self
+
+        def range(self, start, end):
+            self._start, self._end = start, end
+            return self
+
         def execute(self):
-            return type("R", (), {"data": self._rows})
+            rows = self._rows
+            if getattr(self, "_end", None) is not None:
+                rows = rows[self._start : self._end + 1]
+            return type("R", (), {"data": rows})
 
     class _Client:
         def __init__(self, rows):

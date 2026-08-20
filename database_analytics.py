@@ -13,6 +13,7 @@ import streamlit as st
 
 from core.dates import month_bounds
 from db.category_rows import CATEGORY_ROW_PREFIX
+from db.supabase_paging import fetch_all_rows
 from services.payment_mapping import payment_method_name
 
 
@@ -98,16 +99,17 @@ def _fetch_daily_summary_rows(
         # location_id and date are needed by the override merge layer; ensure
         # the projection includes them even if the caller didn't ask for them.
         select_cols = set(columns) | {"location_id", "date"}
-        result = (
-            supabase.table("daily_summary")
-            .select(",".join(sorted(select_cols)))
-            .in_("location_id", location_ids)
-            .gte("date", start_date)
-            .lte("date", end_date)
-            .order("date")
-            .execute()
-        )
-        rows = [dict(row) for row in (result.data or [])]
+        rows = [
+            dict(row)
+            for row in fetch_all_rows(
+                lambda: supabase.table("daily_summary")
+                .select(",".join(sorted(select_cols)))
+                .in_("location_id", location_ids)
+                .gte("date", start_date)
+                .lte("date", end_date)
+                .order("date")
+            )
+        ]
     else:
         # Always include location_id (needed for override merging); the caller
         # filters by `columns` on its consumer side via .get(...).
@@ -270,17 +272,16 @@ def get_category_sales_for_date_range(
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = (
-            supabase.table("category_summary")
+        rows = fetch_all_rows(
+            lambda: supabase.table("category_summary")
             .select("category_name,net_amount,qty")
             .in_("location_id", location_ids)
             .gte("date", start_date)
             .lte("date", end_date)
-            .execute()
         )
 
         cat_totals = {}
-        for row in result.data:
+        for row in rows:
             cat = str(row.get("category_name") or "").strip() or "Uncategorized"
             if cat not in cat_totals:
                 cat_totals[cat] = {"category": cat, "amount": 0.0, "qty": 0}
@@ -328,17 +329,16 @@ def get_category_sales_grouped_for_date_range(
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = (
-            supabase.table("category_summary")
+        rows = fetch_all_rows(
+            lambda: supabase.table("category_summary")
             .select("category_name,group_name,normalized_category,net_amount,qty")
             .in_("location_id", location_ids)
             .gte("date", start_date)
             .lte("date", end_date)
-            .execute()
         )
 
         cat_totals = {}
-        for row in result.data:
+        for row in rows:
             cat = _canonical_category(
                 row.get("normalized_category"),
                 row.get("group_name"),
@@ -414,13 +414,12 @@ def get_service_sales_for_date_range(
     if database.use_supabase():
         supabase = database.get_supabase_client()
         restaurants = _restaurants_for_location_ids(location_ids)
-        result = (
-            supabase.table("bill_items")
+        all_rows = fetch_all_rows(
+            lambda: supabase.table("bill_items")
             .select("created_date_time,net_amount,bill_status")
             .in_("restaurant", restaurants)
             .gte("bill_date", start_date)
             .lte("bill_date", end_date)
-            .execute()
         )
 
         lunch_total = 0.0
@@ -428,7 +427,7 @@ def get_service_sales_for_date_range(
 
         rows = [
             row
-            for row in (result.data or [])
+            for row in all_rows
             if _bill_items_success(row.get("bill_status")) and (row.get("net_amount", 0) or 0) > 0
         ]
 
@@ -496,18 +495,17 @@ def get_daily_service_sales_for_date_range(
     if database.use_supabase():
         supabase = database.get_supabase_client()
         restaurants = _restaurants_for_location_ids(location_ids)
-        result = (
-            supabase.table("bill_items")
+        all_rows = fetch_all_rows(
+            lambda: supabase.table("bill_items")
             .select("bill_date,created_date_time,net_amount,bill_status")
             .in_("restaurant", restaurants)
             .gte("bill_date", start_date)
             .lte("bill_date", end_date)
-            .execute()
         )
 
         rows = [
             row
-            for row in (result.data or [])
+            for row in all_rows
             if _bill_items_success(row.get("bill_status")) and (row.get("net_amount", 0) or 0) > 0
         ]
 
@@ -609,12 +607,11 @@ def get_super_category_mtd_totals(
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = (
-            supabase.table("category_summary")
+        rows = fetch_all_rows(
+            lambda: supabase.table("category_summary")
             .select("category_name,net_amount")
             .in_("location_id", location_ids)
             .gte("date", start_date)
-            .execute()
         )
 
         super_cats = {
@@ -623,7 +620,7 @@ def get_super_category_mtd_totals(
             "Other": 0.0,
         }
 
-        for row in result.data:
+        for row in rows:
             cat = (row.get("category_name") or "").lower()
             amount = row.get("net_amount", 0) or 0
 
@@ -693,17 +690,16 @@ def get_top_items_for_date_range(
         supabase = database.get_supabase_client()
         restaurants = _restaurants_for_location_ids(location_ids)
 
-        result = (
-            supabase.table("bill_items")
+        rows = fetch_all_rows(
+            lambda: supabase.table("bill_items")
             .select("item_name,category_name,net_amount,item_qty,bill_status")
             .in_("restaurant", restaurants)
             .gte("bill_date", start_date)
             .lte("bill_date", end_date)
-            .execute()
         )
 
         item_totals = {}
-        for row in result.data:
+        for row in rows:
             if not _bill_items_success(row.get("bill_status")):
                 continue
             item = row.get("item_name") or "Unknown"
@@ -824,15 +820,13 @@ def get_payment_provider_breakdown(
     if database.use_supabase():
         supabase = database.get_supabase_client()
         try:
-            result = (
-                supabase.table("payment_method_sales")
+            method_rows = fetch_all_rows(
+                lambda: supabase.table("payment_method_sales")
                 .select("payment_method,amount")
                 .in_("location_id", location_ids)
                 .gte("date", start_date)
                 .lte("date", end_date)
-                .execute()
             )
-            method_rows = result.data or []
         except Exception:
             method_rows = []
         if method_rows:
@@ -850,19 +844,18 @@ def get_payment_provider_breakdown(
             return sorted(totals.values(), key=lambda x: -x["gross_amount"])
 
         restaurants = _restaurants_for_location_ids(location_ids)
-        result = (
-            supabase.table("bill_items")
+        bill_rows = fetch_all_rows(
+            lambda: supabase.table("bill_items")
             .select("payment_type,gross_amount,bill_no,bill_status")
             .in_("restaurant", restaurants)
             .gte("bill_date", start_date)
             .lte("bill_date", end_date)
-            .execute()
         )
 
         # Aggregate at bill level (one row per bill_no that has gross_amount > 0)
         seen_bills: set = set()
         totals: Dict[str, Dict[str, Any]] = {}
-        for row in result.data:
+        for row in bill_rows:
             if not _bill_items_success(row.get("bill_status")):
                 continue
             gross = float(row.get("gross_amount") or 0)
