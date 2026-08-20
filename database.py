@@ -934,6 +934,38 @@ def get_upload_history(location_id: int, limit: int = 50) -> List[Dict]:
     return _impl(location_id, limit)
 
 
+def get_earliest_date_with_data(location_ids: List[int]) -> Optional[str]:
+    """Get the earliest date that has saved daily_summary data."""
+    from database_reads import get_earliest_date_with_data as _impl
+
+    return _impl(location_ids)
+
+
+def get_recent_upload_batches(location_ids: List[int], limit: int = 300) -> List[Dict]:
+    """Get recent upload history across multiple outlets, newest first."""
+    from database_reads import get_recent_upload_batches as _impl
+
+    return _impl(location_ids, limit)
+
+
+def get_bill_item_days_for_date_range_multi(
+    location_ids: List[int], start_date: str, end_date: str
+) -> List[Dict]:
+    """Get distinct (location_id, date) pairs with any saved bill_items row."""
+    from database_reads import get_bill_item_days_for_date_range_multi as _impl
+
+    return _impl(location_ids, start_date, end_date)
+
+
+def get_payment_method_sales_for_date_range_multi(
+    location_ids: List[int], start_date: str, end_date: str
+) -> List[Dict]:
+    """Get payment_method_sales rows across outlets for a date range."""
+    from database_reads import get_payment_method_sales_for_date_range_multi as _impl
+
+    return _impl(location_ids, start_date, end_date)
+
+
 def get_recent_summaries(location_id: int, weeks: int = 8) -> List[Dict]:
     """Fetch recent daily summaries for weekday mix analysis."""
     from database_reads import get_recent_summaries as _impl
@@ -1145,6 +1177,10 @@ READ_EXPORTS = [
     "get_most_recent_date_with_data",
     "get_location_settings",
     "get_upload_history",
+    "get_earliest_date_with_data",
+    "get_recent_upload_batches",
+    "get_bill_item_days_for_date_range_multi",
+    "get_payment_method_sales_for_date_range_multi",
     "get_recent_summaries",
     "get_category_mtd_totals_multi",
     "get_service_mtd_totals_multi",
@@ -1207,6 +1243,10 @@ DELEGATED_SYMBOL_ORIGINS = {
     "get_most_recent_date_with_data": "database_reads",
     "get_location_settings": "database_reads",
     "get_upload_history": "database_reads",
+    "get_earliest_date_with_data": "database_reads",
+    "get_recent_upload_batches": "database_reads",
+    "get_bill_item_days_for_date_range_multi": "database_reads",
+    "get_payment_method_sales_for_date_range_multi": "database_reads",
     "get_recent_summaries": "database_reads",
     "get_category_mtd_totals_multi": "database_reads",
     "get_service_mtd_totals_multi": "database_reads",

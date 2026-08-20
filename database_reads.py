@@ -610,6 +610,84 @@ def get_category_totals_for_date_range(
         return [dict(row) for row in rows]
 
 
+def get_bill_item_days_for_date_range_multi(
+    location_ids: List[int],
+    start_date: str,
+    end_date: str,
+) -> List[Dict]:
+    """Get distinct (location_id, date) pairs with any saved bill_items row.
+
+    Supabase-only — bill_items has no SQLite equivalent (the SQLite branch
+    returns an empty list). Used to check whether a day with category data
+    also has a Lunch/Dinner service split, the check that would have caught
+    a real production incident: an Item Report spanning more days than its
+    Growth Report producing categories with no service split on the extra days.
+    """
+    import database
+
+    if not database.use_supabase() or not location_ids:
+        return []
+
+    from database_writes import LOCATION_ID_TO_RESTAURANT
+
+    restaurant_to_location = {
+        restaurant: int(location_id)
+        for location_id, restaurant in LOCATION_ID_TO_RESTAURANT.items()
+        if int(location_id) in {int(lid) for lid in location_ids}
+    }
+    if not restaurant_to_location:
+        return []
+
+    supabase = database.get_supabase_client()
+    rows = fetch_all_rows(
+        lambda: supabase.table("bill_items")
+        .select("restaurant,bill_date")
+        .in_("restaurant", list(restaurant_to_location.keys()))
+        .gte("bill_date", start_date)
+        .lte("bill_date", end_date)
+    )
+
+    seen: set = set()
+    out: List[Dict] = []
+    for row in rows:
+        loc_id = restaurant_to_location.get(str(row.get("restaurant") or ""))
+        d = str(row.get("bill_date") or "")[:10]
+        if loc_id is None or not d:
+            continue
+        key = (loc_id, d)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"location_id": loc_id, "date": d})
+    return out
+
+
+def get_payment_method_sales_for_date_range_multi(
+    location_ids: List[int],
+    start_date: str,
+    end_date: str,
+) -> List[Dict]:
+    """Get payment_method_sales rows across outlets for a date range.
+
+    Supabase-only — payment_method_sales has no SQLite equivalent. Used to
+    check dynamic payment types (UPI, wallet, bank transfer, ...) never sum
+    to more than the day's net sales.
+    """
+    import database
+
+    if not database.use_supabase() or not location_ids:
+        return []
+
+    supabase = database.get_supabase_client()
+    return fetch_all_rows(
+        lambda: supabase.table(SUPABASE_PAYMENT_METHOD_SALES)
+        .select("location_id,date,payment_method,amount")
+        .in_("location_id", location_ids)
+        .gte("date", start_date)
+        .lte("date", end_date)
+    )
+
+
 @st.cache_data(ttl=600)
 def get_category_mtd_totals(
     location_ids: List[int],
@@ -687,6 +765,39 @@ def get_most_recent_date_with_data(location_ids: List[int]) -> Optional[str]:
         return row["date"] if row else None
 
 
+def get_earliest_date_with_data(location_ids: List[int]) -> Optional[str]:
+    """Get the earliest date that has saved daily_summary data."""
+    import database
+
+    if database.use_supabase():
+        supabase = database.get_supabase_client()
+        result = _execute_with_retry(
+            supabase.table(SUPABASE_DAILY_SUMMARY)
+            .select("date")
+            .in_("location_id", location_ids)
+            .order("date", desc=False)
+            .limit(1)
+        )
+        if not result.data:
+            return None
+        return result.data[0]["date"]
+    else:
+        tbl = _sqlite_daily_table()
+        with database.db_connection() as conn:
+            cursor = conn.cursor()
+            placeholders = ",".join("?" * len(location_ids))
+            cursor.execute(
+                f"""
+                SELECT date FROM {tbl}
+                WHERE location_id IN ({placeholders})
+                ORDER BY date ASC LIMIT 1
+                """,
+                tuple(location_ids),
+            )
+            row = cursor.fetchone()
+        return row["date"] if row else None
+
+
 @st.cache_data(ttl=600)
 def get_recent_summaries(location_id: int, weeks: int = 8) -> List[Dict]:
     """Get summaries for the most recent N weeks."""
@@ -751,6 +862,45 @@ def get_upload_history(location_id: int, limit: int = 50) -> List[Dict]:
                 ORDER BY uploaded_at DESC LIMIT ?
                 """,
                 (location_id, limit),
+            )
+            rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_recent_upload_batches(location_ids: List[int], limit: int = 300) -> List[Dict]:
+    """Get recent upload_history rows across multiple outlets, newest first.
+
+    Returns day-level rows (one per date/outlet/file, per the upload_history
+    schema) — callers that want file-level events should group these with
+    services.upload_service.summarize_upload_history. Unlike get_upload_history
+    this can return more than 1000 rows, so it must page past the PostgREST cap.
+    """
+    import database
+
+    if not location_ids:
+        return []
+
+    if database.use_supabase():
+        supabase = database.get_supabase_client()
+        rows = fetch_all_rows(
+            lambda: supabase.table("upload_history")
+            .select("*")
+            .in_("location_id", location_ids)
+            .order("uploaded_at", desc=True),
+            order_by="id",
+        )
+        return rows[:limit]
+    else:
+        with database.db_connection() as conn:
+            cursor = conn.cursor()
+            placeholders = ",".join("?" * len(location_ids))
+            cursor.execute(
+                f"""
+                SELECT * FROM upload_history
+                WHERE location_id IN ({placeholders})
+                ORDER BY uploaded_at DESC LIMIT ?
+                """,
+                (*location_ids, limit),
             )
             rows = cursor.fetchall()
         return [dict(row) for row in rows]
