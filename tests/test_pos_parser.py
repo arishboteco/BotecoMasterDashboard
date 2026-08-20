@@ -10,6 +10,7 @@ from pos_parser import (
     _normalize_group_category,
     calculate_mtd_metrics,
     calculate_mtd_metrics_multi,
+    validate_growth_day,
 )
 
 
@@ -246,3 +247,99 @@ class TestMtdGrossSales:
 
         assert out["mtd_gross_sales"] == 1000
         assert out["mtd_net_sales"] == 900
+
+
+def _clean_growth_day(**overrides):
+    """A Growth Report day that should produce zero validate_growth_day warnings."""
+    row = {
+        "net_total": 100000.0,
+        "gross_total": 110000.0,
+        "my_amount": 101000.0,
+        "discount": 1000.0,
+        "covers": 40,
+        "order_count": 40,
+        "cash_sales": 55000.0,
+        "card_sales": 55000.0,
+        "gpay_sales": 0.0,
+        "zomato_sales": 0.0,
+        "other_sales": 0.0,
+        "upi_sales": 0.0,
+        "wallet_sales": 0.0,
+        "due_payment_sales": 0.0,
+        "bank_transfer_sales": 0.0,
+        "boh_sales": 0.0,
+    }
+    row.update(overrides)
+    return row
+
+
+class TestValidateGrowthDay:
+    def test_clean_day_has_no_warnings(self):
+        assert validate_growth_day(_clean_growth_day()) == []
+
+    def test_flags_broken_net_identity(self):
+        warnings = validate_growth_day(
+            _clean_growth_day(my_amount=101000.0, discount=1000.0, net_total=90000.0)
+        )
+        assert len(warnings) == 1
+        assert "My Amount" in warnings[0]
+
+    def test_zero_my_amount_skips_identity_check(self):
+        # Legacy-flow rows never populate my_amount — must not false-positive.
+        # net_total still needs to be consistent with the other fields
+        # (within gross_total, payments summing to gross) to isolate this.
+        warnings = validate_growth_day(
+            _clean_growth_day(
+                my_amount=0.0,
+                discount=500.0,
+                net_total=100000.0,
+                cash_sales=55000.0,
+                card_sales=55000.0,
+            )
+        )
+        assert warnings == []
+
+    def test_flags_net_exceeding_gross(self):
+        warnings = validate_growth_day(
+            _clean_growth_day(net_total=120000.0, gross_total=110000.0)
+        )
+        assert any("exceeds gross total" in w for w in warnings)
+
+    def test_flags_negative_payment_field(self):
+        warnings = validate_growth_day(_clean_growth_day(card_sales=-500.0))
+        assert any("card_sales" in w for w in warnings)
+
+    def test_flags_payments_exceeding_gross(self):
+        # Standard payments alone should never exceed gross_total.
+        warnings = validate_growth_day(
+            _clean_growth_day(gross_total=110000.0, cash_sales=90000.0, card_sales=90000.0)
+        )
+        assert any("exceed gross total" in w for w in warnings)
+
+    def test_does_not_flag_undercounted_payments(self):
+        # One-sided: dynamic payment types (UPI aggregators, Zomato, etc.)
+        # live outside these fields, so a shortfall alone is not a warning.
+        warnings = validate_growth_day(
+            _clean_growth_day(gross_total=110000.0, cash_sales=10000.0, card_sales=10000.0)
+        )
+        assert warnings == []
+
+    def test_flags_missing_covers_on_trading_day(self):
+        warnings = validate_growth_day(_clean_growth_day(covers=0, order_count=0))
+        assert any("Covers" in w for w in warnings)
+
+    def test_zero_net_day_skips_covers_check(self):
+        # A genuinely closed day: no sales anywhere, so every field is zero.
+        warnings = validate_growth_day(
+            _clean_growth_day(
+                net_total=0.0,
+                gross_total=0.0,
+                my_amount=0.0,
+                discount=0.0,
+                cash_sales=0.0,
+                card_sales=0.0,
+                covers=0,
+                order_count=0,
+            )
+        )
+        assert warnings == []

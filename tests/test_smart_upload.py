@@ -662,3 +662,166 @@ class TestSaveSmartUploadResults:
             "2026-05-03 20:00:00",
         }
         assert {r["net_amount"] for r in captured_bill_items} == {450.0, 550.0}
+
+
+class TestCheckCompletenessDateCoverage:
+    """_check_completeness must compare date coverage, not just presence.
+
+    Regression: an Item Report spanning more days than its Growth Report
+    (or vice versa) used to pass silently — only whether each report type
+    existed at all was checked. This is the exact shape of a real
+    production incident where months of category data had no matching
+    service split and nothing warned about it.
+    """
+
+    def _meta(self, loc_id, name):
+        return {f"{name}.xlsx": {"detected_location_id": loc_id, "detected_location_name": name}}
+
+    def test_flags_item_report_covering_more_days_than_growth_report(self):
+        daily_by_loc = {2: [{"date": "2026-08-01"}, {"date": "2026-08-19"}]}
+        cat_by_loc = {
+            2: [
+                {"date": "2026-04-16"},
+                {"date": "2026-06-01"},
+                {"date": "2026-08-01"},
+                {"date": "2026-08-19"},
+            ]
+        }
+        notes: list[str] = []
+
+        smart_upload._check_completeness(
+            daily_by_loc, cat_by_loc, notes, self._meta(2, "Boteco - Bagmane")
+        )
+
+        assert len(notes) == 1
+        assert "Boteco - Bagmane" in notes[0]
+        assert "2026-04-16" in notes[0]
+        assert "2 day(s)" in notes[0]
+
+    def test_flags_growth_report_covering_more_days_than_item_report(self):
+        daily_by_loc = {1: [{"date": "2026-02-06"}, {"date": "2026-08-19"}]}
+        cat_by_loc = {1: [{"date": "2026-08-19"}]}
+        notes: list[str] = []
+
+        smart_upload._check_completeness(
+            daily_by_loc, cat_by_loc, notes, self._meta(1, "Boteco - Indiqube")
+        )
+
+        assert len(notes) == 1
+        assert "Boteco - Indiqube" in notes[0]
+        assert "1 day(s)" in notes[0]
+
+    def test_matching_coverage_produces_no_note(self):
+        daily_by_loc = {1: [{"date": "2026-08-01"}, {"date": "2026-08-02"}]}
+        cat_by_loc = {1: [{"date": "2026-08-01"}, {"date": "2026-08-02"}]}
+        notes: list[str] = []
+
+        smart_upload._check_completeness(
+            daily_by_loc, cat_by_loc, notes, self._meta(1, "Boteco - Indiqube")
+        )
+
+        assert notes == []
+
+    def test_missing_item_report_entirely_still_uses_outlet_name(self):
+        daily_by_loc = {2: [{"date": "2026-08-01"}]}
+        cat_by_loc: dict = {}
+        notes: list[str] = []
+
+        smart_upload._check_completeness(
+            daily_by_loc, cat_by_loc, notes, self._meta(2, "Boteco - Bagmane")
+        )
+
+        assert len(notes) == 1
+        assert "Boteco - Bagmane" in notes[0]
+        assert "Outlet 2" not in notes[0]
+
+    def test_falls_back_to_generic_name_when_meta_missing(self):
+        daily_by_loc = {5: [{"date": "2026-08-01"}]}
+        cat_by_loc: dict = {}
+        notes: list[str] = []
+
+        smart_upload._check_completeness(daily_by_loc, cat_by_loc, notes, {})
+
+        assert "Outlet 5" in notes[0]
+
+
+class TestFindSourceFilenameScopedByLocation:
+    """A multi-outlet upload must not attribute one outlet's filename to another's."""
+
+    def _result_with_two_growth_files(self):
+        from uploads.models import FileResult
+
+        return SmartUploadResult(
+            files=[
+                FileResult(
+                    filename="indiqube_growth.xlsx",
+                    kind="growth_report_day_wise",
+                    kind_label="Growth Report Day Wise",
+                    importable=True,
+                ),
+                FileResult(
+                    filename="bagmane_growth.xlsx",
+                    kind="growth_report_day_wise",
+                    kind_label="Growth Report Day Wise",
+                    importable=True,
+                ),
+            ],
+            days=[],
+            location_results={},
+        )
+
+    def test_returns_the_filename_matching_the_requested_outlet(self):
+        result = self._result_with_two_growth_files()
+        new_flow_meta = {
+            "indiqube_growth.xlsx": {"detected_location_id": 1},
+            "bagmane_growth.xlsx": {"detected_location_id": 2},
+        }
+
+        assert (
+            smart_upload._find_source_filename(
+                result, "growth_report_day_wise", new_flow_meta, 1
+            )
+            == "indiqube_growth.xlsx"
+        )
+        assert (
+            smart_upload._find_source_filename(
+                result, "growth_report_day_wise", new_flow_meta, 2
+            )
+            == "bagmane_growth.xlsx"
+        )
+
+    def test_without_loc_filter_returns_first_match(self):
+        # Backward-compatible behavior when loc_id/new_flow_meta are omitted.
+        result = self._result_with_two_growth_files()
+
+        assert (
+            smart_upload._find_source_filename(result, "growth_report_day_wise")
+            == "indiqube_growth.xlsx"
+        )
+
+
+class TestNewFlowMetaFileType:
+    """meta['file_type'] must be set so downstream UI (e.g. the comp-report
+    completeness badge) can key off it — previously no parser ever set it.
+    """
+
+    def test_growth_report_meta_has_file_type(self, monkeypatch):
+        def _fake_parse(content, fname, loc_id):
+            return [{"date": "2026-08-01", "net_total": 100.0}], [], {}
+
+        def _fake_detect(content, fname, fallback):
+            return 1, "Indiqube", "exact"
+
+        monkeypatch.setattr(smart_upload, "parse_growth_report_day_wise", _fake_parse)
+        monkeypatch.setattr(smart_upload, "_detect_location_for_file", _fake_detect)
+
+        daily_by_loc, _cat, meta, _svc, _pay = smart_upload._process_new_flow_files(
+            growth_files=[("growth.xlsx", b"data")],
+            item_files=[],
+            fallback_location_id=1,
+            filename_to_fr={},
+            global_notes=[],
+        )
+
+        assert meta["growth.xlsx"]["file_type"] == "growth_report_day_wise"
+        assert daily_by_loc[1]

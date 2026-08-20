@@ -188,6 +188,7 @@ def _process_new_flow_files(
         meta["detected_location_id"] = loc_id
         meta["detected_location_name"] = loc_name
         meta["match_type"] = match_type
+        meta["file_type"] = "growth_report_day_wise"
         meta["file_hash"] = _file_hash(content)
         file_meta[fname] = meta
 
@@ -200,7 +201,7 @@ def _process_new_flow_files(
 
         daily_by_loc[loc_id].extend(rows)
         if fr:
-            fr.notes.append(f"Parsed {len(rows)} day(s) → {loc_name} (match: {match_type})")
+            fr.notes.append(f"Parsed {len(rows)} day(s) → {loc_name}")
             fallback_pmts = meta.get("fallback_payment_types", [])
             if fallback_pmts:
                 fr.notes.append(
@@ -228,6 +229,7 @@ def _process_new_flow_files(
         meta["detected_location_id"] = loc_id
         meta["detected_location_name"] = loc_name
         meta["match_type"] = match_type
+        meta["file_type"] = "item_order_details"
         meta["file_hash"] = _file_hash(content)
         if fname in file_meta:
             file_meta[fname].update(meta)
@@ -247,9 +249,7 @@ def _process_new_flow_files(
         for date_str, payment_split in (meta.get("payment_split_by_date") or {}).items():
             item_payment_split_by_loc[loc_id][date_str] = payment_split
         if fr:
-            fr.notes.append(
-                f"Parsed {len(rows)} category row(s) → {loc_name} (match: {match_type})"
-            )
+            fr.notes.append(f"Parsed {len(rows)} category row(s) → {loc_name}")
 
     _apply_item_payment_splits_to_daily_rows(daily_by_loc, item_payment_split_by_loc)
 
@@ -273,6 +273,7 @@ def _process_new_flow_files(
         meta["detected_location_id"] = loc_id
         meta["detected_location_name"] = loc_name
         meta["match_type"] = match_type
+        meta["file_type"] = "order_comp_summary"
         meta["file_hash"] = _file_hash(content)
         if fname in file_meta:
             file_meta[fname].update(meta)
@@ -319,8 +320,7 @@ def _process_new_flow_files(
         if fr:
             total_comp = round(sum(float(r.get("complementary_amount", 0) or 0) for r in rows), 2)
             fr.notes.append(
-                f"Parsed {len(rows)} comp day(s) totalling ₹{total_comp:,.2f} → "
-                f"{loc_name} (match: {match_type})"
+                f"Parsed {len(rows)} comp day(s) totalling ₹{total_comp:,.2f} → {loc_name}"
             )
 
     return (
@@ -354,6 +354,7 @@ def _build_location_results_from_daily(
                     date=date_str,
                     merged=merged,
                     source_kinds=["growth_report_day_wise"],
+                    warnings=pos_parser.validate_growth_day(merged),
                 )
             )
         location_results[loc_id] = day_results
@@ -364,21 +365,70 @@ def _check_completeness(
     daily_by_loc: Dict[int, List[Dict[str, Any]]],
     cat_by_loc: Dict[int, List[Dict[str, Any]]],
     global_notes: List[str],
+    new_flow_meta: Dict[str, Dict[str, Any]],
 ) -> None:
-    """Warn (not block) when one report type is missing for an outlet."""
+    """Warn (not block) when one report type is missing, or covers fewer
+    dates than the other, for an outlet.
+
+    Comparing date coverage (not just presence) is what catches an Item
+    Report spanning more days than its Growth Report — the exact shape of a
+    real production incident where dozens of days got category data with no
+    matching financial summary or Lunch/Dinner service split, and nothing
+    warned about it until a manual audit weeks later.
+    """
+    loc_names: Dict[int, str] = {}
+    for meta in new_flow_meta.values():
+        loc_id = meta.get("detected_location_id")
+        name = meta.get("detected_location_name")
+        if loc_id is not None and name:
+            loc_names[loc_id] = name
+
+    def _name(loc_id: int) -> str:
+        return loc_names.get(loc_id, f"Outlet {loc_id}")
+
     all_locs = set(daily_by_loc.keys()) | set(cat_by_loc.keys())
     for loc_id in all_locs:
-        has_daily = bool(daily_by_loc.get(loc_id))
-        has_cat = bool(cat_by_loc.get(loc_id))
+        daily_rows = daily_by_loc.get(loc_id) or []
+        cat_rows = cat_by_loc.get(loc_id) or []
+        has_daily = bool(daily_rows)
+        has_cat = bool(cat_rows)
+
         if has_daily and not has_cat:
             global_notes.append(
-                f"⚠️ Outlet {loc_id}: Growth Report uploaded but Item Report missing. "
+                f"⚠️ {_name(loc_id)}: Growth Report uploaded but Item Report missing. "
                 "Category summary will not be saved for these dates."
             )
-        elif has_cat and not has_daily:
+            continue
+        if has_cat and not has_daily:
             global_notes.append(
-                f"ℹ️ Outlet {loc_id}: Item Report uploaded without Growth Report. "
+                f"ℹ️ {_name(loc_id)}: Item Report uploaded without Growth Report. "
                 "Category summary will be saved; daily financial summary skipped."
+            )
+            continue
+
+        daily_dates = {str(r.get("date")) for r in daily_rows if r.get("date")}
+        cat_dates = {str(r.get("date")) for r in cat_rows if r.get("date")}
+        if not daily_dates or not cat_dates:
+            continue
+
+        extra_in_cat = cat_dates - daily_dates
+        extra_in_daily = daily_dates - cat_dates
+        growth_start, growth_end = min(daily_dates), max(daily_dates)
+        item_start, item_end = min(cat_dates), max(cat_dates)
+
+        if extra_in_cat:
+            global_notes.append(
+                f"⚠️ {_name(loc_id)}: Item Report covers {item_start} → {item_end} "
+                f"but the Growth Report only covers {growth_start} → {growth_end}. "
+                f"{len(extra_in_cat)} day(s) will get category data with no financial "
+                "summary or service split."
+            )
+        if extra_in_daily:
+            global_notes.append(
+                f"⚠️ {_name(loc_id)}: Growth Report covers {growth_start} → {growth_end} "
+                f"but the Item Report only covers {item_start} → {item_end}. "
+                f"{len(extra_in_daily)} day(s) will get financial data with no category "
+                "breakdown."
             )
 
 
@@ -448,7 +498,7 @@ def process_smart_upload(
         comp_files=comp_files,
     )
 
-    _check_completeness(daily_by_loc, cat_by_loc, global_notes)
+    _check_completeness(daily_by_loc, cat_by_loc, global_notes, new_flow_meta)
 
     # Build location_results from growth report daily rows
     location_results = _build_location_results_from_daily(daily_by_loc)
@@ -720,7 +770,9 @@ def save_smart_upload_results(
                     saved += 1
 
                     # Build upload history row for this day
-                    source_fn = _find_source_filename(result, "growth_report_day_wise")
+                    source_fn = _find_source_filename(
+                        result, "growth_report_day_wise", new_flow_meta, loc_id
+                    )
                     fmeta = _find_file_meta(new_flow_meta, loc_id)
                     upload_batch.append(
                         _build_upload_history_row(
@@ -971,10 +1023,28 @@ def save_smart_upload_results(
 # ---------------------------------------------------------------------------
 
 
-def _find_source_filename(result: SmartUploadResult, kind: str) -> Optional[str]:
+def _find_source_filename(
+    result: SmartUploadResult,
+    kind: str,
+    new_flow_meta: Optional[Dict[str, Any]] = None,
+    loc_id: Optional[int] = None,
+) -> Optional[str]:
+    """Find the filename of an uploaded file of a given kind.
+
+    When ``new_flow_meta`` and ``loc_id`` are both supplied, only a file
+    whose detected outlet matches ``loc_id`` is returned. Without that
+    filter, a multi-outlet upload with two files of the same kind (e.g. two
+    Growth Reports) would attribute the first one's filename to every
+    outlet's upload_history rows.
+    """
     for fr in result.files:
-        if fr.kind == kind and fr.importable and not fr.error:
-            return fr.filename
+        if fr.kind != kind or not fr.importable or fr.error:
+            continue
+        if new_flow_meta is not None and loc_id is not None:
+            meta = new_flow_meta.get(fr.filename, {})
+            if meta.get("detected_location_id") != loc_id:
+                continue
+        return fr.filename
     return None
 
 
