@@ -924,8 +924,14 @@ def save_smart_upload_results(
                 messages.append(f"⚠️ Error saving bill items from {fr.filename}: {ex}")
 
         if synthetic_bill_items:
+            # Clear only the (date, outlet) pairs we are about to rewrite.
+            # Using every Growth Report date here would wipe the service split
+            # for days the Item Report does not cover — e.g. a Growth Report
+            # spanning a full month uploaded alongside an Item Report covering
+            # only part of it — leaving those days with no Lunch/Dinner data.
+            synthetic_dates_locs = _dates_locs_for_bill_items(synthetic_bill_items)
             try:
-                db_writes.delete_bill_items_by_dates_locs(client, dates_locs)
+                db_writes.delete_bill_items_by_dates_locs(client, synthetic_dates_locs)
             except (ValueError, TypeError, KeyError, RuntimeError):
                 messages.append(
                     "⚠️ Could not clear old bill items before saving Item Report service data."
@@ -995,6 +1001,26 @@ def _build_upload_history_row(
         "status": "imported",
         "file_hash": fmeta.get("file_hash"),
     }
+
+
+def _dates_locs_for_bill_items(records: List[Dict[str, Any]]) -> set:
+    """Return the {(bill_date, location_id)} pairs covered by bill_items records.
+
+    Used to scope deletes to exactly the days being rewritten, so untouched
+    days keep the service data they already have.
+    """
+    from database_writes import LOCATION_ID_TO_RESTAURANT
+
+    restaurant_to_loc = {
+        restaurant: loc_id for loc_id, restaurant in LOCATION_ID_TO_RESTAURANT.items()
+    }
+    pairs = set()
+    for record in records:
+        bill_date = str(record.get("bill_date") or "")
+        loc_id = restaurant_to_loc.get(str(record.get("restaurant") or ""))
+        if bill_date and loc_id is not None:
+            pairs.add((bill_date, loc_id))
+    return pairs
 
 
 def _build_item_report_bill_items_from_services(

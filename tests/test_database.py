@@ -13,6 +13,8 @@ import database_analytics
 class _BillItemsQuery:
     def __init__(self, rows):
         self.rows = rows
+        self._start = 0
+        self._end = None
 
     def select(self, _columns):
         return self
@@ -26,8 +28,17 @@ class _BillItemsQuery:
     def lte(self, _column, _value):
         return self
 
+    def order(self, _column, desc=False):
+        return self
+
+    def range(self, start, end):
+        self._start, self._end = start, end
+        return self
+
     def execute(self):
-        return SimpleNamespace(data=self.rows)
+        if self._end is None:
+            return SimpleNamespace(data=self.rows)
+        return SimpleNamespace(data=self.rows[self._start : self._end + 1])
 
 
 class _BillItemsClient:
@@ -42,6 +53,8 @@ class _BillItemsClient:
 class _TableQuery:
     def __init__(self, rows):
         self.rows = rows
+        self._start = 0
+        self._end = None
 
     def select(self, _columns):
         return self
@@ -61,8 +74,14 @@ class _TableQuery:
     def order(self, _column, desc=False):
         return self
 
+    def range(self, start, end):
+        self._start, self._end = start, end
+        return self
+
     def execute(self):
-        return SimpleNamespace(data=self.rows)
+        if self._end is None:
+            return SimpleNamespace(data=self.rows)
+        return SimpleNamespace(data=self.rows[self._start : self._end + 1])
 
 
 class _TablesClient:

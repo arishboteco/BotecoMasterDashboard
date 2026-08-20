@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -11,6 +10,8 @@ import streamlit as st
 import boteco_logger
 from core.dates import month_bounds
 from db.category_rows import CATEGORY_ROW_PREFIX
+from db.supabase_paging import execute_with_retry as _execute_with_retry
+from db.supabase_paging import fetch_all_rows
 from db.table_names import (
     SQLITE_DAILY_SUMMARIES,
     SQLITE_ITEM_SALES,
@@ -22,27 +23,6 @@ from db.table_names import (
 )
 
 logger = boteco_logger.get_logger(__name__)
-
-
-def _execute_with_retry(query_builder, *, max_attempts: int = 3):
-    """Execute a Supabase query, retrying on transient socket errors (EAGAIN / ReadError)."""
-    import httpx
-
-    delay = 0.5
-    for attempt in range(max_attempts):
-        try:
-            return query_builder.execute()
-        except httpx.ReadError:
-            if attempt == max_attempts - 1:
-                raise
-            logger.warning(
-                "Transient Supabase ReadError (attempt %d/%d), retrying in %.1fs",
-                attempt + 1,
-                max_attempts,
-                delay,
-            )
-            time.sleep(delay)
-            delay *= 2
 
 
 _SUPABASE_COLUMN_RENAMES = {
@@ -122,8 +102,8 @@ def _hydrate_supabase_footfall_splits(
         return summaries
 
     supabase = database.get_supabase_client()
-    result = _execute_with_retry(
-        supabase.table("bill_items")
+    bill_rows = fetch_all_rows(
+        lambda: supabase.table("bill_items")
         .select("restaurant,bill_date,bill_no,created_date_time,pax,net_amount,bill_status")
         .in_("restaurant", list(restaurant_to_location.keys()))
         .gte("bill_date", start_date)
@@ -131,7 +111,7 @@ def _hydrate_supabase_footfall_splits(
     )
 
     bills: Dict[tuple[int, str, str], Dict[str, Any]] = {}
-    for row in result.data or []:
+    for row in bill_rows:
         if not _bill_items_success(row.get("bill_status")):
             continue
         location_id = restaurant_to_location.get(str(row.get("restaurant") or ""))
@@ -326,13 +306,13 @@ def peek_existing_net_sales_batch(location_id: int, dates: List[str]) -> Dict[st
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = _execute_with_retry(
-            supabase.table(SUPABASE_DAILY_SUMMARY)
+        rows = fetch_all_rows(
+            lambda: supabase.table(SUPABASE_DAILY_SUMMARY)
             .select("date,net_total")
             .eq("location_id", location_id)
             .in_("date", dates)
         )
-        return {row["date"]: float(row["net_total"] or 0) for row in result.data}
+        return {row["date"]: float(row["net_total"] or 0) for row in rows}
     else:
         tbl = _sqlite_daily_table()
         placeholders = ",".join("?" for _ in dates)
@@ -508,15 +488,16 @@ def get_summaries_for_date_range(
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = _execute_with_retry(
-            supabase.table(SUPABASE_DAILY_SUMMARY)
-            .select("*")
-            .eq("location_id", location_id)
-            .gte("date", start_date)
-            .lte("date", end_date)
-            .order("date")
+        rows = _normalize_rows(
+            fetch_all_rows(
+                lambda: supabase.table(SUPABASE_DAILY_SUMMARY)
+                .select("*")
+                .eq("location_id", location_id)
+                .gte("date", start_date)
+                .lte("date", end_date)
+                .order("date")
+            )
         )
-        rows = _normalize_rows(list(result.data or []))
         rows = _hydrate_supabase_footfall_splits(rows, [location_id], start_date, end_date)
     else:
         tbl = _sqlite_daily_table()
@@ -553,15 +534,16 @@ def get_summaries_for_date_range_multi(
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = _execute_with_retry(
-            supabase.table(SUPABASE_DAILY_SUMMARY)
-            .select("*")
-            .in_("location_id", location_ids)
-            .gte("date", start_date)
-            .lte("date", end_date)
-            .order("date")
+        rows = _normalize_rows(
+            fetch_all_rows(
+                lambda: supabase.table(SUPABASE_DAILY_SUMMARY)
+                .select("*")
+                .in_("location_id", location_ids)
+                .gte("date", start_date)
+                .lte("date", end_date)
+                .order("date")
+            )
         )
-        rows = _normalize_rows(list(result.data or []))
         rows = _hydrate_supabase_footfall_splits(rows, list(location_ids), start_date, end_date)
     else:
         tbl = _sqlite_daily_table()
@@ -590,14 +572,13 @@ def get_category_totals_for_date_range(
 
     if database.use_supabase():
         supabase = database.get_supabase_client()
-        result = _execute_with_retry(
-            supabase.table(SUPABASE_CATEGORY_SUMMARY)
+        return fetch_all_rows(
+            lambda: supabase.table(SUPABASE_CATEGORY_SUMMARY)
             .select("*")
             .in_("location_id", location_ids)
             .gte("date", start_date)
             .lte("date", end_date)
         )
-        return result.data
     else:
         tbl = _sqlite_daily_table()
         with database.db_connection() as conn:
@@ -791,17 +772,17 @@ def get_all_summaries_for_export(
             for loc in _execute_with_retry(supabase.table("locations").select("id,name")).data
         }
 
-        query = supabase.table(SUPABASE_DAILY_SUMMARY).select("*")
+        def _build_export_query():
+            query = supabase.table(SUPABASE_DAILY_SUMMARY).select("*")
+            if location_ids:
+                query = query.in_("location_id", location_ids)
+            if start_date:
+                query = query.gte("date", start_date)
+            if end_date:
+                query = query.lte("date", end_date)
+            return query.order("date")
 
-        if location_ids:
-            query = query.in_("location_id", location_ids)
-        if start_date:
-            query = query.gte("date", start_date)
-        if end_date:
-            query = query.lte("date", end_date)
-
-        result = _execute_with_retry(query.order("date"))
-        rows = list(result.data or [])
+        rows = fetch_all_rows(_build_export_query)
     else:
         tbl = _sqlite_daily_table()
         with database.db_connection() as conn:
