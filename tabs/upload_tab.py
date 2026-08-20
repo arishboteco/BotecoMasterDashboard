@@ -18,6 +18,7 @@ from components import (
     data_table,
     divider,
     empty_state,
+    info_banner,
     kpi_row,
     page_shell,
     primary_action_bar,
@@ -166,16 +167,61 @@ def _render_file_details(upload_result) -> None:
             st.dataframe(_pd.DataFrame(rows), hide_index=True)
 
 
-def _render_import_history(ctx: TabContext) -> None:
-    """Render the recent import history footer section."""
-    section_title(
-        "Recent import activity",
-        "Last 10 saved files for this outlet scope.",
-        icon="history",
-    )
-    history = database.get_upload_history(ctx.location_id, 10)
-    if history:
-        hdf = pd.DataFrame(history)
+def _fmt_relative(uploaded_at: str) -> str:
+    """Human-relative time for an ISO-ish timestamp, falling back to a date."""
+    if not uploaded_at:
+        return "—"
+    ts = None
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+        try:
+            ts = datetime.strptime(str(uploaded_at)[:19], fmt)
+            break
+        except ValueError:
+            continue
+    if ts is None:
+        return str(uploaded_at)[:16]
+
+    seconds = max((datetime.now() - ts).total_seconds(), 0)
+    if seconds < 60:
+        return "Just now"
+    minutes = int(seconds // 60)
+    if minutes < 60:
+        return f"{minutes} min ago"
+    hours = int(minutes // 60)
+    if hours < 24:
+        return f"{hours} hr ago"
+    days = int(hours // 24)
+    if days < 14:
+        return f"{days} day{'s' if days != 1 else ''} ago"
+    return ts.strftime("%d %b %Y")
+
+
+def _import_batches_dataframe(batches: list) -> pd.DataFrame:
+    rows = []
+    for b in batches:
+        status = b.status
+        if b.validation_errors:
+            status = f"{status} — {b.validation_errors}"
+        rows.append(
+            {
+                "When": _fmt_relative(b.uploaded_at),
+                "Outlet": b.location_name,
+                "Report": b.report_label,
+                "File": b.filename,
+                "Covers": b.covers_label,
+                "Days saved": b.days_saved,
+                "Rows": b.row_count if b.row_count is not None else "—",
+                "By": b.uploaded_by or "—",
+                "Status": status,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _render_saved_days_detail(history_rows: list[dict]) -> None:
+    """Old day-level detail, preserved behind an expander for audit."""
+    with st.expander("Show every saved day", expanded=False):
+        hdf = pd.DataFrame(history_rows)
         drop_cols = [c for c in ("id", "location_id") if c in hdf.columns]
         if drop_cols:
             hdf = hdf.drop(columns=drop_cols)
@@ -196,8 +242,29 @@ def _render_import_history(ctx: TabContext) -> None:
                 )
             )
         st.dataframe(hdf, width="stretch", hide_index=True)
-    else:
-        st.caption("No imports yet for this outlet.")
+
+
+def _render_import_history(ctx: TabContext) -> None:
+    """Render the recent import activity footer section — one row per file."""
+    section_title(
+        "Recent import activity",
+        "Last 8 uploaded files across this outlet scope.",
+        icon="history",
+    )
+    loc_name_map = {loc["id"]: loc["name"] for loc in ctx.all_locs}
+    history_rows = database.get_recent_upload_batches(ctx.report_loc_ids, 300)
+    batches = upload_service.summarize_upload_history(history_rows, loc_name_map, limit=8)
+
+    if not batches:
+        empty_state(
+            "No imports yet",
+            hint="Files you import will show up here, one row per file.",
+            icon="history",
+        )
+        return
+
+    data_table(_import_batches_dataframe(batches))
+    _render_saved_days_detail(history_rows)
 
 
 def _fmt_short_day(iso_date: str) -> str:
@@ -586,6 +653,17 @@ def render(ctx: TabContext) -> None:
 
                 _render_import_plan(plan)
                 _render_file_details(upload_result)
+
+                new_flow_meta = getattr(upload_result, "new_flow_meta", {})
+                if new_flow_meta:
+                    dupe_history = database.get_recent_upload_batches(ctx.report_loc_ids, 300)
+                    duplicates = upload_service.find_duplicate_uploads(new_flow_meta, dupe_history)
+                    for filename, prev_at, prev_by in duplicates:
+                        info_banner(
+                            f"{filename} was already imported "
+                            f"{_fmt_relative(prev_at)} by {prev_by or 'someone'}.",
+                            tone="warning",
+                        )
 
                 must_confirm_replace = plan.has_replacements
                 if must_confirm_replace:

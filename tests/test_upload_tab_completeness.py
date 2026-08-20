@@ -213,3 +213,66 @@ class TestRenderDataQuality:
         )
 
         upload_tab._render_data_quality(ctx)
+
+
+class TestRenderImportHistory:
+    def test_renders_one_row_per_file(self, monkeypatch):
+        history_rows = [
+            {
+                "date": "2026-08-01",
+                "location_id": 1,
+                "filename": "growth.xlsx",
+                "file_hash": "abc123",
+                "uploaded_by": "asha",
+                "uploaded_at": "2026-08-19T10:00:00",
+                "file_type": "growth_report_day_wise",
+                "row_count": 19,
+            },
+            {
+                "date": "2026-08-02",
+                "location_id": 1,
+                "filename": "growth.xlsx",
+                "file_hash": "abc123",
+                "uploaded_by": "asha",
+                "uploaded_at": "2026-08-19T10:00:05",
+                "file_type": "growth_report_day_wise",
+                "row_count": 19,
+            },
+        ]
+        monkeypatch.setattr(
+            upload_tab.database, "get_recent_upload_batches", lambda *_a, **_k: history_rows
+        )
+        captured: list[pd.DataFrame] = []
+        monkeypatch.setattr(upload_tab.st, "expander", lambda *_a, **_k: _NoopContext())
+        monkeypatch.setattr(
+            upload_tab.st, "dataframe", lambda df, **_k: captured.append(df.copy())
+        )
+
+        ctx = SimpleNamespace(
+            report_loc_ids=[1],
+            all_locs=[{"id": 1, "name": "Boteco - Indiqube"}],
+        )
+
+        upload_tab._render_import_history(ctx)
+
+        assert captured
+        table = captured[0]
+        assert list(table["File"]) == ["growth.xlsx"]
+        assert table["Days saved"].iloc[0] == 2
+        assert table["Outlet"].iloc[0] == "Boteco - Indiqube"
+        assert table["Report"].iloc[0] == "Growth Report"
+
+    def test_empty_history_shows_empty_state(self, monkeypatch):
+        monkeypatch.setattr(
+            upload_tab.database, "get_recent_upload_batches", lambda *_a, **_k: []
+        )
+        markdowns: list[str] = []
+        monkeypatch.setattr(upload_tab.st, "markdown", lambda text, **_k: markdowns.append(text))
+
+        ctx = SimpleNamespace(
+            report_loc_ids=[1], all_locs=[{"id": 1, "name": "Boteco - Indiqube"}]
+        )
+
+        upload_tab._render_import_history(ctx)
+
+        assert any("No imports yet" in m for m in markdowns)
