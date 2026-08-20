@@ -316,6 +316,11 @@ class AuditReport:
     months: List[MonthHealth] = field(default_factory=list)
     days_audited: int = 0
     days_clean: int = 0
+    # (location_id, date) -> "complete" | "partial" (sales, no category) | "missing".
+    # Only covers days from each location's own first saved date onward — the
+    # coverage grid's per-day drill-down, computed once here since the checks
+    # above already load every row it needs.
+    day_status: Dict[Tuple[int, str], str] = field(default_factory=dict)
 
     @property
     def outlet_count(self) -> int:
@@ -953,6 +958,24 @@ def audit_full_history_report(
     days_clean = sum(1 for key in rows_by_loc_date if issues_by_loc_date.get(key, 0) == 0)
     months = _build_month_rollup(data, issues_by_loc_date)
 
+    day_status: Dict[Tuple[int, str], str] = {}
+    for loc_id in location_ids:
+        earliest = data.earliest_day(loc_id)
+        if earliest is None:
+            continue
+        for d in all_days:
+            if d < earliest:
+                continue
+            row = rows_by_loc_date.get((loc_id, d))
+            if row is None:
+                day_status[(loc_id, d)] = "missing"
+                continue
+            net_total = float(row.get("net_total") or 0)
+            if net_total <= 0 or (loc_id, d) in cat_total_by_loc_date:
+                day_status[(loc_id, d)] = "complete"
+            else:
+                day_status[(loc_id, d)] = "partial"
+
     locations: List[LocationDataQuality] = []
     for loc_id in location_ids:
         missing_days, category_missing_days, category_mismatches = _location_legacy_fields(
@@ -978,4 +1001,5 @@ def audit_full_history_report(
         months=months,
         days_audited=days_audited,
         days_clean=days_clean,
+        day_status=day_status,
     )
