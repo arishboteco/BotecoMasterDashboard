@@ -15,11 +15,10 @@ import utils
 from components import (
     classed_container,
     divider,
-    info_banner,
+    empty_state,
     page_shell,
     primary_action_bar,
     section_title,
-    workflow_progress,
 )
 from components.footfall_editor import render_footfall_editor
 from services import cache_invalidation, upload_service
@@ -251,7 +250,7 @@ def _render_post_import_footfall(shell, ctx: TabContext) -> None:
         )
 
         divider()
-        section_title("Step 2: Footfall covers (optional)", icon="people")
+        section_title("Step 2 of 2 — Footfall covers (optional)", icon="people")
         st.caption(
             "Enter Lunch and Dinner cover counts for the dates you just imported. "
             "Rows marked **✓ Set** already have overrides saved. "
@@ -295,12 +294,6 @@ def render(ctx: TabContext) -> None:
 
     # If we're in the post-import footfall step, render that and stop.
     if st.session_state.get("_post_import_state"):
-        with shell.filters:
-            workflow_progress(
-                total_steps=3,
-                current_step=3,
-                stage_label="Upload progress",
-            )
         _render_post_import_footfall(shell, ctx)
         with shell.footer_actions:
             _render_data_quality(ctx)
@@ -339,22 +332,16 @@ def render(ctx: TabContext) -> None:
                 label_visibility="collapsed",
             )
 
-            workflow_progress(
-                total_steps=3,
-                current_step=1 if not uploaded_files else 2,
-                stage_label="Upload progress",
-            )
-
     with shell.content:
         if not uploaded_files:
             # Clear cached result when files are removed
             st.session_state.pop("_upload_result", None)
             st.session_state.pop("_upload_fingerprint", None)
-            info_banner(
-                "No files selected yet. Download reports from Petpooja "
-                "and drop any combination here.",
-                tone="neutral",
-                icon="upload",
+            empty_state(
+                "Drop your Petpooja exports above",
+                hint="Growth Report Day Wise, Item Report With Customer/Order "
+                "Details, Complimentary Orders Summary — any combination works.",
+                icon="upload_file",
             )
 
         if uploaded_files:

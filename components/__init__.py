@@ -22,7 +22,6 @@ from components.layout import (
     section,
     section_block,
     section_title,
-    workflow_progress,
     workflow_steps,
 )
 from components.navigation import date_nav, date_range_nav, sidebar_app_nav
@@ -46,7 +45,6 @@ __all__ = [
     "page_header",
     "page_shell",
     "workflow_steps",
-    "workflow_progress",
     "section_title",
     "section_block",
     "info_banner",

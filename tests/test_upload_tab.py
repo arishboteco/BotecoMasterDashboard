@@ -16,3 +16,7 @@ class TestUploadTabSource:
     def test_does_not_reference_customer_report_parser(self):
         src = Path("tabs/upload_tab.py").read_text(encoding="utf-8")
         assert "customer_report_parser" not in src
+
+    def test_no_fake_progress_bar(self):
+        src = Path("tabs/upload_tab.py").read_text(encoding="utf-8")
+        assert "workflow_progress" not in src
