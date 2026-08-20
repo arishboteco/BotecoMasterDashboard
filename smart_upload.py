@@ -714,13 +714,9 @@ def save_smart_upload_results(
                     if merged.get("payment_methods"):
                         payment_method_dates_locs.add((date_str, loc_id))
                     dates_locs.add((date_str, loc_id))
-                    item_services = item_service_by_loc.get(loc_id, {}).get(date_str, [])
-                    if item_services:
-                        synthetic_bill_items.extend(
-                            _build_item_report_bill_items_from_services(
-                                loc_id, date_str, {"services": item_services}
-                            )
-                        )
+                    # Service splits are emitted in Step 2 from the Item Report's
+                    # own dates, so days this Growth Report does not cover still
+                    # get their Lunch/Dinner split.
                     saved += 1
 
                     # Build upload history row for this day
@@ -793,13 +789,8 @@ def save_smart_upload_results(
                             f"outlet {loc_id}: matching Growth daily summary not found."
                         )
 
-                    item_services = item_service_by_loc.get(loc_id, {}).get(date_str, [])
-                    if item_services:
-                        synthetic_bill_items.extend(
-                            _build_item_report_bill_items_from_services(
-                                loc_id, date_str, {"services": item_services}
-                            )
-                        )
+                    # Service splits are emitted in Step 2, keyed by the Item
+                    # Report's own dates rather than this day loop.
                     saved += 1
                     continue
 
@@ -854,6 +845,22 @@ def save_smart_upload_results(
         for c in c_rows:
             cat_records.append(c)
             dates_locs.add((c["date"], loc_id_key))
+
+    # Service (Lunch/Dinner) splits from the Item Report, keyed by the dates the
+    # Item Report itself covers. Driving this from the per-day loop above instead
+    # would silently drop every Item Report day the Growth Report does not also
+    # cover — e.g. an Item Report spanning three months uploaded with a Growth
+    # Report covering only the latest one, which leaves the earlier months with
+    # categories but no service split at all.
+    for loc_id_key, services_by_date in (item_service_by_loc or {}).items():
+        for service_date, services in services_by_date.items():
+            if services:
+                synthetic_bill_items.extend(
+                    _build_item_report_bill_items_from_services(
+                        loc_id_key, service_date, {"services": services}
+                    )
+                )
+    synthetic_bill_items = _dedupe_bill_items(synthetic_bill_items)
 
     # ── Step 3: Supabase batch upserts ──
     if is_supabase and client:
@@ -1001,6 +1008,28 @@ def _build_upload_history_row(
         "status": "imported",
         "file_hash": fmeta.get("file_hash"),
     }
+
+
+def _dedupe_bill_items(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Drop duplicate synthetic bill_items, keeping the first of each.
+
+    The legacy Dynamic Report path can emit a service bucket for a day the
+    Item Report also covers; both use the same deterministic bill_no, so
+    identity is (restaurant, bill_date, bill_no).
+    """
+    seen: set = set()
+    out: List[Dict[str, Any]] = []
+    for record in records:
+        key = (
+            str(record.get("restaurant") or ""),
+            str(record.get("bill_date") or ""),
+            str(record.get("bill_no") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(record)
+    return out
 
 
 def _dates_locs_for_bill_items(records: List[Dict[str, Any]]) -> set:
