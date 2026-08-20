@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
+from services import upload_service
 from services.data_quality import CategoryMismatch, LocationDataQuality
 from tabs import upload_tab
 from uploads.models import FileResult
@@ -19,10 +20,12 @@ class _NoopContext:
         return False
 
 
-def test_outlet_completeness_includes_comp_report(monkeypatch):
-    lines: list[str] = []
+def test_import_plan_table_includes_comp_report(monkeypatch):
+    captured: list[pd.DataFrame] = []
     monkeypatch.setattr(upload_tab.st, "expander", lambda *_a, **_k: _NoopContext())
-    monkeypatch.setattr(upload_tab.st, "markdown", lambda text, **_k: lines.append(str(text)))
+    monkeypatch.setattr(upload_tab.st, "dataframe", lambda df, **_k: captured.append(df.copy()))
+    monkeypatch.setattr(upload_tab.st, "success", lambda *_a, **_k: None)
+    monkeypatch.setattr(upload_tab.st, "warning", lambda *_a, **_k: None)
 
     result = SimpleNamespace(
         files=[
@@ -38,13 +41,17 @@ def test_outlet_completeness_includes_comp_report(monkeypatch):
         new_flow_meta={
             "comp.xlsx": {
                 "detected_location_id": 1,
+                "file_type": "order_comp_summary",
             }
         },
     )
 
-    upload_tab._render_outlet_completeness(result, {1: "Boteco - Indiqube"})
+    plan = upload_service.build_import_plan(result, [], {1: "Boteco - Indiqube"})
+    upload_tab._render_import_plan(plan)
 
-    assert any("Comp Report" in line for line in lines)
+    assert captured
+    reports = captured[0]["Reports"].tolist()
+    assert any("✅ Comp" in r for r in reports)
 
 
 def test_file_details_includes_comp_rows(monkeypatch):

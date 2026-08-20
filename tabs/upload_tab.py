@@ -13,16 +13,19 @@ import database
 import file_detector
 import utils
 from components import (
+    KpiMetric,
     classed_container,
+    data_table,
     divider,
     empty_state,
+    kpi_row,
     page_shell,
     primary_action_bar,
     section_title,
 )
 from components.footfall_editor import render_footfall_editor
 from services import cache_invalidation, upload_service
-from services.upload_service import ImportOptions
+from services.upload_service import ImportOptions, ImportPlan
 from tabs import TabContext
 
 logger = logging.getLogger("boteco")
@@ -37,67 +40,93 @@ def _files_fingerprint(uploaded_files) -> str:
     return h.hexdigest()
 
 
-def _render_outlet_completeness(upload_result, loc_name_map: dict) -> None:
-    """Show a per-outlet table summarising which report types were detected."""
+def _render_import_kpis(plan: ImportPlan, ready_files: int, total_files: int) -> None:
+    """KPI strip giving an at-a-glance read of what a staged import will do."""
+    with classed_container("tab-upload-mobile-kpis", "mobile-layout-stack"):
+        kpi_row(
+            [
+                KpiMetric("Files ready", f"{ready_files} of {total_files}"),
+                KpiMetric(
+                    "Days to import",
+                    str(plan.total_days),
+                    delta=f"{plan.new_days} new" if plan.new_days else None,
+                ),
+                KpiMetric("Outlets", str(plan.outlet_count)),
+                KpiMetric("Days replaced", str(plan.replace_days)),
+            ]
+        )
 
-    all_loc_ids = set(upload_result.location_results.keys())
-    cat_loc_ids: set = set()
-    cat_by_loc = getattr(upload_result, "category_by_loc", {})
-    new_flow_meta = getattr(upload_result, "new_flow_meta", {})
-    if cat_by_loc:
-        cat_loc_ids = set(cat_by_loc.keys())
-    all_loc_ids |= cat_loc_ids
 
-    growth_locs_from_meta: set = set()
-    item_locs_from_meta: set = set()
-    comp_locs: set = set()
-    files_by_name = {
-        getattr(fr, "filename", ""): fr for fr in getattr(upload_result, "files", [])
-    }
+def _outlet_plan_dataframe(plan: ImportPlan) -> pd.DataFrame:
+    rows = []
+    for o in plan.outlets:
+        reports = " · ".join(
+            [
+                "✅ Growth" if o.has_growth else "➖ Growth",
+                "✅ Item" if o.has_item else "➖ Item",
+                "✅ Comp" if o.has_comp else "➖ Comp",
+            ]
+        )
+        period = f"{o.date_min} → {o.date_max}" if o.date_min else "—"
+        rows.append(
+            {
+                "Outlet": o.location_name,
+                "Reports": reports,
+                "Period": period,
+                "Days": o.total_days,
+                "New": o.new_days,
+                "Replacing": o.replace_days,
+                "Net in file": utils.format_currency(o.incoming_net),
+            }
+        )
+    return pd.DataFrame(rows)
 
-    for filename, meta in new_flow_meta.items():
-        loc_id = meta.get("detected_location_id")
-        if not loc_id:
-            continue
-        file_type = str(meta.get("file_type", ""))
-        if not file_type:
-            file_type = str(getattr(files_by_name.get(filename), "kind", ""))
-        source_report = str(meta.get("source_report", ""))
-        if file_type == "growth_report_day_wise":
-            growth_locs_from_meta.add(loc_id)
-        elif file_type == "item_order_details":
-            item_locs_from_meta.add(loc_id)
-        if file_type == "order_comp_summary" or source_report == "order_comp_summary":
-            comp_locs.add(loc_id)
 
-    all_loc_ids |= growth_locs_from_meta | item_locs_from_meta | comp_locs
+def _render_replaced_dates(plan: ImportPlan) -> None:
+    """Collapsed detail behind the headline replace-count — sorted by size of change."""
+    if not plan.replaced:
+        return
+    with st.expander(f"Replaced dates ({len(plan.replaced)})", expanded=False):
+        rdf = pd.DataFrame(
+            [
+                {
+                    "Outlet": r.location_name,
+                    "Date": r.date,
+                    "Saved net": utils.format_currency(r.existing_net),
+                    "Incoming net": utils.format_currency(r.incoming_net),
+                    "Change": utils.format_currency(r.delta),
+                }
+                for r in plan.replaced
+            ]
+        )
+        st.dataframe(rdf, hide_index=True, width="stretch")
 
-    if not all_loc_ids:
+
+def _render_import_plan(plan: ImportPlan) -> None:
+    """Show what a staged import will do: headline, per-outlet table, replaced dates."""
+    if not plan.outlets:
         return
 
-    # Build completeness per outlet
-    growth_locs: set = set()
-    item_locs: set = set(cat_loc_ids)
-    for loc_id, day_results in upload_result.location_results.items():
-        for dr in day_results:
-            if "growth_report_day_wise" in (dr.source_kinds or []):
-                growth_locs.add(loc_id)
-                break
-    growth_locs |= growth_locs_from_meta
-    item_locs |= item_locs_from_meta
+    if not plan.has_replacements and not plan.has_coverage_warnings:
+        st.success(
+            f"Ready to import **{plan.total_days}** day(s) across **{plan.outlet_count}** "
+            "outlet(s) — all new data, nothing will be overwritten."
+        )
+    else:
+        parts = []
+        if plan.has_replacements:
+            parts.append(f"**{plan.replace_days}** day(s) will be **replaced**")
+        if plan.has_coverage_warnings:
+            gap_word = "gap" if len(plan.coverage_warnings) == 1 else "gaps"
+            parts.append(f"**{len(plan.coverage_warnings)}** report coverage {gap_word} found")
+        st.warning(" · ".join(parts) + " — review below before importing.")
 
-    lines = []
-    for loc_id in sorted(all_loc_ids):
-        name = loc_name_map.get(loc_id, f"Outlet {loc_id}")
-        growth_ok = "✅ Growth Report" if loc_id in growth_locs else "❌ Growth Report missing"
-        item_ok = "✅ Item Report" if loc_id in item_locs else "❌ Item Report missing"
-        comp_ok = "✅ Comp Report" if loc_id in comp_locs else "❌ Comp Report missing"
-        lines.append(f"**{name}**\n{growth_ok} · {item_ok} · {comp_ok}")
+    data_table(_outlet_plan_dataframe(plan), empty_message="No outlets detected.")
 
-    if lines:
-        with st.expander("Outlet completeness", expanded=True):
-            for line in lines:
-                st.markdown(line)
+    for msg in plan.coverage_warnings:
+        st.warning(msg)
+
+    _render_replaced_dates(plan)
 
 
 def _render_file_details(upload_result) -> None:
@@ -114,10 +143,12 @@ def _render_file_details(upload_result) -> None:
         }:
             continue
         meta = new_flow_meta.get(fr.filename, {})
+        detected_as = upload_service.report_type_label(str(meta.get("file_type") or ""))
         rows.append(
             {
                 "File": fr.filename,
                 "Type": fr.kind_label[:35],
+                "Detected as": detected_as,
                 "Outlet": meta.get("detected_location_name", "—"),
                 "Period": (
                     f"{meta.get('period_start', '?')} → {meta.get('period_end', '?')}"
@@ -401,31 +432,23 @@ def render(ctx: TabContext) -> None:
 
                 loc_name_map = {loc["id"]: loc["name"] for loc in ctx.all_locs}
 
-                # Show detected outlets and per-outlet report completeness
-                if upload_result.location_results:
-                    outlet_names = [
-                        loc_name_map.get(lid, str(lid)) for lid in upload_result.location_results
-                    ]
-                    st.info(f"Auto-detected outlets: **{'**, **'.join(outlet_names)}**")
-
-                _render_outlet_completeness(upload_result, loc_name_map)
-                _render_file_details(upload_result)
-
                 # Collect overlaps — one batch query per location instead of per-day
                 overlap_rows = upload_service.find_overlaps(upload_result)
+                plan = upload_service.build_import_plan(upload_result, overlap_rows, loc_name_map)
 
-                must_confirm_replace = len(overlap_rows) > 0
-                if overlap_rows:
-                    lines = "\n".join(
-                        f"- **{loc_name_map.get(lid, str(lid))}** \u2014 **{d}** \u2014 "
-                        f"saved net sales {utils.format_currency(v)}"
-                        for lid, d, v in overlap_rows
-                    )
-                    st.warning("These dates already have data and will be **replaced**:\n" + lines)
+                total_files = len(upload_result.files)
+                ready_files = sum(1 for fr in upload_result.files if not fr.error)
+                with shell.kpi_row:
+                    _render_import_kpis(plan, ready_files, total_files)
 
+                _render_import_plan(plan)
+                _render_file_details(upload_result)
+
+                must_confirm_replace = plan.has_replacements
                 if must_confirm_replace:
                     confirm_replace = st.checkbox(
-                        "I understand existing days listed above will be replaced.",
+                        f"I understand the {plan.replace_days} day(s) summarised above "
+                        "will be replaced.",
                         key="confirm_replace_smart",
                     )
                 else:

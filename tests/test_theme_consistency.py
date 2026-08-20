@@ -76,6 +76,7 @@ def _read_file(rel_path: str) -> str:
             "tabs/upload_tab.py",
             [
                 "tab-upload-mobile-filters",
+                "tab-upload-mobile-kpis",
                 "tab-upload-mobile-primary-action",
                 "mobile-layout-secondary",
             ],

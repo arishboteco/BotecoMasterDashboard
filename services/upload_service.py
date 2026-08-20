@@ -203,6 +203,11 @@ _REPORT_TYPE_LABELS = {
 }
 
 
+def report_type_label(file_type: str) -> str:
+    """Human label for a detected report type slug, e.g. ``growth_report_day_wise``."""
+    return _REPORT_TYPE_LABELS.get(file_type, "—")
+
+
 @dataclass
 class ImportBatch:
     """One uploaded file, with its day-level upload_history rows collapsed into one."""
