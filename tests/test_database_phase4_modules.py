@@ -36,6 +36,31 @@ def test_database_writes_module_saves_upload_record(initialized_db):
     assert any(h["filename"] == "phase4.csv" for h in history)
 
 
+def test_database_reads_get_recent_upload_batches_respects_limit(initialized_db):
+    import database_reads
+    import database_writes
+
+    location_id = int(database_reads.get_all_locations()[0]["id"])
+    for i in range(3):
+        database_writes.save_upload_record(
+            location_id=location_id,
+            date=f"2026-04-0{i + 1}",
+            filename=f"batch{i}.csv",
+            file_type="order_summary_csv",
+            uploaded_by="phase4",
+        )
+
+    rows = database_reads.get_recent_upload_batches([location_id], limit=2)
+    assert len(rows) == 2
+    assert all(r["location_id"] == location_id for r in rows)
+
+
+def test_database_reads_get_recent_upload_batches_empty_location_list(initialized_db):
+    import database_reads
+
+    assert database_reads.get_recent_upload_batches([]) == []
+
+
 def test_database_writes_module_saves_daily_summary(initialized_db):
     import database_reads
     import database_writes

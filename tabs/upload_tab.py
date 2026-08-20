@@ -13,17 +13,20 @@ import database
 import file_detector
 import utils
 from components import (
+    KpiMetric,
     classed_container,
+    data_table,
     divider,
+    empty_state,
     info_banner,
+    kpi_row,
     page_shell,
     primary_action_bar,
     section_title,
-    workflow_progress,
 )
 from components.footfall_editor import render_footfall_editor
 from services import cache_invalidation, upload_service
-from services.upload_service import ImportOptions
+from services.upload_service import ImportOptions, ImportPlan
 from tabs import TabContext
 
 logger = logging.getLogger("boteco")
@@ -38,67 +41,93 @@ def _files_fingerprint(uploaded_files) -> str:
     return h.hexdigest()
 
 
-def _render_outlet_completeness(upload_result, loc_name_map: dict) -> None:
-    """Show a per-outlet table summarising which report types were detected."""
+def _render_import_kpis(plan: ImportPlan, ready_files: int, total_files: int) -> None:
+    """KPI strip giving an at-a-glance read of what a staged import will do."""
+    with classed_container("tab-upload-mobile-kpis", "mobile-layout-stack"):
+        kpi_row(
+            [
+                KpiMetric("Files ready", f"{ready_files} of {total_files}"),
+                KpiMetric(
+                    "Days to import",
+                    str(plan.total_days),
+                    delta=f"{plan.new_days} new" if plan.new_days else None,
+                ),
+                KpiMetric("Outlets", str(plan.outlet_count)),
+                KpiMetric("Days replaced", str(plan.replace_days)),
+            ]
+        )
 
-    all_loc_ids = set(upload_result.location_results.keys())
-    cat_loc_ids: set = set()
-    cat_by_loc = getattr(upload_result, "category_by_loc", {})
-    new_flow_meta = getattr(upload_result, "new_flow_meta", {})
-    if cat_by_loc:
-        cat_loc_ids = set(cat_by_loc.keys())
-    all_loc_ids |= cat_loc_ids
 
-    growth_locs_from_meta: set = set()
-    item_locs_from_meta: set = set()
-    comp_locs: set = set()
-    files_by_name = {
-        getattr(fr, "filename", ""): fr for fr in getattr(upload_result, "files", [])
-    }
+def _outlet_plan_dataframe(plan: ImportPlan) -> pd.DataFrame:
+    rows = []
+    for o in plan.outlets:
+        reports = " · ".join(
+            [
+                "✅ Growth" if o.has_growth else "➖ Growth",
+                "✅ Item" if o.has_item else "➖ Item",
+                "✅ Comp" if o.has_comp else "➖ Comp",
+            ]
+        )
+        period = f"{o.date_min} → {o.date_max}" if o.date_min else "—"
+        rows.append(
+            {
+                "Outlet": o.location_name,
+                "Reports": reports,
+                "Period": period,
+                "Days": o.total_days,
+                "New": o.new_days,
+                "Replacing": o.replace_days,
+                "Net in file": utils.format_currency(o.incoming_net),
+            }
+        )
+    return pd.DataFrame(rows)
 
-    for filename, meta in new_flow_meta.items():
-        loc_id = meta.get("detected_location_id")
-        if not loc_id:
-            continue
-        file_type = str(meta.get("file_type", ""))
-        if not file_type:
-            file_type = str(getattr(files_by_name.get(filename), "kind", ""))
-        source_report = str(meta.get("source_report", ""))
-        if file_type == "growth_report_day_wise":
-            growth_locs_from_meta.add(loc_id)
-        elif file_type == "item_order_details":
-            item_locs_from_meta.add(loc_id)
-        if file_type == "order_comp_summary" or source_report == "order_comp_summary":
-            comp_locs.add(loc_id)
 
-    all_loc_ids |= growth_locs_from_meta | item_locs_from_meta | comp_locs
+def _render_replaced_dates(plan: ImportPlan) -> None:
+    """Collapsed detail behind the headline replace-count — sorted by size of change."""
+    if not plan.replaced:
+        return
+    with st.expander(f"Replaced dates ({len(plan.replaced)})", expanded=False):
+        rdf = pd.DataFrame(
+            [
+                {
+                    "Outlet": r.location_name,
+                    "Date": r.date,
+                    "Saved net": utils.format_currency(r.existing_net),
+                    "Incoming net": utils.format_currency(r.incoming_net),
+                    "Change": utils.format_currency(r.delta),
+                }
+                for r in plan.replaced
+            ]
+        )
+        st.dataframe(rdf, hide_index=True, width="stretch")
 
-    if not all_loc_ids:
+
+def _render_import_plan(plan: ImportPlan) -> None:
+    """Show what a staged import will do: headline, per-outlet table, replaced dates."""
+    if not plan.outlets:
         return
 
-    # Build completeness per outlet
-    growth_locs: set = set()
-    item_locs: set = set(cat_loc_ids)
-    for loc_id, day_results in upload_result.location_results.items():
-        for dr in day_results:
-            if "growth_report_day_wise" in (dr.source_kinds or []):
-                growth_locs.add(loc_id)
-                break
-    growth_locs |= growth_locs_from_meta
-    item_locs |= item_locs_from_meta
+    if not plan.has_replacements and not plan.has_coverage_warnings:
+        st.success(
+            f"Ready to import **{plan.total_days}** day(s) across **{plan.outlet_count}** "
+            "outlet(s) — all new data, nothing will be overwritten."
+        )
+    else:
+        parts = []
+        if plan.has_replacements:
+            parts.append(f"**{plan.replace_days}** day(s) will be **replaced**")
+        if plan.has_coverage_warnings:
+            gap_word = "gap" if len(plan.coverage_warnings) == 1 else "gaps"
+            parts.append(f"**{len(plan.coverage_warnings)}** report coverage {gap_word} found")
+        st.warning(" · ".join(parts) + " — review below before importing.")
 
-    lines = []
-    for loc_id in sorted(all_loc_ids):
-        name = loc_name_map.get(loc_id, f"Outlet {loc_id}")
-        growth_ok = "✅ Growth Report" if loc_id in growth_locs else "❌ Growth Report missing"
-        item_ok = "✅ Item Report" if loc_id in item_locs else "❌ Item Report missing"
-        comp_ok = "✅ Comp Report" if loc_id in comp_locs else "❌ Comp Report missing"
-        lines.append(f"**{name}**\n{growth_ok} · {item_ok} · {comp_ok}")
+    data_table(_outlet_plan_dataframe(plan), empty_message="No outlets detected.")
 
-    if lines:
-        with st.expander("Outlet completeness", expanded=True):
-            for line in lines:
-                st.markdown(line)
+    for msg in plan.coverage_warnings:
+        st.warning(msg)
+
+    _render_replaced_dates(plan)
 
 
 def _render_file_details(upload_result) -> None:
@@ -115,10 +144,12 @@ def _render_file_details(upload_result) -> None:
         }:
             continue
         meta = new_flow_meta.get(fr.filename, {})
+        detected_as = upload_service.report_type_label(str(meta.get("file_type") or ""))
         rows.append(
             {
                 "File": fr.filename,
                 "Type": fr.kind_label[:35],
+                "Detected as": detected_as,
                 "Outlet": meta.get("detected_location_name", "—"),
                 "Period": (
                     f"{meta.get('period_start', '?')} → {meta.get('period_end', '?')}"
@@ -136,16 +167,61 @@ def _render_file_details(upload_result) -> None:
             st.dataframe(_pd.DataFrame(rows), hide_index=True)
 
 
-def _render_import_history(ctx: TabContext) -> None:
-    """Render the recent import history footer section."""
-    section_title(
-        "Recent import activity",
-        "Last 10 saved files for this outlet scope.",
-        icon="history",
-    )
-    history = database.get_upload_history(ctx.location_id, 10)
-    if history:
-        hdf = pd.DataFrame(history)
+def _fmt_relative(uploaded_at: str) -> str:
+    """Human-relative time for an ISO-ish timestamp, falling back to a date."""
+    if not uploaded_at:
+        return "—"
+    ts = None
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+        try:
+            ts = datetime.strptime(str(uploaded_at)[:19], fmt)
+            break
+        except ValueError:
+            continue
+    if ts is None:
+        return str(uploaded_at)[:16]
+
+    seconds = max((datetime.now() - ts).total_seconds(), 0)
+    if seconds < 60:
+        return "Just now"
+    minutes = int(seconds // 60)
+    if minutes < 60:
+        return f"{minutes} min ago"
+    hours = int(minutes // 60)
+    if hours < 24:
+        return f"{hours} hr ago"
+    days = int(hours // 24)
+    if days < 14:
+        return f"{days} day{'s' if days != 1 else ''} ago"
+    return ts.strftime("%d %b %Y")
+
+
+def _import_batches_dataframe(batches: list) -> pd.DataFrame:
+    rows = []
+    for b in batches:
+        status = b.status
+        if b.validation_errors:
+            status = f"{status} — {b.validation_errors}"
+        rows.append(
+            {
+                "When": _fmt_relative(b.uploaded_at),
+                "Outlet": b.location_name,
+                "Report": b.report_label,
+                "File": b.filename,
+                "Covers": b.covers_label,
+                "Days saved": b.days_saved,
+                "Rows": b.row_count if b.row_count is not None else "—",
+                "By": b.uploaded_by or "—",
+                "Status": status,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _render_saved_days_detail(history_rows: list[dict]) -> None:
+    """Old day-level detail, preserved behind an expander for audit."""
+    with st.expander("Show every saved day", expanded=False):
+        hdf = pd.DataFrame(history_rows)
         drop_cols = [c for c in ("id", "location_id") if c in hdf.columns]
         if drop_cols:
             hdf = hdf.drop(columns=drop_cols)
@@ -166,8 +242,29 @@ def _render_import_history(ctx: TabContext) -> None:
                 )
             )
         st.dataframe(hdf, width="stretch", hide_index=True)
-    else:
-        st.caption("No imports yet for this outlet.")
+
+
+def _render_import_history(ctx: TabContext) -> None:
+    """Render the recent import activity footer section — one row per file."""
+    section_title(
+        "Recent import activity",
+        "Last 8 uploaded files across this outlet scope.",
+        icon="history",
+    )
+    loc_name_map = {loc["id"]: loc["name"] for loc in ctx.all_locs}
+    history_rows = database.get_recent_upload_batches(ctx.report_loc_ids, 300)
+    batches = upload_service.summarize_upload_history(history_rows, loc_name_map, limit=8)
+
+    if not batches:
+        empty_state(
+            "No imports yet",
+            hint="Files you import will show up here, one row per file.",
+            icon="history",
+        )
+        return
+
+    data_table(_import_batches_dataframe(batches))
+    _render_saved_days_detail(history_rows)
 
 
 def _fmt_short_day(iso_date: str) -> str:
@@ -177,61 +274,204 @@ def _fmt_short_day(iso_date: str) -> str:
         return iso_date
 
 
-def _render_data_quality(ctx: TabContext) -> None:
-    """Flag recent upload gaps and category/net-sales mismatches.
-
-    Growth Report and Item Report are uploaded as separate files, so a
-    missed or mismatched file for either one doesn't error out — it just
-    silently understates a report until someone notices. Covers this month
-    plus the prior full month, since an audit of last month's numbers
-    typically happens after that month has already closed. Always renders
-    (even when clean) so the check is visibly present, not just when it
-    has something to flag.
-    """
+@st.cache_data(ttl=600, show_spinner=False)
+def _cached_full_history_audit(
+    location_ids: tuple[int, ...],
+    loc_name_map_items: tuple[tuple[int, str], ...],
+    as_of_date: str,
+):
     from services import data_quality
 
+    return data_quality.audit_full_history_report(
+        list(location_ids), dict(loc_name_map_items), as_of_date
+    )
+
+
+def clear_upload_health_cache() -> None:
+    """Invalidate the cached full-history audit — called after a save."""
+    _cached_full_history_audit.clear()
+
+
+_STATUS_ICON = {"complete": "✅", "partial": "◐", "missing": "✕"}
+
+
+def _selected_checks(report, loc_id: int | None) -> list:
+    """The check list to render — global, or one outlet's filtered subset."""
+    if loc_id is None:
+        return report.checks
+    loc = next((lo for lo in report.locations if lo.location_id == loc_id), None)
+    return loc.checks if loc else []
+
+
+def _render_health_kpis(report, loc_id: int | None) -> None:
+    checks = _selected_checks(report, loc_id)
+    checks_total = sum(1 for c in checks if c.severity != "info")
+    checks_passed = sum(1 for c in checks if c.severity != "info" and c.passed)
+
+    if loc_id is None:
+        days_audited = report.days_audited
+        days_clean = report.days_clean
+        outlets_clear = report.outlets_clear
+        outlet_count = report.outlet_count
+    else:
+        loc = next((lo for lo in report.locations if lo.location_id == loc_id), None)
+        days_audited = max((c.days_examined for c in checks), default=0)
+        days_with_issues = len({f.date for c in checks for f in c.findings if c.severity != "info"})
+        days_clean = max(days_audited - days_with_issues, 0)
+        outlets_clear = 1 if (loc and not loc.has_issues) else 0
+        outlet_count = 1
+
+    with classed_container("tab-upload-mobile-kpis", "mobile-layout-stack"):
+        kpi_row(
+            [
+                KpiMetric("Days audited", str(days_audited)),
+                KpiMetric(
+                    "Days fully clean",
+                    str(days_clean),
+                    delta=(
+                        f"{days_audited - days_clean} with issues"
+                        if days_audited > days_clean
+                        else None
+                    ),
+                    delta_color="inverse",
+                ),
+                KpiMetric("Checks passed", f"{checks_passed} / {checks_total}"),
+                KpiMetric("Outlets clear", f"{outlets_clear} of {outlet_count}"),
+            ]
+        )
+
+
+def _render_health_checklist(report, loc_id: int | None) -> None:
+    checks = _selected_checks(report, loc_id)
+    rows = [
+        {
+            "Check": c.label,
+            "What it proves": c.proves,
+            "Days checked": c.days_examined,
+            "Result": "✅ Pass" if c.passed else f"⚠️ {c.failed_days} day(s) flagged",
+        }
+        for c in checks
+    ]
+    data_table(pd.DataFrame(rows), empty_message="No checks have run yet.")
+
+
+def _render_month_rollup(report, loc_id: int | None) -> None:
+    months = (
+        report.months
+        if loc_id is None
+        else [m for m in report.months if m.location_id == loc_id]
+    )
+    if not months:
+        return
+    with st.expander("Month-by-month history", expanded=False):
+        rows = [
+            {
+                "Month": m.month,
+                "Outlet": m.location_name,
+                "Days": m.days,
+                "Complete": m.days_clean,
+                "Issues": m.issue_count,
+            }
+            for m in months
+        ]
+        data_table(pd.DataFrame(rows), empty_message="No history yet.")
+
+
+def _render_health_findings(report, loc_id: int | None) -> None:
+    checks = _selected_checks(report, loc_id)
+    failing = [c for c in checks if not c.passed and c.severity != "info"]
+    if not failing:
+        st.caption("✅ No integrity issues found across the audited history.")
+        return
+
+    cap = 25
+    for check in failing:
+        findings = sorted(check.findings, key=lambda f: -f.magnitude)
+        with st.expander(f"⚠️ {check.label} — {check.failed_days} day(s)", expanded=False):
+            rows = [
+                {
+                    "Outlet": f.location_name,
+                    "Date": _fmt_short_day(f.date),
+                    "What's missing": f.detail,
+                }
+                for f in findings[:cap]
+            ]
+            data_table(pd.DataFrame(rows))
+            if len(findings) > cap:
+                st.caption(f"…and {len(findings) - cap} more")
+
+
+def _render_coverage_grid(report, loc_id: int | None) -> None:
+    """Pivot of outlet × day-of-month, one grid per month — the sanest way to see coverage."""
+    if not report.day_status:
+        return
+    with st.expander("Coverage grid (by day)", expanded=False):
+        st.caption("✅ complete · ◐ sales but no category breakdown · ✕ no upload found")
+        loc_ids = [loc_id] if loc_id is not None else sorted({lid for lid, _ in report.day_status})
+        loc_name_by_id = {lo.location_id: lo.location_name for lo in report.locations}
+        months = sorted({d[:7] for _lid, d in report.day_status}, reverse=True)
+        for month in months:
+            days_in_month = sorted(
+                {d for lid, d in report.day_status if lid in loc_ids and d[:7] == month}
+            )
+            if not days_in_month:
+                continue
+            st.markdown(f"**{month}**")
+            rows = []
+            for lid in loc_ids:
+                row = {"Outlet": loc_name_by_id.get(lid, f"Outlet {lid}")}
+                for d in days_in_month:
+                    status = report.day_status.get((lid, d))
+                    row[str(int(d[-2:]))] = _STATUS_ICON.get(status, "·")
+                rows.append(row)
+            data_table(pd.DataFrame(rows))
+
+
+def _render_data_quality(ctx: TabContext) -> None:
+    """Prove the saved data is sane: every check, every month, per outlet.
+
+    Runs a fixed battery of integrity checks over the *whole* saved history
+    (not just a recent window) and renders every one of them — including
+    passing checks, with how many days each examined — so a clean result is
+    demonstrated, not just asserted. Cached for 10 minutes; cleared after a
+    save via ``clear_upload_health_cache``.
+    """
     loc_name_map = {loc["id"]: loc["name"] for loc in ctx.all_locs}
-    results = data_quality.audit_recent_data_quality(ctx.report_loc_ids, loc_name_map)
+    as_of = datetime.now().strftime("%Y-%m-%d")
+    report = _cached_full_history_audit(
+        tuple(ctx.report_loc_ids), tuple(sorted(loc_name_map.items())), as_of
+    )
+
+    if not report.checks:
+        section_title(
+            "Data health", "No saved data yet for this outlet scope.", icon="fact_check"
+        )
+        return
 
     section_title(
         "Data health",
-        "This month and last month — gaps and mismatches found in saved data.",
+        f"{report.window_start} → {report.window_end} · {report.outlet_count} outlet(s) · "
+        f"{report.days_audited} days · {report.checks_total} checks",
         icon="fact_check",
     )
 
-    flagged = [r for r in results if r.has_issues]
-    if not flagged:
-        st.caption("✅ No missing uploads or category mismatches found.")
-        return
+    filter_loc_id: int | None = None
+    if len(ctx.report_loc_ids) > 1:
+        outlet_options = {loc_name_map.get(lid, f"Outlet {lid}"): lid for lid in ctx.report_loc_ids}
+        choice = st.segmented_control(
+            "Outlet",
+            ["All outlets", *outlet_options.keys()],
+            default="All outlets",
+            key="upload_health_outlet_filter",
+        )
+        if choice and choice != "All outlets":
+            filter_loc_id = outlet_options[choice]
 
-    for r in flagged:
-        with st.expander(f"⚠️ {r.location_name}", expanded=False):
-            if r.missing_days:
-                days = ", ".join(_fmt_short_day(d) for d in r.missing_days[:12])
-                more = "…" if len(r.missing_days) > 12 else ""
-                st.warning(
-                    f"**{len(r.missing_days)} day(s) with no data uploaded at all:** "
-                    f"{days}{more}"
-                )
-            if r.category_missing_days:
-                days = ", ".join(_fmt_short_day(d) for d in r.category_missing_days[:12])
-                more = "…" if len(r.category_missing_days) > 12 else ""
-                st.warning(
-                    f"**{len(r.category_missing_days)} day(s) have sales data but no "
-                    f"category breakdown** (Item Report not uploaded): {days}{more}"
-                )
-            if r.category_mismatches:
-                worst = sorted(r.category_mismatches, key=lambda m: -abs(m.diff))[:8]
-                detail = "; ".join(
-                    f"{_fmt_short_day(m.date)}: net {utils.format_currency(m.net_total)} "
-                    f"vs category {utils.format_currency(m.category_total)}"
-                    for m in worst
-                )
-                more = "…" if len(r.category_mismatches) > 8 else ""
-                st.warning(
-                    f"**{len(r.category_mismatches)} day(s) where category totals don't "
-                    f"match net sales:** {detail}{more}"
-                )
+    _render_health_kpis(report, filter_loc_id)
+    _render_health_checklist(report, filter_loc_id)
+    _render_month_rollup(report, filter_loc_id)
+    _render_health_findings(report, filter_loc_id)
+    _render_coverage_grid(report, filter_loc_id)
 
 
 def _render_post_import_footfall(shell, ctx: TabContext) -> None:
@@ -251,7 +491,7 @@ def _render_post_import_footfall(shell, ctx: TabContext) -> None:
         )
 
         divider()
-        section_title("Step 2: Footfall covers (optional)", icon="people")
+        section_title("Step 2 of 2 — Footfall covers (optional)", icon="people")
         st.caption(
             "Enter Lunch and Dinner cover counts for the dates you just imported. "
             "Rows marked **✓ Set** already have overrides saved. "
@@ -295,12 +535,6 @@ def render(ctx: TabContext) -> None:
 
     # If we're in the post-import footfall step, render that and stop.
     if st.session_state.get("_post_import_state"):
-        with shell.filters:
-            workflow_progress(
-                total_steps=3,
-                current_step=3,
-                stage_label="Upload progress",
-            )
         _render_post_import_footfall(shell, ctx)
         with shell.footer_actions:
             _render_data_quality(ctx)
@@ -339,22 +573,16 @@ def render(ctx: TabContext) -> None:
                 label_visibility="collapsed",
             )
 
-            workflow_progress(
-                total_steps=3,
-                current_step=1 if not uploaded_files else 2,
-                stage_label="Upload progress",
-            )
-
     with shell.content:
         if not uploaded_files:
             # Clear cached result when files are removed
             st.session_state.pop("_upload_result", None)
             st.session_state.pop("_upload_fingerprint", None)
-            info_banner(
-                "No files selected yet. Download reports from Petpooja "
-                "and drop any combination here.",
-                tone="neutral",
-                icon="upload",
+            empty_state(
+                "Drop your Petpooja exports above",
+                hint="Growth Report Day Wise, Item Report With Customer/Order "
+                "Details, Complimentary Orders Summary — any combination works.",
+                icon="upload_file",
             )
 
         if uploaded_files:
@@ -414,31 +642,34 @@ def render(ctx: TabContext) -> None:
 
                 loc_name_map = {loc["id"]: loc["name"] for loc in ctx.all_locs}
 
-                # Show detected outlets and per-outlet report completeness
-                if upload_result.location_results:
-                    outlet_names = [
-                        loc_name_map.get(lid, str(lid)) for lid in upload_result.location_results
-                    ]
-                    st.info(f"Auto-detected outlets: **{'**, **'.join(outlet_names)}**")
-
-                _render_outlet_completeness(upload_result, loc_name_map)
-                _render_file_details(upload_result)
-
                 # Collect overlaps — one batch query per location instead of per-day
                 overlap_rows = upload_service.find_overlaps(upload_result)
+                plan = upload_service.build_import_plan(upload_result, overlap_rows, loc_name_map)
 
-                must_confirm_replace = len(overlap_rows) > 0
-                if overlap_rows:
-                    lines = "\n".join(
-                        f"- **{loc_name_map.get(lid, str(lid))}** \u2014 **{d}** \u2014 "
-                        f"saved net sales {utils.format_currency(v)}"
-                        for lid, d, v in overlap_rows
-                    )
-                    st.warning("These dates already have data and will be **replaced**:\n" + lines)
+                total_files = len(upload_result.files)
+                ready_files = sum(1 for fr in upload_result.files if not fr.error)
+                with shell.kpi_row:
+                    _render_import_kpis(plan, ready_files, total_files)
 
+                _render_import_plan(plan)
+                _render_file_details(upload_result)
+
+                new_flow_meta = getattr(upload_result, "new_flow_meta", {})
+                if new_flow_meta:
+                    dupe_history = database.get_recent_upload_batches(ctx.report_loc_ids, 300)
+                    duplicates = upload_service.find_duplicate_uploads(new_flow_meta, dupe_history)
+                    for filename, prev_at, prev_by in duplicates:
+                        info_banner(
+                            f"{filename} was already imported "
+                            f"{_fmt_relative(prev_at)} by {prev_by or 'someone'}.",
+                            tone="warning",
+                        )
+
+                must_confirm_replace = plan.has_replacements
                 if must_confirm_replace:
                     confirm_replace = st.checkbox(
-                        "I understand existing days listed above will be replaced.",
+                        f"I understand the {plan.replace_days} day(s) summarised above "
+                        "will be replaced.",
                         key="confirm_replace_smart",
                     )
                 else:

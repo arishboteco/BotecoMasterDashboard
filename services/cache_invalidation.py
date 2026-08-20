@@ -14,6 +14,18 @@ def invalidate_after_import(location_ids: list[int]) -> None:
         invalidate_location_reads(location_id)
     invalidate_analytics()
     invalidate_reports()
+    invalidate_upload_health()
+
+
+def invalidate_upload_health() -> None:
+    """Invalidate the cached full-history data-quality audit on the Upload tab.
+
+    Imported lazily — tabs.upload_tab itself imports this module, so a
+    module-level import here would be circular.
+    """
+    import tabs.upload_tab as upload_tab
+
+    upload_tab.clear_upload_health_cache()
 
 
 def invalidate_reports() -> None:

@@ -57,6 +57,7 @@ class TestCacheInvalidation:
             "location_ids": [],
             "analytics": 0,
             "reports": 0,
+            "upload_health": 0,
         }
 
         def _fake_invalidate_location_reads(location_id: int) -> None:
@@ -67,6 +68,9 @@ class TestCacheInvalidation:
 
         def _fake_invalidate_reports() -> None:
             called["reports"] += 1
+
+        def _fake_invalidate_upload_health() -> None:
+            called["upload_health"] += 1
 
         monkeypatch.setattr(
             cache_invalidation,
@@ -83,12 +87,30 @@ class TestCacheInvalidation:
             "invalidate_reports",
             _fake_invalidate_reports,
         )
+        monkeypatch.setattr(
+            cache_invalidation,
+            "invalidate_upload_health",
+            _fake_invalidate_upload_health,
+        )
 
         cache_invalidation.invalidate_after_import([2, 5])
 
         assert called["location_ids"] == [2, 5]
         assert called["analytics"] == 1
         assert called["reports"] == 1
+        assert called["upload_health"] == 1
+
+    def test_invalidate_upload_health_calls_upload_tab_clear(self, monkeypatch):
+        import tabs.upload_tab as upload_tab
+
+        called = {"count": 0}
+        monkeypatch.setattr(
+            upload_tab, "clear_upload_health_cache", lambda: called.__setitem__("count", 1)
+        )
+
+        cache_invalidation.invalidate_upload_health()
+
+        assert called["count"] == 1
 
     def test_invalidate_footfall_caches_clears_mtd_metrics_cache(self, monkeypatch):
         called = {"mtd_clear": 0}

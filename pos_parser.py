@@ -834,6 +834,83 @@ def validate_data(data: Dict) -> Tuple[bool, List[str], List[str]]:
     return len(errors) == 0, errors, warnings
 
 
+# Standard payment fields the Growth Report writes directly onto daily_summary.
+# Dynamic payment types (UPI aggregator splits, Swiggy Dineout, Zomato
+# District, ...) are written to payment_method_sales separately, so they are
+# not included here — see services/data_quality.py's payment_reconciliation
+# check for the two-sided version that does include them.
+_GROWTH_DAY_PAYMENT_FIELDS = (
+    "cash_sales",
+    "card_sales",
+    "gpay_sales",
+    "zomato_sales",
+    "other_sales",
+    "upi_sales",
+    "wallet_sales",
+    "due_payment_sales",
+    "bank_transfer_sales",
+    "boh_sales",
+)
+
+
+def validate_growth_day(merged: Dict) -> List[str]:
+    """Non-blocking sanity warnings for one parsed Growth Report day.
+
+    Unlike ``validate_data`` (the legacy validator, still used by the
+    Dynamic Report / Item Report fallback path), this uses the current
+    field set and reconciles payments against ``gross_total`` — what the
+    customer actually paid, tax- and service-charge-inclusive — not
+    ``net_total``. Verified against production data: payments reconcile to
+    gross_total exactly on every saved day; comparing them to net_total
+    instead (as the legacy validator does) fires on a large fraction of
+    genuinely correct days, because net_total is pre-tax, pre-service-charge
+    revenue.
+    """
+    warnings: List[str] = []
+
+    net_total = float(merged.get("net_total") or 0)
+    gross_total = float(merged.get("gross_total") or 0)
+    my_amount = float(merged.get("my_amount") or 0)
+    discount = float(merged.get("discount") or 0)
+
+    if my_amount and abs((my_amount - discount) - net_total) > 1.0:
+        warnings.append(
+            f"My Amount (₹{my_amount:,.0f}) − Discount (₹{discount:,.0f}) = "
+            f"₹{my_amount - discount:,.0f}, but Net Sales is ₹{net_total:,.0f}"
+        )
+
+    if net_total > gross_total > 0:
+        warnings.append(
+            f"Net sales (₹{net_total:,.0f}) exceeds gross total (₹{gross_total:,.0f})"
+        )
+
+    negative_fields = [
+        f for f in _GROWTH_DAY_PAYMENT_FIELDS if float(merged.get(f, 0) or 0) < -0.01
+    ]
+    if negative_fields:
+        warnings.append("Negative payment value(s): " + ", ".join(negative_fields))
+
+    if gross_total > 0:
+        payment_sum = sum(float(merged.get(f, 0) or 0) for f in _GROWTH_DAY_PAYMENT_FIELDS)
+        # One-sided: dynamic payment types (recorded separately) only add to
+        # this total, so only over-counting from the standard fields alone
+        # is unambiguous.
+        diff = payment_sum - gross_total
+        tolerance = max(25.0, gross_total * 0.01)
+        if diff > tolerance:
+            warnings.append(
+                f"Recorded payments (₹{payment_sum:,.0f}) exceed gross total "
+                f"(₹{gross_total:,.0f})"
+            )
+
+    covers = int(merged.get("covers") or 0)
+    order_count = int(merged.get("order_count") or 0)
+    if net_total > 0 and (covers <= 0 or order_count <= 0):
+        warnings.append(f"Covers ({covers}) or order count ({order_count}) not recorded")
+
+    return warnings
+
+
 # Public API aliases for helper functions used by other modules (smart_upload.py).
 # These were previously private (_f, _norm_header, etc.) but are part of the parsing contract.
 f = _f
