@@ -39,6 +39,7 @@ def _growth_report_bytes(
     payment_cols: dict | None = None,
     extra_cols: dict | None = None,
     rupee_headers: bool = False,
+    gross_total: float | None = None,
 ) -> bytes:
     """Build a minimal Growth Report Excel that the parser can read.
 
@@ -163,7 +164,7 @@ def _growth_report_bytes(
             "Net Sales (₹)(M.A - D)": [100000.0],
             "Total Tax (₹)": [10000.0],
             "Cash": [20000.0],
-            "Card": [50000.0],
+            "Card": [68000.0],
             "UPI": [30000.0],
             "Service Charge": [8000.0],
             "CGST": [1250.0],
@@ -182,7 +183,7 @@ def _growth_report_bytes(
             "Net Sales": [100000.0],
             "Total Tax": [10000.0],
             "Cash": [20000.0],
-            "Card": [50000.0],
+            "Card": [68000.0],
             "UPI": [30000.0],
             "My Amount": [100000.0],
             "Discount": [0.0],
@@ -195,9 +196,16 @@ def _growth_report_bytes(
             "Expenses": [500.0],
             "Due Payment": [0.0],
         }
+    payment_adjustment = 0.0
     if payment_cols:
         for col_name, value in payment_cols.items():
+            previous = header_and_data.get(col_name, [0.0])[0] or 0.0
+            payment_adjustment += float(value or 0) - float(previous)
             header_and_data[col_name] = [value]
+    total_header = "Total (₹)" if rupee_headers else "Total"
+    header_and_data[total_header] = [
+        float(gross_total) if gross_total is not None else 118000.0 + payment_adjustment
+    ]
     if extra_cols:
         for col_name, value in extra_cols.items():
             header_and_data[col_name] = [value]
@@ -562,6 +570,36 @@ class TestGrowthReportParser:
             "Zomato Delivery",
         ]
 
+    def test_unmapped_payment_method_is_captured_without_mapping(self):
+        rows, errors, meta = self._parse(payment_cols={"Custom Tender": 321.0})
+
+        assert not errors, errors
+        assert rows[0]["payment_methods"] == [
+            {
+                "payment_method": "Custom Tender",
+                "payment_key": "custom_tender",
+                "amount": 321.0,
+            }
+        ]
+        assert meta["dynamic_payment_types"] == ["Custom Tender"]
+
+    def test_ownly_other_is_captured_as_ownly(self):
+        rows, errors, meta = self._parse(payment_cols={"Ownly Other": 1559.0})
+
+        assert not errors, errors
+        assert rows[0]["payment_methods"] == [
+            {"payment_method": "Ownly", "payment_key": "ownly", "amount": 1559.0}
+        ]
+        assert meta["dynamic_payment_types"] == ["Ownly"]
+
+    def test_payment_total_mismatch_blocks_import(self):
+        rows, errors, _ = self._parse(gross_total=118010.0)
+
+        assert len(rows) == 1
+        assert errors
+        assert "payment total" in errors[0]
+        assert "Import blocked" in errors[0]
+
     def test_zomato_other_groups_with_zomato_delivery(self):
         from uploads.parsers.growth_report_day_wise import parse_growth_report_day_wise
 
@@ -597,7 +635,7 @@ class TestGrowthReportParser:
 
         assert not errors, errors
         assert rows[0]["cash_sales"] == 20000.0
-        assert rows[0]["card_sales"] == 50000.0
+        assert rows[0]["card_sales"] == 68000.0
         assert rows[0]["upi_sales"] == 30000.0
         assert rows[0]["gpay_sales"] == 15000.0
         assert rows[0]["payment_methods"] == [

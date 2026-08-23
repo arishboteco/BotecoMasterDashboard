@@ -269,6 +269,16 @@ def _payment_columns(
     """
     payments: Dict[str, int] = {}
     dynamic_payments: Dict[str, int] = {}
+    first_payment_idx = min(
+        (
+            idx
+            for header, idx in colmap.items()
+            if header in ALLOWED_PAYMENT_COLUMNS
+            or payment_method_name(header)
+            or (header.startswith("other [") and header.endswith("]"))
+        ),
+        default=None,
+    )
     for header, idx in colmap.items():
         if header in ALLOWED_PAYMENT_COLUMNS:
             payments[header] = idx
@@ -279,14 +289,19 @@ def _payment_columns(
         if header.startswith("other [") and header.endswith("]"):
             dynamic_payments[header] = idx
             continue
-        is_payment_shaped = header.startswith("other [") or header in {
-            "cash",
-            "card",
-            "due payment",
-            "not paid",
-            "wallet",
-            "upi",
-        }
+        # Petpooja adds new provider columns without notice. Once the payment
+        # section has started, preserve every non-structural value as a dynamic
+        # method instead of requiring a code mapping first. Provider-specific
+        # online tenders such as "Ownly Other" can appear immediately before
+        # the standard payment section, so recognise that shape as well.
+        is_payment_shaped = (
+            (
+                first_payment_idx is not None
+                and idx >= first_payment_idx
+                and header not in BASE_FIELDS
+            )
+            or (header.endswith(" other") and header not in BASE_FIELDS)
+        )
         if not is_payment_shaped:
             continue
         col_total = float(data.iloc[:, idx].map(_f).sum()) if idx < data.shape[1] else 0.0
@@ -303,6 +318,14 @@ def _payment_method_row(
     raw_header = display_header or header
     method_name = payment_method_name(raw_header)
     method_key = payment_method_key(raw_header)
+    if not method_name:
+        method_name = re.sub(
+            r"\s+", " ", str(raw_header or "").replace("\xa0", " ").strip()
+        )
+        if _norm(method_name).endswith(" other"):
+            method_name = re.sub(r"\s+Other$", "", method_name, flags=re.IGNORECASE).strip()
+    if not method_key and method_name:
+        method_key = re.sub(r"[^a-z0-9]+", "_", method_name.lower()).strip("_") or None
     if not method_name or not method_key or abs(amount) < 0.005:
         return None
     return {
@@ -390,6 +413,7 @@ def parse_growth_report_day_wise(
     )
 
     rows: List[Dict[str, Any]] = []
+    errors: List[str] = []
     for _, row in data.iterrows():
         out: Dict[str, Any] = {
             "date": row["__date"],
@@ -472,6 +496,33 @@ def parse_growth_report_day_wise(
                     )
 
         out["payment_methods"] = [payment_methods[key] for key in sorted(payment_methods.keys())]
+
+        fixed_payment_total = sum(
+            float(out.get(field, 0) or 0)
+            for field in (
+                "cash_sales",
+                "card_sales",
+                "due_payment_sales",
+                "wallet_sales",
+                "upi_sales",
+                "gpay_sales",
+                "bank_transfer_sales",
+                "boh_sales",
+            )
+        )
+        dynamic_payment_total = sum(
+            float(method.get("amount", 0) or 0) for method in out["payment_methods"]
+        )
+        payment_total = round(fixed_payment_total + dynamic_payment_total, 2)
+        gross_total = round(float(out.get("gross_total", 0) or 0), 2)
+        if abs(payment_total - gross_total) > 1.0:
+            errors.append(
+                f"Growth Report {filename}: {out['date']} payment total "
+                f"(₹{payment_total:,.2f}) does not match EOD Gross Total "
+                f"(₹{gross_total:,.2f}); difference ₹{payment_total - gross_total:,.2f}. "
+                "Import blocked so no payment method is silently dropped."
+            )
+
         if float(out.get("delivery_sales") or 0) == 0:
             out["delivery_sales"] = round(
                 sum(
@@ -495,9 +546,10 @@ def parse_growth_report_day_wise(
     }
     if dynamic_payments:
         dynamic_names = {
-            name
-            for header in dynamic_payments
-            if (name := payment_method_name(display_map.get(header, header)))
+            str(method.get("payment_method") or "").strip()
+            for row in rows
+            for method in row.get("payment_methods") or []
+            if str(method.get("payment_method") or "").strip()
         }
         meta["dynamic_payment_types"] = sorted(dynamic_names)
-    return rows, [], meta
+    return rows, errors, meta
