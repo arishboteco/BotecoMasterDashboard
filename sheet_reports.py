@@ -376,6 +376,7 @@ def compute_forecast_metrics(
     remaining = int(shared_forecast["remaining_days"])
     forecast = float(shared_forecast["forecast_total"])
     forecast_run_rate = (mtd_net / rate_days) * dim if rate_days > 0 else 0.0
+    forecast_2 = mtd_net + _safe_float(report_data.get("mtd_avg_daily")) * remaining
 
     pct = (forecast / mtd_target) * 100.0 if mtd_target > 0 else None
     gap = (forecast - mtd_target) if mtd_target > 0 else None
@@ -389,6 +390,8 @@ def compute_forecast_metrics(
         "remaining_days": remaining,
         "forecast_month_end_sales": forecast,
         "forecast_run_rate": forecast_run_rate,
+        "forecast_2_sales": forecast_2,
+        "forecast_2_target_pct": (forecast_2 / mtd_target * 100) if mtd_target > 0 else None,
         "forecast_method": shared_forecast["method"],
         "forecast_target_pct": pct,
         "forecast_gap_amount": gap,
@@ -563,7 +566,9 @@ def _render_elements_to_png(
     right_margin = PAGE_PAD
     top_margin = PAGE_PAD
     bottom_margin = PAGE_PAD
-    avail_w = width_pt - left_margin - right_margin
+    # SimpleDocTemplate's frame has 6pt padding on each side. Measure at the
+    # actual text width so wrapped footnotes cannot spill onto a discarded page.
+    avail_w = width_pt - left_margin - right_margin - 12
 
     story = list(elements)
 
@@ -1277,6 +1282,14 @@ def _build_sales_summary(
         right_color=statuses["forecast"]["color"],
     )
 
+    add_mtd_row("Forecast 2 — Run Rate", lambda d: _forecast_for(d)["forecast_2_sales"])
+
+    def _forecast_2_target_pct(d):
+        val = _forecast_for(d)["forecast_2_target_pct"]
+        return _pct(val) if val is not None else "N/A"
+
+    add_mtd_row("Forecast 2 % of Target", _forecast_2_target_pct, fmt="str")
+
     def _required_run_rate(d):
         val = _forecast_for(d)["required_daily_run_rate"]
         return _r(val) if val is not None else "N/A"
@@ -1382,7 +1395,11 @@ def _build_sales_summary(
                 style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(cell_style["text"])))
                 style_cmds.append(("FONTNAME", (0, i), (-1, i), FONT_BOLD))
 
-        if multi and label == "Forecast % of Target" and per_outlet:
+        forecast_pct_rows = {
+            "Forecast % of Target": "forecast_target_pct",
+            "Forecast 2 % of Target": "forecast_2_target_pct",
+        }
+        if multi and label in forecast_pct_rows and per_outlet:
             style_cmds.append(("BACKGROUND", (0, i), (0, i), _hex(C_ROW_TARGET_NEUTRAL)))
             style_cmds.append(("TEXTCOLOR", (0, i), (0, i), _hex(C_SLATE)))
             for col_index, cell in enumerate(row[1:], start=1):
@@ -1398,8 +1415,8 @@ def _build_sales_summary(
                     ("TEXTCOLOR", (col_index, i), (col_index, i), _hex(cell_style["text"]))
                 )
                 style_cmds.append(("FONTNAME", (col_index, i), (col_index, i), FONT_BOLD))
-        elif label == "Forecast % of Target":
-            pct_val = _forecast_for(r).get("forecast_target_pct")
+        elif label in forecast_pct_rows:
+            pct_val = _forecast_for(r).get(forecast_pct_rows[label])
             cell_style = _performance_style(pct_val)
             style_cmds.append(("BACKGROUND", (0, i), (-1, i), _hex(cell_style["background"])))
             style_cmds.append(("TEXTCOLOR", (1, i), (-1, i), _hex(cell_style["text"])))
@@ -1468,6 +1485,14 @@ def _build_sales_summary(
             "* Forecast Month-End = today's sales so far, plus each remaining day "
             "estimated from what that day of the week has averaged over the last "
             "12 weeks (e.g. Saturdays are forecast from past Saturdays).",
+            sty_footnote,
+        )
+    )
+    elements.append(
+        Paragraph(
+            "* Forecast 2 = month-to-date sales after discounts + "
+            "(Daily Avg. Net Sales × remaining calendar days). "
+            "The daily average counts each trading date once across the selected locations.",
             sty_footnote,
         )
     )

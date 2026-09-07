@@ -746,7 +746,13 @@ def calculate_mtd_metrics_multi(
     total_discount = sum(s.get("discount", 0) or 0 for s in summaries)
     total_gross_sales = sum(_gross_sales_for_day(s) for s in summaries)
     total_complimentary = sum(s.get("complimentary", 0) or 0 for s in summaries)
-    days_counted = len([s for s in summaries if (s.get("net_total", 0) or 0) > 0])
+    sales_by_date: Dict[str, float] = {}
+    for summary in summaries:
+        day = str(summary.get("date", ""))[:10]
+        sales_by_date[day] = sales_by_date.get(day, 0.0) + float(
+            summary.get("net_total", 0) or 0
+        )
+    days_counted = sum(sales > 0 for sales in sales_by_date.values())
 
     avg_daily = total_sales / days_counted if days_counted > 0 else 0
 
