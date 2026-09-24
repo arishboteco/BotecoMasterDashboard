@@ -3,11 +3,13 @@
 import base64
 import hashlib
 import json
+from io import BytesIO
+from typing import List, Optional, Tuple
+from zipfile import ZIP_DEFLATED, ZipFile
 
 import streamlit as st
 
 import ui_theme
-from typing import List, Tuple, Optional
 
 WHATSAPP_ICON_SVG = (
     '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
@@ -130,6 +132,86 @@ def _icon_btn_style(*, primary: bool = True) -> str:
         f"transition:all 0.15s ease;"
         f"outline:none;"
     )
+
+
+def _report_share_script(files, button_id, message_id, share_text, fallback_url):
+    """Use native file sharing, with explicit browser links as a desktop fallback."""
+    if len(files) == 1:
+        download_name, download_bytes = files[0]
+        download_mime = "image/png"
+    else:
+        bundle = BytesIO()
+        with ZipFile(bundle, "w", ZIP_DEFLATED) as archive:
+            for name, data in files:
+                archive.writestr(name, data)
+        download_name, download_bytes = "boteco_reports.zip", bundle.getvalue()
+        download_mime = "application/zip"
+    config = json.dumps({
+        "files": [{"name": name, "b64": base64.b64encode(data).decode("ascii")}
+                  for name, data in files],
+        "buttonId": button_id, "messageId": message_id, "text": share_text,
+        "url": fallback_url, "downloadName": download_name,
+        "downloadUrl": "data:" + download_mime + ";base64,"
+                       + base64.b64encode(download_bytes).decode("ascii"),
+    }).replace("<", "\\u003c")
+    return """
+(function(config) {
+  const button = document.getElementById(config.buttonId);
+  const message = document.getElementById(config.messageId);
+  message.setAttribute("role", "status");
+  message.style.cssText = "display:block;font:12px sans-serif;line-height:1.4;margin-top:4px";
+  const files = config.files.map(item => new File(
+    [Uint8Array.from(atob(item.b64), c => c.charCodeAt(0))],
+    item.name, {type: "image/png"}
+  ));
+  const payload = {files, text: config.text};
+  let controls;
+  const desktopOptions = document.createElement("button");
+  desktopOptions.type = "button";
+  desktopOptions.textContent = "Desktop sharing options";
+  desktopOptions.style.cssText = "margin-top:4px;cursor:pointer;font:12px sans-serif";
+  desktopOptions.onclick = fallback;
+  message.after(desktopOptions);
+  function fallback() {
+    desktopOptions.hidden = true;
+    message.textContent = files.length > 1
+      ? "Download all reports, unzip, then attach the PNGs in WhatsApp."
+      : "Download the PNG or use Copy, then attach or paste it in WhatsApp.";
+    if (controls) return;
+    controls = document.createElement("div");
+    controls.style.cssText = "display:flex;gap:16px;flex-wrap:wrap;font:14px sans-serif;margin-top:6px";
+    const download = document.createElement("a");
+    download.href = config.downloadUrl;
+    download.download = config.downloadName;
+    download.textContent = files.length > 1 ? "Download all reports (ZIP)" : "Download PNG";
+    controls.appendChild(download);
+    if (config.url) {
+      const open = document.createElement("a");
+      open.href = config.url;
+      open.target = "_blank";
+      open.rel = "noopener noreferrer";
+      open.textContent = "Open WhatsApp";
+      controls.appendChild(open);
+    }
+    message.after(controls);
+  }
+  button.onclick = async function() {
+    button.disabled = true;
+    try {
+      if (!navigator.share || !navigator.canShare || !navigator.canShare(payload)) {
+        fallback();
+        return;
+      }
+      await navigator.share(payload);
+      message.textContent = "Share completed";
+    } catch (error) {
+      if (error.name !== "AbortError") fallback();
+    } finally {
+      button.disabled = false;
+    }
+  };
+})(CONFIG);
+""".replace("CONFIG", config)
 
 
 def render_image_action_row(
@@ -255,29 +337,6 @@ html, body {{
     }}
   }};
 
-  // WhatsApp button
-  document.getElementById("{uid}_wa").onclick = async function() {{
-    try {{
-      const dataUrl = "data:image/png;base64," + b64;
-      const blob = await (await fetch(dataUrl)).blob();
-      const file = new File([blob], "{filename}", {{type: "image/png"}});
-      if (navigator.canShare && navigator.canShare({{files: [file]}})) {{
-        await navigator.share({{files: [file], text: shareText}});
-        msgEl.textContent = "Shared!";
-      }} else {{
-        await navigator.clipboard.write([new ClipboardItem({{"image/png": blob}})]);
-        msgEl.textContent = "Copied - paste in WhatsApp";
-        if (fallbackUrl) {{ window.open(fallbackUrl, "_blank"); }}
-      }}
-      setTimeout(() => {{ msgEl.textContent = ""; }}, 3000);
-    }} catch (e) {{
-      if (e.name !== "AbortError") {{
-        msgEl.textContent = "Share failed";
-        setTimeout(() => {{ msgEl.textContent = ""; }}, 2000);
-      }}
-    }}
-  }};
-
   // Download button
   document.getElementById("{uid}_dl").onclick = function() {{
     try {{
@@ -302,7 +361,10 @@ html, body {{
 }})();
 </script>
 """
-    _html(html, 48, component_key)
+    html += "<script>" + _report_share_script(
+        [(filename, png_bytes)], f"{uid}_wa", f"{uid}_msg", share_text, fallback_url
+    ) + "</script>"
+    _html(html, 120, component_key)
 
 
 def render_icon_button(
@@ -520,141 +582,14 @@ def render_share_images_button(
     if not files:
         return
 
-    # Build base64 for each file
-    files_b64 = []
-    for name, data in files:
-        b64 = base64.b64encode(data).decode("ascii")
-        files_b64.append((name, b64))
-
     uid = _safe_id(component_key + "s")
     stl = _btn_style(primary=primary)
-
-    msg_success = ui_theme.MSG_SUCCESS
-    msg_warning = ui_theme.MSG_WARNING
-    msg_error = ui_theme.MSG_ERROR
-
-    # JSON-safe representation of files array
-    files_json = (
-        "["
-        + ",".join('{{"name":{!r},"b64":{!r}}}'.format(n, b) for n, b in files_b64)
-        + "]"
+    html = (
+        '<style>body{margin:0;padding:0;font-family:sans-serif}</style>'
+        f'<button id="{uid}_btn" type="button" style="{stl}">'
+        f'{WHATSAPP_ICON_SVG}<span>{label}</span></button>'
+        f'<span id="{uid}_msg"></span><script>'
+        + _report_share_script(files, f"{uid}_btn", f"{uid}_msg", share_text, fallback_url)
+        + "</script>"
     )
-    fallback_url_json = json.dumps(fallback_url)
-
-    html = """<style>
-html, body {{
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-}}
-.whatsapp-btn-container {{
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-}}
-</style>
-<div class="whatsapp-btn-container">
-  <button id="{uid}_btn" type="button" style="{stl}">{whatsapp_icon}<span>{label}</span></button>
-  <span id="{uid}_msg" class="whatsapp-msg"></span>
-</div>
-<script>
-(function() {{
-  const filesData = {files_json};
-  const shareText = {share_text_json};
-  const fallbackUrl = {fallback_url_json};
-  const msgEl = document.getElementById("{uid}_msg");
-  const btnEl = document.getElementById("{uid}_btn");
-
-  async function b64ToBlob(b64, mime) {{
-    const bin = atob(b64);
-    const u8 = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-    return new Blob([u8], {{type: mime}});
-  }}
-
-  async function canShareFiles() {{
-    if (!navigator.canShare) return false;
-    try {{
-      const testBlob = await b64ToBlob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "image/png");
-      return navigator.canShare({{files: [new File([testBlob], "test.png", {{type: "image/png"}})]}});
-    }} catch(e) {{
-      return false;
-    }}
-  }}
-
-  btnEl.onclick = async function() {{
-    try {{
-      const fileObjs = await Promise.all(
-        filesData.map(async (f) => {{
-          const blob = await b64ToBlob(f.b64, "image/png");
-          return new File([blob], f.name, {{type: "image/png"}});
-        }})
-      );
-
-      const canShare = await canShareFiles();
-      if (canShare) {{
-        await navigator.share({{
-          files: fileObjs,
-          text: shareText
-        }});
-        msgEl.textContent = "Shared!";
-        msgEl.style.color = "{msg_success}";
-      }} else {{
-        if (fallbackUrl) {{
-          try {{
-            const blob = await b64ToBlob(filesData[0].b64, "image/png");
-            await navigator.clipboard.write([new ClipboardItem({{"image/png": blob}})]);
-            msgEl.textContent = "Image copied — paste in WhatsApp";
-            msgEl.style.color = "{msg_success}";
-          }} catch (clipErr) {{
-            msgEl.textContent = "Open WhatsApp — attach image manually";
-            msgEl.style.color = "{msg_warning}";
-          }}
-          window.open(fallbackUrl, "_blank");
-        }} else {{
-          msgEl.textContent = "Use download (ZIP/PNG)";
-          msgEl.style.color = "{msg_warning}";
-        }}
-      }}
-    }} catch (e) {{
-      console.error("Share error:", e);
-      if (e.name === "AbortError") {{
-        return;
-      }}
-      if (e.message && e.message.includes("not supported")) {{
-        if (fallbackUrl) {{
-          try {{
-            const blob = await b64ToBlob(filesData[0].b64, "image/png");
-            await navigator.clipboard.write([new ClipboardItem({{"image/png": blob}})]);
-            msgEl.textContent = "Image copied — paste in WhatsApp";
-            msgEl.style.color = "{msg_success}";
-          }} catch (clipErr) {{
-            msgEl.textContent = "Open WhatsApp — attach image manually";
-            msgEl.style.color = "{msg_warning}";
-          }}
-          window.open(fallbackUrl, "_blank");
-        }} else {{
-          msgEl.textContent = "Use download (ZIP/PNG)";
-          msgEl.style.color = "{msg_warning}";
-        }}
-      }} else {{
-        msgEl.textContent = "Share failed";
-        msgEl.style.color = "{msg_error}";
-      }}
-    }}
-  }};
-}})();
-</script>
-""".format(
-        uid=uid,
-        stl=stl,
-        label=label,
-        whatsapp_icon=WHATSAPP_ICON_SVG,
-        files_json=files_json,
-        share_text_json=json.dumps(share_text),
-        fallback_url_json=fallback_url_json,
-        msg_success=msg_success,
-        msg_warning=msg_warning,
-        msg_error=msg_error,
-    )
-    _html(html, height, component_key)
+    _html(html, max(height, 140), component_key)
