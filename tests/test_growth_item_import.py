@@ -600,6 +600,16 @@ class TestGrowthReportParser:
         assert "payment total" in errors[0]
         assert "Import blocked" in errors[0]
 
+    def test_waived_off_reconciles_unpaid_part_of_gross_total(self):
+        rows, errors, _ = self._parse(
+            gross_total=121500.0,
+            extra_cols={"Waived Off": 3500.0},
+        )
+
+        assert not errors, errors
+        assert rows[0]["gross_total"] == 121500.0
+        assert rows[0]["complementary_amount"] == 3500.0
+
     def test_zomato_other_groups_with_zomato_delivery(self):
         from uploads.parsers.growth_report_day_wise import parse_growth_report_day_wise
 

@@ -515,11 +515,23 @@ def parse_growth_report_day_wise(
         )
         payment_total = round(fixed_payment_total + dynamic_payment_total, 2)
         gross_total = round(float(out.get("gross_total", 0) or 0), 2)
-        if abs(payment_total - gross_total) > 1.0:
+        # A waived/complimentary bill has no tender, even though Petpooja keeps
+        # its value in the EOD gross total.  In that case the payment columns
+        # reconcile only after adding ``Waived Off``.  Accept either shape
+        # because Petpooja exports have also been observed with waived value
+        # reported informationally while Total already excludes it.
+        complementary_amount = round(float(out.get("complementary_amount", 0) or 0), 2)
+        direct_difference = round(payment_total - gross_total, 2)
+        waived_difference = round(payment_total + complementary_amount - gross_total, 2)
+        reconciled_difference = min(
+            (direct_difference, waived_difference),
+            key=abs,
+        )
+        if abs(reconciled_difference) > 1.0:
             errors.append(
                 f"Growth Report {filename}: {out['date']} payment total "
                 f"(₹{payment_total:,.2f}) does not match EOD Gross Total "
-                f"(₹{gross_total:,.2f}); difference ₹{payment_total - gross_total:,.2f}. "
+                f"(₹{gross_total:,.2f}); difference ₹{direct_difference:,.2f}. "
                 "Import blocked so no payment method is silently dropped."
             )
 
