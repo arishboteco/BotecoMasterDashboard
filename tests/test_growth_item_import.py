@@ -592,6 +592,37 @@ class TestGrowthReportParser:
         ]
         assert meta["dynamic_payment_types"] == ["Ownly"]
 
+    @pytest.mark.parametrize("header", [
+        "Swiggy Orders", "Swiggy Order Count", "Zomato Orders",
+        "New Provider No. of Orders", "Order Count (New Provider)",
+        "SWIGGY_ORDER_COUNT", "Swiggy Order Qty",
+    ])
+    def test_provider_order_counts_are_not_payments(self, header):
+        rows, errors, _ = self._parse(
+            payment_cols={"Swiggy Other": 250.0, "Custom Tender": 321.0},
+            extra_cols={header: 2},
+        )
+        assert not errors, errors
+        assert rows[0]["order_count"] == 20
+        methods = {m["payment_key"]: m["amount"] for m in rows[0]["payment_methods"]}
+        assert methods == {"swiggy": 250.0, "custom_tender": 321.0}
+
+    @pytest.mark.parametrize("header", [
+        "Swiggy Orders Amount", "Online Order Sales", "Orders Revenue",
+        "Orders (₹)", "Other [Order Payments]",
+    ])
+    def test_order_monetary_columns_are_preserved(self, header):
+        rows, errors, _ = self._parse(payment_cols={header: 250.0})
+        assert not errors, errors
+        assert sum(m["amount"] for m in rows[0]["payment_methods"]) == 250.0
+
+    def test_order_count_does_not_hide_real_payment_mismatch(self):
+        _, errors, _ = self._parse(
+            gross_total=118002.0, extra_cols={"Swiggy Orders": 2},
+        )
+        assert errors
+        assert "Import blocked" in errors[0]
+
     def test_payment_total_mismatch_blocks_import(self):
         rows, errors, _ = self._parse(gross_total=118010.0)
 

@@ -259,6 +259,20 @@ def _last_col_for(df: pd.DataFrame, header_idx: int, target: str) -> Optional[in
     return last
 
 
+def _is_order_count_header(header: str) -> bool:
+    """Recognise provider-independent order metrics without dropping sales amounts."""
+    words = set(re.findall(r"[a-z]+", header.lower()))
+    # Explicit tender wrappers and monetary labels remain payment candidates.
+    if header.startswith("other [") or words & {
+        "amount", "sales", "revenue", "payment", "payments", "paid", "value",
+        "inr", "rs", "cash", "card", "upi", "wallet", "other",
+    } or "₹" in header:
+        return False
+    return "orders" in words or (
+        "order" in words and bool(words & {"count", "counts", "no", "number", "qty", "quantity"})
+    )
+
+
 def _payment_columns(
     colmap: Dict[str, int], data: pd.DataFrame
 ) -> Tuple[Dict[str, int], Dict[str, int]]:
@@ -280,6 +294,8 @@ def _payment_columns(
         default=None,
     )
     for header, idx in colmap.items():
+        if _is_order_count_header(header):
+            continue
         if header in ALLOWED_PAYMENT_COLUMNS:
             payments[header] = idx
             continue
