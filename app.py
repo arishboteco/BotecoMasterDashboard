@@ -90,63 +90,70 @@ if st.query_params.get("health") == "check":
 st.markdown(styles.get_css(), unsafe_allow_html=True)
 
 # Initialize authentication
+# Reserve the page position before cookie components emit any browser commands.
+login_slot = st.empty()
+page_slot = st.empty()
 auth.init_auth_state()
-
-
 if not auth.check_authentication():
-    login_slot = st.empty()
-    with login_slot.container():
-        auth.show_login_form()
+    page_slot.empty()
+    with login_slot.container(key="login-view"):
+        auth.show_login_form(on_success=login_slot.empty)
 else:
-    st.sidebar.image("logo.png", width=180)
+    login_slot.empty()
+    page_slot.empty()
+    with page_slot.container(), st.spinner("Loading dashboard..."):
+        notice = st.session_state.pop("_auth_notice", None)
+        if notice:
+            st.warning(notice)
+        st.sidebar.image("logo.png", width=180)
 
-    report_loc_ids = auth.get_report_location_ids()
-    report_display_name = auth.get_report_display_name()
-    all_locs = database.get_all_locations()
+        report_loc_ids = auth.get_report_location_ids()
+        report_display_name = auth.get_report_display_name()
+        all_locs = database.get_all_locations()
 
-    location_id = st.session_state.location_id
+        location_id = st.session_state.location_id
 
-    st.sidebar.divider()
-    selected_section = sidebar_app_nav(
-        items=list(APP_NAV_ITEMS.keys()),
-        default="Analytics",
-    )
+        st.sidebar.divider()
+        selected_section = sidebar_app_nav(
+            items=list(APP_NAV_ITEMS.keys()),
+            default="Analytics",
+        )
 
-    st.sidebar.divider()
-    st.sidebar.markdown(
-        '<div class="sidebar-logout-marker"></div>',
-        unsafe_allow_html=True,
-    )
+        st.sidebar.divider()
+        st.sidebar.markdown(
+            '<div class="sidebar-logout-marker"></div>',
+            unsafe_allow_html=True,
+        )
 
-    if st.sidebar.button("Logout", key="sidebar_logout_btn", width="stretch"):
-        auth.logout()
+        if st.sidebar.button("Logout", key="sidebar_logout_btn", width="stretch"):
+            auth.logout()
 
-    st.sidebar.markdown(
-        '<div class="sidebar-footer">'
-        '<span class="sidebar-footer-text">Boteco Dashboard · v1.0</span>'
-        "</div>",
-        unsafe_allow_html=True,
-    )
+        st.sidebar.markdown(
+            '<div class="sidebar-footer">'
+            '<span class="sidebar-footer-text">Boteco Dashboard · v1.0</span>'
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
-    # Build shared context
-    import_loc_id = auth.get_primary_location_id()
-    if location_id is None:
-        location_id = import_loc_id
-    location_settings = database.get_location_settings(location_id)
-    if import_loc_id == location_id:
-        import_location_settings = location_settings
-    else:
-        import_location_settings = database.get_location_settings(import_loc_id)
+        # Build shared context
+        import_loc_id = auth.get_primary_location_id()
+        if location_id is None:
+            location_id = import_loc_id
+        location_settings = database.get_location_settings(location_id)
+        if import_loc_id == location_id:
+            import_location_settings = location_settings
+        else:
+            import_location_settings = database.get_location_settings(import_loc_id)
 
-    ctx = TabContext(
-        location_id=location_id,
-        import_loc_id=import_loc_id,
-        report_loc_ids=report_loc_ids,
-        report_display_name=report_display_name,
-        all_locs=all_locs,
-        location_settings=location_settings,
-        import_location_settings=import_location_settings,
-    )
+        ctx = TabContext(
+            location_id=location_id,
+            import_loc_id=import_loc_id,
+            report_loc_ids=report_loc_ids,
+            report_display_name=report_display_name,
+            all_locs=all_locs,
+            location_settings=location_settings,
+            import_location_settings=import_location_settings,
+        )
 
-    # Sidebar-routed application section
-    APP_NAV_ITEMS[selected_section](ctx)
+        # Sidebar-routed application section
+        APP_NAV_ITEMS[selected_section](ctx)

@@ -1,6 +1,14 @@
 """Skeleton pulse, page load animations, reduced-motion support."""
 
-LOADING_SKELETON = r"""    /* ── Loading skeleton ────────────────────────────────── */
+LOADING_SKELETON = r"""    /* Remove obsolete main-page elements while a new view streams in.
+       Keep sidebar navigation visible and leave current widget states alone. */
+    .st-key-login-view:has([data-stale="true"]),
+    [data-testid="stMain"] [data-stale="true"],
+    section.main [data-stale="true"] {
+        display: none;
+    }
+
+    /* ── Loading skeleton ────────────────────────────────── */
     @keyframes skeleton-pulse {
         0% { opacity: 0.6; }
         50% { opacity: 0.3; }

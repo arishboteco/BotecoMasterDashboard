@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 import streamlit as st
 from streamlit_cookies_controller import CookieController
@@ -12,7 +12,23 @@ import styles
 
 _COOKIE_NAME = "boteco_session"
 _COOKIE_EXPIRY_DAYS = 30
+_COOKIE_MANAGER_KEY = "boteco_cookie_manager"
 logger = boteco_logger.get_logger(__name__)
+
+
+def _new_cookie_manager() -> CookieController:
+    """Recover an uninitialized browser component without caching invalid cookie data."""
+    if _COOKIE_MANAGER_KEY in st.session_state and not isinstance(
+        st.session_state[_COOKIE_MANAGER_KEY], dict
+    ):
+        del st.session_state[_COOKIE_MANAGER_KEY]
+    controller = CookieController(key=_COOKIE_MANAGER_KEY)
+    if not isinstance(controller.getAll(), dict):
+        # The asynchronous component can return None before browser hydration.
+        # Rebuild through the public API with a safe per-render cookie snapshot.
+        st.session_state[_COOKIE_MANAGER_KEY] = {}
+        controller = CookieController(key=_COOKIE_MANAGER_KEY)
+    return controller
 
 
 def _get_cookie_manager() -> Optional[CookieController]:
@@ -24,7 +40,7 @@ def _get_cookie_manager() -> Optional[CookieController]:
     """
     if "_cm" not in st.session_state or st.session_state._cm is None:
         try:
-            st.session_state._cm = CookieController(key="boteco_cookie_manager")
+            st.session_state._cm = _new_cookie_manager()
         except TypeError as ex:
             logger.warning(
                 "CookieController init failed in auth.py user=%s error=%s",
@@ -80,7 +96,7 @@ def init_auth_state():
     # Storing it in session_state lets other functions reuse it within this
     # render without creating a duplicate component call.
     try:
-        st.session_state._cm = CookieController(key="boteco_cookie_manager")
+        st.session_state._cm = _new_cookie_manager()
     except TypeError as ex:
         logger.warning(
             "CookieController render init failed in auth.py user=%s error=%s",
@@ -88,6 +104,23 @@ def init_auth_state():
             ex,
         )
         st.session_state._cm = None
+
+    pending_cookie = st.session_state.pop("_pending_auth_cookie", None)
+    if pending_cookie is not None:
+        token, session_days, remember = pending_cookie
+        try:
+            cm = _get_cookie_manager()
+            if cm is None:
+                raise TypeError("Cookie manager unavailable")
+            cookie_kwargs = {}
+            if remember:
+                cookie_kwargs["expires"] = datetime.now() + timedelta(days=session_days)
+            cm.set(_COOKIE_NAME, token, **cookie_kwargs)
+        except TypeError as ex:
+            logger.warning("Cookie set failed in auth.py remember=%s error=%s", remember, ex)
+            st.session_state["_auth_notice"] = (
+                "Signed in for this session. Remember me could not be saved."
+            )
 
     if st.session_state.authenticated:
         return  # already logged in this server-side session
@@ -125,7 +158,7 @@ def init_auth_state():
             st.rerun()
 
 
-def show_login_form():
+def show_login_form(on_success: Optional[Callable[[], None]] = None):
     """Show login form."""
     st.markdown(styles.get_login_css(), unsafe_allow_html=True)
     st.markdown('<div class="login-page-root">', unsafe_allow_html=True)
@@ -181,26 +214,12 @@ def show_login_form():
                     # checked → persistent cookie for _COOKIE_EXPIRY_DAYS
                     session_days = _COOKIE_EXPIRY_DAYS if remember else 1
                     token = database.create_user_session(user["id"], days=session_days)
-                    cm = _get_cookie_manager()
-                    if cm is not None:
-                        try:
-                            cookie_kwargs = {}
-                            if remember:
-                                cookie_kwargs["expires"] = datetime.now() + timedelta(
-                                    days=session_days
-                                )
-                            cm.set(_COOKIE_NAME, token, **cookie_kwargs)
-                        except TypeError as ex:
-                            logger.warning(
-                                "Cookie set failed in auth.py user=%s remember=%s error=%s",
-                                username,
-                                remember,
-                                ex,
-                            )
-                            st.warning(
-                                "Signed in, but 'Remember me' could not be applied in this browser."
-                            )
+                    # Send the cookie from the stable root on the next render,
+                    # so clearing the login form cannot unmount its browser command.
+                    st.session_state["_pending_auth_cookie"] = (token, session_days, remember)
                     _apply_user_to_session(user, token)
+                    if on_success is not None:
+                        on_success()
                     st.rerun()
                 else:
                     st.error("Invalid username or password")
