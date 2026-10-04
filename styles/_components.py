@@ -1649,26 +1649,25 @@ ICON_ONLY_ACTION_BUTTONS = r"""    /* ── Icon-only action buttons ───�
 """
 
 UPLOAD_ZONE_STYLING = r"""    /* ── Upload zone styling ───────────────────────────────── */
-    .upload-zone-container {
+    .st-key-upload-source-files {
         position: relative;
     }
-    .upload-zone-container .stFileUploader > div:first-child {
+    .st-key-upload-source-files .stFileUploader > div:first-child {
         padding: 0 !important;
     }
-    .upload-zone-container [data-testid="stFileUploaderDropzone"] {
+    .st-key-upload-source-files [data-testid="stFileUploaderDropzone"] {
         min-height: 140px;
         border: 2px dashed var(--brand) !important;
         border-radius: var(--radius-lg) !important;
         background: var(--surface) !important;
         transition: all var(--transition-normal) ease;
     }
-    .upload-zone-container [data-testid="stFileUploaderDropzone"]:hover {
+    .st-key-upload-source-files [data-testid="stFileUploaderDropzone"]:hover {
         border-color: var(--brand-dark) !important;
         background: var(--brand-soft) !important;
         box-shadow: 0 0 0 4px rgba(31,95,168,0.1) !important;
-        transform: translateY(-1px);
     }
-    .upload-zone-container [data-testid="stFileUploaderDropzone"] label {
+    .st-key-upload-source-files [data-testid="stFileUploaderDropzone"] label {
         color: var(--text-secondary) !important;
         font-size: 0.95rem !important;
         font-family: var(--font-body) !important;

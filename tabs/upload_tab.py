@@ -24,7 +24,7 @@ from components import (
     primary_action_bar,
     section_title,
 )
-from components.footfall_editor import render_footfall_editor
+from components.footfall_editor import render_footfall_inputs, save_footfall_values
 from services import cache_invalidation, upload_service
 from services.upload_service import ImportOptions, ImportPlan
 from tabs import TabContext
@@ -236,9 +236,7 @@ def _render_saved_days_detail(history_rows: list[dict]) -> None:
         if "Day" in hdf.columns:
             hdf["Day"] = hdf["Day"].apply(
                 lambda x: (
-                    datetime.strptime(x[:10], "%Y-%m-%d").strftime("%d %b %Y")
-                    if pd.notna(x)
-                    else x
+                    datetime.strptime(x[:10], "%Y-%m-%d").strftime("%d %b %Y") if pd.notna(x) else x
                 )
             )
         st.dataframe(hdf, width="stretch", hide_index=True)
@@ -357,9 +355,7 @@ def _render_health_checklist(report, loc_id: int | None) -> None:
 
 def _render_month_rollup(report, loc_id: int | None) -> None:
     months = (
-        report.months
-        if loc_id is None
-        else [m for m in report.months if m.location_id == loc_id]
+        report.months if loc_id is None else [m for m in report.months if m.location_id == loc_id]
     )
     if not months:
         return
@@ -443,9 +439,7 @@ def _render_data_quality(ctx: TabContext) -> None:
     )
 
     if not report.checks:
-        section_title(
-            "Data health", "No saved data yet for this outlet scope.", icon="fact_check"
-        )
+        section_title("Data health", "No saved data yet for this outlet scope.", icon="fact_check")
         return
 
     section_title(
@@ -494,38 +488,48 @@ def _render_post_import_footfall(shell, ctx: TabContext) -> None:
         section_title("Step 2 of 2 — Footfall covers (optional)", icon="people")
         st.caption(
             "Enter Lunch and Dinner cover counts for the dates you just imported. "
-            "Rows marked **✓ Set** already have overrides saved. "
+            "Previously saved counts are prefilled. "
             "Leave values blank to use POS-derived counts. "
-            "Click **Done** to finish without entering footfall."
+            "Enter all counts, then click **Save footfall and finish** once. "
+            "Press Tab to move between cells; edits stay on this page until you save."
         )
 
-        any_changed = False
-        for loc_id, loc_data in dates_by_loc.items():
-            loc_name: str = loc_data["name"]
-            dates: list = sorted(loc_data["dates"])
+        with st.form("post_import_footfall_form", enter_to_submit=False):
+            drafts = []
+            for loc_id, loc_data in dates_by_loc.items():
+                if len(dates_by_loc) > 1:
+                    st.markdown(f"##### {loc_data['name']}")
+                edited_df, original = render_footfall_inputs(
+                    location_id=int(loc_id),
+                    dates=sorted(loc_data["dates"]),
+                    key_prefix=f"upload_footfall_{loc_id}_",
+                    show_context=False,
+                )
+                drafts.append((int(loc_id), edited_df, original))
+            save = st.form_submit_button("Save footfall and finish", type="primary")
+            skip = st.form_submit_button("Finish without saving footfall")
 
-            if len(dates_by_loc) > 1:
-                st.markdown(f"##### {loc_name}")
-
-            changed = render_footfall_editor(
-                location_id=int(loc_id),
-                dates=dates,
-                loc_name=loc_name,
-                edited_by=edited_by,
-                key_prefix=f"upload_footfall_{loc_id}_",
+        if save:
+            try:
+                changed = sum(
+                    save_footfall_values(loc_id, edited_df, original, edited_by)
+                    for loc_id, edited_df, original in drafts
+                )
+            except Exception:
+                logger.exception("Could not finish post-import footfall entry")
+                st.error(
+                    "Footfall could not be fully saved. Your import is complete; retry saving."
+                )
+                return
+            st.session_state["_footfall_summary_flash"] = (
+                f"Footfall saved for {changed} date(s)." if changed else "Footfall is up to date."
             )
-            if changed:
-                any_changed = True
 
-        divider()
-        if st.button("Done", key="post_import_done_btn", type="primary"):
+        if save or skip:
             st.session_state.pop("_post_import_state", None)
             st.session_state.pop("_upload_result", None)
             st.session_state.pop("_upload_fingerprint", None)
             st.session_state["_import_summary_flash"] = (saved_days, skipped, note_count)
-            st.rerun()
-
-        if any_changed:
             st.rerun()
 
 
@@ -547,17 +551,15 @@ def render(ctx: TabContext) -> None:
         st.success(
             f"Last import: **{sd}** day(s) saved, **{sk}** day(s) skipped, **{nc}** note(s)."
         )
+    footfall_flash = st.session_state.pop("_footfall_summary_flash", None)
+    if footfall_flash:
+        st.success(footfall_flash)
 
     with shell.filters:
-        with classed_container(
-            "tab-upload-mobile-filters",
-            "mobile-layout-stack",
-            "mobile-layout-filters",
-            "mobile-layout-secondary",
-        ):
+        with st.container(key="upload-source-files"):
             section_title(
                 "Upload source files",
-                "Drop any Petpooja exports (CSV/XLS/XLSX).",
+                "Drag files into the box below, or use the file picker (CSV/XLS/XLSX).",
                 icon="upload_file",
             )
             uploaded_files = st.file_uploader(
@@ -572,18 +574,16 @@ def render(ctx: TabContext) -> None:
                 key="smart_upload_files",
                 label_visibility="collapsed",
             )
+            st.caption(
+                "Growth Reports, Item Reports, Timing Reports and Order Summaries — "
+                "any combination works."
+            )
 
     with shell.content:
         if not uploaded_files:
             # Clear cached result when files are removed
             st.session_state.pop("_upload_result", None)
             st.session_state.pop("_upload_fingerprint", None)
-            empty_state(
-                "Drop your Petpooja exports above",
-                hint="Growth Report Day Wise, Item Report With Customer/Order "
-                "Details, Complimentary Orders Summary — any combination works.",
-                icon="upload_file",
-            )
 
         if uploaded_files:
             section_title("Review detected files", icon="fact_check")
@@ -779,18 +779,12 @@ def render(ctx: TabContext) -> None:
                         dates_by_loc = {
                             loc_id: {
                                 "name": loc_name_map_local.get(loc_id, f"Outlet {loc_id}"),
-                                "dates": [
-                                    dr.date
-                                    for dr in day_results
-                                    if not dr.errors
-                                ],
+                                "dates": [dr.date for dr in day_results if not dr.errors],
                             }
                             for loc_id, day_results in upload_result.location_results.items()
                         }
                         # Only include locations that actually had days saved
-                        dates_by_loc = {
-                            k: v for k, v in dates_by_loc.items() if v["dates"]
-                        }
+                        dates_by_loc = {k: v for k, v in dates_by_loc.items() if v["dates"]}
 
                         # Move to post-import footfall step (clears upload cache on Done)
                         st.session_state["_post_import_state"] = {

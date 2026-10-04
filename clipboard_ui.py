@@ -5,6 +5,7 @@ import hashlib
 import json
 from io import BytesIO
 from typing import List, Optional, Tuple
+from urllib.parse import quote
 from zipfile import ZIP_DEFLATED, ZipFile
 
 import streamlit as st
@@ -12,7 +13,8 @@ import streamlit as st
 import ui_theme
 
 WHATSAPP_ICON_SVG = (
-    '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
+    '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" '
+    'xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
     '<path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.151'
     "-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475"
     "-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52"
@@ -56,17 +58,17 @@ COPY_ICON_SVG = (
 )
 
 
-def _html(html: str, height: int, component_key: str) -> None:
+def _html(html: str, height: int, component_key: str, *, auto_height: bool = False) -> None:
     """Render HTML in an iframe with Streamlit version compatibility."""
     try:
-        st.iframe(html, height=height)
+        st.iframe(html, height="content" if auto_height else height)
         return
     except AttributeError:
         pass
 
     import streamlit.components.v1 as components
 
-    components.html(html, height=height, scrolling=False)
+    components.html(html, height=height, scrolling=auto_height)
 
 
 def _safe_id(key: str) -> str:
@@ -134,7 +136,13 @@ def _icon_btn_style(*, primary: bool = True) -> str:
     )
 
 
-def _report_share_script(files, button_id, message_id, share_text, fallback_url):
+def _report_share_script(
+    files: List[Tuple[str, bytes]],
+    button_id: str,
+    message_id: str,
+    share_text: str,
+    fallback_url: Optional[str],
+) -> str:
     """Use native file sharing, with explicit browser links as a desktop fallback."""
     if len(files) == 1:
         download_name, download_bytes = files[0]
@@ -146,25 +154,45 @@ def _report_share_script(files, button_id, message_id, share_text, fallback_url)
                 archive.writestr(name, data)
         download_name, download_bytes = "boteco_reports.zip", bundle.getvalue()
         download_mime = "application/zip"
-    config = json.dumps({
-        "files": [{"name": name, "b64": base64.b64encode(data).decode("ascii")}
-                  for name, data in files],
-        "buttonId": button_id, "messageId": message_id, "text": share_text,
-        "url": fallback_url, "downloadName": download_name,
-        "downloadUrl": "data:" + download_mime + ";base64,"
-                       + base64.b64encode(download_bytes).decode("ascii"),
-    }).replace("<", "\\u003c")
+    config = json.dumps(
+        {
+            "files": [
+                {"name": name, "b64": base64.b64encode(data).decode("ascii")}
+                for name, data in files
+            ],
+            "buttonId": button_id,
+            "messageId": message_id,
+            "text": share_text,
+            "url": fallback_url,
+            "downloadName": download_name,
+            "desktopUrl": "https://web.whatsapp.com/send?text=" + quote(share_text, safe=""),
+            "downloadUrl": "data:"
+            + download_mime
+            + ";base64,"
+            + base64.b64encode(download_bytes).decode("ascii"),
+        }
+    ).replace("<", "\\u003c")
     return """
 (function(config) {
   const button = document.getElementById(config.buttonId);
   const message = document.getElementById(config.messageId);
   message.setAttribute("role", "status");
+  message.setAttribute("aria-live", "polite");
   message.style.cssText = "display:block;font:12px sans-serif;line-height:1.4;margin-top:4px";
   const files = config.files.map(item => new File(
     [Uint8Array.from(atob(item.b64), c => c.charCodeAt(0))],
     item.name, {type: "image/png"}
   ));
   const payload = {files, text: config.text};
+  const mobile = navigator.userAgentData ? navigator.userAgentData.mobile
+    : /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "")
+      || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  // Prepare downloads before the click, keeping browser user activation intact.
+  const downloadBlob = new Blob([Uint8Array.from(
+    atob(config.downloadUrl.split(",")[1]), c => c.charCodeAt(0)
+  )], {type: files.length > 1 ? "application/zip" : "image/png"});
+  const downloadUrl = URL.createObjectURL(downloadBlob);
+  const imageUrls = files.map(file => URL.createObjectURL(file));
   let controls;
   const desktopOptions = document.createElement("button");
   desktopOptions.type = "button";
@@ -172,32 +200,76 @@ def _report_share_script(files, button_id, message_id, share_text, fallback_url)
   desktopOptions.style.cssText = "margin-top:4px;cursor:pointer;font:12px sans-serif";
   desktopOptions.onclick = fallback;
   message.after(desktopOptions);
+  async function copyImage(file) {
+    try {
+      await navigator.clipboard.write([new ClipboardItem({"image/png": file})]);
+      message.textContent = "Image copied. Open WhatsApp Web, choose a chat and paste.";
+    } catch (error) {
+      message.textContent = "Clipboard access was denied. "
+        + "Download the PNG and attach it in WhatsApp Web.";
+    }
+  }
   function fallback() {
     desktopOptions.hidden = true;
     message.textContent = files.length > 1
-      ? "Download all reports, unzip, then attach the PNGs in WhatsApp."
-      : "Download the PNG or use Copy, then attach or paste it in WhatsApp.";
+      ? "Open WhatsApp Web and attach the PNGs below, or download all and unzip."
+      : "Copy the PNG, open WhatsApp Web, choose a chat and paste. "
+        + "You can also download and attach it.";
     if (controls) return;
     controls = document.createElement("div");
-    controls.style.cssText = "display:flex;gap:16px;flex-wrap:wrap;font:14px sans-serif;margin-top:6px";
+    controls.style.cssText = "display:flex;gap:10px;flex-wrap:wrap;"
+      + "font:14px sans-serif;margin-top:6px";
     const download = document.createElement("a");
-    download.href = config.downloadUrl;
+    download.href = downloadUrl;
     download.download = config.downloadName;
     download.textContent = files.length > 1 ? "Download all reports (ZIP)" : "Download PNG";
     controls.appendChild(download);
+    const open = document.createElement("a");
+    open.href = config.desktopUrl;
+    open.target = "_blank";
+    open.rel = "noopener noreferrer";
+    open.textContent = "Open WhatsApp Web";
+    controls.appendChild(open);
+    files.forEach((file, index) => {
+      if (files.length > 1) {
+        const image = document.createElement("a");
+        image.href = imageUrls[index];
+        image.download = file.name;
+        image.textContent = "Download " + file.name;
+        controls.appendChild(image);
+      }
+      if (navigator.clipboard && navigator.clipboard.write
+          && typeof ClipboardItem !== "undefined") {
+        const copy = document.createElement("button");
+        copy.type = "button";
+        copy.textContent = files.length > 1 ? "Copy " + file.name : "Copy PNG";
+        copy.onclick = () => copyImage(file);
+        controls.appendChild(copy);
+      }
+    });
     if (config.url) {
-      const open = document.createElement("a");
-      open.href = config.url;
-      open.target = "_blank";
-      open.rel = "noopener noreferrer";
-      open.textContent = "Open WhatsApp";
-      controls.appendChild(open);
+      const app = document.createElement("a");
+      app.href = config.url;
+      app.target = "_blank";
+      app.rel = "noopener noreferrer";
+      app.textContent = "Open WhatsApp app";
+      controls.appendChild(app);
     }
     message.after(controls);
   }
   button.onclick = async function() {
     button.disabled = true;
     try {
+      if (!mobile) {
+        fallback();
+        // Start copying while this document still has focus, without awaiting it.
+        const copying = files.length === 1 && navigator.clipboard && navigator.clipboard.write
+          && typeof ClipboardItem !== "undefined" ? copyImage(files[0]) : null;
+        // Open during the click so popup blockers don't lose user activation.
+        window.open(config.desktopUrl, "_blank", "noopener,noreferrer");
+        if (copying) await copying;
+        return;
+      }
       if (!navigator.share || !navigator.canShare || !navigator.canShare(payload)) {
         fallback();
         return;
@@ -210,6 +282,13 @@ def _report_share_script(files, button_id, message_id, share_text, fallback_url)
       button.disabled = false;
     }
   };
+  // Browsers without file sharing should show usable desktop actions immediately.
+  try {
+    if (!mobile || !navigator.share || !navigator.canShare
+        || !navigator.canShare(payload)) fallback();
+  } catch (error) {
+    fallback();
+  }
 })(CONFIG);
 """.replace("CONFIG", config)
 
@@ -239,12 +318,13 @@ def render_image_action_row(
     error_color = ui_theme.BRAND_ERROR
 
     html = f"""
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..24,400,0,0&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..24,400,0,0&display=swap"
+      rel="stylesheet">
 <style>
 html, body {{
   margin: 0;
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
 }}
 .material-symbols-outlined {{
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
@@ -291,9 +371,12 @@ html, body {{
 }}
 </style>
 <div class="action-btn-row" id="{uid}_row" role="toolbar" aria-label="Image actions">
-  <button class="action-btn" id="{uid}_copy" title="Copy this section as image to clipboard" aria-label="Copy image to clipboard" type="button">&#xe14d;</button>
-  <button class="action-btn" id="{uid}_wa" title="Share this section via WhatsApp" aria-label="Share via WhatsApp" type="button">{WHATSAPP_ICON_SVG}</button>
-  <button class="action-btn" id="{uid}_dl" title="Download this section as PNG" aria-label="Download image" type="button">&#xe2c4;</button>
+  <button class="action-btn" id="{uid}_copy" title="Copy this section as image to clipboard"
+          aria-label="Copy image to clipboard" type="button">&#xe14d;</button>
+  <button class="action-btn" id="{uid}_wa" title="Share this section via WhatsApp"
+          aria-label="Share via WhatsApp" type="button">{WHATSAPP_ICON_SVG}</button>
+  <button class="action-btn" id="{uid}_dl" title="Download this section as PNG"
+          aria-label="Download image" type="button">&#xe2c4;</button>
 </div>
 <span id="{uid}_msg" style="font-size:0.75rem;margin-left:0.5rem;color:{success_color};"></span>
 <script>
@@ -361,10 +444,14 @@ html, body {{
 }})();
 </script>
 """
-    html += "<script>" + _report_share_script(
-        [(filename, png_bytes)], f"{uid}_wa", f"{uid}_msg", share_text, fallback_url
-    ) + "</script>"
-    _html(html, 120, component_key)
+    html += (
+        "<script>"
+        + _report_share_script(
+            [(filename, png_bytes)], f"{uid}_wa", f"{uid}_msg", share_text, fallback_url
+        )
+        + "</script>"
+    )
+    _html(html, 240, component_key, auto_height=True)
 
 
 def render_icon_button(
@@ -585,11 +672,11 @@ def render_share_images_button(
     uid = _safe_id(component_key + "s")
     stl = _btn_style(primary=primary)
     html = (
-        '<style>body{margin:0;padding:0;font-family:sans-serif}</style>'
+        "<style>body{margin:0;padding:0;font-family:sans-serif}</style>"
         f'<button id="{uid}_btn" type="button" style="{stl}">'
-        f'{WHATSAPP_ICON_SVG}<span>{label}</span></button>'
+        f"{WHATSAPP_ICON_SVG}<span>{label}</span></button>"
         f'<span id="{uid}_msg"></span><script>'
         + _report_share_script(files, f"{uid}_btn", f"{uid}_msg", share_text, fallback_url)
         + "</script>"
     )
-    _html(html, max(height, 140), component_key)
+    _html(html, max(height, 240), component_key, auto_height=True)

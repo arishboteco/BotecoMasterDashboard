@@ -11,7 +11,7 @@ Used by:
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 import streamlit as st
@@ -20,15 +20,12 @@ import database
 from repositories.footfall_override_repository import get_footfall_override_repository
 from services.cache_invalidation import invalidate_footfall_caches
 
-
 # ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
 
 
-def _fetch_pos_covers_batch(
-    location_id: int, dates: List[str]
-) -> Dict[str, Optional[int]]:
+def _fetch_pos_covers_batch(location_id: int, dates: List[str]) -> Dict[str, Optional[int]]:
     """Return {date: total_covers} from daily_summary for the given dates.
 
     Falls back to order_count when covers is 0 or NULL (older imported rows).
@@ -65,9 +62,7 @@ def _fetch_pos_covers_batch(
         return {row["date"]: _best_covers(dict(row)) for row in cur.fetchall()}
 
 
-def fetch_dates_with_data(
-    location_id: int, start_date: str, end_date: str
-) -> List[str]:
+def fetch_dates_with_data(location_id: int, start_date: str, end_date: str) -> List[str]:
     """Return sorted dates in [start, end] that have daily_summary data or overrides."""
     summary_dates: set[str] = set()
 
@@ -86,17 +81,13 @@ def fetch_dates_with_data(
         with database.db_connection() as conn:
             cur = conn.cursor()
             cur.execute(
-                "SELECT date FROM daily_summaries "
-                "WHERE location_id = ? AND date BETWEEN ? AND ?",
+                "SELECT date FROM daily_summaries WHERE location_id = ? AND date BETWEEN ? AND ?",
                 (location_id, start_date, end_date),
             )
             summary_dates = {row["date"] for row in cur.fetchall()}
 
     repo = get_footfall_override_repository()
-    override_dates = {
-        o["date"]
-        for o in repo.get_for_range([location_id], start_date, end_date)
-    }
+    override_dates = {o["date"] for o in repo.get_for_range([location_id], start_date, end_date)}
 
     return sorted(summary_dates | override_dates)
 
@@ -106,31 +97,26 @@ def fetch_dates_with_data(
 # ---------------------------------------------------------------------------
 
 
-def render_footfall_editor(
+def render_footfall_inputs(
     location_id: int,
     dates: List[str],
-    loc_name: str,
-    edited_by: str,
     key_prefix: str = "",
-) -> int:
-    """Render a data_editor for footfall override entry.
+    *,
+    show_context: bool = True,
+) -> Tuple[pd.DataFrame, Dict[str, Dict[str, Any]]]:
+    """Render editable covers and return the draft plus its saved baseline.
 
-    Each row represents one date. Rows with existing overrides show "✓ Set"
-    and pre-filled Lunch/Dinner values; rows without show "○ Not set" and
-    empty inputs. The POS Total column is read-only context.
-
-    Returns the number of rows that were changed (saved or deleted).
-    Does NOT call st.rerun() — the caller decides when to rerun.
+    Call inside a form to let users enter every date before submitting.
     """
     if not dates:
         st.caption("No dates with imported data in this range.")
-        return 0
+        return pd.DataFrame(), {}
 
     repo = get_footfall_override_repository()
     overrides = repo.get_for_range([location_id], min(dates), max(dates))
     overrides_by_date: Dict[str, Dict[str, Any]] = {o["date"]: o for o in overrides}
 
-    pos_by_date = _fetch_pos_covers_batch(location_id, dates)
+    pos_by_date = _fetch_pos_covers_batch(location_id, dates) if show_context else {}
 
     rows: List[Dict[str, Any]] = []
     for date in dates:
@@ -140,9 +126,7 @@ def render_footfall_editor(
                 "Date": date,
                 "POS Covers": pos_by_date.get(date),
                 "Lunch": (
-                    int(ov["lunch_covers"])
-                    if ov and ov.get("lunch_covers") is not None
-                    else pd.NA
+                    int(ov["lunch_covers"]) if ov and ov.get("lunch_covers") is not None else pd.NA
                 ),
                 "Dinner": (
                     int(ov["dinner_covers"])
@@ -182,13 +166,15 @@ def render_footfall_editor(
                 help="Total covers from POS data (read-only).",
             ),
             "Lunch": st.column_config.NumberColumn(
-                "Lunch Covers",
+                "Lunch",
+                width="small",
                 min_value=0,
                 step=1,
                 help="Leave blank to use POS-derived value.",
             ),
             "Dinner": st.column_config.NumberColumn(
-                "Dinner Covers",
+                "Dinner",
+                width="small",
                 min_value=0,
                 step=1,
                 help="Leave blank to use POS-derived value.",
@@ -196,24 +182,36 @@ def render_footfall_editor(
             "Status": st.column_config.TextColumn("Status", disabled=True),
         },
         hide_index=True,
+        column_order=(
+            ["Date", "Lunch", "Dinner", "POS Covers", "Status"]
+            if show_context
+            else ["Date", "Lunch", "Dinner"]
+        ),
         use_container_width=True,
         key=editor_key,
     )
 
-    if st.button(
-        "Save footfall covers",
-        key=f"{key_prefix}save_footfall_{location_id}",
-        type="primary",
-    ):
-        changed = 0
+    return edited_df, original
 
-        def _eq(a: Any, b: Any) -> bool:
-            if pd.isna(a) and pd.isna(b):
-                return True
-            if pd.isna(a) or pd.isna(b):
-                return False
-            return int(a) == int(b)
 
+def save_footfall_values(
+    location_id: int,
+    edited_df: pd.DataFrame,
+    original: Dict[str, Dict[str, Any]],
+    edited_by: str,
+) -> int:
+    """Save changed cover counts, preserving blanks, zeroes and untouched dates."""
+    repo = get_footfall_override_repository()
+    changed = 0
+
+    def _eq(a: Any, b: Any) -> bool:
+        if pd.isna(a) and pd.isna(b):
+            return True
+        if pd.isna(a) or pd.isna(b):
+            return False
+        return int(a) == int(b)
+
+    try:
         for _, row in edited_df.iterrows():
             date = str(row["Date"])
             orig = original.get(date, {})
@@ -222,13 +220,12 @@ def render_footfall_editor(
             old_dinner = orig.get("dinner", pd.NA)
 
             if _eq(new_lunch, old_lunch) and _eq(new_dinner, old_dinner):
-                continue  # unchanged
+                continue
 
             lc = None if pd.isna(new_lunch) else int(new_lunch)
             dc = None if pd.isna(new_dinner) else int(new_dinner)
 
             if lc is None and dc is None:
-                # Both cleared → remove override if one existed
                 if orig.get("has_override"):
                     repo.delete(location_id, date)
                     changed += 1
@@ -242,10 +239,39 @@ def render_footfall_editor(
                     edited_by=edited_by,
                 )
                 changed += 1
-
+    finally:
+        # A later write can fail after earlier dates were saved.
         if changed:
             invalidate_footfall_caches([location_id])
-            st.session_state[save_count_key] = save_count + 1
+
+    return changed
+
+
+def render_footfall_editor(
+    location_id: int,
+    dates: List[str],
+    loc_name: str,
+    edited_by: str,
+    key_prefix: str = "",
+) -> int:
+    """Render a batched footfall form; the caller refreshes after a save."""
+    if not dates:
+        st.caption("No dates with imported data in this range.")
+        return 0
+
+    with st.form(f"{key_prefix}footfall_form_{location_id}", enter_to_submit=False):
+        edited_df, original = render_footfall_inputs(location_id, dates, key_prefix)
+        submitted = st.form_submit_button(
+            "Save footfall covers",
+            type="primary",
+        )
+
+    if submitted:
+        changed = save_footfall_values(location_id, edited_df, original, edited_by)
+
+        if changed:
+            save_count_key = f"_footfall_save_count_{key_prefix}{location_id}"
+            st.session_state[save_count_key] = st.session_state.get(save_count_key, 0) + 1
             st.success(f"Saved {changed} footfall override(s) for {loc_name}.")
         else:
             st.info("No changes to save.")
