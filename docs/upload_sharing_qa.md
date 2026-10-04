@@ -1,5 +1,25 @@
 # Upload and desktop report-sharing fixes — 4 October 2026
 
+## WhatsApp correction
+
+The sharing behavior documented below is superseded by this correction:
+- Removed the always-visible fallback instructions, links, ZIP downloads and duplicate copy controls.
+- Restored native PNG file sharing on desktop as well as mobile. The operating-system share picker lets the user select WhatsApp and receives every original PNG.
+- If native file sharing is unsupported, the button opens the installed WhatsApp app. Individual PNGs are copied when clipboard access is available; a short message appears only after interaction. App links alone cannot attach image files.
+- Cancelling native sharing does nothing further. Errors show a concise message and re-enable the button.
+- Kept the existing copy and download icons and reduced the legacy iframe height.
+
+Changed files: `clipboard_ui.py` (behavior and UI), `tests/test_report_sharing.py` (regression checks), and this QA record.
+Validation: all 10 sharing tests passed (Node executes the generated JavaScript; pytest run with `--noconftest` because these tests do not use database fixtures). Ruff E/F/I/B and diff whitespace checks passed. Desktop and 375px-wide local previews showed only the primary share button and existing three-icon action row, without fallback links, instructions or horizontal overflow. Actual WhatsApp delivery remains unverified because the in-app browser cannot control the Windows share picker or WhatsApp desktop.
+
+![Corrected desktop sharing](C:/Users/arish/.codex/visualizations/2026/10/04/01a1050d-dadc-7c21-b7f4-ac387c0ea6aa/sharing-clean-desktop.jpg)
+
+![Corrected mobile layout](C:/Users/arish/.codex/visualizations/2026/10/04/01a1050d-dadc-7c21-b7f4-ac387c0ea6aa/sharing-clean-mobile.jpg)
+
+Context7 was unavailable; native sharing behavior was checked against [Microsoft Edge documentation](https://learn.microsoft.com/en-us/microsoft-edge/progressive-web-apps/how-to/share) and [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/share).
+
+## Original release evidence (before the correction)
+
 The fixes were prepared on `main`, which matched `origin/main` after fetching.
 Existing unrelated working-tree edits were preserved. Live deployment was not verified.
 

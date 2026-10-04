@@ -3,10 +3,8 @@
 import base64
 import hashlib
 import json
-from io import BytesIO
 from typing import List, Optional, Tuple
 from urllib.parse import quote
-from zipfile import ZIP_DEFLATED, ZipFile
 
 import streamlit as st
 
@@ -143,17 +141,7 @@ def _report_share_script(
     share_text: str,
     fallback_url: Optional[str],
 ) -> str:
-    """Use native file sharing, with explicit browser links as a desktop fallback."""
-    if len(files) == 1:
-        download_name, download_bytes = files[0]
-        download_mime = "image/png"
-    else:
-        bundle = BytesIO()
-        with ZipFile(bundle, "w", ZIP_DEFLATED) as archive:
-            for name, data in files:
-                archive.writestr(name, data)
-        download_name, download_bytes = "boteco_reports.zip", bundle.getvalue()
-        download_mime = "application/zip"
+    """Share report files through the OS on desktop and mobile, without extra controls."""
     config = json.dumps(
         {
             "files": [
@@ -163,13 +151,7 @@ def _report_share_script(
             "buttonId": button_id,
             "messageId": message_id,
             "text": share_text,
-            "url": fallback_url,
-            "downloadName": download_name,
-            "desktopUrl": "https://web.whatsapp.com/send?text=" + quote(share_text, safe=""),
-            "downloadUrl": "data:"
-            + download_mime
-            + ";base64,"
-            + base64.b64encode(download_bytes).decode("ascii"),
+            "appUrl": "whatsapp://send?text=" + quote(share_text, safe=""),
         }
     ).replace("<", "\\u003c")
     return """
@@ -184,111 +166,44 @@ def _report_share_script(
     item.name, {type: "image/png"}
   ));
   const payload = {files, text: config.text};
-  const mobile = navigator.userAgentData ? navigator.userAgentData.mobile
-    : /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "")
-      || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  // Prepare downloads before the click, keeping browser user activation intact.
-  const downloadBlob = new Blob([Uint8Array.from(
-    atob(config.downloadUrl.split(",")[1]), c => c.charCodeAt(0)
-  )], {type: files.length > 1 ? "application/zip" : "image/png"});
-  const downloadUrl = URL.createObjectURL(downloadBlob);
-  const imageUrls = files.map(file => URL.createObjectURL(file));
-  let controls;
-  const desktopOptions = document.createElement("button");
-  desktopOptions.type = "button";
-  desktopOptions.textContent = "Desktop sharing options";
-  desktopOptions.style.cssText = "margin-top:4px;cursor:pointer;font:12px sans-serif";
-  desktopOptions.onclick = fallback;
-  message.after(desktopOptions);
-  async function copyImage(file) {
+  async function openApp() {
+    // Start copying before opening the app, while the browser still has focus.
+    let copying;
     try {
-      await navigator.clipboard.write([new ClipboardItem({"image/png": file})]);
-      message.textContent = "Image copied. Open WhatsApp Web, choose a chat and paste.";
-    } catch (error) {
-      message.textContent = "Clipboard access was denied. "
-        + "Download the PNG and attach it in WhatsApp Web.";
-    }
-  }
-  function fallback() {
-    desktopOptions.hidden = true;
-    message.textContent = files.length > 1
-      ? "Open WhatsApp Web and attach the PNGs below, or download all and unzip."
-      : "Copy the PNG, open WhatsApp Web, choose a chat and paste. "
-        + "You can also download and attach it.";
-    if (controls) return;
-    controls = document.createElement("div");
-    controls.style.cssText = "display:flex;gap:10px;flex-wrap:wrap;"
-      + "font:14px sans-serif;margin-top:6px";
-    const download = document.createElement("a");
-    download.href = downloadUrl;
-    download.download = config.downloadName;
-    download.textContent = files.length > 1 ? "Download all reports (ZIP)" : "Download PNG";
-    controls.appendChild(download);
-    const open = document.createElement("a");
-    open.href = config.desktopUrl;
-    open.target = "_blank";
-    open.rel = "noopener noreferrer";
-    open.textContent = "Open WhatsApp Web";
-    controls.appendChild(open);
-    files.forEach((file, index) => {
-      if (files.length > 1) {
-        const image = document.createElement("a");
-        image.href = imageUrls[index];
-        image.download = file.name;
-        image.textContent = "Download " + file.name;
-        controls.appendChild(image);
-      }
-      if (navigator.clipboard && navigator.clipboard.write
+      if (files.length === 1 && navigator.clipboard && navigator.clipboard.write
           && typeof ClipboardItem !== "undefined") {
-        const copy = document.createElement("button");
-        copy.type = "button";
-        copy.textContent = files.length > 1 ? "Copy " + file.name : "Copy PNG";
-        copy.onclick = () => copyImage(file);
-        controls.appendChild(copy);
+        copying = navigator.clipboard.write([new ClipboardItem({"image/png": files[0]})]);
       }
-    });
-    if (config.url) {
-      const app = document.createElement("a");
-      app.href = config.url;
-      app.target = "_blank";
-      app.rel = "noopener noreferrer";
-      app.textContent = "Open WhatsApp app";
-      controls.appendChild(app);
+    } catch (_) { /* Download remains available if copying is blocked. */ }
+    window.open(config.appUrl, "_blank", "noopener,noreferrer");
+    if (copying) {
+      try {
+        await copying;
+        message.textContent = "Image copied. Paste it into your WhatsApp chat.";
+        return;
+      } catch (_) { /* Keep the existing download option available. */ }
     }
-    message.after(controls);
+    message.textContent = "Attach the report using the download button.";
   }
   button.onclick = async function() {
     button.disabled = true;
+    message.textContent = "";
     try {
-      if (!mobile) {
-        fallback();
-        // Start copying while this document still has focus, without awaiting it.
-        const copying = files.length === 1 && navigator.clipboard && navigator.clipboard.write
-          && typeof ClipboardItem !== "undefined" ? copyImage(files[0]) : null;
-        // Open during the click so popup blockers don't lose user activation.
-        window.open(config.desktopUrl, "_blank", "noopener,noreferrer");
-        if (copying) await copying;
-        return;
+      // Use native file sharing on desktops as well as phones.
+      // Invoke it directly from this click to preserve browser user activation.
+      if (navigator.share && navigator.canShare && navigator.canShare({files})) {
+        await navigator.share(payload);
+      } else {
+        await openApp();
       }
-      if (!navigator.share || !navigator.canShare || !navigator.canShare(payload)) {
-        fallback();
-        return;
-      }
-      await navigator.share(payload);
-      message.textContent = "Share completed";
     } catch (error) {
-      if (error.name !== "AbortError") fallback();
+      if (error.name !== "AbortError") {
+        message.textContent = "Sharing unavailable. Use the copy or download button.";
+      }
     } finally {
       button.disabled = false;
     }
   };
-  // Browsers without file sharing should show usable desktop actions immediately.
-  try {
-    if (!mobile || !navigator.share || !navigator.canShare
-        || !navigator.canShare(payload)) fallback();
-  } catch (error) {
-    fallback();
-  }
 })(CONFIG);
 """.replace("CONFIG", config)
 
@@ -451,7 +366,7 @@ html, body {{
         )
         + "</script>"
     )
-    _html(html, 240, component_key, auto_height=True)
+    _html(html, 80, component_key)
 
 
 def render_icon_button(
@@ -665,7 +580,7 @@ def render_share_images_button(
     share_text: str = "Boteco EOD Report",
     fallback_url: Optional[str] = None,
 ) -> None:
-    """Share multiple PNG images via native share API (mobile) or show fallback (desktop)."""
+    """Share report PNGs through the native share sheet on desktop and mobile."""
     if not files:
         return
 
@@ -679,4 +594,4 @@ def render_share_images_button(
         + _report_share_script(files, f"{uid}_btn", f"{uid}_msg", share_text, fallback_url)
         + "</script>"
     )
-    _html(html, max(height, 240), component_key, auto_height=True)
+    _html(html, max(height, 80), component_key)
