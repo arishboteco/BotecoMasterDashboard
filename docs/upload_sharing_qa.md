@@ -1,5 +1,19 @@
 # Upload and desktop report-sharing fixes — 4 October 2026
 
+## Firefox follow-up — 5 October 2026
+
+The user confirmed Firefox desktop after observing caption-only WhatsApp messages. This supersedes the fallback behavior below.
+
+- Native sharing now supplies PNG files only, without a text payload.
+- Browsers without native sharing copy the report PNG before opening `whatsapp://send`, with no caption query. The user must press Ctrl+V in the WhatsApp chat.
+- Share all copies every section into one PNG, stacked in order at original resolution with a white background. Native sharing retains separate files.
+- If copying fails or is unsupported, WhatsApp is not opened. No fallback links or messages appear before interaction.
+- Mozilla's [desktop Web Share shipping issue](https://bugzilla.mozilla.org/show_bug.cgi?id=1772948) remains open. Firefox cannot provide the requested automatic attachment handoff through this API.
+
+Validation: 12 focused tests passed, covering native image bytes, files-only payload, cancellation, errors, copy completion before navigation, denied copying, unsupported APIs, no caption-only link, and all combined-image sections. Ruff E/F/I/B checks passed. Actual Firefox-to-WhatsApp delivery remains a manual check; the available browser is the Codex in-app browser.
+
+Changed files: `clipboard_ui.py`, `tests/test_report_sharing.py`, and this QA record. Unrelated working-tree changes were preserved.
+
 ## WhatsApp correction
 
 The sharing behavior documented below is superseded by this correction:

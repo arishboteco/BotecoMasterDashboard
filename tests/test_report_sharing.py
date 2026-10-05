@@ -3,12 +3,21 @@
 import json
 import shutil
 import subprocess
+from io import BytesIO
 
 import pytest
+from PIL import Image
 
-from clipboard_ui import _report_share_script
+from clipboard_ui import _clipboard_report_png, _report_share_script
 
-FILES = [("sales.png", b"sales-image"), ("category.png", b"category-image")]
+
+def png(size, color):
+    output = BytesIO()
+    Image.new("RGB", size, color).save(output, format="PNG")
+    return output.getvalue()
+
+
+FILES = [("sales.png", png((3, 2), "red")), ("category.png", png((2, 3), "blue"))]
 
 
 @pytest.mark.parametrize(
@@ -21,6 +30,7 @@ FILES = [("sales.png", b"sales-image"), ("category.png", b"category-image")]
         "unsupported",
         "copy",
         "copy_denied",
+        "copy_all",
         "unsupported_payload",
         "throws",
     ],
@@ -29,7 +39,7 @@ def test_browser_share_paths(mode):
     node = shutil.which("node")
     if node is None:
         pytest.skip("Node is needed to execute browser sharing logic")
-    files = FILES[:1] if mode.startswith("copy") else FILES
+    files = FILES[:1] if mode in {"copy", "copy_denied"} else FILES
     script = _report_share_script(files, "share", "message", "Report", None)
     runner = r"""
 const vm = require('node:vm');
@@ -39,15 +49,16 @@ const message = {textContent:'',setAttribute(){},style:{}};
 // Extra links/buttons fail the test: only the existing controls should be used.
 const document = {getElementById:id=>id==='share'?button:message};
 const events = [];
-let shared, copied;
+let shared, copied, sharedKeys;
 const navigator = {userAgent:input.mode==='mobile'?'Android':'Windows'};
-if (!['unsupported','copy','copy_denied'].includes(input.mode)) {
+if (!['unsupported','copy','copy_denied','copy_all'].includes(input.mode)) {
   navigator.canShare = payload => {
     if(input.mode==='throws') throw new Error('Blocked');
     return input.mode !== 'unsupported_payload';
   };
   navigator.share = async payload => {
     events.push('share');
+    sharedKeys = Object.keys(payload);
     if(['cancelled','rejected'].includes(input.mode))
       throw {name:input.mode==='cancelled'?'AbortError':'NotAllowedError'};
     shared = await Promise.all(payload.files.map(async f=>({
@@ -60,13 +71,14 @@ if(input.mode.startsWith('copy')) navigator.clipboard = {async write(items){
   events.push('copy');
   if(input.mode==='copy_denied') throw new Error('Denied');
   copied=Array.from(new Uint8Array(await items[0].data['image/png'].arrayBuffer()));
+  events.push('copy_complete');
 }};
 const opened=[];
-const window={open(...args){events.push('open');opened.push(args)}};
-vm.runInNewContext(input.script,{document,navigator,window,File,Uint8Array,atob,ClipboardItem});
+const window={location:{set href(url){events.push('open');opened.push(url)}}};
+vm.runInNewContext(input.script,{document,navigator,window,File,Blob,Uint8Array,atob,ClipboardItem});
 const initial={message:message.textContent,events:[...events]};
 button.onclick().then(()=>console.log(JSON.stringify({
-  initial,shared,copied,opened,events,message:message.textContent,disabled:button.disabled
+  initial,shared,sharedKeys,copied,opened,events,message:message.textContent,disabled:button.disabled
 })));
 """
     result = subprocess.run(
@@ -80,6 +92,7 @@ button.onclick().then(()=>console.log(JSON.stringify({
     assert output["initial"] == {"message": "", "events": []}
     assert output["disabled"] is False
     if mode in {"desktop", "mobile"}:
+        assert output["sharedKeys"] == ["files"]
         assert output["shared"] == [
             {"name": name, "type": "image/png", "bytes": list(data)} for name, data in files
         ]
@@ -88,22 +101,31 @@ button.onclick().then(()=>console.log(JSON.stringify({
     elif mode == "cancelled":
         assert output["message"] == ""
         assert output["opened"] == []
-    elif mode in {"rejected", "throws"}:
+    elif mode in {"rejected", "throws", "copy_denied"}:
         assert "Sharing unavailable" in output["message"]
         assert output["opened"] == []
+    elif mode in {"copy", "copy_all"}:
+        assert output["opened"] == ["whatsapp://send"]
+        assert output["events"] == ["copy", "copy_complete", "open"]
+        assert bytes(output["copied"]) == _clipboard_report_png(files)
+        assert "Ctrl+V" in output["message"]
     else:
-        assert output["opened"] == [
-            ["whatsapp://send?text=Report", "_blank", "noopener,noreferrer"]
-        ]
-        if mode == "copy":
-            assert output["events"] == ["copy", "open"]
-            assert bytes(output["copied"]) == FILES[0][1]
-            assert "Paste" in output["message"]
-        else:
-            assert "Attach" in output["message"]
+        assert output["opened"] == []
+        assert "download and attach" in output["message"]
 
 
-def test_app_url_encodes_report_caption():
+def test_no_caption_only_fallback():
     script = _report_share_script(FILES, "share", "message", "Boteco & sales\n₹1", None)
     config = json.loads(script.rsplit("})(", 1)[1].split(");", 1)[0])
-    assert config["appUrl"] == "whatsapp://send?text=Boteco%20%26%20sales%0A%E2%82%B91"
+    assert "text" not in config
+    assert "appUrl" not in config
+    assert "?text=" not in script
+
+
+def test_combined_clipboard_image_contains_every_section_without_scaling():
+    with Image.open(BytesIO(_clipboard_report_png(FILES))) as combined:
+        assert combined.size == (3, 5)
+        assert combined.getpixel((2, 1)) == (255, 0, 0)
+        assert combined.getpixel((1, 2)) == (0, 0, 255)
+        assert combined.getpixel((1, 4)) == (0, 0, 255)
+        assert combined.getpixel((2, 4)) == (255, 255, 255)

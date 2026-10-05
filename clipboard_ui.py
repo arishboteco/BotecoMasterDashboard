@@ -3,10 +3,11 @@
 import base64
 import hashlib
 import json
+from io import BytesIO
 from typing import List, Optional, Tuple
-from urllib.parse import quote
 
 import streamlit as st
+from PIL import Image
 
 import ui_theme
 
@@ -134,6 +135,26 @@ def _icon_btn_style(*, primary: bool = True) -> str:
     )
 
 
+def _clipboard_report_png(files: List[Tuple[str, bytes]]) -> bytes:
+    """Combine all report sections without scaling for single-image clipboards."""
+    if len(files) == 1:
+        return files[0][1]
+    images = []
+    for _, data in files:
+        with Image.open(BytesIO(data)) as source:
+            images.append(source.convert("RGBA"))
+    combined = Image.new(
+        "RGB", (max(i.width for i in images), sum(i.height for i in images)), "white"
+    )
+    top = 0
+    for image in images:
+        combined.paste(image, (0, top), image)
+        top += image.height
+    output = BytesIO()
+    combined.save(output, format="PNG")
+    return output.getvalue()
+
+
 def _report_share_script(
     files: List[Tuple[str, bytes]],
     button_id: str,
@@ -150,8 +171,7 @@ def _report_share_script(
             ],
             "buttonId": button_id,
             "messageId": message_id,
-            "text": share_text,
-            "appUrl": "whatsapp://send?text=" + quote(share_text, safe=""),
+            "clipboardPng": base64.b64encode(_clipboard_report_png(files)).decode("ascii"),
         }
     ).replace("<", "\\u003c")
     return """
@@ -165,25 +185,25 @@ def _report_share_script(
     [Uint8Array.from(atob(item.b64), c => c.charCodeAt(0))],
     item.name, {type: "image/png"}
   ));
-  const payload = {files, text: config.text};
+  // Some share targets prefer text over attachments when both are supplied.
+  const payload = {files};
+  const clipboardImage = new Blob(
+    [Uint8Array.from(atob(config.clipboardPng), c => c.charCodeAt(0))],
+    {type: "image/png"}
+  );
   async function openApp() {
-    // Start copying before opening the app, while the browser still has focus.
-    let copying;
-    try {
-      if (files.length === 1 && navigator.clipboard && navigator.clipboard.write
-          && typeof ClipboardItem !== "undefined") {
-        copying = navigator.clipboard.write([new ClipboardItem({"image/png": files[0]})]);
-      }
-    } catch (_) { /* Download remains available if copying is blocked. */ }
-    window.open(config.appUrl, "_blank", "noopener,noreferrer");
-    if (copying) {
-      try {
-        await copying;
-        message.textContent = "Image copied. Paste it into your WhatsApp chat.";
-        return;
-      } catch (_) { /* Keep the existing download option available. */ }
+    if (!navigator.clipboard || !navigator.clipboard.write
+        || typeof ClipboardItem === "undefined") {
+      message.textContent = "Image sharing needs Edge/Chrome, or download and attach the report.";
+      return;
     }
-    message.textContent = "Attach the report using the download button.";
+    // Do not open a caption-only chat, or switch focus before Firefox finishes copying.
+    await navigator.clipboard.write([new ClipboardItem({"image/png": clipboardImage})]);
+    message.textContent = files.length > 1
+      ? "All sections copied as one image. Press Ctrl+V in your WhatsApp chat."
+      : "Report copied. Press Ctrl+V in your WhatsApp chat.";
+    // Same-frame protocol navigation avoids an async popup being blocked.
+    window.location.href = "whatsapp://send";
   }
   button.onclick = async function() {
     button.disabled = true;
