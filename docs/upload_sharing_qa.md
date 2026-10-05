@@ -1,5 +1,13 @@
 # Upload and desktop report-sharing fixes — 4 October 2026
 
+## Original native handoff restored — 5 October 2026
+
+The user rejected Ctrl+V as the desired WhatsApp action. The native handoff was compared with `30304d0` (the version preceding the September sharing changes) and restored: separate original PNG files plus their caption are passed to the OS share dialog, using the original single-file capability check. There is no desktop-specific redirect, image merging, clipboard operation or caption-only WhatsApp link in this action. Existing copy/download icons remain separate actions.
+
+If the browser has no native image sharing, the action reports that it is unavailable instead of substituting another workflow. This restores the original native handoff; it does not claim that Firefox now has a native share API or that the installed WhatsApp will accept attachments. Actual OS/WhatsApp handoff is still unverified from this environment.
+
+Validation: 8 focused browser-script tests passed, including separate file bytes and caption, single-file capability check, desktop/mobile paths, cancellation, rejection, unavailable APIs, and no clipboard/redirect fallback. Ruff E/F/I/B and whitespace checks passed. Changes are scoped to `clipboard_ui.py`, `tests/test_report_sharing.py`, and this record.
+
 ## Firefox follow-up — 5 October 2026
 
 The user confirmed Firefox desktop after observing caption-only WhatsApp messages. This supersedes the fallback behavior below.
