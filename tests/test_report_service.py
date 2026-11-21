@@ -1,6 +1,18 @@
 """Tests for report service data-loading helpers."""
 
+import pytest
+
 from services import report_service
+
+
+@pytest.fixture(autouse=True)
+def mock_payment_rows(monkeypatch):
+    """Keep service unit tests independent of configured live database credentials."""
+    monkeypatch.setattr(
+        report_service.database,
+        "get_payment_method_sales_for_date_range_multi",
+        lambda *_args: [],
+    )
 
 
 def setup_function() -> None:

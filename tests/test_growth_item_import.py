@@ -467,6 +467,31 @@ class TestPaymentMapping:
 
 
 class TestGrowthReportParser:
+    @pytest.mark.parametrize("stored_delivery", [0.0, 3282.0, 20020.0, 25000.0])
+    def test_all_delivery_tenders_without_changing_other_growth_metrics(self, stored_delivery):
+        from uploads.parsers.growth_report_day_wise import parse_growth_report_day_wise
+
+        payments = {
+            "Other [ZOMATO DELIVERY]": 3282.0,
+            "Other [SWIGGY]": 16738.0,
+            "Other [OWNLY]": 788.0,
+            "Other [Swiggy Dineout]": 5000.0,
+            "Other [Zomato District]": 6000.0,
+        }
+        content = _growth_report_bytes(
+            payment_cols=payments, extra_cols={"Delivery": stored_delivery},
+        )
+        rows, errors, _ = parse_growth_report_day_wise(content, "growth.xlsx", location_id=2)
+        assert not errors
+        row = rows[0]
+        assert row["delivery_sales"] == max(stored_delivery, 20808.0)
+        assert row["net_total"] == 100000.0
+        assert row["gross_total"] == 118000.0 + sum(payments.values())
+        assert row["cash_sales"] == 20000.0
+        assert row["card_sales"] == 68000.0
+        assert row["discount"] == 0.0
+        assert sum(method["amount"] for method in row["payment_methods"]) == sum(payments.values())
+
     def _parse(self, restaurant: str = "Boteco", **kwargs):
         from uploads.parsers.growth_report_day_wise import parse_growth_report_day_wise
 

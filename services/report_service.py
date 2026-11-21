@@ -9,6 +9,7 @@ import cache_manager
 import database
 import scope
 from services.forecast_service import DEFAULT_TRAILING_DAYS
+from services.payment_mapping import delivery_sales_amount
 
 _REPORT_CACHE: dict = cache_manager.register("report")
 _MTD_CACHE: dict = cache_manager.register("mtd")
@@ -62,9 +63,22 @@ def build_mtd_maps(
         start_date,
         as_of_date,
     )
-    delivery_total = sum(float(row.get("delivery_sales") or 0) for row in summary_rows or [])
-    if delivery_total > 0:
-        mtd_svc["Delivery"] = max(float(mtd_svc.get("Delivery") or 0), delivery_total)
+    payment_rows = database.get_payment_method_sales_for_date_range_multi(
+        location_ids, start_date, as_of_date
+    )
+    payments_by_day: dict = {}
+    for row in payment_rows or []:
+        key = (row.get("location_id"), str(row.get("date") or "")[:10])
+        payments_by_day.setdefault(key, []).append(row)
+    delivery_total = 0.0
+    for row in summary_rows or []:
+        key = (row.get("location_id"), str(row.get("date") or "")[:10])
+        payments = payments_by_day.pop(key, row.get("payment_methods") or [])
+        delivery_total += delivery_sales_amount({**row, "payment_methods": payments})
+    for payments in payments_by_day.values():
+        delivery_total += delivery_sales_amount({"payment_methods": payments})
+    if delivery_total != 0 or (summary_rows and "Delivery" in mtd_svc):
+        mtd_svc["Delivery"] = round(delivery_total, 2)
     return mtd_cat, mtd_svc
 
 

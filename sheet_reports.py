@@ -21,7 +21,7 @@ rendered to PDF and converted to PNG via PyMuPDF, then stacked with Pillow.
 
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
 from xml.sax.saxutils import escape
@@ -47,7 +47,7 @@ import config
 from exceptions import ReportGenerationError
 from services.forecast_service import calculate_month_end_forecast
 from services.payment_mapping import (
-    is_delivery_payment_method,
+    delivery_sales_amount,
     payment_method_key,
     payment_method_name,
 )
@@ -1526,28 +1526,12 @@ def _build_category(
         for _, od in per_outlet:
             outlet_daily_cats.append(_collapse_super_category_amounts(od.get("categories") or []))
 
-    def delivery_amount(summary: Dict[str, Any]) -> float:
-        direct_amount = float(summary.get("delivery_sales") or 0)
-        if direct_amount != 0:
-            return direct_amount
-        payment_amount = sum(
-            float(method.get("amount") or 0)
-            for method in summary.get("payment_methods") or []
-            if is_delivery_payment_method(
-                str(method.get("payment_method") or ""),
-                str(method.get("payment_key") or ""),
-            )
-        )
-        if payment_amount != 0:
-            return payment_amount
-        return sum(
-            float(service.get("amount") or service.get("total") or 0)
-            for service in summary.get("services") or []
-            if str(service.get("type") or service.get("service_type") or "").strip().lower()
-            == "delivery"
-        )
-
-    daily_delivery = delivery_amount(r)
+    outlet_daily_delivery = (
+        [delivery_sales_amount(od) for _, od in per_outlet] if multi and per_outlet else []
+    )
+    # Resolve each outlet before summing: a complete POS total at one outlet
+    # must not hide missing tenders at another outlet.
+    daily_delivery = sum(outlet_daily_delivery) if multi else delivery_sales_amount(r)
     mtd_delivery = next(
         (
             float(value or 0)
@@ -1555,9 +1539,6 @@ def _build_category(
             if str(name).strip().lower() == "delivery"
         ),
         0.0,
-    )
-    outlet_daily_delivery = (
-        [delivery_amount(od) for _, od in per_outlet] if multi and per_outlet else []
     )
     has_delivery = daily_delivery != 0 or mtd_delivery != 0 or any(
         amount != 0 for amount in outlet_daily_delivery

@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 from services.payment_mapping import (
-    is_delivery_payment_method,
+    delivery_sales_amount,
     payment_method_key,
     payment_method_name,
 )
@@ -551,18 +551,7 @@ def parse_growth_report_day_wise(
                 "Import blocked so no payment method is silently dropped."
             )
 
-        if float(out.get("delivery_sales") or 0) == 0:
-            out["delivery_sales"] = round(
-                sum(
-                    float(method.get("amount") or 0)
-                    for method in out["payment_methods"]
-                    if is_delivery_payment_method(
-                        str(method.get("payment_method") or ""),
-                        str(method.get("payment_key") or ""),
-                    )
-                ),
-                2,
-            )
+        out["delivery_sales"] = delivery_sales_amount(out)
 
         rows.append(out)
 
