@@ -9,7 +9,7 @@ Exposes two public functions:
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
@@ -116,7 +116,61 @@ def is_delivery_payment_method(raw_name: str, raw_key: str = "") -> bool:
     """Return whether a payment method explicitly represents online delivery."""
     name = payment_method_name(raw_name) or str(raw_name or "").strip()
     searchable = f"{name} {raw_key}".lower().replace("_", " ")
-    return "delivery" in searchable
+    # These POS tenders omit the word "delivery". Use exact identities so
+    # Swiggy Dineout, Zomato District and historical generic Zomato stay separate.
+    return (
+        "delivery" in searchable
+        or name.casefold() in {"swiggy", "ownly"}
+        or raw_key.strip().casefold() in {"swiggy", "ownly"}
+    )
+
+
+def delivery_sales_amount(summary: Dict[str, Any]) -> float:
+    """Resolve overlapping delivery sources for ONE outlet/business date.
+
+    Older imports stored only tenders containing "delivery", so a nonzero
+    delivery_sales value can be incomplete. Compare it with the full delivery
+    tender total; never add the two representations of the same sales.
+    A larger POS order-type total is retained (e.g. cash-paid delivery).
+    """
+    direct = float(summary.get("delivery_sales") or 0)
+    payments = sum(
+        float(method.get("amount") or 0)
+        for method in summary.get("payment_methods") or []
+        if is_delivery_payment_method(
+            str(method.get("payment_method") or ""), str(method.get("payment_key") or "")
+        )
+    )
+    # A bare provider name has also been used for dine-in tenders historically.
+    # Where the POS supplies a channel split, require the candidate to reconcile
+    # before replacing a stored value. Conflicting old data keeps its old result.
+    non_delivery = sum(
+        float(summary.get(field) or 0)
+        for field in ("dine_in_sales", "pickup_sales", "menu_qr_sales")
+    )
+    gross = float(summary.get("gross_total") or 0)
+    if gross > 0 and non_delivery > 0 and abs(gross - non_delivery - payments) > 1.0:
+        if direct:
+            return direct
+        payments = sum(
+            float(method.get("amount") or 0)
+            for method in summary.get("payment_methods") or []
+            if "delivery" in (
+                f"{payment_method_name(str(method.get('payment_method') or '')) or ''} "
+                f"{method.get('payment_key') or ''}"
+            ).lower()
+        )
+    if direct or payments:
+        return round(max(direct, payments) if direct and payments else direct or payments, 2)
+    return round(
+        sum(
+            float(service.get("amount") or service.get("total") or 0)
+            for service in summary.get("services") or []
+            if str(service.get("type") or service.get("service_type") or "").strip().lower()
+            == "delivery"
+        ),
+        2,
+    )
 
 
 def _col_total(df: pd.DataFrame, col_name: str) -> float:
